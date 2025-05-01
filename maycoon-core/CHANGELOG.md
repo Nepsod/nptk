@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/maycoon-ui/maycoon/compare/maycoon-core-v0.4.0...maycoon-core-v0.5.0) - 2025-05-01
+
+### Added
+
+- Render Context for AppContext
+- Diagnostics for AppContext
+- ActionSignal signal
+- is_locked method for RwSignal
+- RwSignal shortcut
+- RwSignal based on the RwLock
+
+### Fixed
+
+- Remove unnecessary Arc's
+- Unnecessary  Arc
+
+### Other
+
+- Update runner() method
+- Update context.rs
+- Re-organize features
+
 ## [0.4.0](https://github.com/maycoon-ui/maycoon/compare/maycoon-core-v0.3.2...maycoon-core-v0.4.0) - 2025-04-29
 
 ### Added
