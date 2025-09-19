@@ -1,13 +1,13 @@
 [workspace]
-members = ["maycoon-core", "maycoon-macros", "maycoon-theme", "maycoon-widgets", "examples/*"]
+members = ["nptk-core", "nptk-macros", "nptk-theme", "nptk-widgets", "examples/*"]
 
 [workspace.package]
 version = "0.5.0"
 edition = "2021"
-authors = ["Mikail Plotzky <mp@ypon.com>", "Maycoon Contributors"]
+authors = ["Dominik Adrian Grzywak <starterx4@gmail.com>"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/maycoon-ui/maycoon"
-homepage = "https://maycoon-ui.github.io"
+repository = "https://github.com/Nepsod/nptk"
+homepage = ""
 categories = ["gui", "graphics", "rendering", "virtualization", "rendering::engine"]
 keywords = ["ui", "gui", "interface", "graphics", "user-interface"]
 
@@ -17,13 +17,13 @@ peniko = "0.3.1"
 nalgebra = { version = "0.33.2", default-features = false, features = ["std"] }
 indexmap = "2.9.0"
 log = "0.4.27"
-maycoon-core = { version = "0.5.0", path = "maycoon-core" }
-maycoon-macros = { version = "0.5.0", path = "maycoon-macros" }
-maycoon-theme = { version = "0.5.0", path = "maycoon-theme" }
-maycoon-widgets = { version = "0.5.0", path = "maycoon-widgets" }
+nptk-core = { version = "0.5.0", path = "nptk-core" }
+nptk-macros = { version = "0.5.0", path = "nptk-macros" }
+nptk-theme = { version = "0.5.0", path = "nptk-theme" }
+nptk-widgets = { version = "0.5.0", path = "nptk-widgets" }
 
 [package]
-name = "maycoon"
+name = "nptk"
 description = "Lightning fast and powerful UI Framework for Rust."
 version.workspace = true
 edition.workspace = true
@@ -35,28 +35,28 @@ repository.workspace = true
 homepage.workspace = true
 
 [dependencies]
-maycoon-core = { workspace = true }
-maycoon-theme = { workspace = true }
-maycoon-widgets = { workspace = true }
-maycoon-macros = { workspace = true, optional = true }
+nptk-core = { workspace = true }
+nptk-theme = { workspace = true }
+nptk-widgets = { workspace = true }
+nptk-macros = { workspace = true, optional = true }
 peniko = { workspace = true }
 nalgebra = { workspace = true }
 
 [features]
 default = ["macros", "include-noto-sans"]
 
-# Exports useful macros for working with maycoon.
-macros = ["maycoon-macros"]
+# Exports useful macros for working with nptk.
+macros = ["nptk-macros"]
 
 # Exports `vello` and `skrifa` for drawing vector graphics. Useful if you want to create custom widgets.
-vg = ["maycoon-core/vg"]
+vg = ["nptk-core/vg"]
 
 # Enables the `Canvas` widget for drawing to the screen.
-canvas = ["maycoon-widgets/canvas"]
+canvas = ["nptk-widgets/canvas"]
 
 # Include the `Noto Sans` font as a default font. If disabled, you must specify a default font using the `FontContext`.
-include-noto-sans = ["maycoon-core/include-noto-sans"]
+include-noto-sans = ["nptk-core/include-noto-sans"]
 
 [lib]
-name = "maycoon"
+name = "nptk"
 path = "src/lib.rs"

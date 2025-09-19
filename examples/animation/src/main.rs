@@ -1,12 +1,12 @@
-use maycoon::core::app::context::AppContext;
-use maycoon::core::app::update::Update;
-use maycoon::core::app::Application;
-use maycoon::core::config::MayConfig;
-use maycoon::core::signal::Signal;
-use maycoon::core::widget::Widget;
-use maycoon::theme::theme::celeste::CelesteTheme;
-use maycoon::widgets::animator::Animator;
-use maycoon::widgets::text::Text;
+use nptk::core::app::context::AppContext;
+use nptk::core::app::update::Update;
+use nptk::core::app::Application;
+use nptk::core::config::MayConfig;
+use nptk::core::signal::Signal;
+use nptk::core::widget::Widget;
+use nptk::theme::theme::celeste::CelesteTheme;
+use nptk::widgets::animator::Animator;
+use nptk::widgets::text::Text;
 use std::time::Duration;
 
 struct MyApp;

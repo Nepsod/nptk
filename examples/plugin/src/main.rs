@@ -1,11 +1,11 @@
 use crate::plugin::MyPlugin;
-use maycoon::core::app::context::AppContext;
-use maycoon::core::app::Application;
-use maycoon::core::config::MayConfig;
-use maycoon::core::plugin::PluginManager;
-use maycoon::core::widget::Widget;
-use maycoon::theme::theme::celeste::CelesteTheme;
-use maycoon::widgets::text::Text;
+use nptk::core::app::context::AppContext;
+use nptk::core::app::Application;
+use nptk::core::config::MayConfig;
+use nptk::core::plugin::PluginManager;
+use nptk::core::widget::Widget;
+use nptk::theme::theme::celeste::CelesteTheme;
+use nptk::widgets::text::Text;
 
 pub mod plugin;
 

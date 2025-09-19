@@ -1,12 +1,12 @@
-use maycoon::color::color::palette;
-use maycoon::color::kurbo::{Affine, Circle, Point, Stroke};
-use maycoon::color::Brush;
-use maycoon::core::app::context::AppContext;
-use maycoon::core::app::Application;
-use maycoon::core::config::MayConfig;
-use maycoon::core::widget::Widget;
-use maycoon::theme::theme::celeste::CelesteTheme;
-use maycoon::widgets::canvas::Canvas;
+use nptk::color::color::palette;
+use nptk::color::kurbo::{Affine, Circle, Point, Stroke};
+use nptk::color::Brush;
+use nptk::core::app::context::AppContext;
+use nptk::core::app::Application;
+use nptk::core::config::MayConfig;
+use nptk::core::widget::Widget;
+use nptk::theme::theme::celeste::CelesteTheme;
+use nptk::widgets::canvas::Canvas;
 
 struct MyApp;
 

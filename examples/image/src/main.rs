@@ -1,12 +1,12 @@
-use maycoon::color::{Blob, ImageFormat};
-use maycoon::core::app::context::AppContext;
-use maycoon::core::app::Application;
-use maycoon::core::config::MayConfig;
-use maycoon::core::signal::fixed::FixedSignal;
-use maycoon::core::signal::Signal;
-use maycoon::core::widget::Widget;
-use maycoon::theme::theme::celeste::CelesteTheme;
-use maycoon::widgets::image::{Image, ImageData};
+use nptk::color::{Blob, ImageFormat};
+use nptk::core::app::context::AppContext;
+use nptk::core::app::Application;
+use nptk::core::config::MayConfig;
+use nptk::core::signal::fixed::FixedSignal;
+use nptk::core::signal::Signal;
+use nptk::core::widget::Widget;
+use nptk::theme::theme::celeste::CelesteTheme;
+use nptk::widgets::image::{Image, ImageData};
 
 const IMAGE_DATA: &[u8] = include_bytes!("../pelican.jpg");
 

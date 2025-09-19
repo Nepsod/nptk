@@ -1,16 +1,16 @@
-use maycoon::core::app::context::AppContext;
-use maycoon::core::app::Application;
-use maycoon::core::config::MayConfig;
-use maycoon::core::layout::{AlignItems, Dimension, FlexDirection, LayoutStyle};
-use maycoon::core::reference::Ref;
-use maycoon::core::signal::state::StateSignal;
-use maycoon::core::signal::{MaybeSignal, Signal};
-use maycoon::core::widget::{Widget, WidgetLayoutExt};
-use maycoon::math::Vector2;
-use maycoon::theme::theme::celeste::CelesteTheme;
-use maycoon::widgets::checkbox::Checkbox;
-use maycoon::widgets::container::Container;
-use maycoon::widgets::text::Text;
+use nptk::core::app::context::AppContext;
+use nptk::core::app::Application;
+use nptk::core::config::MayConfig;
+use nptk::core::layout::{AlignItems, Dimension, FlexDirection, LayoutStyle};
+use nptk::core::reference::Ref;
+use nptk::core::signal::state::StateSignal;
+use nptk::core::signal::{MaybeSignal, Signal};
+use nptk::core::widget::{Widget, WidgetLayoutExt};
+use nptk::math::Vector2;
+use nptk::theme::theme::celeste::CelesteTheme;
+use nptk::widgets::checkbox::Checkbox;
+use nptk::widgets::container::Container;
+use nptk::widgets::text::Text;
 
 struct MyApp;
 

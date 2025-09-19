@@ -1,0 +1,20 @@
+[package]
+name = "nptk-macros"
+description = "Macros for nptk UI => See the `nptk` crate for more."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+syn = "2.0.101"
+quote = "1.0.40"
+proc-macro2 = "1.0.95"
+ureq = "3.0.11"
+
+[lib]
+proc-macro = true

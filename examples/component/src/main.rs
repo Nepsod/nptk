@@ -1,12 +1,12 @@
 use crate::counter::Counter;
-use maycoon::core::app::context::AppContext;
-use maycoon::core::app::Application;
-use maycoon::core::config::MayConfig;
-use maycoon::core::layout::{AlignItems, Dimension, FlexDirection, LayoutStyle};
-use maycoon::core::signal::state::StateSignal;
-use maycoon::core::widget::{Widget, WidgetLayoutExt};
-use maycoon::math::Vector2;
-use maycoon::theme::theme::celeste::CelesteTheme;
+use nptk::core::app::context::AppContext;
+use nptk::core::app::Application;
+use nptk::core::config::MayConfig;
+use nptk::core::layout::{AlignItems, Dimension, FlexDirection, LayoutStyle};
+use nptk::core::signal::state::StateSignal;
+use nptk::core::widget::{Widget, WidgetLayoutExt};
+use nptk::math::Vector2;
+use nptk::theme::theme::celeste::CelesteTheme;
 
 mod counter;
 

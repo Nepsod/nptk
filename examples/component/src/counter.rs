@@ -1,15 +1,15 @@
-use maycoon::core::app::context::AppContext;
-use maycoon::core::app::update::Update;
-use maycoon::core::component::{Component, Composed};
-use maycoon::core::layout::LayoutStyle;
-use maycoon::core::reference::Ref;
-use maycoon::core::signal::eval::EvalSignal;
-use maycoon::core::signal::{ArcSignal, MaybeSignal, Signal};
-use maycoon::core::widget::{Widget, WidgetLayoutExt};
-use maycoon::theme::id::WidgetId;
-use maycoon::widgets::button::Button;
-use maycoon::widgets::container::Container;
-use maycoon::widgets::text::Text;
+use nptk::core::app::context::AppContext;
+use nptk::core::app::update::Update;
+use nptk::core::component::{Component, Composed};
+use nptk::core::layout::LayoutStyle;
+use nptk::core::reference::Ref;
+use nptk::core::signal::eval::EvalSignal;
+use nptk::core::signal::{ArcSignal, MaybeSignal, Signal};
+use nptk::core::widget::{Widget, WidgetLayoutExt};
+use nptk::theme::id::WidgetId;
+use nptk::widgets::button::Button;
+use nptk::widgets::container::Container;
+use nptk::widgets::text::Text;
 
 pub struct Counter {
     counter: ArcSignal<i32>,

@@ -1,18 +1,18 @@
-use maycoon::core::app::context::AppContext;
-use maycoon::core::app::update::Update;
-use maycoon::core::app::Application;
-use maycoon::core::config::MayConfig;
-use maycoon::core::layout::{AlignItems, Dimension, FlexDirection, LayoutStyle};
-use maycoon::core::reference::Ref;
-use maycoon::core::signal::eval::EvalSignal;
-use maycoon::core::signal::state::StateSignal;
-use maycoon::core::signal::Signal;
-use maycoon::core::widget::{Widget, WidgetLayoutExt};
-use maycoon::math::Vector2;
-use maycoon::theme::theme::celeste::CelesteTheme;
-use maycoon::widgets::button::Button;
-use maycoon::widgets::container::Container;
-use maycoon::widgets::text::Text;
+use nptk::core::app::context::AppContext;
+use nptk::core::app::update::Update;
+use nptk::core::app::Application;
+use nptk::core::config::MayConfig;
+use nptk::core::layout::{AlignItems, Dimension, FlexDirection, LayoutStyle};
+use nptk::core::reference::Ref;
+use nptk::core::signal::eval::EvalSignal;
+use nptk::core::signal::state::StateSignal;
+use nptk::core::signal::Signal;
+use nptk::core::widget::{Widget, WidgetLayoutExt};
+use nptk::math::Vector2;
+use nptk::theme::theme::celeste::CelesteTheme;
+use nptk::widgets::button::Button;
+use nptk::widgets::container::Container;
+use nptk::widgets::text::Text;
 
 struct MyApp;
 

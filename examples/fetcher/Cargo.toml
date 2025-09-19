@@ -5,6 +5,6 @@ edition = "2021"
 publish = false
 
 [dependencies]
-maycoon = { path = "../.." }
+nptk = { path = "../.." }
 surf = "2.3.2"
 serde = { version = "1", features = ["derive"] }

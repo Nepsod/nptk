@@ -1,11 +1,11 @@
-use maycoon::core::app::context::AppContext;
-use maycoon::core::app::update::Update;
-use maycoon::core::app::Application;
-use maycoon::core::config::{MayConfig, TasksConfig};
-use maycoon::core::widget::Widget;
-use maycoon::theme::theme::celeste::CelesteTheme;
-use maycoon::widgets::fetcher::WidgetFetcher;
-use maycoon::widgets::text::Text;
+use nptk::core::app::context::AppContext;
+use nptk::core::app::update::Update;
+use nptk::core::app::Application;
+use nptk::core::config::{MayConfig, TasksConfig};
+use nptk::core::widget::Widget;
+use nptk::theme::theme::celeste::CelesteTheme;
+use nptk::widgets::fetcher::WidgetFetcher;
+use nptk::widgets::text::Text;
 use serde::Deserialize;
 
 struct MyApp;

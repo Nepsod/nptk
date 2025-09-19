@@ -1,0 +1,22 @@
+[package]
+name = "nptk-widgets"
+description = "Widgets for nptk UI => See the `nptk` crate for more."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+vello_svg = { version = "0.6.0", default-features = false }
+nptk-theme = { workspace = true }
+nptk-core = { workspace = true, features = ["vg"] }
+bytemuck = { workspace = true }
+nalgebra = { workspace = true }
+
+[features]
+default = []
+canvas = []

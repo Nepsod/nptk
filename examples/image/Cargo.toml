@@ -6,4 +6,4 @@ publish = false
 
 [dependencies]
 image = "0.25"
-maycoon = { path = "../.." }
+nptk = { path = "../.." }

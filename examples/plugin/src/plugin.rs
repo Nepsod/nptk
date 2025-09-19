@@ -1,12 +1,12 @@
-use maycoon::core::app::info::AppInfo;
-use maycoon::core::app::update::UpdateManager;
-use maycoon::core::config::MayConfig;
-use maycoon::core::layout::{NodeId, TaffyTree};
-use maycoon::core::plugin::{Plugin, PluginManager};
-use maycoon::core::vg::util::{RenderContext, RenderSurface};
-use maycoon::core::vg::{Renderer, Scene};
-use maycoon::core::window::{ActiveEventLoop, Window, WindowEvent};
-use maycoon::theme::theme::Theme;
+use nptk::core::app::info::AppInfo;
+use nptk::core::app::update::UpdateManager;
+use nptk::core::config::MayConfig;
+use nptk::core::layout::{NodeId, TaffyTree};
+use nptk::core::plugin::{Plugin, PluginManager};
+use nptk::core::vg::util::{RenderContext, RenderSurface};
+use nptk::core::vg::{Renderer, Scene};
+use nptk::core::window::{ActiveEventLoop, Window, WindowEvent};
+use nptk::theme::theme::Theme;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -36,7 +36,7 @@ impl<T: Theme> Plugin<T> for MyPlugin {
         _taffy: &mut TaffyTree,
         _window_node: NodeId,
         _info: &mut AppInfo,
-        _render_ctx: &mut RenderContext,
+        _render_ctx: &RenderContext,
         _update: &UpdateManager,
         _last_update: &mut Instant,
         _event_loop: &ActiveEventLoop,
