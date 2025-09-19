@@ -15,8 +15,6 @@ pub type ImageData = vello::peniko::Image;
 
 /// An image widget. Pretty self-explanatory.
 ///
-/// See the [image](https://github.com/nptk-ui/nptk/blob/master/examples/image/src/main.rs) example for how to use it in practice.
-///
 /// ### Theming
 /// The widget itself only draws the underlying image, so theming is useless.
 pub struct Image {

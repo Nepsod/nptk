@@ -15,8 +15,6 @@ use nalgebra::Vector2;
 
 /// A checkbox widget. Changes state when it's clicked.
 ///
-/// See the [checkbox](https://github.com/nptk-ui/nptk/blob/master/examples/checkbox/src/main.rs) example for how to use it in practice.
-///
 /// ### Theming
 /// Styling the checkbox require following properties:
 /// - `color_unchecked` -  The color of the checkbox, when it's not checked (inner value is false).

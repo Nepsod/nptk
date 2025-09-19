@@ -12,8 +12,6 @@ use nptk_theme::theme::Theme;
 ///
 /// The layout of the children (row, column, etc.) depends on the [LayoutStyle] of the container.
 ///
-/// See the [counter](https://github.com/nptk-ui/nptk/blob/master/examples/counter/src/main.rs) example for how to use it in practice.
-///
 /// ### Theming
 /// The container widget doesn't actually draw anything but the child widgets, so theming is useless.
 #[derive(Default)]

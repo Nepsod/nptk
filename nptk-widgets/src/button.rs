@@ -14,8 +14,6 @@ use nptk_theme::theme::Theme;
 
 /// An interactive area with a child widget that runs a closure when pressed.
 ///
-/// See the [counter](https://github.com/nptk-ui/nptk/blob/master/examples/counter/src/main.rs) example for how to use it in practice.
-///
 /// ### Theming
 /// Styling the button require following properties:
 /// - `color_pressed` -  The color of the button when pressed.
