@@ -1,4 +1,5 @@
 use crate::app::diagnostics::Diagnostics;
+use crate::app::focus::{FocusId, SharedFocusManager};
 use crate::app::update::{Update, UpdateManager};
 use crate::signal::actor::ActorSignal;
 use crate::signal::eval::EvalSignal;
@@ -16,6 +17,7 @@ pub struct AppContext {
     update: UpdateManager,
     diagnostics: Diagnostics,
     render: Arc<RenderContext>,
+    focus_manager: SharedFocusManager,
 }
 
 impl AppContext {
@@ -24,11 +26,13 @@ impl AppContext {
         update: UpdateManager,
         diagnostics: Diagnostics,
         render: Arc<RenderContext>,
+        focus_manager: SharedFocusManager,
     ) -> Self {
         Self {
             update,
             diagnostics,
             render,
+            focus_manager,
         }
     }
 
@@ -98,5 +102,50 @@ impl AppContext {
     /// Shortcut for creating and hooking an [ActorSignal] into the application lifecycle.
     pub fn use_actor<T: 'static>(&self, value: T) -> Arc<ActorSignal<T>> {
         self.use_signal(ActorSignal::new(value))
+    }
+
+    /// Get the shared focus manager.
+    pub fn focus_manager(&self) -> SharedFocusManager {
+        self.focus_manager.clone()
+    }
+
+    /// Set focus to a specific widget.
+    pub fn set_focus(&self, focus_id: Option<FocusId>) {
+        if let Ok(mut manager) = self.focus_manager.lock() {
+            manager.set_focus(focus_id);
+            self.update.insert(Update::FOCUS | Update::DRAW);
+        }
+    }
+
+    /// Get the currently focused widget ID.
+    pub fn get_focused_widget(&self) -> Option<FocusId> {
+        self.focus_manager
+            .lock()
+            .ok()
+            .and_then(|manager| manager.get_focused_widget())
+    }
+
+    /// Move focus to the next widget in tab order.
+    pub fn focus_next(&self) {
+        if let Ok(mut manager) = self.focus_manager.lock() {
+            manager.focus_next();
+            self.update.insert(Update::FOCUS | Update::DRAW);
+        }
+    }
+
+    /// Move focus to the previous widget in tab order.
+    pub fn focus_previous(&self) {
+        if let Ok(mut manager) = self.focus_manager.lock() {
+            manager.focus_previous();
+            self.update.insert(Update::FOCUS | Update::DRAW);
+        }
+    }
+
+    /// Clear focus from all widgets.
+    pub fn clear_focus(&self) {
+        if let Ok(mut manager) = self.focus_manager.lock() {
+            manager.clear_focus();
+            self.update.insert(Update::FOCUS | Update::DRAW);
+        }
     }
 }

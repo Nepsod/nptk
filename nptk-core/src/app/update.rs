@@ -9,6 +9,7 @@ bitflags! {
     /// - **EVAL** - Re-evaluate the widget tree.
     /// - **DRAW** - Re-draw the widget tree.
     /// - **LAYOUT** - Re-layout the widget tree.
+    /// - **FOCUS** - Focus state has changed.
     /// - **FORCE** - Force the App to re-evaluate, re-draw and re-layout the widget tree.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct Update: u8 {
@@ -18,8 +19,10 @@ bitflags! {
         const DRAW   = 0b00000010;
         /// Re-layout the widget tree.
         const LAYOUT = 0b00000100;
+        /// Focus state has changed.
+        const FOCUS  = 0b00001000;
         /// Force the App to re-evaluate, re-draw and re-layout the widget tree.
-        const FORCE  = 0b00001000;
+        const FORCE  = 0b00010000;
     }
 }
 

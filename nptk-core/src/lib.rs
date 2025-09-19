@@ -45,5 +45,8 @@ pub mod reference;
 /// Contains the plugin system.
 pub mod plugin;
 
+/// Contains focus management functionality.
+pub mod focus;
+
 #[cfg(feature = "include-noto-sans")]
 pub(crate) const DEFAULT_FONT: &[u8] = include_bytes!("NotoSans.ttf");

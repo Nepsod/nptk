@@ -26,6 +26,9 @@ pub mod context;
 /// Contains the [MayRunner] structure to create and run an application using `winit`.
 pub mod runner;
 
+/// Contains the focus management system.
+pub mod focus;
+
 /// The main application interface.
 ///
 /// Contains basic functions for the [MayRunner] to create and run an application.

@@ -9,7 +9,7 @@ use taffy::{
 use vello::util::{RenderContext, RenderSurface};
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
 use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
+use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowAttributes, WindowId};
 
@@ -103,6 +103,7 @@ where
             self.update.clone(),
             self.info.diagnostics,
             self.render_ctx.clone().unwrap(),
+            self.info.focus_manager.clone(),
         )
     }
 
@@ -438,6 +439,7 @@ where
                 self.update.clone(),
                 self.info.diagnostics,
                 self.render_ctx.clone().unwrap(),
+                self.info.focus_manager.clone(),
             ),
             self.state.take().unwrap(),
         ));
@@ -533,12 +535,38 @@ where
                         self.request_redraw();
                     },
 
+                    WindowEvent::ModifiersChanged(modifiers) => {
+                        self.info.modifiers = modifiers.state();
+                    },
+
                     WindowEvent::KeyboardInput {
                         event,
                         device_id,
                         is_synthetic,
                     } => {
                         if !is_synthetic {
+                            // Handle tab navigation
+                            if event.state == ElementState::Pressed {
+                                use winit::keyboard::{KeyCode, PhysicalKey};
+                                match event.physical_key {
+                                    PhysicalKey::Code(KeyCode::Tab) => {
+                                        if let Ok(mut manager) = self.info.focus_manager.lock() {
+                                            if self.info.modifiers.shift_key() {
+                                                // Shift+Tab: focus previous
+                                                manager.focus_previous();
+                                            } else {
+                                                // Tab: focus next
+                                                manager.focus_next();
+                                            }
+                                            self.update.insert(Update::FOCUS | Update::DRAW);
+                                        }
+                                        self.request_redraw();
+                                        return; // Don't add tab keys to the key events list
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            
                             self.info.keys.push((device_id, event));
                             self.request_redraw();
                         }
@@ -549,6 +577,17 @@ where
                         button,
                         state,
                     } => {
+                        // Handle focus on mouse clicks
+                        if button == MouseButton::Left && state == ElementState::Pressed {
+                            if let Some(cursor_pos) = self.info.cursor_pos {
+                                if let Ok(mut manager) = self.info.focus_manager.lock() {
+                                    if manager.handle_click(cursor_pos.x, cursor_pos.y) {
+                                        self.update.insert(Update::FOCUS | Update::DRAW);
+                                    }
+                                }
+                            }
+                        }
+                        
                         self.info.buttons.push((device_id, button, state));
                         self.request_redraw();
                     },

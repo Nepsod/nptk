@@ -53,6 +53,10 @@ impl Theme for CelesteTheme {
                         "color_hovered".to_string(),
                         StyleVal::Color(Color::from_rgb8(140, 160, 240)),
                     ),
+                    (
+                        "color_focused".to_string(),
+                        StyleVal::Color(Color::from_rgb8(120, 140, 220)),
+                    ),
                 ])),
 
                 "Checkbox" => Some(Style::from_values([

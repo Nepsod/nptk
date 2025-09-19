@@ -1,14 +1,15 @@
 use nptk_core::app::context::AppContext;
+use nptk_core::app::focus::{FocusId, FocusState, FocusableWidget, FocusProperties, FocusBounds};
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout;
 use nptk_core::layout::{LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
 use nptk_core::signal::MaybeSignal;
-use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Vec2};
+use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Vec2, Stroke};
 use nptk_core::vg::peniko::{Brush, Fill};
 use nptk_core::vg::Scene;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetChildExt, WidgetLayoutExt};
-use nptk_core::window::{ElementState, MouseButton};
+use nptk_core::window::{ElementState, MouseButton, KeyCode, PhysicalKey};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 
@@ -19,11 +20,15 @@ use nptk_theme::theme::Theme;
 /// - `color_pressed` -  The color of the button when pressed.
 /// - `color_idle` - The color of the button when not pressed and not hovered (idling).
 /// - `color_hovered` - The color of the button when hovered on.
+/// - `color_focused` - The color of the button when focused (optional).
 pub struct Button {
     child: BoxedWidget,
     state: ButtonState,
     on_pressed: MaybeSignal<Update>,
     layout_style: MaybeSignal<LayoutStyle>,
+    focus_id: FocusId,
+    focus_state: FocusState,
+    focus_via_keyboard: bool, // Track if focus was gained via keyboard
 }
 
 impl Button {
@@ -43,6 +48,9 @@ impl Button {
                 ..Default::default()
             }
             .into(),
+            focus_id: FocusId::new(),
+            focus_state: FocusState::None,
+            focus_via_keyboard: false,
         }
     }
 
@@ -74,37 +82,73 @@ impl Widget for Button {
         info: &AppInfo,
         context: AppContext,
     ) {
+        // Update focus state from focus manager
+        if let Ok(manager) = info.focus_manager.lock() {
+            self.focus_state = manager.get_focus_state(self.focus_id);
+        }
+
         let brush = if let Some(style) = theme.of(self.widget_id()) {
-            match self.state {
-                ButtonState::Idle => Brush::Solid(style.get_color("color_idle").unwrap()),
-                ButtonState::Hovered => Brush::Solid(style.get_color("color_hovered").unwrap()),
-                ButtonState::Pressed => Brush::Solid(style.get_color("color_pressed").unwrap()),
-                ButtonState::Released => Brush::Solid(style.get_color("color_hovered").unwrap()),
+            // Check for focused state first (only if focus was via keyboard), then button state
+            if matches!(self.focus_state, FocusState::Focused | FocusState::Gained) && self.focus_via_keyboard {
+                if let Some(focused_color) = style.get_color("color_focused") {
+                    Brush::Solid(focused_color)
+                } else {
+                    // Fallback to hovered color for focus if no focused color is defined
+                    Brush::Solid(style.get_color("color_hovered").unwrap_or(theme.defaults().interactive().hover()))
+                }
+            } else {
+                match self.state {
+                    ButtonState::Idle => Brush::Solid(style.get_color("color_idle").unwrap()),
+                    ButtonState::Hovered => Brush::Solid(style.get_color("color_hovered").unwrap()),
+                    ButtonState::Pressed => Brush::Solid(style.get_color("color_pressed").unwrap()),
+                    ButtonState::Released => Brush::Solid(style.get_color("color_hovered").unwrap()),
+                }
             }
         } else {
-            Brush::Solid(match self.state {
-                ButtonState::Idle => theme.defaults().interactive().inactive(),
-                ButtonState::Hovered => theme.defaults().interactive().hover(),
-                ButtonState::Pressed => theme.defaults().interactive().active(),
-                ButtonState::Released => theme.defaults().interactive().hover(),
-            })
+            // Default colors - only show focus color if focus was via keyboard
+            if matches!(self.focus_state, FocusState::Focused | FocusState::Gained) && self.focus_via_keyboard {
+                Brush::Solid(theme.defaults().interactive().hover())
+            } else {
+                Brush::Solid(match self.state {
+                    ButtonState::Idle => theme.defaults().interactive().inactive(),
+                    ButtonState::Hovered => theme.defaults().interactive().hover(),
+                    ButtonState::Pressed => theme.defaults().interactive().active(),
+                    ButtonState::Released => theme.defaults().interactive().hover(),
+                })
+            }
         };
+
+        let button_rect = RoundedRect::from_rect(
+            Rect::new(
+                layout_node.layout.location.x as f64,
+                layout_node.layout.location.y as f64,
+                (layout_node.layout.location.x + layout_node.layout.size.width) as f64,
+                (layout_node.layout.location.y + layout_node.layout.size.height) as f64,
+            ),
+            RoundedRectRadii::from_single_radius(10.0),
+        );
 
         scene.fill(
             Fill::NonZero,
             Affine::default(),
             &brush,
             None,
-            &RoundedRect::from_rect(
-                Rect::new(
-                    layout_node.layout.location.x as f64,
-                    layout_node.layout.location.y as f64,
-                    (layout_node.layout.location.x + layout_node.layout.size.width) as f64,
-                    (layout_node.layout.location.y + layout_node.layout.size.height) as f64,
-                ),
-                RoundedRectRadii::from_single_radius(10.0),
-            ),
+            &button_rect,
         );
+
+        // Draw focus indicator (only if focus was gained via keyboard)
+        if matches!(self.focus_state, FocusState::Focused | FocusState::Gained) && self.focus_via_keyboard {
+            use nptk_core::vg::peniko::Color;
+            let focus_brush = Brush::Solid(Color::from_rgb8(100, 150, 255)); // Blue focus border
+            
+            scene.stroke(
+                &Stroke::new(3.0),
+                Affine::default(),
+                &focus_brush,
+                None,
+                &button_rect,
+            );
+        }
 
         {
             theme.globals_mut().invert_text_color = true;
@@ -138,9 +182,75 @@ impl Widget for Button {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, _: AppContext, info: &AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &AppInfo) -> Update {
         let mut update = Update::empty();
         let old_state = self.state;
+        let old_focus_state = self.focus_state;
+
+        // Register this button with the focus manager
+        if let Ok(mut manager) = info.focus_manager.lock() {
+            let focusable_widget = FocusableWidget {
+                id: self.focus_id,
+                properties: FocusProperties {
+                    tab_focusable: true,
+                    click_focusable: true,
+                    tab_index: 0,
+                    accepts_keyboard: true,
+                },
+                bounds: FocusBounds {
+                    x: layout.layout.location.x,
+                    y: layout.layout.location.y,
+                    width: layout.layout.size.width,
+                    height: layout.layout.size.height,
+                },
+            };
+            manager.register_widget(focusable_widget);
+            
+            // Update our focus state
+            let new_focus_state = manager.get_focus_state(self.focus_id);
+            
+            // Track if focus was gained via keyboard using global state
+            if matches!(new_focus_state, FocusState::Gained) && !matches!(old_focus_state, FocusState::Focused) {
+                // Check if the focus manager indicates this was a keyboard focus change
+                self.focus_via_keyboard = manager.was_last_focus_via_keyboard();
+            } else if matches!(new_focus_state, FocusState::Lost | FocusState::None) {
+                self.focus_via_keyboard = false;
+            } else if matches!(new_focus_state, FocusState::Focused) {
+                // Keep the existing keyboard focus state if we're staying focused
+                // This ensures the border stays visible while navigating with Tab
+            }
+            
+            self.focus_state = new_focus_state;
+        }
+
+        // Handle keyboard input when focused
+        if matches!(self.focus_state, FocusState::Focused | FocusState::Gained) {
+            for (_, key_event) in &info.keys {
+                match key_event.state {
+                    ElementState::Pressed => {
+                        match key_event.physical_key {
+                            PhysicalKey::Code(KeyCode::Space) | PhysicalKey::Code(KeyCode::Enter) => {
+                                // Trigger button press via keyboard
+                                update |= *self.on_pressed.get();
+                                self.state = ButtonState::Pressed;
+                            }
+                            _ => {}
+                        }
+                    }
+                    ElementState::Released => {
+                        match key_event.physical_key {
+                            PhysicalKey::Code(KeyCode::Space) | PhysicalKey::Code(KeyCode::Enter) => {
+                                // Reset button state after keyboard release
+                                if self.state == ButtonState::Pressed {
+                                    self.state = ButtonState::Idle;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
 
         // check for hovering
         if let Some(cursor) = info.cursor_pos {
@@ -181,6 +291,11 @@ impl Widget for Button {
 
         // update on state change, due to re-coloring
         if old_state != self.state {
+            update |= Update::DRAW;
+        }
+
+        // update on focus state change, due to re-coloring
+        if old_focus_state != self.focus_state {
             update |= Update::DRAW;
         }
 
