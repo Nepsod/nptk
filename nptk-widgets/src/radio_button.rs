@@ -70,7 +70,7 @@ impl RadioButton {
     }
 
     /// Set the initial selected state.
-    pub fn with_selected(mut self, selected: bool) -> Self {
+    pub fn with_selected(self, selected: bool) -> Self {
         self.selected.set(selected);
         self
     }

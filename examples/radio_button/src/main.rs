@@ -1,11 +1,7 @@
 use nptk::core::app::context::AppContext;
-use nptk::core::app::update::Update;
 use nptk::core::app::Application;
 use nptk::core::config::MayConfig;
 use nptk::core::layout::{AlignItems, Dimension, FlexDirection, LayoutStyle};
-use nptk::core::reference::Ref;
-use nptk::core::signal::state::StateSignal;
-use nptk::core::signal::Signal;
 use nptk::core::widget::{Widget, WidgetLayoutExt};
 use nptk::math::Vector2;
 use nptk::theme::theme::celeste::CelesteTheme;
