@@ -37,3 +37,6 @@ pub mod icon;
 
 /// Contains the [animator::Animator] widget and associated structures.
 pub mod animator;
+
+/// Contains the [text_input::TextInput] widget.
+pub mod text_input;

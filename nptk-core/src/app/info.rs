@@ -1,5 +1,5 @@
 use nalgebra::Vector2;
-use winit::event::{DeviceId, ElementState, KeyEvent, MouseButton, MouseScrollDelta};
+use winit::event::{DeviceId, ElementState, KeyEvent, MouseButton, MouseScrollDelta, Ime};
 use winit::keyboard::ModifiersState;
 
 use crate::app::diagnostics::Diagnostics;
@@ -18,6 +18,8 @@ pub struct AppInfo {
     pub mouse_scroll_delta: Option<MouseScrollDelta>,
     /// Current modifier keys state.
     pub modifiers: ModifiersState,
+    /// IME (Input Method Editor) events for text composition.
+    pub ime_events: Vec<Ime>,
     /// App Diagnostics.
     pub diagnostics: Diagnostics,
     /// The current font context.
@@ -34,6 +36,7 @@ impl AppInfo {
         self.buttons.clear();
         self.keys.clear();
         self.mouse_scroll_delta = None;
+        self.ime_events.clear();
     }
 }
 
@@ -48,6 +51,7 @@ impl Default for AppInfo {
             buttons: Vec::with_capacity(2),
             mouse_scroll_delta: None,
             modifiers: ModifiersState::default(),
+            ime_events: Vec::new(),
             diagnostics: Diagnostics::default(),
             font_context: FontContext::default(),
             size: Vector2::new(0.0, 0.0),

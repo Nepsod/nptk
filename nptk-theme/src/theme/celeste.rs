@@ -81,6 +81,33 @@ impl Theme for CelesteTheme {
                     ),
                 ])),
 
+                "TextInput" => Some(Style::from_values([
+                    (
+                        "color_background".to_string(),
+                        StyleVal::Color(Color::WHITE),
+                    ),
+                    (
+                        "color_border".to_string(),
+                        StyleVal::Color(Color::from_rgb8(200, 200, 200)),
+                    ),
+                    (
+                        "color_border_focused".to_string(),
+                        StyleVal::Color(Color::from_rgb8(100, 150, 255)),
+                    ),
+                    (
+                        "color_text".to_string(),
+                        StyleVal::Color(Color::BLACK),
+                    ),
+                    (
+                        "color_cursor".to_string(),
+                        StyleVal::Color(Color::BLACK),
+                    ),
+                    (
+                        "color_selection".to_string(),
+                        StyleVal::Color(Color::from_rgb8(180, 200, 255)),
+                    ),
+                ])),
+
                 _ => None,
             },
             _ => None,

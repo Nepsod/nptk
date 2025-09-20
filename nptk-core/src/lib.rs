@@ -48,5 +48,8 @@ pub mod plugin;
 /// Contains focus management functionality.
 pub mod focus;
 
+/// Contains text input processing and text buffer management.
+pub mod text_input;
+
 #[cfg(feature = "include-noto-sans")]
 pub(crate) const DEFAULT_FONT: &[u8] = include_bytes!("NotoSans.ttf");

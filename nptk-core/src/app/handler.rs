@@ -597,6 +597,11 @@ where
                         self.request_redraw();
                     },
 
+                    WindowEvent::Ime(ime_event) => {
+                        self.info.ime_events.push(ime_event);
+                        self.request_redraw();
+                    },
+
                     WindowEvent::Destroyed => log::info!("Window destroyed! Exiting..."),
 
                     _ => (),

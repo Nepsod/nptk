@@ -1,0 +1,11 @@
+[package]
+name = "text_input"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nptk = { path = "../../" }
+
+[[bin]]
+name = "main"
+path = "src/main.rs"
