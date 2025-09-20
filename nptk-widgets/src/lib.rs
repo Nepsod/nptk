@@ -40,3 +40,9 @@ pub mod animator;
 
 /// Contains the [text_input::TextInput] widget.
 pub mod text_input;
+
+/// Contains the [secret_input::SecretInput] widget.
+pub mod secret_input;
+
+/// Contains the [value_input::ValueInput] widget.
+pub mod value_input;

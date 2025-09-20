@@ -108,6 +108,68 @@ impl Theme for CelesteTheme {
                     ),
                 ])),
 
+                "SecretInput" => Some(Style::from_values([
+                    (
+                        "color_background".to_string(),
+                        StyleVal::Color(Color::WHITE),
+                    ),
+                    (
+                        "color_border".to_string(),
+                        StyleVal::Color(Color::from_rgb8(200, 200, 200)),
+                    ),
+                    (
+                        "color_border_focused".to_string(),
+                        StyleVal::Color(Color::from_rgb8(100, 150, 255)),
+                    ),
+                    (
+                        "color_text".to_string(),
+                        StyleVal::Color(Color::BLACK),
+                    ),
+                    (
+                        "color_cursor".to_string(),
+                        StyleVal::Color(Color::BLACK),
+                    ),
+                    (
+                        "color_selection".to_string(),
+                        StyleVal::Color(Color::from_rgb8(180, 200, 255)),
+                    ),
+                ])),
+
+                "ValueInput" => Some(Style::from_values([
+                    (
+                        "color_background".to_string(),
+                        StyleVal::Color(Color::from_rgb8(250, 250, 250)),
+                    ),
+                    (
+                        "color_background_focused".to_string(),
+                        StyleVal::Color(Color::WHITE),
+                    ),
+                    (
+                        "color_border".to_string(),
+                        StyleVal::Color(Color::from_rgb8(200, 200, 200)),
+                    ),
+                    (
+                        "color_border_focused".to_string(),
+                        StyleVal::Color(Color::from_rgb8(0, 120, 255)),
+                    ),
+                    (
+                        "color_border_error".to_string(),
+                        StyleVal::Color(Color::from_rgb8(255, 0, 0)),
+                    ),
+                    (
+                        "color_text".to_string(),
+                        StyleVal::Color(Color::BLACK),
+                    ),
+                    (
+                        "color_cursor".to_string(),
+                        StyleVal::Color(Color::BLACK),
+                    ),
+                    (
+                        "color_placeholder".to_string(),
+                        StyleVal::Color(Color::from_rgb8(150, 150, 150)),
+                    ),
+                ])),
+
                 _ => None,
             },
             _ => None,
