@@ -1,0 +1,10 @@
+[package]
+name = "radio_button"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nptk = { path = "../../" }
+nptk-core = { path = "../../nptk-core" }
+nptk-widgets = { path = "../../nptk-widgets" }
+nptk-theme = { path = "../../nptk-theme" }

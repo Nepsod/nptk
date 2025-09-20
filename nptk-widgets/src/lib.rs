@@ -46,3 +46,6 @@ pub mod secret_input;
 
 /// Contains the [value_input::ValueInput] widget.
 pub mod value_input;
+
+/// Contains the [radio_button::RadioButton] widget.
+pub mod radio_button;

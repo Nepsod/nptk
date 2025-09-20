@@ -170,6 +170,53 @@ impl Theme for CelesteTheme {
                     ),
                 ])),
 
+                "RadioButton" => Some(Style::from_values([
+                    (
+                        "color_background".to_string(),
+                        StyleVal::Color(Color::WHITE),
+                    ),
+                    (
+                        "color_background_selected".to_string(),
+                        StyleVal::Color(Color::WHITE),
+                    ),
+                    (
+                        "color_background_disabled".to_string(),
+                        StyleVal::Color(Color::from_rgb8(240, 240, 240)),
+                    ),
+                    (
+                        "color_border".to_string(),
+                        StyleVal::Color(Color::from_rgb8(150, 150, 150)),
+                    ),
+                    (
+                        "color_border_hovered".to_string(),
+                        StyleVal::Color(Color::from_rgb8(100, 100, 100)),
+                    ),
+                    (
+                        "color_border_focused".to_string(),
+                        StyleVal::Color(Color::from_rgb8(0, 120, 255)),
+                    ),
+                    (
+                        "color_border_disabled".to_string(),
+                        StyleVal::Color(Color::from_rgb8(200, 200, 200)),
+                    ),
+                    (
+                        "color_dot".to_string(),
+                        StyleVal::Color(Color::from_rgb8(0, 120, 255)),
+                    ),
+                    (
+                        "color_dot_disabled".to_string(),
+                        StyleVal::Color(Color::from_rgb8(180, 180, 180)),
+                    ),
+                    (
+                        "color_text".to_string(),
+                        StyleVal::Color(Color::BLACK),
+                    ),
+                    (
+                        "color_text_disabled".to_string(),
+                        StyleVal::Color(Color::from_rgb8(150, 150, 150)),
+                    ),
+                ])),
+
                 _ => None,
             },
             _ => None,
