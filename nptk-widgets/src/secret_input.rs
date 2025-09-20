@@ -9,7 +9,7 @@ use nptk_core::skrifa::instance::Size;
 use nptk_core::skrifa::raw::FileRef;
 use nptk_core::skrifa::setting::VariationSetting;
 use nptk_core::skrifa::MetadataProvider;
-use nptk_core::vg::kurbo::{Affine, Line, Rect, RoundedRect, RoundedRectRadii, Stroke};
+use nptk_core::vg::kurbo::{Affine, Line, Rect, RoundedRect, RoundedRectRadii, Stroke, Circle};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vg::{Glyph, Scene};
 use std::ops::Deref;
@@ -44,6 +44,8 @@ pub struct SecretInput {
     drag_start_pos: Option<usize>,
     mask_char: char,
     show_password: bool,
+    toggle_button_hovered: bool,
+    toggle_button_pressed: bool,
 }
 
 impl SecretInput {
@@ -73,6 +75,8 @@ impl SecretInput {
             drag_start_pos: None,
             mask_char: '•',
             show_password: false,
+            toggle_button_hovered: false,
+            toggle_button_pressed: false,
         }
     }
 
@@ -109,6 +113,25 @@ impl SecretInput {
         self.buffer.text()
     }
 
+    /// Get the bounds of the toggle button.
+    fn get_toggle_button_bounds(&self, layout: &LayoutNode) -> Rect {
+        let button_size = 20.0;
+        let margin = 4.0;
+        
+        Rect::new(
+            (layout.layout.location.x + layout.layout.size.width - button_size - margin) as f64,
+            (layout.layout.location.y + (layout.layout.size.height - button_size) / 2.0) as f64,
+            (layout.layout.location.x + layout.layout.size.width - margin) as f64,
+            (layout.layout.location.y + (layout.layout.size.height + button_size) / 2.0) as f64,
+        )
+    }
+
+    /// Check if a point is within the toggle button bounds.
+    fn is_in_toggle_button(&self, x: f64, y: f64, layout: &LayoutNode) -> bool {
+        let bounds = self.get_toggle_button_bounds(layout);
+        x >= bounds.x0 && x <= bounds.x1 && y >= bounds.y0 && y <= bounds.y1
+    }
+
     /// Get the masked version of the text for display.
     fn masked_text(&self) -> String {
         if self.show_password {
@@ -143,16 +166,33 @@ impl SecretInput {
             return 0;
         }
 
-        // Use consistent mask character width for all positions
-        let mask_gid = charmap.map(self.mask_char).unwrap_or_default();
-        let mask_advance = glyph_metrics.advance_width(mask_gid).unwrap_or_default();
+        let actual_text = self.buffer.text();
+        let char_count = actual_text.chars().count();
         
-        // Calculate position based on mask character width and actual character count
-        let char_count = self.buffer.text().chars().count();
-        let click_position = (relative_x / mask_advance).round() as usize;
-        
-        // Clamp to valid range
-        click_position.min(char_count)
+        if self.show_password {
+            // Use actual character widths when showing password
+            let mut current_x = 0.0;
+            for (i, ch) in actual_text.chars().enumerate() {
+                let gid = charmap.map(ch).unwrap_or_default();
+                let advance = glyph_metrics.advance_width(gid).unwrap_or_default();
+                
+                if relative_x <= current_x + advance / 2.0 {
+                    return i;
+                }
+                current_x += advance;
+            }
+            char_count
+        } else {
+            // Use consistent mask character width when hidden
+            let mask_gid = charmap.map(self.mask_char).unwrap_or_default();
+            let mask_advance = glyph_metrics.advance_width(mask_gid).unwrap_or_default();
+            
+            // Calculate position based on mask character width and actual character count
+            let click_position = (relative_x / mask_advance).round() as usize;
+            
+            // Clamp to valid range
+            click_position.min(char_count)
+        }
     }
 }
 
@@ -274,12 +314,32 @@ impl Widget for SecretInput {
                 Color::from_rgb8(180, 200, 255)
             };
 
-            // Calculate selection bounds using consistent mask character width
-            let mask_gid = charmap.map(self.mask_char).unwrap_or_default();
-            let mask_advance = glyph_metrics.advance_width(mask_gid).unwrap_or_default();
+            // Calculate selection bounds based on display mode
+            let mut selection_start_x = layout_node.layout.location.x + 8.0;
+            let mut selection_end_x = layout_node.layout.location.x + 8.0;
             
-            let selection_start_x = layout_node.layout.location.x + 8.0 + (mask_advance * selection_range.start as f32);
-            let selection_end_x = layout_node.layout.location.x + 8.0 + (mask_advance * selection_range.end as f32);
+            if self.show_password {
+                // Use actual character widths when showing password
+                let actual_text = self.buffer.text();
+                for (i, ch) in actual_text.chars().enumerate() {
+                    let gid = charmap.map(ch).unwrap_or_default();
+                    let advance = glyph_metrics.advance_width(gid).unwrap_or_default();
+                    
+                    if i < selection_range.start {
+                        selection_start_x += advance;
+                    }
+                    if i < selection_range.end {
+                        selection_end_x += advance;
+                    }
+                }
+            } else {
+                // Use mask character width for consistent spacing when hidden
+                let mask_gid = charmap.map(self.mask_char).unwrap_or_default();
+                let mask_advance = glyph_metrics.advance_width(mask_gid).unwrap_or_default();
+                
+                selection_start_x += mask_advance * selection_range.start as f32;
+                selection_end_x += mask_advance * selection_range.end as f32;
+            }
 
             // Draw selection background
             scene.fill(
@@ -304,6 +364,7 @@ impl Widget for SecretInput {
             };
 
             let mut pen_x = layout_node.layout.location.x + 8.0; // Padding
+            let text_area_width = layout_node.layout.size.width - 32.0; // Reserve space for toggle button
             let pen_y = layout_node.layout.location.y + font_size + 6.0; // Padding + baseline
 
             scene
@@ -337,17 +398,27 @@ impl Widget for SecretInput {
                 Color::BLACK
             };
 
-            // Calculate cursor position based on actual character count (not visual representation)
+            // Calculate cursor position based on display mode
             let cursor_pos = self.buffer.cursor().position;
             let mut cursor_x = layout_node.layout.location.x + 8.0;
             
-            // Use mask character width for consistent spacing, but count actual characters
-            let mask_gid = charmap.map(self.mask_char).unwrap_or_default();
-            let mask_advance = glyph_metrics.advance_width(mask_gid).unwrap_or_default();
-            
-            // Count actual characters up to cursor position, not visual characters
-            let actual_char_count = self.buffer.text().chars().take(cursor_pos).count();
-            cursor_x += mask_advance * actual_char_count as f32;
+            if self.show_password {
+                // Use actual character widths when showing password
+                let actual_text = self.buffer.text();
+                for ch in actual_text.chars().take(cursor_pos) {
+                    let gid = charmap.map(ch).unwrap_or_default();
+                    let advance = glyph_metrics.advance_width(gid).unwrap_or_default();
+                    cursor_x += advance;
+                }
+            } else {
+                // Use mask character width for consistent spacing when hidden
+                let mask_gid = charmap.map(self.mask_char).unwrap_or_default();
+                let mask_advance = glyph_metrics.advance_width(mask_gid).unwrap_or_default();
+                
+                // Count actual characters up to cursor position
+                let actual_char_count = self.buffer.text().chars().take(cursor_pos).count();
+                cursor_x += mask_advance * actual_char_count as f32;
+            }
 
             // Draw cursor line
             scene.stroke(
@@ -358,6 +429,72 @@ impl Widget for SecretInput {
                 &Line::new(
                     (cursor_x as f64, layout_node.layout.location.y as f64 + 4.0),
                     (cursor_x as f64, layout_node.layout.location.y as f64 + layout_node.layout.size.height as f64 - 4.0),
+                ),
+            );
+        }
+
+        // Draw toggle button (eye icon)
+        let toggle_bounds = self.get_toggle_button_bounds(layout_node);
+        let toggle_center_x = (toggle_bounds.x0 + toggle_bounds.x1) / 2.0;
+        let toggle_center_y = (toggle_bounds.y0 + toggle_bounds.y1) / 2.0;
+        
+        // Toggle button background
+        let toggle_bg_color = if self.toggle_button_pressed {
+            Color::from_rgb8(200, 200, 200)
+        } else if self.toggle_button_hovered {
+            Color::from_rgb8(240, 240, 240)
+        } else {
+            Color::from_rgb8(250, 250, 250)
+        };
+        
+        scene.fill(
+            Fill::NonZero,
+            Affine::default(),
+            &Brush::Solid(toggle_bg_color),
+            None,
+            &RoundedRect::from_rect(toggle_bounds, RoundedRectRadii::from_single_radius(4.0)),
+        );
+
+        // Draw eye icon (simplified)
+        let eye_color = if self.show_password {
+            Color::from_rgb8(0, 120, 255) // Blue when showing password
+        } else {
+            Color::from_rgb8(100, 100, 100) // Gray when hiding password
+        };
+
+        // Draw eye outline (circle)
+        let eye_radius = 6.0;
+        let eye_circle = Circle::new((toggle_center_x, toggle_center_y), eye_radius);
+        scene.stroke(
+            &Stroke::new(1.5),
+            Affine::default(),
+            &Brush::Solid(eye_color),
+            None,
+            &eye_circle,
+        );
+
+        // Draw eye pupil (inner circle)
+        if self.show_password {
+            let pupil_radius = 2.5;
+            let pupil_circle = Circle::new((toggle_center_x, toggle_center_y), pupil_radius);
+            scene.fill(
+                Fill::NonZero,
+                Affine::default(),
+                &Brush::Solid(eye_color),
+                None,
+                &pupil_circle,
+            );
+        } else {
+            // Draw slash through eye when hidden
+            let slash_length = 8.0;
+            scene.stroke(
+                &Stroke::new(1.5),
+                Affine::default(),
+                &Brush::Solid(eye_color),
+                None,
+                &Line::new(
+                    (toggle_center_x - slash_length / 2.0, toggle_center_y - slash_length / 2.0),
+                    (toggle_center_x + slash_length / 2.0, toggle_center_y + slash_length / 2.0),
                 ),
             );
         }
@@ -527,12 +664,27 @@ impl Widget for SecretInput {
                 && cursor_pos.y as f32 >= layout.layout.location.y
                 && cursor_pos.y as f32 <= layout.layout.location.y + layout.layout.size.height;
 
+            // Check if mouse is over toggle button
+            let in_toggle_button = self.is_in_toggle_button(cursor_pos.x, cursor_pos.y, layout);
+            
+            // Update toggle button hover state
+            let old_toggle_hovered = self.toggle_button_hovered;
+            self.toggle_button_hovered = in_toggle_button;
+            if old_toggle_hovered != self.toggle_button_hovered {
+                update |= Update::DRAW;
+            }
+
             if in_bounds {
                 for (_, button, state) in &info.buttons {
                     if *button == nptk_core::window::MouseButton::Left {
                         match state {
                             nptk_core::window::ElementState::Pressed => {
-                                if matches!(self.focus_state, FocusState::Focused | FocusState::Gained) {
+                                if in_toggle_button {
+                                    // Handle toggle button press
+                                    self.toggle_button_pressed = true;
+                                    update |= Update::DRAW;
+                                } else if matches!(self.focus_state, FocusState::Focused | FocusState::Gained) {
+                                    // Handle text area click
                                     let click_pos = self.cursor_position_from_mouse(cursor_pos.x as f32, layout, info);
                                     self.buffer.cursor.move_to(click_pos);
                                     self.mouse_down = true;
@@ -543,6 +695,12 @@ impl Widget for SecretInput {
                                 }
                             }
                             nptk_core::window::ElementState::Released => {
+                                if self.toggle_button_pressed && in_toggle_button {
+                                    // Toggle password visibility
+                                    self.toggle_password_visibility();
+                                    update |= Update::DRAW;
+                                }
+                                self.toggle_button_pressed = false;
                                 self.mouse_down = false;
                                 self.drag_start_pos = None;
                             }
@@ -583,14 +741,22 @@ impl Widget for SecretInput {
                     }
                 }
             }
-        } else if self.mouse_down && matches!(self.focus_state, FocusState::Focused | FocusState::Gained) {
-            // Mouse left window entirely - extend to end
-            if let Some(start_pos) = self.drag_start_pos {
-                let text_len = self.buffer.text().chars().count();
-                if text_len != self.buffer.cursor().position {
-                    self.buffer.cursor.selection_start = Some(start_pos);
-                    self.buffer.cursor.position = text_len;
-                    update |= Update::DRAW;
+        } else {
+            // Mouse left widget area - reset toggle button states
+            if self.toggle_button_hovered {
+                self.toggle_button_hovered = false;
+                update |= Update::DRAW;
+            }
+            
+            if self.mouse_down && matches!(self.focus_state, FocusState::Focused | FocusState::Gained) {
+                // Mouse left window entirely - extend to end
+                if let Some(start_pos) = self.drag_start_pos {
+                    let text_len = self.buffer.text().chars().count();
+                    if text_len != self.buffer.cursor().position {
+                        self.buffer.cursor.selection_start = Some(start_pos);
+                        self.buffer.cursor.position = text_len;
+                        update |= Update::DRAW;
+                    }
                 }
             }
         }
@@ -600,6 +766,7 @@ impl Widget for SecretInput {
             if *button == nptk_core::window::MouseButton::Left && *state == nptk_core::window::ElementState::Released {
                 self.mouse_down = false;
                 self.drag_start_pos = None;
+                self.toggle_button_pressed = false;
             }
         }
 
