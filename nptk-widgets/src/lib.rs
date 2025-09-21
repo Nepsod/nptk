@@ -49,3 +49,10 @@ pub mod value_input;
 
 /// Contains the [radio_button::RadioButton] widget.
 pub mod radio_button;
+
+/// Contains the [menubar::MenuBar] widget.
+pub mod menubar;
+
+/// Contains the [scroll_container::ScrollContainer] widget.
+pub mod scroll_container;
+pub mod tabs_container;

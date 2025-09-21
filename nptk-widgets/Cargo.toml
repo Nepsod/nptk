@@ -16,7 +16,10 @@ nptk-theme = { workspace = true }
 nptk-core = { workspace = true, features = ["vg"] }
 bytemuck = { workspace = true }
 nalgebra = { workspace = true }
+system-tray = { version = "0.8.2", optional = true }
+tokio = { version = "1.0", features = ["rt", "macros"], optional = true }
 
 [features]
 default = []
 canvas = []
+global-menu = ["system-tray", "tokio"]

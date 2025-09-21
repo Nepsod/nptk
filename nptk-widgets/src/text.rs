@@ -172,16 +172,21 @@ impl Widget for Text {
 
     fn layout_style(&self) -> StyleNode {
         let text = self.text.get();
-
         let font_size = *self.font_size.get();
+        let line_gap = *self.line_gap.get();
+
+        // A simple approximation for line height
+        let line_height = font_size + line_gap;
+        let line_count = text.lines().count().max(1) as f32;
+        let calculated_height = line_height * line_count;
 
         let style = self.style.get().deref().clone();
 
         StyleNode {
             style: LayoutStyle {
                 size: Vector2::new(
-                    Dimension::length(font_size * text.len() as f32),
-                    Dimension::length(font_size),
+                    style.size.x, // Keep user-defined width or default
+                    Dimension::length(calculated_height),
                 ),
                 ..style
             },

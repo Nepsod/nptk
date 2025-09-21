@@ -1,0 +1,11 @@
+[package]
+name = "tabs_container"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nptk-core = { path = "../../nptk-core", features = ["vg"] }
+nptk-widgets = { path = "../../nptk-widgets" }
+nptk-theme = { path = "../../nptk-theme" }
+nalgebra = { workspace = true }
+

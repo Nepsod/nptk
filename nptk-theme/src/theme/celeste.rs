@@ -217,6 +217,103 @@ impl Theme for CelesteTheme {
                     ),
                 ])),
 
+                "MenuBar" => Some(Style::from_values([
+                    (
+                        "color_background".to_string(),
+                        StyleVal::Color(Color::from_rgb8(240, 240, 240)),
+                    ),
+                    (
+                        "color_text".to_string(),
+                        StyleVal::Color(Color::BLACK),
+                    ),
+                    (
+                        "color_hovered".to_string(),
+                        StyleVal::Color(Color::from_rgb8(220, 220, 220)),
+                    ),
+                    (
+                        "color_selected".to_string(),
+                        StyleVal::Color(Color::from_rgb8(70, 130, 255)),
+                    ),
+                    (
+                        "color_disabled".to_string(),
+                        StyleVal::Color(Color::from_rgb8(150, 150, 150)),
+                    ),
+                    (
+                        "color_border".to_string(),
+                        StyleVal::Color(Color::from_rgb8(200, 200, 200)),
+                    ),
+                ])),
+
+                "ScrollContainer" => Some(Style::from_values([
+                    (
+                        "color_background".to_string(),
+                        StyleVal::Color(Color::WHITE),
+                    ),
+                    (
+                        "color_border".to_string(),
+                        StyleVal::Color(Color::from_rgb8(200, 200, 200)),
+                    ),
+                    (
+                        "color_scrollbar".to_string(),
+                        StyleVal::Color(Color::from_rgb8(230, 230, 230)),
+                    ),
+                    (
+                        "color_scrollbar_thumb".to_string(),
+                        StyleVal::Color(Color::from_rgb8(180, 180, 180)),
+                    ),
+                    (
+                        "color_scrollbar_thumb_hover".to_string(),
+                        StyleVal::Color(Color::from_rgb8(150, 150, 150)),
+                    ),
+                    (
+                        "color_scrollbar_thumb_active".to_string(),
+                        StyleVal::Color(Color::from_rgb8(120, 120, 120)),
+                    ),
+                ])),
+
+                "TabsContainer" => Some(Style::from_values([
+                    (
+                        "background".to_string(),
+                        StyleVal::Color(Color::from_rgb8(245, 245, 245)),
+                    ),
+                    (
+                        "border".to_string(),
+                        StyleVal::Color(Color::from_rgb8(180, 180, 180)),
+                    ),
+                    (
+                        "tab_bar_background".to_string(),
+                        StyleVal::Color(Color::from_rgb8(250, 250, 250)),
+                    ),
+                    (
+                        "content_background".to_string(),
+                        StyleVal::Color(Color::WHITE),
+                    ),
+                    (
+                        "tab_active".to_string(),
+                        StyleVal::Color(Color::WHITE),
+                    ),
+                    (
+                        "tab_inactive".to_string(),
+                        StyleVal::Color(Color::from_rgb8(230, 230, 230)),
+                    ),
+                    (
+                        "tab_hovered".to_string(),
+                        StyleVal::Color(Color::from_rgb8(240, 240, 240)),
+                    ),
+                    (
+                        "tab_pressed".to_string(),
+                        StyleVal::Color(Color::from_rgb8(210, 210, 210)),
+                    ),
+                    (
+                        "tab_text".to_string(),
+                        StyleVal::Color(Color::from_rgb8(50, 50, 50)),
+                    ),
+                    (
+                        "tab_text_active".to_string(),
+                        StyleVal::Color(Color::BLACK),
+                    ),
+                ])),
+
                 _ => None,
             },
             _ => None,

@@ -97,3 +97,44 @@ impl Default for FontContext {
         ctx
     }
 }
+
+// Universal Default implementation that works without the include-noto-sans feature
+#[cfg(not(feature = "include-noto-sans"))]
+impl Default for FontContext {
+    fn default() -> Self {
+        let mut ctx = FontContext::new("Default".to_string());
+        
+        // Try to load common Linux system fonts in order of preference
+        let common_fonts = [
+            ("DejaVu Sans", "DejaVuSans"),
+            ("Liberation Sans", "LiberationSans"),
+            ("Ubuntu", "Ubuntu"),
+            ("Cantarell", "Cantarell"),
+            ("Noto Sans", "NotoSans"),
+            ("FreeSans", "FreeSans"),
+            ("Arial", "Arial"),
+            ("Helvetica", "Helvetica"),
+            ("sans-serif", "sans-serif"), // Generic fallback
+        ];
+        
+        let mut loaded_font = false;
+        for (display_name, postscript_name) in &common_fonts {
+            if ctx.load_system(display_name, postscript_name).is_some() {
+                ctx.set_default_font(display_name);
+                loaded_font = true;
+                break;
+            }
+        }
+        
+        // If no system fonts could be loaded, create a minimal fallback
+        if !loaded_font {
+            // Create a minimal font blob as last resort
+            // This is a very basic fallback that should work on any system
+            let minimal_font_data = include_bytes!("../NotoSans.ttf");
+            ctx.load("Fallback", Font::new(Blob::new(Arc::new(*minimal_font_data)), 0));
+            ctx.set_default_font("Fallback");
+        }
+        
+        ctx
+    }
+}
