@@ -4,7 +4,7 @@ use nptk_core::config::MayConfig;
 use nptk_core::layout::{Dimension, LayoutStyle};
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::theme::celeste::CelesteTheme;
-use nptk_widgets::scroll_container::{ScrollContainer, ScrollDirection};
+use nptk_widgets::scroll_container::{ScrollContainer, ScrollDirection, VerticalScrollbarPosition};
 use nptk_widgets::text::Text;
 use nalgebra::Vector2;
 
@@ -32,6 +32,7 @@ impl Application for ScrollContainerApp {
         let mut scroll_container = ScrollContainer::new()
             .with_child(text_content)
             .with_scroll_direction(ScrollDirection::Vertical)
+            .with_vertical_scrollbar_position(VerticalScrollbarPosition::Left)
             .with_layout_style(LayoutStyle {
                 size: Vector2::new(Dimension::length(400.0), Dimension::length(400.0)),
                 ..Default::default()

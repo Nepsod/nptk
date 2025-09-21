@@ -190,7 +190,7 @@ impl From<LayoutStyle> for taffy::Style {
 }
 
 /// The computed layout with children nodes.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LayoutNode {
     /// The computed layout of this node.
     pub layout: Layout,
