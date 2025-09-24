@@ -55,4 +55,9 @@ pub mod menubar;
 
 /// Contains the [scroll_container::ScrollContainer] widget.
 pub mod scroll_container;
+
+/// Contains the [tabs_container::TabsContainer] widget.
 pub mod tabs_container;
+
+/// Contains the [menu_button::MenuButton] widget.
+pub mod menu_button;
