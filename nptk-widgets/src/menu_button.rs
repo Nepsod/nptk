@@ -6,8 +6,9 @@ use nptk_core::layout;
 use nptk_core::layout::{LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
 use nptk_core::signal::{MaybeSignal, Signal, state::StateSignal};
 use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Vec2, Stroke, Line, Point};
-use nptk_core::vg::peniko::{Brush, Fill, Color, Font};
+use nptk_core::vg::peniko::{Brush, Fill, Color};
 use nptk_core::vg::Scene;
+use nptk_core::text_render::TextRenderContext;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetChildExt, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton, KeyCode, PhysicalKey};
 use nptk_theme::id::WidgetId;
@@ -88,6 +89,7 @@ pub struct MenuButton {
     // Menu state
     menu_open: StateSignal<bool>,
     hovered_menu_item: Option<usize>,
+    text_render_context: TextRenderContext,
 }
 
 impl MenuButton {
@@ -112,6 +114,7 @@ impl MenuButton {
             focus_via_keyboard: false,
             menu_open: StateSignal::new(false),
             hovered_menu_item: None,
+            text_render_context: TextRenderContext::new(),
         }
     }
 
@@ -172,50 +175,24 @@ impl MenuButton {
         )
     }
 
-    fn render_text(&self, scene: &mut Scene, text: &str, x: f64, y: f64, color: Color, info: &AppInfo) {
+    fn render_text(text_render_context: &mut TextRenderContext, scene: &mut Scene, text: &str, x: f64, y: f64, color: Color) {
         let font_size = 14.0;
         
-        // Get default font from the font context
-        let font = info.font_context.default_font();
-        
-        let peniko_font = {
-            if let Some(font) = font {
-                Font::new(font.blob.clone(), font.index)
-            } else {
-                return; // No font available
-            }
-        };
-        
-        // TODO: Fix the FileRef lifetime issue
-        // let location = font_ref.axes().location::<&[nptk_core::skrifa::setting::VariationSetting; 0]>(&[]);
-        // let glyph_metrics = font_ref.glyph_metrics(nptk_core::skrifa::instance::Size::new(font_size), &location);
-        // let charmap = font_ref.charmap();
+        if text.is_empty() {
+            return;
+        }
 
-        // Use simple text rendering with peniko font
-        // TODO: Implement proper glyph-based text rendering with kerning
-        let pen_x = x as f32;
-        let pen_y = y as f32 + font_size;
-
-        // Simple text rendering - just draw the text as a string
-        // This is a temporary solution until we can properly implement glyph-based rendering
-        scene
-            .draw_glyphs(&peniko_font)
-            .font_size(font_size)
-            .brush(&nptk_core::vg::peniko::Brush::Solid(color))
-            .draw(
-                &nptk_core::vg::peniko::Style::Fill(Fill::NonZero),
-                text.chars().enumerate().map(|(i, _c)| {
-                    // Simple positioning - each character gets equal width
-                    let char_width = font_size * 0.6; // Rough approximation
-                    let x = pen_x + (i as f32 * char_width);
-                    
-                    nptk_core::vg::Glyph {
-                        id: 0, // Placeholder - would need proper glyph ID mapping
-                        x,
-                        y: pen_y,
-                    }
-                }),
-            );
+        let transform = Affine::translate((x, y));
+        
+        text_render_context.render_text(
+            scene,
+            text,
+            None, // No specific font, use default
+            font_size,
+            Brush::Solid(color),
+            transform,
+            true, // hinting
+        );
     }
 }
 
@@ -420,13 +397,13 @@ impl Widget for MenuButton {
                 if item.label != "---" { // Skip separators
                     let text_x = item_rect.x0 + 8.0;
                     let text_y = item_rect.y0 + 2.0;
-                    self.render_text(scene, &item.label, text_x, text_y, item_text_color, info);
+                    Self::render_text(&mut self.text_render_context, scene, &item.label, text_x, text_y, item_text_color);
                     
                     // Draw keyboard shortcut if present
                     if let Some(ref shortcut) = item.shortcut {
                         let shortcut_x = item_rect.x1 - 60.0; // Right-aligned
                         let shortcut_color = Color::from_rgb8(120, 120, 120); // Dimmed color
-                        self.render_text(scene, shortcut, shortcut_x, text_y, shortcut_color, info);
+                        Self::render_text(&mut self.text_render_context, scene, shortcut, shortcut_x, text_y, shortcut_color);
                     }
                 } else {
                     // Draw separator line

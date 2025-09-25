@@ -6,8 +6,9 @@ use nptk_core::layout::{LayoutNode, LayoutStyle, LengthPercentage, Dimension, St
 use std::sync::Arc;
 use nptk_core::signal::{MaybeSignal, Signal, state::StateSignal};
 use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Line, Point, Stroke};
-use nptk_core::vg::peniko::{Color, Fill, Font};
+use nptk_core::vg::peniko::{Color, Fill, Brush};
 use nptk_core::vg::Scene;
+use nptk_core::text_render::TextRenderContext;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton, KeyCode, PhysicalKey};
 use nptk_theme::id::WidgetId;
@@ -95,6 +96,7 @@ pub struct MenuBar {
     hovered_index: Option<usize>,
     open_menu_index: Option<usize>,
     hovered_submenu_index: Option<usize>,
+    text_render_context: TextRenderContext,
     
     // Global menu integration (disabled for now)
     // #[cfg(feature = "global-menu")]
@@ -130,6 +132,7 @@ impl MenuBar {
             hovered_index: None,
             open_menu_index: None,
             hovered_submenu_index: None,
+            text_render_context: TextRenderContext::new(),
             
             // Global menu fields removed for now
             // #[cfg(feature = "global-menu")]
@@ -230,50 +233,24 @@ impl MenuBar {
         )
     }
 
-    fn render_text(&self, scene: &mut Scene, text: &str, x: f64, y: f64, color: Color, info: &AppInfo) {
+    fn render_text(text_render_context: &mut TextRenderContext, scene: &mut Scene, text: &str, x: f64, y: f64, color: Color) {
         let font_size = 14.0;
         
-        // Get default font from the font context
-        let font = info.font_context.default_font();
-        
-        let peniko_font = {
-            if let Some(font) = font {
-                Font::new(font.blob.clone(), font.index)
-            } else {
-                return; // No font available
-            }
-        };
-        
-        // TODO: Fix the FileRef lifetime issue
-        // let location = font_ref.axes().location::<&[nptk_core::skrifa::setting::VariationSetting; 0]>(&[]);
-        // let glyph_metrics = font_ref.glyph_metrics(nptk_core::skrifa::instance::Size::new(font_size), &location);
-        // let charmap = font_ref.charmap();
+        if text.is_empty() {
+            return;
+        }
 
-        // Use simple text rendering with peniko font
-        // TODO: Implement proper glyph-based text rendering with kerning
-        let pen_x = x as f32;
-        let pen_y = y as f32 + font_size;
-
-        // Simple text rendering - just draw the text as a string
-        // This is a temporary solution until we can properly implement glyph-based rendering
-        scene
-            .draw_glyphs(&peniko_font)
-            .font_size(font_size)
-            .brush(&nptk_core::vg::peniko::Brush::Solid(color))
-            .draw(
-                &nptk_core::vg::peniko::Style::Fill(Fill::NonZero),
-                text.chars().enumerate().map(|(i, _c)| {
-                    // Simple positioning - each character gets equal width
-                    let char_width = font_size * 0.6; // Rough approximation
-                    let x = pen_x + (i as f32 * char_width);
-                    
-                    nptk_core::vg::Glyph {
-                        id: 0, // Placeholder - would need proper glyph ID mapping
-                        x,
-                        y: pen_y,
-                    }
-                }),
-            );
+        let transform = Affine::translate((x, y));
+        
+        text_render_context.render_text(
+            scene,
+            text,
+            None, // No specific font, use default
+            font_size,
+            Brush::Solid(color),
+            transform,
+            true, // hinting
+        );
     }
 }
 
@@ -288,7 +265,7 @@ impl Widget for MenuBar {
         self.widget_id()
     }
 
-    fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout: &LayoutNode, info: &AppInfo, _context: AppContext) -> () {
+    fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout: &LayoutNode, _info: &AppInfo, _context: AppContext) -> () {
         // Don't render if not visible
         if !self.is_visible() {
             return;
@@ -377,7 +354,7 @@ impl Widget for MenuBar {
             // Draw item text centered in the item bounds
             let text_x = item_bounds.x0 + 6.0; // Small left padding
             let text_y = item_bounds.y0 + 2.0; // Adjust for proper baseline
-            self.render_text(scene, &item.label, text_x, text_y, item_text_color, info);
+            Self::render_text(&mut self.text_render_context, scene, &item.label, text_x, text_y, item_text_color);
 
             // Draw submenu indicator below the text if item has submenu
             if item.has_submenu() {
@@ -477,13 +454,13 @@ impl Widget for MenuBar {
                         if submenu_item.label != "---" { // Skip separators
                             let submenu_text_x = item_rect.x0 + 8.0;
                             let submenu_text_y = item_rect.y0 + 2.0;
-                            self.render_text(scene, &submenu_item.label, submenu_text_x, submenu_text_y, submenu_text_color, info);
+                            Self::render_text(&mut self.text_render_context, scene, &submenu_item.label, submenu_text_x, submenu_text_y, submenu_text_color);
                             
                             // Draw keyboard shortcut if present
                             if let Some(ref shortcut) = submenu_item.shortcut {
                                 let shortcut_x = item_rect.x1 - 60.0; // Right-aligned
                                 let shortcut_color = Color::from_rgb8(120, 120, 120); // Dimmed color
-                                self.render_text(scene, shortcut, shortcut_x, submenu_text_y, shortcut_color, info);
+                                Self::render_text(&mut self.text_render_context, scene, shortcut, shortcut_x, submenu_text_y, shortcut_color);
                             }
                         } else {
                             // Draw separator line
