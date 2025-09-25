@@ -34,41 +34,30 @@ impl FontContext {
 
     /// Selects the best font that matches the query.
     pub fn select_best(&self, _query: &mut Query) -> Option<QueryFont> {
-        // Note: This is a placeholder implementation
-        // The actual implementation would depend on fontique's API
-        log::warn!("Font selection not yet implemented");
+        // TODO: Implement font selection using fontique API
         None
     }
 
     /// Selects the best font for a specific character.
-    pub fn select_for_char(&self, ch: char) -> Option<QueryFont> {
-        // Note: This is a placeholder implementation
-        // The actual implementation would depend on fontique's API
-        log::warn!("Character font selection not yet implemented for: {}", ch);
+    pub fn select_for_char(&self, _ch: char) -> Option<QueryFont> {
+        // TODO: Implement character font selection using fontique API
         None
     }
 
     /// Get a font family by name.
-    pub fn get_family(&self, name: &str) -> Option<QueryFamily> {
-        // Note: This is a placeholder implementation
-        // The actual implementation would depend on fontique's API
-        log::warn!("Family lookup not yet implemented for: {}", name);
+    pub fn get_family(&self, _name: &str) -> Option<QueryFamily> {
+        // TODO: Implement family lookup using fontique API
         None
     }
 
     /// Load a font into the collection.
-    pub fn load(&mut self, name: impl ToString, _font: Font) {
-        // Note: This is a placeholder implementation
-        // The actual implementation would depend on fontique's API for adding fonts
-        log::warn!("Font loading not yet implemented for font: {}", name.to_string());
+    pub fn load(&mut self, _name: impl ToString, _font: Font) {
+        // TODO: Implement font loading using fontique API
     }
 
     /// Load a system font into the collection.
-    pub fn load_system(&mut self, name: impl ToString, postscript_name: impl ToString) {
-        // Note: This is a placeholder implementation
-        // The actual implementation would depend on fontique's API for loading system fonts
-        log::warn!("System font loading not yet implemented for font: {} (postscript: {})", 
-                  name.to_string(), postscript_name.to_string());
+    pub fn load_system(&mut self, _name: impl ToString, _postscript_name: impl ToString) {
+        // TODO: Implement system font loading using fontique API
     }
 
     /// Get the default font.

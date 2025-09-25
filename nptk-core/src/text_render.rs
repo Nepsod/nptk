@@ -31,7 +31,6 @@ impl TextRenderContext {
             source_cache: Default::default(),
         };
         
-        log::info!("Created TextRenderContext with system fonts loaded");
         
         Self {
             font_cx,
@@ -51,18 +50,12 @@ impl TextRenderContext {
         hint: bool,
     ) {
         if text.is_empty() {
-            log::debug!("Text is empty, skipping rendering");
             return;
         }
 
-        log::debug!("TextRenderContext: Rendering text: '{}' with font_size: {}", text, font_size);
-
         // Try Parley first, but fall back to simple rendering if it fails
-        if let Err(e) = self.try_render_with_parley(scene, text, font.clone(), font_size, color.clone(), transform, hint) {
-            log::warn!("Parley rendering failed: {:?}, falling back to simple rendering", e);
+        if let Err(_e) = self.try_render_with_parley(scene, text, font.clone(), font_size, color.clone(), transform, hint) {
             self.render_simple_fallback(scene, text, font, font_size, color, transform);
-        } else {
-            log::debug!("TextRenderContext: Parley rendering succeeded for: '{}'", text);
         }
     }
 
@@ -90,7 +83,6 @@ impl TextRenderContext {
         layout.break_all_lines(None);
         layout.align(None, Alignment::Start, Default::default());
         
-        log::debug!("Layout created with {} lines", layout.lines().count());
         
         // Create brushes array
         let brushes = vec![color];
@@ -111,7 +103,6 @@ impl TextRenderContext {
         color: Brush,
         transform: Affine,
     ) {
-        log::debug!("TextRenderContext: Using simple fallback rendering for: '{}'", text);
         
         // Try to use DEFAULT_FONT if available
         #[cfg(feature = "include-noto-sans")]
@@ -119,7 +110,6 @@ impl TextRenderContext {
             use crate::DEFAULT_FONT;
             
             let peniko_font = vello::peniko::Font::new(DEFAULT_FONT.to_vec().into(), 0);
-            log::debug!("TextRenderContext: Created peniko font for fallback rendering");
             
             // Simple character-by-character rendering
             let mut x = 0.0;
@@ -129,7 +119,6 @@ impl TextRenderContext {
                 // Use a simple glyph ID based on character
                 let glyph_id = (c as u32) % 256; // Limit to reasonable range
                 
-                log::debug!("TextRenderContext: Rendering character '{}' with glyph_id: {}", c, glyph_id);
                 
                 scene
                     .draw_glyphs(&peniko_font)
@@ -149,7 +138,6 @@ impl TextRenderContext {
                 // Simple character width approximation
                 x += font_size * 0.6;
             }
-            log::debug!("TextRenderContext: Fallback rendering completed for: '{}'", text);
         }
         #[cfg(not(feature = "include-noto-sans"))]
         {
@@ -191,7 +179,6 @@ impl TextRenderContext {
                 let glyphs: Vec<_> = glyph_run.glyphs().collect();
                 total_glyphs += glyphs.len();
                 
-                log::debug!("Rendering {} glyphs at position ({}, {})", glyphs.len(), x, y);
                 
                 if !glyphs.is_empty() {
                     scene
@@ -208,7 +195,6 @@ impl TextRenderContext {
                                 let gx = x + glyph.x;
                                 let gy = y - glyph.y;
                                 x += glyph.advance;
-                                log::debug!("Glyph ID: {}, position: ({}, {})", glyph.id, gx, gy);
                                 vello::Glyph {
                                     id: glyph.id as _,
                                     x: gx,
@@ -219,7 +205,6 @@ impl TextRenderContext {
                 }
             }
         }
-        log::debug!("Total glyphs rendered: {}", total_glyphs);
     }
 
     /// Measure the width of text using Parley's layout system
@@ -265,11 +250,10 @@ impl TextRenderContext {
             }
         }
         
-        log::debug!("Measured text width for '{}': {} pixels", text, total_width);
         total_width
     }
 
-    /// Render a Parley layout to the scene (similar to Xilem's render_text)
+    /// Render a Parley layout to the scene
     pub fn render_layout(
         &self,
         scene: &mut Scene,

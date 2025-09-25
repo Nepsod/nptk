@@ -103,7 +103,7 @@ impl Widget for Text {
             theme.defaults().text().foreground()
         };
 
-        // Use TextRenderContext for proper text rendering (Xilem's approach)
+        // Use TextRenderContext for proper text rendering
         let transform = nptk_core::vg::kurbo::Affine::translate((
             layout_node.layout.location.x as f64,
             layout_node.layout.location.y as f64 + font_size as f64,

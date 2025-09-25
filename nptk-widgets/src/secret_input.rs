@@ -394,10 +394,6 @@ impl Widget for SecretInput {
 
         let font_size = 16.0;
         
-        // TODO: Fix the FileRef lifetime issue
-        // let location = font_ref.axes().location::<&[VariationSetting; 0]>(&[]);
-        // let glyph_metrics = font_ref.glyph_metrics(Size::new(font_size), &location);
-        // let charmap = font_ref.charmap();
 
         // Render selection highlight first (behind text)
         if let Some(selection_range) = self.buffer.cursor().selection() {
@@ -624,18 +620,19 @@ impl Widget for SecretInput {
                             }
                             PhysicalKey::Code(KeyCode::KeyC) => {
                                 if let Some(_selected_text) = self.buffer.selected_text() {
-                                    println!("Copy password: [HIDDEN]");
+                                    // Copy password (hidden for security)
                                 }
                             }
                             PhysicalKey::Code(KeyCode::KeyX) => {
                                 if let Some(_) = self.buffer.selected_text() {
-                                    println!("Cut password: [HIDDEN]");
+                                    // Cut password (hidden for security)
                                     self.buffer.delete_backward();
                                     text_changed = true;
                                 }
                             }
                             PhysicalKey::Code(KeyCode::KeyV) => {
-                                println!("Paste to password field requested");
+                                // Paste to password field
+                                // TODO: Implement clipboard paste
                             }
                             _ => {}
                         }

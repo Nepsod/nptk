@@ -336,12 +336,8 @@ impl Widget for TextInput {
         };
         
 
-        let font_size = 16.0f32; // TODO: Make this configurable
+        let font_size = 16.0f32;
         
-        // TODO: Fix the FileRef lifetime issue
-        // let location = font_ref.axes().location::<&[VariationSetting; 0]>(&[]);
-        // let glyph_metrics = font_ref.glyph_metrics(Size::new(font_size), &location);
-        // let charmap = font_ref.charmap();
 
         // Render selection highlight first (behind text)
         if let Some(selection_range) = self.buffer.cursor().selection() {
@@ -374,10 +370,7 @@ impl Widget for TextInput {
             }
         }
 
-        log::debug!("Text rendering check - display_text: '{}', buffer text: '{}'", display_text, self.buffer.text());
-        
         if !display_text.is_empty() {
-            log::debug!("Text is not empty, proceeding with rendering");
             let text_color = if self.buffer.text().is_empty() {
                 Color::from_rgb8(150, 150, 150) // Placeholder color
             } else {
@@ -518,16 +511,14 @@ impl Widget for TextInput {
                             }
                             PhysicalKey::Code(KeyCode::KeyC) => {
                                 // Copy to clipboard
-                                if let Some(selected_text) = self.buffer.selected_text() {
+                                if let Some(_selected_text) = self.buffer.selected_text() {
                                     // TODO: Implement clipboard copy
-                                    println!("Copy: {}", selected_text);
                                 }
                             }
                             PhysicalKey::Code(KeyCode::KeyX) => {
                                 // Cut to clipboard
-                                if let Some(selected_text) = self.buffer.selected_text() {
-                                    // TODO: Implement clipboard copy
-                                    println!("Cut: {}", selected_text);
+                                if let Some(_selected_text) = self.buffer.selected_text() {
+                                    // TODO: Implement clipboard cut
                                     self.buffer.delete_backward(); // Delete selection
                                     text_changed = true;
                                 }
@@ -535,7 +526,6 @@ impl Widget for TextInput {
                             PhysicalKey::Code(KeyCode::KeyV) => {
                                 // Paste from clipboard
                                 // TODO: Implement clipboard paste
-                                println!("Paste requested");
                             }
                             _ => {}
                         }
