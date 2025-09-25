@@ -3,12 +3,9 @@ use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::MaybeSignal;
-use nptk_core::skrifa::instance::Size;
-use nptk_core::skrifa::raw::FileRef;
-use nptk_core::skrifa::setting::VariationSetting;
-use nptk_core::skrifa::MetadataProvider;
-use nptk_core::vg::peniko::{Brush, Fill};
-use nptk_core::vg::{peniko, Glyph, Scene};
+use nptk_core::vg::peniko::Brush;
+use nptk_core::vg::{Scene};
+use nptk_core::text_render::TextRenderContext;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
@@ -30,6 +27,7 @@ pub struct Text {
     font_size: MaybeSignal<f32>,
     hinting: MaybeSignal<bool>,
     line_gap: MaybeSignal<f32>,
+    text_render_context: TextRenderContext,
 }
 
 impl Text {
@@ -42,6 +40,7 @@ impl Text {
             font_size: 30.0.into(),
             hinting: true.into(),
             line_gap: 7.5.into(),
+            text_render_context: TextRenderContext::new(),
         }
     }
 
@@ -87,30 +86,12 @@ impl Widget for Text {
         scene: &mut Scene,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
-        info: &AppInfo,
+        _info: &AppInfo,
         _: AppContext,
     ) {
         let font_size = *self.font_size.get();
         let hinting = *self.hinting.get();
-
-        let font_name = self.font.get();
-
-        let font = if font_name.is_some() {
-            info.font_context
-                .get(font_name.deref().clone().unwrap())
-                .expect("Font not found")
-        } else {
-            info.font_context.default_font().clone()
-        };
-
-        let font_ref = {
-            let file_ref = FileRef::new(font.data.as_ref()).expect("Failed to load font data");
-            match file_ref {
-                FileRef::Font(font) => Some(font),
-                FileRef::Collection(collection) => collection.get(font.index).ok(),
-            }
-        }
-        .expect("Failed to load font reference");
+        let text = self.text.get();
 
         let color = if let Some(style) = theme.of(Self::widget_id(self)) {
             if theme.globals().invert_text_color {
@@ -122,52 +103,22 @@ impl Widget for Text {
             theme.defaults().text().foreground()
         };
 
-        let location = font_ref.axes().location::<&[VariationSetting; 0]>(&[]);
-
-        let metrics = font_ref.metrics(Size::new(font_size), &location);
-
-        let glyph_metrics = font_ref.glyph_metrics(Size::new(font_size), &location);
-
-        let line_height = metrics.ascent + metrics.descent + metrics.leading;
-
-        let line_gap = *self.line_gap.get();
-
-        let charmap = font_ref.charmap();
-
-        let mut pen_x = layout_node.layout.location.x;
-
-        let mut pen_y = layout_node.layout.location.y + font_size;
-
-        let text = self.text.get();
-
-        scene
-            .draw_glyphs(&font)
-            .font_size(font_size)
-            .brush(&Brush::Solid(color))
-            .normalized_coords(bytemuck::cast_slice(location.coords()))
-            .hint(hinting)
-            .draw(
-                &peniko::Style::Fill(Fill::NonZero),
-                text.chars().filter_map(|c| {
-                    if c == '\n' {
-                        pen_y += line_height + line_gap;
-                        pen_x = layout_node.layout.location.x;
-                        return None;
-                    }
-
-                    let gid = charmap.map(c).unwrap_or_default();
-                    let advance = glyph_metrics.advance_width(gid).unwrap_or_default();
-                    let x = pen_x;
-
-                    pen_x += advance;
-
-                    Some(Glyph {
-                        id: gid.to_u32(),
-                        x,
-                        y: pen_y,
-                    })
-                }),
-            );
+        // Use TextRenderContext for proper text rendering (Xilem's approach)
+        let transform = nptk_core::vg::kurbo::Affine::translate((
+            layout_node.layout.location.x as f64,
+            layout_node.layout.location.y as f64 + font_size as f64,
+        ));
+        
+        self.text_render_context.render_text(
+            scene,
+            text.as_ref(),
+            None, // No specific font, use default
+            font_size,
+            Brush::Solid(color),
+            transform,
+            hinting,
+        );
+        
     }
 
     fn layout_style(&self) -> StyleNode {

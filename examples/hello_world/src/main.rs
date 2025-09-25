@@ -21,5 +21,6 @@ impl Application for MyApp {
 }
 
 fn main() {
+    println!("DEBUG: Starting hello_world application");
     MyApp.run(())
 }

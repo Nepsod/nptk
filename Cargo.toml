@@ -37,7 +37,7 @@ homepage.workspace = true
 [dependencies]
 nptk-core = { workspace = true }
 nptk-theme = { workspace = true }
-nptk-widgets = { workspace = true }
+nptk-widgets = { workspace = true, features = ["include-noto-sans"] }
 nptk-macros = { workspace = true, optional = true }
 peniko = { workspace = true }
 nalgebra = { workspace = true }

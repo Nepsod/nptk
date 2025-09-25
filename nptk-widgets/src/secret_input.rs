@@ -5,13 +5,10 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::text_input::TextBuffer;
-use nptk_core::skrifa::instance::Size;
-use nptk_core::skrifa::raw::FileRef;
-use nptk_core::skrifa::setting::VariationSetting;
-use nptk_core::skrifa::MetadataProvider;
 use nptk_core::vg::kurbo::{Affine, Line, Rect, RoundedRect, RoundedRectRadii, Stroke, Circle};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
-use nptk_core::vg::{Glyph, Scene};
+use nptk_core::vg::Scene;
+use nptk_core::text_render::TextRenderContext;
 use std::ops::Deref;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, Ime, KeyCode, PhysicalKey};
@@ -42,10 +39,13 @@ pub struct SecretInput {
     cursor_visible: bool,
     mouse_down: bool,
     drag_start_pos: Option<usize>,
+    last_click_time: Instant,
+    last_click_pos: Option<usize>,
     mask_char: char,
     show_password: bool,
     toggle_button_hovered: bool,
     toggle_button_pressed: bool,
+    text_render_context: TextRenderContext,
 }
 
 impl SecretInput {
@@ -73,10 +73,13 @@ impl SecretInput {
             cursor_visible: true,
             mouse_down: false,
             drag_start_pos: None,
+            last_click_time: Instant::now(),
+            last_click_pos: None,
             mask_char: '•',
             show_password: false,
             toggle_button_hovered: false,
             toggle_button_pressed: false,
+            text_render_context: TextRenderContext::new(),
         }
     }
 
@@ -141,24 +144,46 @@ impl SecretInput {
         }
     }
 
-    /// Calculate cursor position from mouse coordinates.
-    fn cursor_position_from_mouse(&self, mouse_x: f32, layout_node: &LayoutNode, info: &AppInfo) -> usize {
-        let font_size = 16.0;
-        let font = info.font_context.default_font().clone();
-
-        let font_ref = {
-            let file_ref = FileRef::new(font.data.as_ref()).expect("Failed to load font data");
-            match file_ref {
-                FileRef::Font(font) => Some(font),
-                FileRef::Collection(collection) => collection.get(font.index).ok(),
-            }
+    /// Calculate the actual width of text using Parley's font metrics
+    fn calculate_text_width(&self, text: &str, font_size: f32) -> f32 {
+        if text.is_empty() {
+            return 0.0;
         }
-        .expect("Failed to load font reference");
+        
+        // For secret input, we need to use the masked text (dots) for cursor positioning
+        // when the password is hidden, but use actual text when it's shown
+        let display_text = if self.show_password {
+            text.to_string()
+        } else {
+            // Use dots for each character in the actual text
+            "•".repeat(text.chars().count())
+        };
+        
+        // Use TextRenderContext to get accurate measurements from Parley
+        // This handles all Unicode characters, emojis, and different scripts properly
+        self.text_render_context.measure_text_width(&display_text, font_size)
+    }
 
-        let location = font_ref.axes().location::<&[VariationSetting; 0]>(&[]);
-        let glyph_metrics = font_ref.glyph_metrics(Size::new(font_size), &location);
-        let charmap = font_ref.charmap();
+    /// Calculate the X position of the cursor based on its character position.
+    fn cursor_x_position(&self, cursor_pos: usize, layout_node: &LayoutNode) -> f32 {
+        let font_size = 16.0;
+        let text_start_x = layout_node.layout.location.x + 8.0; // Padding
+        let text = self.buffer.text();
+        
+        if cursor_pos == 0 || text.is_empty() {
+            return text_start_x;
+        }
+        
+        // Calculate actual width of text up to cursor position
+        let text_up_to_cursor: String = text.chars().take(cursor_pos).collect();
+        let actual_width = self.calculate_text_width(&text_up_to_cursor, font_size);
+        
+        text_start_x + actual_width
+    }
 
+    /// Calculate cursor position from mouse coordinates.
+    fn cursor_position_from_mouse(&self, mouse_x: f32, layout_node: &LayoutNode, _info: &AppInfo) -> usize {
+        let font_size = 16.0;
         let text_start_x = layout_node.layout.location.x + 8.0; // Padding
         let relative_x = mouse_x - text_start_x;
 
@@ -167,32 +192,109 @@ impl SecretInput {
         }
 
         let actual_text = self.buffer.text();
-        let char_count = actual_text.chars().count();
         
-        if self.show_password {
-            // Use actual character widths when showing password
-            let mut current_x = 0.0;
-            for (i, ch) in actual_text.chars().enumerate() {
-                let gid = charmap.map(ch).unwrap_or_default();
-                let advance = glyph_metrics.advance_width(gid).unwrap_or_default();
-                
-                if relative_x <= current_x + advance / 2.0 {
-                    return i;
-                }
-                current_x += advance;
+        // Find the character position by calculating cumulative text widths
+        let mut current_width = 0.0;
+        let mut char_position = 0;
+        
+        for (i, c) in actual_text.chars().enumerate() {
+            let char_text = c.to_string();
+            let char_width = self.calculate_text_width(&char_text, font_size);
+            
+            if relative_x <= current_width + char_width / 2.0 {
+                return i;
             }
-            char_count
-        } else {
-            // Use consistent mask character width when hidden
-            let mask_gid = charmap.map(self.mask_char).unwrap_or_default();
-            let mask_advance = glyph_metrics.advance_width(mask_gid).unwrap_or_default();
             
-            // Calculate position based on mask character width and actual character count
-            let click_position = (relative_x / mask_advance).round() as usize;
-            
-            // Clamp to valid range
-            click_position.min(char_count)
+            current_width += char_width;
+            char_position = i + 1;
         }
+        
+        char_position
+    }
+
+    /// Find word boundaries around a given position.
+    fn find_word_boundaries(&self, pos: usize) -> (usize, usize) {
+        let text = self.buffer.text();
+        if text.is_empty() {
+            return (0, 0);
+        }
+
+        let chars: Vec<char> = text.chars().collect();
+        let pos = pos.min(chars.len());
+
+        // If we're at the end of the text, return empty boundaries
+        if pos >= chars.len() {
+            return (pos, pos);
+        }
+
+        // If the character at the current position is not alphanumeric (space, punctuation, etc.)
+        // then we're in empty space between words
+        if !chars[pos].is_alphanumeric() {
+            return (pos, pos);
+        }
+
+        // Find start of word (go backwards until we hit a non-word character)
+        let mut start = pos;
+        while start > 0 && chars[start - 1].is_alphanumeric() {
+            start -= 1;
+        }
+
+        // Find end of word (go forwards until we hit a non-word character)
+        let mut end = pos;
+        while end < chars.len() && chars[end].is_alphanumeric() {
+            end += 1;
+        }
+
+        (start, end)
+    }
+
+    /// Check if this is a double-click and handle accordingly.
+    fn handle_double_click(&mut self, click_pos: usize, _layout_node: &LayoutNode) -> bool {
+        let now = Instant::now();
+        let time_since_last_click = now.duration_since(self.last_click_time);
+        let is_double_click = time_since_last_click.as_millis() < 500; // 500ms double-click window
+        let is_same_position = self.last_click_pos == Some(click_pos);
+
+        self.last_click_time = now;
+        self.last_click_pos = Some(click_pos);
+
+        if is_double_click && is_same_position {
+            let text = self.buffer.text();
+            
+            if text.is_empty() {
+                // Double-click on empty field - do nothing (no text to select)
+                return false;
+            } else {
+                // For security reasons, when password is hidden, only allow "select all"
+                // Word selection could reveal information about password structure
+                if !self.show_password {
+                    // Password is hidden - always select all text
+                    let text_len = text.chars().count();
+                    self.buffer.cursor.selection_start = Some(0);
+                    self.buffer.cursor.position = text_len;
+                } else {
+                    // Password is visible - allow normal word selection
+                    let (start, end) = self.find_word_boundaries(click_pos);
+                    
+                    if start == end {
+                        // Clicked in empty space - select all text
+                        let text_len = text.chars().count();
+                        self.buffer.cursor.selection_start = Some(0);
+                        self.buffer.cursor.position = text_len;
+                    } else {
+                        // Clicked on a word - select that word
+                        self.buffer.cursor.selection_start = Some(start);
+                        self.buffer.cursor.position = end;
+                    }
+                }
+            }
+            
+            self.cursor_blink_timer = Instant::now();
+            self.cursor_visible = true;
+            return true;
+        }
+
+        false
     }
 }
 
@@ -291,69 +393,41 @@ impl Widget for SecretInput {
         };
 
         let font_size = 16.0;
-        let font = info.font_context.default_font().clone();
-
-        let font_ref = {
-            let file_ref = FileRef::new(font.data.as_ref()).expect("Failed to load font data");
-            match file_ref {
-                FileRef::Font(font) => Some(font),
-                FileRef::Collection(collection) => collection.get(font.index).ok(),
-            }
-        }
-        .expect("Failed to load font reference");
-
-        let location = font_ref.axes().location::<&[VariationSetting; 0]>(&[]);
-        let glyph_metrics = font_ref.glyph_metrics(Size::new(font_size), &location);
-        let charmap = font_ref.charmap();
+        
+        // TODO: Fix the FileRef lifetime issue
+        // let location = font_ref.axes().location::<&[VariationSetting; 0]>(&[]);
+        // let glyph_metrics = font_ref.glyph_metrics(Size::new(font_size), &location);
+        // let charmap = font_ref.charmap();
 
         // Render selection highlight first (behind text)
         if let Some(selection_range) = self.buffer.cursor().selection() {
+            // Use a very visible selection color
             let selection_color = if let Some(style) = theme.of(self.widget_id()) {
-                style.get_color("color_selection").unwrap_or(Color::from_rgb8(180, 200, 255))
+                style.get_color("color_selection").unwrap_or(Color::from_rgb8(255, 100, 100))
             } else {
-                Color::from_rgb8(180, 200, 255)
+                Color::from_rgb8(255, 100, 100) // Bright red for maximum visibility
             };
 
-            // Calculate selection bounds based on display mode
-            let mut selection_start_x = layout_node.layout.location.x + 8.0;
-            let mut selection_end_x = layout_node.layout.location.x + 8.0;
-            
-            if self.show_password {
-                // Use actual character widths when showing password
-                let actual_text = self.buffer.text();
-                for (i, ch) in actual_text.chars().enumerate() {
-                    let gid = charmap.map(ch).unwrap_or_default();
-                    let advance = glyph_metrics.advance_width(gid).unwrap_or_default();
-                    
-                    if i < selection_range.start {
-                        selection_start_x += advance;
-                    }
-                    if i < selection_range.end {
-                        selection_end_x += advance;
-                    }
-                }
-            } else {
-                // Use mask character width for consistent spacing when hidden
-                let mask_gid = charmap.map(self.mask_char).unwrap_or_default();
-                let mask_advance = glyph_metrics.advance_width(mask_gid).unwrap_or_default();
-                
-                selection_start_x += mask_advance * selection_range.start as f32;
-                selection_end_x += mask_advance * selection_range.end as f32;
-            }
+            // Calculate selection bounds using the same method as cursor positioning
+            let selection_start_x = self.cursor_x_position(selection_range.start, layout_node);
+            let selection_end_x = self.cursor_x_position(selection_range.end, layout_node);
 
-            // Draw selection background
-            scene.fill(
-                Fill::NonZero,
-                Affine::default(),
-                &Brush::Solid(selection_color),
-                None,
-                &Rect::new(
-                    selection_start_x as f64,
-                    layout_node.layout.location.y as f64 + 4.0,
-                    selection_end_x as f64,
-                    layout_node.layout.location.y as f64 + layout_node.layout.size.height as f64 - 4.0,
-                ),
-            );
+            // Only draw selection if there's actually a range (start != end)
+            if selection_range.start != selection_range.end {
+                // Draw selection background
+                scene.fill(
+                    Fill::NonZero,
+                    Affine::default(),
+                    &Brush::Solid(selection_color),
+                    None,
+                    &Rect::new(
+                        selection_start_x as f64,
+                        layout_node.layout.location.y as f64 + 4.0,
+                        selection_end_x as f64,
+                        layout_node.layout.location.y as f64 + layout_node.layout.size.height as f64 - 4.0,
+                    ),
+                );
+            }
         }
 
         if !display_text.is_empty() {
@@ -363,31 +437,21 @@ impl Widget for SecretInput {
                 _text_color
             };
 
-            let mut pen_x = layout_node.layout.location.x + 8.0; // Padding
-            let text_area_width = layout_node.layout.size.width - 32.0; // Reserve space for toggle button
-            let pen_y = layout_node.layout.location.y + font_size + 6.0; // Padding + baseline
-
-            scene
-                .draw_glyphs(&font)
-                .font_size(font_size)
-                .brush(&Brush::Solid(text_color))
-                .normalized_coords(bytemuck::cast_slice(location.coords()))
-                .hint(true)
-                .draw(
-                    &nptk_core::vg::peniko::Style::Fill(Fill::NonZero),
-                    display_text.chars().filter_map(|c| {
-                        let gid = charmap.map(c).unwrap_or_default();
-                        let advance = glyph_metrics.advance_width(gid).unwrap_or_default();
-                        let x = pen_x;
-                        pen_x += advance;
-
-                        Some(Glyph {
-                            id: gid.to_u32(),
-                            x,
-                            y: pen_y,
-                        })
-                    }),
-                );
+            // Use Parley for proper text rendering
+            let transform = Affine::translate((
+                layout_node.layout.location.x as f64 + 8.0, // Padding
+                layout_node.layout.location.y as f64 + 4.5, // Position text within the input field
+            ));
+            
+            self.text_render_context.render_text(
+                scene,
+                &display_text,
+                None, // No specific font, use default (same as TextInput)
+                font_size,
+                Brush::Solid(text_color),
+                transform,
+                true, // hint
+            );
         }
 
         // Render cursor when focused and visible
@@ -398,27 +462,9 @@ impl Widget for SecretInput {
                 Color::BLACK
             };
 
-            // Calculate cursor position based on display mode
+            // Calculate cursor position using the same method as mouse positioning
             let cursor_pos = self.buffer.cursor().position;
-            let mut cursor_x = layout_node.layout.location.x + 8.0;
-            
-            if self.show_password {
-                // Use actual character widths when showing password
-                let actual_text = self.buffer.text();
-                for ch in actual_text.chars().take(cursor_pos) {
-                    let gid = charmap.map(ch).unwrap_or_default();
-                    let advance = glyph_metrics.advance_width(gid).unwrap_or_default();
-                    cursor_x += advance;
-                }
-            } else {
-                // Use mask character width for consistent spacing when hidden
-                let mask_gid = charmap.map(self.mask_char).unwrap_or_default();
-                let mask_advance = glyph_metrics.advance_width(mask_gid).unwrap_or_default();
-                
-                // Count actual characters up to cursor position
-                let actual_char_count = self.buffer.text().chars().take(cursor_pos).count();
-                cursor_x += mask_advance * actual_char_count as f32;
-            }
+            let cursor_x = self.cursor_x_position(cursor_pos, layout_node);
 
             // Draw cursor line
             scene.stroke(
@@ -507,7 +553,7 @@ impl Widget for SecretInput {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &AppInfo) -> Update {
         let mut update = Update::empty();
         let old_focus_state = self.focus_state;
 
@@ -577,7 +623,7 @@ impl Widget for SecretInput {
                                 }
                             }
                             PhysicalKey::Code(KeyCode::KeyC) => {
-                                if let Some(selected_text) = self.buffer.selected_text() {
+                                if let Some(_selected_text) = self.buffer.selected_text() {
                                     println!("Copy password: [HIDDEN]");
                                 }
                             }
@@ -615,6 +661,20 @@ impl Widget for SecretInput {
                             }
                             PhysicalKey::Code(KeyCode::ArrowRight) => {
                                 self.buffer.move_right(info.modifiers.shift_key());
+                                self.cursor_blink_timer = Instant::now();
+                                self.cursor_visible = true;
+                                update |= Update::DRAW;
+                            }
+                            PhysicalKey::Code(KeyCode::ArrowUp) => {
+                                // Move cursor to beginning of text (like most toolkits)
+                                self.buffer.move_to_start(info.modifiers.shift_key());
+                                self.cursor_blink_timer = Instant::now();
+                                self.cursor_visible = true;
+                                update |= Update::DRAW;
+                            }
+                            PhysicalKey::Code(KeyCode::ArrowDown) => {
+                                // Move cursor to end of text (like most toolkits)
+                                self.buffer.move_to_end(info.modifiers.shift_key());
                                 self.cursor_blink_timer = Instant::now();
                                 self.cursor_visible = true;
                                 update |= Update::DRAW;
@@ -674,64 +734,75 @@ impl Widget for SecretInput {
                 update |= Update::DRAW;
             }
 
-            if in_bounds {
-                for (_, button, state) in &info.buttons {
-                    if *button == nptk_core::window::MouseButton::Left {
-                        match state {
-                            nptk_core::window::ElementState::Pressed => {
+            // Handle mouse button events
+            for (_, button, state) in &info.buttons {
+                if *button == nptk_core::window::MouseButton::Left {
+                    match state {
+                        nptk_core::window::ElementState::Pressed => {
+                            if in_bounds {
                                 if in_toggle_button {
                                     // Handle toggle button press
                                     self.toggle_button_pressed = true;
                                     update |= Update::DRAW;
-                                } else if matches!(self.focus_state, FocusState::Focused | FocusState::Gained) {
+                                } else {
+                                    // Set focus first
+                                    context.set_focus(Some(self.focus_id));
+                                    
                                     // Handle text area click
                                     let click_pos = self.cursor_position_from_mouse(cursor_pos.x as f32, layout, info);
-                                    self.buffer.cursor.move_to(click_pos);
-                                    self.mouse_down = true;
-                                    self.drag_start_pos = Some(click_pos);
-                                    self.cursor_blink_timer = Instant::now();
-                                    self.cursor_visible = true;
-                                    update |= Update::DRAW;
+                                    
+                                    // Check for double-click first
+                                    if self.handle_double_click(click_pos, layout) {
+                                        // Double-click handled - selection already set, don't modify cursor position or drag
+                                        self.mouse_down = true;
+                                        // Don't set drag_start_pos for double-click to avoid interfering with selection
+                                        update |= Update::DRAW;
+                                    } else {
+                                        // Single click - clear selection and set cursor position
+                                        self.buffer.cursor.selection_start = None;
+                                        self.buffer.cursor.position = click_pos;
+                                        self.mouse_down = true;
+                                        self.drag_start_pos = Some(click_pos);
+                                        self.cursor_blink_timer = Instant::now();
+                                        self.cursor_visible = true;
+                                        update |= Update::DRAW;
+                                    }
                                 }
                             }
-                            nptk_core::window::ElementState::Released => {
-                                if self.toggle_button_pressed && in_toggle_button {
-                                    // Toggle password visibility
-                                    self.toggle_password_visibility();
-                                    update |= Update::DRAW;
-                                }
-                                self.toggle_button_pressed = false;
-                                self.mouse_down = false;
-                                self.drag_start_pos = None;
+                        }
+                        nptk_core::window::ElementState::Released => {
+                            if self.toggle_button_pressed && in_bounds && in_toggle_button {
+                                // Toggle password visibility
+                                self.toggle_password_visibility();
+                                update |= Update::DRAW;
                             }
+                            self.toggle_button_pressed = false;
+                            self.mouse_down = false;
+                            self.drag_start_pos = None;
                         }
                     }
                 }
+            }
 
-                if self.mouse_down && matches!(self.focus_state, FocusState::Focused | FocusState::Gained) {
-                    if let Some(start_pos) = self.drag_start_pos {
-                        let current_pos = self.cursor_position_from_mouse(cursor_pos.x as f32, layout, info);
-                        
-                        if current_pos != self.buffer.cursor().position {
-                            self.buffer.cursor.selection_start = Some(start_pos);
-                            self.buffer.cursor.position = current_pos;
-                            update |= Update::DRAW;
-                        }
-                    }
-                }
-            } else if self.mouse_down && matches!(self.focus_state, FocusState::Focused | FocusState::Gained) {
-                // Extended selection outside bounds
+            // Handle mouse drag for selection (works both in and out of bounds)
+            if self.mouse_down {
                 if let Some(start_pos) = self.drag_start_pos {
-                    let text_len = self.buffer.text().chars().count();
-                    let widget_left = layout.layout.location.x;
-                    let widget_right = layout.layout.location.x + layout.layout.size.width;
-                    
-                    let current_pos = if (cursor_pos.x as f32) < widget_left {
-                        0
-                    } else if (cursor_pos.x as f32) > widget_right {
-                        text_len
-                    } else {
+                    let current_pos = if in_bounds {
                         self.cursor_position_from_mouse(cursor_pos.x as f32, layout, info)
+                    } else {
+                        // Mouse is outside bounds - extend selection to beginning or end
+                        let text_len = self.buffer.text().chars().count();
+                        let widget_left = layout.layout.location.x;
+                        let widget_right = layout.layout.location.x + layout.layout.size.width;
+                        
+                        if (cursor_pos.x as f32) < widget_left {
+                            0
+                        } else if (cursor_pos.x as f32) > widget_right {
+                            text_len
+                        } else {
+                            // This shouldn't happen if in_bounds is false, but just in case
+                            self.cursor_position_from_mouse(cursor_pos.x as f32, layout, info)
+                        }
                     };
                     
                     if current_pos != self.buffer.cursor().position {

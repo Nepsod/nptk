@@ -51,5 +51,11 @@ pub mod focus;
 /// Contains text input processing and text buffer management.
 pub mod text_input;
 
+/// Contains text rendering functionality using Parley.
+pub mod text_render;
+
+/// Re-export BrushIndex for use in other modules
+pub use text_render::BrushIndex;
+
 #[cfg(feature = "include-noto-sans")]
-pub(crate) const DEFAULT_FONT: &[u8] = include_bytes!("NotoSans.ttf");
+pub const DEFAULT_FONT: &[u8] = include_bytes!("NotoSans.ttf");
