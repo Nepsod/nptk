@@ -30,9 +30,15 @@ impl<T: Theme> MayRunner<T> {
                 .expect("Failed to init task runner");
         }
 
+        let lazy_font_loading = config.render.lazy_font_loading;
+        
         Self {
             config,
-            font_ctx: FontContext::default(),
+            font_ctx: if lazy_font_loading {
+                FontContext::new()  // Use lazy loading
+            } else {
+                FontContext::new_with_system_fonts()  // Load all fonts immediately
+            },
         }
     }
 

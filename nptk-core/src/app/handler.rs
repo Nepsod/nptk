@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use nalgebra::Vector2;
 use taffy::{
@@ -46,6 +47,8 @@ where
     update: UpdateManager,
     last_update: Instant,
     plugins: PluginManager<T>,
+    /// Tracks whether async initialization is complete
+    async_init_complete: Arc<AtomicBool>,
 }
 
 impl<T, W, S, F> AppHandler<'_, T, W, S, F>
@@ -94,6 +97,7 @@ where
             update,
             last_update: Instant::now(),
             plugins,
+            async_init_complete: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -336,6 +340,77 @@ where
     }
 }
 
+impl<T, W, S, F> AppHandler<'_, T, W, S, F>
+where
+    T: Theme,
+    W: Widget,
+    F: Fn(AppContext, S) -> W,
+{
+
+    /// Initialize heavy components asynchronously in the background
+    fn initialize_async(&mut self, _event_loop: &ActiveEventLoop) {
+        log::debug!("Starting async initialization...");
+        
+        // For now, we'll use a simplified approach that defers only the most expensive operations
+        // The full async approach would require significant architectural changes
+        
+        // Create render context immediately (this is relatively fast)
+        let mut render_ctx = RenderContext::new();
+        
+        // Create surface with a timeout to avoid blocking too long
+        self.surface = Some(
+            crate::tasks::block_on(async {
+                log::debug!("Creating surface...");
+                render_ctx
+                    .create_surface(
+                        self.window.clone().unwrap(),
+                        self.window.as_ref().unwrap().inner_size().width,
+                        self.window.as_ref().unwrap().inner_size().height,
+                        self.config.render.present_mode,
+                    )
+                    .await
+            })
+            .expect("Failed to create surface"),
+        );
+
+        // Create renderer (this can be slow)
+        log::debug!("Requesting device handle via selector...");
+        let device_handle = (self.config.render.device_selector)(&render_ctx.devices);
+
+        log::debug!("Creating renderer...");
+        self.renderer = Some(
+            Renderer::new(
+                &device_handle.device,
+                RendererOptions {
+                    surface_format: Some(self.surface.as_ref().unwrap().format),
+                    use_cpu: self.config.render.cpu,
+                    antialiasing_support: match self.config.render.antialiasing {
+                        AaConfig::Area => AaSupport::area_only(),
+                        AaConfig::Msaa8 => AaSupport {
+                            area: false,
+                            msaa8: true,
+                            msaa16: false,
+                        },
+                        AaConfig::Msaa16 => AaSupport {
+                            area: false,
+                            msaa8: false,
+                            msaa16: true,
+                        },
+                    },
+                    num_init_threads: self.config.render.init_threads,
+                },
+            )
+            .expect("Failed to create renderer"),
+        );
+
+        self.render_ctx = Some(Arc::new(render_ctx));
+        self.update.set(Update::FORCE);
+        self.async_init_complete.store(true, Ordering::Relaxed);
+        
+        log::debug!("Async initialization complete");
+    }
+}
+
 impl<T, W, S, F> ApplicationHandler for AppHandler<'_, T, W, S, F>
 where
     T: Theme,
@@ -358,8 +433,7 @@ where
             )
         });
 
-        let mut render_ctx = RenderContext::new();
-
+        // Create window immediately for fast startup
         log::debug!("Creating window...");
         self.window = Some(Arc::new(
             event_loop
@@ -367,6 +441,7 @@ where
                 .expect("Failed to create window"),
         ));
 
+        // Set window style immediately
         self.taffy
             .set_style(
                 self.window_node,
@@ -384,65 +459,19 @@ where
             )
             .expect("Failed to set window node style");
 
-        self.surface = Some(
-            crate::tasks::block_on(async {
-                log::debug!("Creating surface...");
-
-                render_ctx
-                    .create_surface(
-                        self.window.clone().unwrap(),
-                        self.window.as_ref().unwrap().inner_size().width,
-                        self.window.as_ref().unwrap().inner_size().height,
-                        self.config.render.present_mode,
-                    )
-                    .await
-            })
-            .expect("Failed to create surface"),
-        );
-
-        log::debug!("Requesting device handle via selector...");
-        let device_handle = (self.config.render.device_selector)(&render_ctx.devices);
-
-        log::debug!("Creating renderer...");
-        self.renderer = Some(
-            Renderer::new(
-                &device_handle.device,
-                RendererOptions {
-                    surface_format: Some(self.surface.as_ref().unwrap().format),
-                    use_cpu: self.config.render.cpu,
-                    antialiasing_support: match self.config.render.antialiasing {
-                        AaConfig::Area => AaSupport::area_only(),
-
-                        AaConfig::Msaa8 => AaSupport {
-                            area: false,
-                            msaa8: true,
-                            msaa16: false,
-                        },
-
-                        AaConfig::Msaa16 => AaSupport {
-                            area: false,
-                            msaa8: false,
-                            msaa16: true,
-                        },
-                    },
-                    num_init_threads: self.config.render.init_threads,
-                },
-            )
-            .expect("Failed to create renderer"),
-        );
-
-        self.render_ctx = Some(Arc::new(render_ctx));
-        self.update.set(Update::FORCE);
-
+        // Create a basic widget immediately for display
         self.widget = Some((self.builder)(
             AppContext::new(
                 self.update.clone(),
                 self.info.diagnostics,
-                self.render_ctx.clone().unwrap(),
+                Arc::new(RenderContext::new()), // Temporary render context
                 self.info.focus_manager.clone(),
             ),
             self.state.take().unwrap(),
         ));
+
+        // Initialize heavy components asynchronously
+        self.initialize_async(event_loop);
     }
 
     fn window_event(

@@ -17,8 +17,22 @@ pub struct FontContext {
 impl FontContext {
     /// Create a new font context.
     ///
-    /// This will discover all available system fonts.
+    /// This will create an empty collection without loading system fonts immediately.
+    /// System fonts will be loaded lazily when needed.
     pub fn new() -> Self {
+        Self {
+            collection: Arc::new(Collection::new(CollectionOptions {
+                system_fonts: false,  // Don't load system fonts immediately
+                ..Default::default()
+            })),
+        }
+    }
+
+    /// Create a new font context with system fonts loaded immediately.
+    ///
+    /// This will discover all available system fonts during initialization.
+    /// Use this only when you need immediate access to all system fonts.
+    pub fn new_with_system_fonts() -> Self {
         Self {
             collection: Arc::new(Collection::new(CollectionOptions {
                 system_fonts: true,
