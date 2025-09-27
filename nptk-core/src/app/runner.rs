@@ -31,10 +31,13 @@ impl<T: Theme> MayRunner<T> {
         }
 
         let lazy_font_loading = config.render.lazy_font_loading;
+        let use_fontconfig = config.render.use_fontconfig;
         
         Self {
             config,
-            font_ctx: if lazy_font_loading {
+            font_ctx: if use_fontconfig {
+                FontContext::new_with_fontconfig()  // Use fontconfig for better performance
+            } else if lazy_font_loading {
                 FontContext::new()  // Use lazy loading
             } else {
                 FontContext::new_with_system_fonts()  // Load all fonts immediately
