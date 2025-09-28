@@ -1,5 +1,5 @@
 use fontique::{
-    Collection, CollectionOptions, Query, QueryFamily, QueryFont
+    Collection, CollectionOptions, Query, QueryFamily, QueryFont, SourceCache, Blob
 };
 use peniko::Font;
 use std::sync::Arc;
@@ -14,6 +14,7 @@ use rust_fontconfig::{FcFontCache, FcPattern, FontMatch};
 #[derive(Clone)]
 pub struct FontContext {
     collection: Arc<Collection>,
+    source_cache: Arc<SourceCache>,
     fontconfig_cache: Option<FcFontCache>,
     use_fontconfig: bool,
 }
@@ -29,6 +30,7 @@ impl FontContext {
                 system_fonts: false,  // Don't load system fonts immediately
                 ..Default::default()
             })),
+            source_cache: Arc::new(SourceCache::new(Default::default())),
             fontconfig_cache: None,
             use_fontconfig: false,
         }
@@ -44,6 +46,7 @@ impl FontContext {
                 system_fonts: true,
                 ..Default::default()
             })),
+            source_cache: Arc::new(SourceCache::new(Default::default())),
             fontconfig_cache: None,
             use_fontconfig: false,
         }
@@ -61,6 +64,7 @@ impl FontContext {
                 system_fonts: false,  // Let fontconfig handle discovery
                 ..Default::default()
             })),
+            source_cache: Arc::new(SourceCache::new(Default::default())),
             fontconfig_cache,
             use_fontconfig: true,
         }
@@ -88,8 +92,23 @@ impl FontContext {
         }
         
         // Fallback to fontique
-        // TODO: Implement fontique query when API is available
-        log::warn!("Font selection not fully implemented - using fontconfig fallback");
+        if let Ok(mut collection) = Arc::try_unwrap(self.collection.clone()) {
+            if let Ok(mut source_cache) = Arc::try_unwrap(self.source_cache.clone()) {
+                let mut query = collection.query(&mut source_cache);
+                query.set_families([QueryFamily::Generic(fontique::GenericFamily::SansSerif)]);
+                
+                let mut result = None;
+                query.matches_with(|font| {
+                    result = Some(font.clone());
+                    fontique::QueryStatus::Stop
+                });
+                return result;
+            }
+        }
+        
+        log::debug!("Using fontique fallback for font selection");
+        
+        log::warn!("No suitable font found for query");
         None
     }
 
@@ -110,32 +129,85 @@ impl FontContext {
         }
         
         // Fallback to fontique
-        // TODO: Implement fontique character selection when API is available
-        log::warn!("Character font selection not fully implemented - using fontconfig fallback");
+        if let Ok(mut collection) = Arc::try_unwrap(self.collection.clone()) {
+            if let Ok(mut source_cache) = Arc::try_unwrap(self.source_cache.clone()) {
+                let mut query = collection.query(&mut source_cache);
+                query.set_families([QueryFamily::Generic(fontique::GenericFamily::SansSerif)]);
+                
+                let mut result = None;
+                query.matches_with(|font| {
+                    result = Some(font.clone());
+                    fontique::QueryStatus::Stop
+                });
+                return result;
+            }
+        }
+        
+        log::debug!("Using fontique fallback for character '{}' selection", ch);
+        
+        log::warn!("No suitable font found for character '{}'", ch);
         None
     }
 
     /// Get a font family by name.
-    pub fn get_family(&self, _name: &str) -> Option<QueryFamily> {
-        // TODO: Implement family lookup using fontique API
-        None
+    pub fn get_family(&self, name: &str) -> Option<QueryFamily<'static>> {
+        Some(QueryFamily::Named(name.to_string().leak()))
     }
 
     /// Load a font into the collection.
-    pub fn load(&mut self, _name: impl ToString, _font: Font) {
-        // TODO: Implement font loading using fontique API
+    pub fn load(&mut self, name: impl ToString, font: Font) {
+        let name = name.to_string();
+        if let Ok(mut collection) = Arc::try_unwrap(self.collection.clone()) {
+            // Convert peniko::Font to Blob<u8>
+            let font_data = font.data.clone();
+            let result = collection.register_fonts(font_data, None);
+            log::debug!("Loaded font '{}' with {} families", name, result.len());
+        } else {
+            log::warn!("Failed to load font '{}' - collection is shared", name);
+        }
     }
 
     /// Load a system font into the collection.
-    pub fn load_system(&mut self, _name: impl ToString, _postscript_name: impl ToString) {
-        // TODO: Implement system font loading using fontique API
+    pub fn load_system(&mut self, name: impl ToString, postscript_name: impl ToString) {
+        let name = name.to_string();
+        let postscript_name = postscript_name.to_string();
+        
+        // Try to find the system font by name
+        if let Some(font_path) = self.find_system_font_path(&name) {
+            if let Ok(font_data) = std::fs::read(&font_path) {
+                if let Ok(mut collection) = Arc::try_unwrap(self.collection.clone()) {
+                    let blob = Blob::new(Arc::new(font_data));
+                    let result = collection.register_fonts(blob, None);
+                    log::debug!("Loaded system font '{}' (PostScript: {}) with {} families", 
+                               name, postscript_name, result.len());
+                } else {
+                    log::warn!("Failed to load system font '{}' - collection is shared", name);
+                }
+            } else {
+                log::warn!("Failed to read system font file: {:?}", font_path);
+            }
+        } else {
+            log::warn!("System font '{}' not found", name);
+        }
     }
 
     /// Get the default font.
     pub fn default_font(&self) -> Option<QueryFont> {
-        // For now, return None until we properly implement fontique integration
-        // The fontique API is complex and needs proper integration
-        log::warn!("Default font not yet implemented - fontique API integration needed");
+        if let Ok(mut collection) = Arc::try_unwrap(self.collection.clone()) {
+            if let Ok(mut source_cache) = Arc::try_unwrap(self.source_cache.clone()) {
+                let mut query = collection.query(&mut source_cache);
+                query.set_families([QueryFamily::Generic(fontique::GenericFamily::SansSerif)]);
+                
+                let mut result = None;
+                query.matches_with(|font| {
+                    result = Some(font.clone());
+                    fontique::QueryStatus::Stop
+                });
+                return result;
+            }
+        }
+        
+        log::warn!("Default font not available");
         None
     }
 
@@ -157,20 +229,71 @@ impl FontContext {
         }
         
         // Fallback to fontique
-        // TODO: Implement fontique font lookup when API is available
-        log::warn!("Font lookup not fully implemented for: {}", name);
+        if let Ok(mut collection) = Arc::try_unwrap(self.collection.clone()) {
+            if let Ok(mut source_cache) = Arc::try_unwrap(self.source_cache.clone()) {
+                let mut query = collection.query(&mut source_cache);
+                query.set_families([QueryFamily::Named(name)]);
+                
+                let mut result = None;
+                query.matches_with(|font| {
+                    result = Some(font.clone());
+                    fontique::QueryStatus::Stop
+                });
+                return result;
+            }
+        }
+        
+        log::debug!("Using fontique fallback for font '{}' lookup", name);
+        
+        log::warn!("Font '{}' not found", name);
         None
     }
 
     /// Convert a fontconfig font match to a fontique QueryFont.
     /// This is a bridge between the two font systems.
     fn convert_fontconfig_to_query_font(&self, font_match: &FontMatch) -> Option<QueryFont> {
-        // For now, we'll create a minimal QueryFont
-        // This will need to be enhanced when fontique API is fully available
         log::debug!("Converting fontconfig font match {:?} to QueryFont", font_match.id);
         
-        // TODO: Implement proper conversion when fontique API is available
-        // For now, return None to indicate conversion is not yet implemented
+        // For now, we can't directly convert fontconfig results to QueryFont
+        // because we need to load the font into the collection first
+        // This is a limitation of the current implementation
+        log::warn!("Font {:?} conversion not fully implemented - would need to load font into collection first", font_match.id);
+        None
+    }
+    
+    /// Helper method to find system font path by name.
+    fn find_system_font_path(&self, name: &str) -> Option<std::path::PathBuf> {
+        // Common system font directories
+        let font_dirs = [
+            "/usr/share/fonts",
+            "/usr/local/share/fonts",
+            "/System/Library/Fonts",
+            "/Library/Fonts",
+            "~/.fonts",
+            "~/.local/share/fonts",
+        ];
+        
+        for dir in &font_dirs {
+            let expanded_dir = if dir.starts_with("~") {
+                format!("{}/{}", std::env::var("HOME").unwrap_or_else(|_| "/home".to_string()), &dir[2..])
+            } else {
+                dir.to_string()
+            };
+            if let Ok(entries) = std::fs::read_dir(&expanded_dir) {
+                for entry in entries.flatten() {
+                    if let Some(file_name) = entry.file_name().to_str() {
+                        if file_name.to_lowercase().contains(&name.to_lowercase()) {
+                            if let Some(ext) = entry.path().extension() {
+                                if matches!(ext.to_str(), Some("ttf") | Some("otf") | Some("woff") | Some("woff2")) {
+                                    return Some(entry.path());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
         None
     }
 }
