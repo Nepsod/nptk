@@ -35,12 +35,15 @@ impl<T: Theme> MayRunner<T> {
         
         Self {
             config,
-            font_ctx: if use_fontconfig {
-                FontContext::new_with_fontconfig()  // Use fontconfig for better performance
-            } else if lazy_font_loading {
-                FontContext::new()  // Use lazy loading
+            font_ctx: if lazy_font_loading {
+                // Always use lazy loading when enabled, regardless of fontconfig setting
+                FontContext::new()
+            } else if use_fontconfig {
+                // Load system fonts with fontconfig backend when lazy loading is disabled
+                FontContext::new_with_fontconfig()
             } else {
-                FontContext::new_with_system_fonts()  // Load all fonts immediately
+                // Load system fonts without fontconfig backend
+                FontContext::new_with_system_fonts()
             },
         }
     }
