@@ -7,8 +7,8 @@ use std::sync::{Arc, RwLock};
 /// A font manager for nptk applications, powered by `fontique` with system font support.
 ///
 /// This context handles discovery of system fonts using fontique's built-in
-/// fontconfig backend (on Linux) and provides an interface for querying and
-/// resolving fonts, which will be used by the `parley` text layout engine.
+/// fontconfig backend (always enabled on Linux) and provides an interface for 
+/// querying and resolving fonts, which will be used by the `parley` text layout engine.
 #[derive(Clone)]
 pub struct FontContext {
     collection: Arc<RwLock<Collection>>,
@@ -45,14 +45,6 @@ impl FontContext {
         }
     }
 
-    /// Create a new font context with system fonts enabled.
-    ///
-    /// This is equivalent to `new_with_system_fonts()` but provides a consistent
-    /// API. On Linux, this will use fontique's built-in fontconfig backend for
-    /// optimal font discovery and matching.
-    pub fn new_with_fontconfig() -> Self {
-        Self::new_with_system_fonts()
-    }
 
     /// Get a reference to the underlying `fontique` collection.
     /// 

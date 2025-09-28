@@ -123,9 +123,6 @@ pub struct RenderConfig {
     /// If true, defer system font loading to improve startup performance.
     /// Fonts will be loaded lazily when needed.
     pub lazy_font_loading: bool,
-    /// If true, use fontconfig for font discovery and matching.
-    /// This provides better font selection and performance on Linux systems.
-    pub use_fontconfig: bool,
 }
 
 impl Default for RenderConfig {
@@ -137,7 +134,6 @@ impl Default for RenderConfig {
             init_threads: None,
             device_selector: |devices| devices.first().expect("No devices found"),
             lazy_font_loading: true,
-            use_fontconfig: true,
         }
     }
 }

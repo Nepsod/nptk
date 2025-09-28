@@ -31,18 +31,14 @@ impl<T: Theme> MayRunner<T> {
         }
 
         let lazy_font_loading = config.render.lazy_font_loading;
-        let use_fontconfig = config.render.use_fontconfig;
         
         Self {
             config,
             font_ctx: if lazy_font_loading {
-                // Always use lazy loading when enabled, regardless of fontconfig setting
+                // Use lazy loading with fontconfig backend (always enabled)
                 FontContext::new()
-            } else if use_fontconfig {
-                // Load system fonts with fontconfig backend when lazy loading is disabled
-                FontContext::new_with_fontconfig()
             } else {
-                // Load system fonts without fontconfig backend
+                // Load system fonts immediately with fontconfig backend (always enabled)
                 FontContext::new_with_system_fonts()
             },
         }
