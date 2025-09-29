@@ -133,13 +133,20 @@ impl TextBuffer {
         if self.cursor.has_selection() {
             // Replace selection with new text
             if let Some(selection) = self.cursor.selection() {
-                self.text.replace_range(selection, text);
-                self.cursor.move_to(self.cursor.selection().unwrap().start + text.len());
+                if let Some(byte_range) = self.char_range_to_byte_range(&selection) {
+                    self.text.replace_range(byte_range, text);
+                    self.cursor.move_to(selection.start + text.chars().count());
+                }
             }
         } else {
             // Insert at cursor position
-            self.text.insert_str(self.cursor.position, text);
-            self.cursor.move_to(self.cursor.position + text.len());
+            if let Some(byte_pos) = self.text.char_indices().nth(self.cursor.position).map(|(i, _)| i) {
+                self.text.insert_str(byte_pos, text);
+                self.cursor.move_to(self.cursor.position + text.chars().count());
+            } else if self.cursor.position == self.text.chars().count() {
+                self.text.push_str(text);
+                self.cursor.move_to(self.cursor.position + text.chars().count());
+            }
         }
     }
 
@@ -148,16 +155,18 @@ impl TextBuffer {
         if self.cursor.has_selection() {
             // Delete selection
             if let Some(selection) = self.cursor.selection() {
-                self.text.replace_range(selection.clone(), "");
-                self.cursor.move_to(selection.start);
+                if let Some(byte_range) = self.char_range_to_byte_range(&selection) {
+                    self.text.replace_range(byte_range, "");
+                    self.cursor.move_to(selection.start);
+                }
             }
         } else if self.cursor.position > 0 {
             // Delete character before cursor
-            let mut chars = self.text.chars().collect::<Vec<_>>();
-            if self.cursor.position <= chars.len() {
-                chars.remove(self.cursor.position - 1);
-                self.text = chars.into_iter().collect();
-                self.cursor.move_to(self.cursor.position - 1);
+            let current_pos = self.cursor.position;
+            let prev_pos = current_pos - 1;
+            if let Some(byte_range) = self.char_range_to_byte_range(&(prev_pos..current_pos)) {
+                self.text.replace_range(byte_range, "");
+                self.cursor.move_to(prev_pos);
             }
         }
     }
@@ -167,15 +176,19 @@ impl TextBuffer {
         if self.cursor.has_selection() {
             // Delete selection
             if let Some(selection) = self.cursor.selection() {
-                self.text.replace_range(selection.clone(), "");
-                self.cursor.move_to(selection.start);
+                if let Some(byte_range) = self.char_range_to_byte_range(&selection) {
+                    self.text.replace_range(byte_range, "");
+                    self.cursor.move_to(selection.start);
+                }
             }
         } else {
-            let mut chars = self.text.chars().collect::<Vec<_>>();
-            if self.cursor.position < chars.len() {
-                chars.remove(self.cursor.position);
-                self.text = chars.into_iter().collect();
-                // Cursor position stays the same
+            let char_count = self.text.chars().count();
+            if self.cursor.position < char_count {
+                let current_pos = self.cursor.position;
+                if let Some(byte_range) = self.char_range_to_byte_range(&(current_pos..current_pos + 1)) {
+                    self.text.replace_range(byte_range, "");
+                    // Cursor position stays the same
+                }
             }
         }
     }
@@ -243,6 +256,14 @@ impl TextBuffer {
     pub fn clear(&mut self) {
         self.text.clear();
         self.cursor.move_to(0);
+    }
+
+    /// Convert a character-based range to a byte-based range.
+    fn char_range_to_byte_range(&self, range: &Range<usize>) -> Option<Range<usize>> {
+        let mut char_indices = self.text.char_indices().map(|(i, _)| i);
+        let start_byte = char_indices.nth(range.start)?;
+        let end_byte = char_indices.nth(range.end - range.start).unwrap_or(self.text.len());
+        Some(start_byte..end_byte)
     }
 }
 

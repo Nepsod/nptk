@@ -97,40 +97,13 @@ impl FontContext {
         let mut collection = self.collection.write().unwrap();
         let mut source_cache = self.source_cache.write().unwrap();
         
-        let mut query = collection.query(&mut source_cache);
-        
-        // First, try generic families
-        query.set_families([
-            QueryFamily::Generic(fontique::GenericFamily::SansSerif),
-            QueryFamily::Generic(fontique::GenericFamily::Serif),
-            QueryFamily::Generic(fontique::GenericFamily::Monospace),
-        ]);
-        
-        let mut result = None;
-        query.matches_with(|font| {
-            if let Ok(file) = FontRef::new(font.blob.data()) {
-                if let Ok(cmap) = file.cmap() {
-                    if cmap.map_codepoint(ch).is_some() {
-                        result = Some(font.clone());
-                        return fontique::QueryStatus::Stop;
-                    }
-                }
-            }
-            fontique::QueryStatus::Continue
-        });
-
-        if result.is_some() {
-            return result;
-        }
-
-        // If no font is found, try the fallback list
-        let fallback_list = self.fallback_list.read().unwrap();
-        for family_name in fallback_list.iter() {
-            query.set_families([QueryFamily::Named(family_name)]);
+        // Helper closure to find a font that supports the character.
+        let find_font_for_char = |query: &mut fontique::Query, c: char| -> Option<QueryFont> {
+            let mut result = None;
             query.matches_with(|font| {
                 if let Ok(file) = FontRef::new(font.blob.data()) {
                     if let Ok(cmap) = file.cmap() {
-                        if cmap.map_codepoint(ch).is_some() {
+                        if cmap.map_codepoint(c).is_some() {
                             result = Some(font.clone());
                             return fontique::QueryStatus::Stop;
                         }
@@ -138,9 +111,39 @@ impl FontContext {
                 }
                 fontique::QueryStatus::Continue
             });
-            if result.is_some() {
-                return result;
+            result
+        };
+
+        let mut query = collection.query(&mut source_cache);
+
+        // 1. Try a comprehensive list of generic families.
+        query.set_families([
+            QueryFamily::Generic(fontique::GenericFamily::SansSerif),
+            QueryFamily::Generic(fontique::GenericFamily::Serif),
+            QueryFamily::Generic(fontique::GenericFamily::Monospace),
+            QueryFamily::Generic(fontique::GenericFamily::Cursive),
+            QueryFamily::Generic(fontique::GenericFamily::Fantasy),
+            // "SystemUi" can be a good catch-all for UI symbols.
+            QueryFamily::Generic(fontique::GenericFamily::SystemUi),
+        ]);
+        if let Some(font) = find_font_for_char(&mut query, ch) {
+            return Some(font);
+        }
+
+        // 2. If no font is found, try the user-defined fallback list.
+        let fallback_list = self.fallback_list.read().unwrap();
+        if !fallback_list.is_empty() {
+            let families = fallback_list.iter().map(|name| QueryFamily::Named(name));
+            query.set_families(families);
+            if let Some(font) = find_font_for_char(&mut query, ch) {
+                return Some(font);
             }
+        }
+
+        // 3. As a last resort, clear the families to search everything.
+        query.set_families(std::iter::empty::<QueryFamily>());
+        if let Some(font) = find_font_for_char(&mut query, ch) {
+            return Some(font);
         }
         
         log::warn!("No suitable font found for character '{}'", ch);
