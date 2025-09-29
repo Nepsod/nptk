@@ -7,6 +7,11 @@
 *(Fork of the [Maycoon](https://github.com/maycoon-ui/maycoon) Toolkit)*
 </div>
 
+Private Cursor AI testing field, as I'd call it for now.
+Don't use it in any serious project (until you know what you're doing?).
+It's going to be changing a lot.
+And to be focused around my personal projects (maybe even a whole Desktop Environment some day?).
+
 ## Features
 
 - ⚙️ **Made in [Rust](https://www.rust-lang.org)**
@@ -33,8 +38,3 @@ first.
 This project is dual licensed under the [MIT license](LICENSE-MIT) and the [Apache License 2.0](LICENSE-APACHE).
 
 Any contributions are, unless otherwise stated, licensed under the same terms.
-
-**NOTE:** The [Noto Sans](https://fonts.google.com/noto/specimen/Noto+Sans) font, that is embedded by default with the
-`include-noto-sans` feature is licensed under
-the [SIL Open Font License 1.1](https://openfontlicense.org/open-font-license-official-text/).
-

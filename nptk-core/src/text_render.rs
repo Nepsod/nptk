@@ -104,46 +104,10 @@ impl TextRenderContext {
         transform: Affine,
     ) {
         
-        // Try to use DEFAULT_FONT if available
-        #[cfg(feature = "include-noto-sans")]
-        {
-            use crate::DEFAULT_FONT;
-            
-            let peniko_font = vello::peniko::Font::new(DEFAULT_FONT.to_vec().into(), 0);
-            
-            // Simple character-by-character rendering
-            let mut x = 0.0;
-            let y = font_size;
-            
-            for (_i, c) in text.chars().enumerate() {
-                // Use a simple glyph ID based on character
-                let glyph_id = (c as u32) % 256; // Limit to reasonable range
-                
-                
-                scene
-                    .draw_glyphs(&peniko_font)
-                    .font_size(font_size)
-                    .brush(&color)
-                    .hint(true)
-                    .transform(transform)
-                    .draw(
-                        vello::peniko::Fill::NonZero,
-                        std::iter::once(vello::Glyph {
-                            id: glyph_id,
-                            x: x,
-                            y: y,
-                        }),
-                    );
-                
-                // Simple character width approximation
-                x += font_size * 0.6;
-            }
-        }
-        #[cfg(not(feature = "include-noto-sans"))]
-        {
-            // If we can't create a peniko font, just log the text
-            log::warn!("Could not render text '{}' - no suitable font available", text);
-        }
+        // Use system fonts for fallback rendering
+        // For now, we'll skip fallback rendering since we have automatic font selection
+        // The main Parley rendering should handle most cases with proper font fallback
+        log::warn!("Could not render text '{}' - no suitable font available", text);
     }
 
     /// Render a simple Parley layout to the scene (for default layout type)

@@ -32,5 +32,4 @@ harfrust = "0.2.0"
 
 [features]
 default = []
-include-noto-sans = []
 vg = ["skrifa"]

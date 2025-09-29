@@ -57,5 +57,3 @@ pub mod text_render;
 /// Re-export BrushIndex for use in other modules
 pub use text_render::BrushIndex;
 
-#[cfg(feature = "include-noto-sans")]
-pub const DEFAULT_FONT: &[u8] = include_bytes!("NotoSans.ttf");

@@ -37,13 +37,13 @@ homepage.workspace = true
 [dependencies]
 nptk-core = { workspace = true }
 nptk-theme = { workspace = true }
-nptk-widgets = { workspace = true, features = ["include-noto-sans"] }
+nptk-widgets = { workspace = true }
 nptk-macros = { workspace = true, optional = true }
 peniko = { workspace = true }
 nalgebra = { workspace = true }
 
 [features]
-default = ["macros", "include-noto-sans"]
+default = ["macros"]
 
 # Exports useful macros for working with nptk.
 macros = ["nptk-macros"]
@@ -53,9 +53,6 @@ vg = ["nptk-core/vg"]
 
 # Enables the `Canvas` widget for drawing to the screen.
 canvas = ["nptk-widgets/canvas"]
-
-# Include the `Noto Sans` font as a default font. If disabled, you must specify a default font using the `FontContext`.
-include-noto-sans = ["nptk-core/include-noto-sans"]
 
 [lib]
 name = "nptk"
