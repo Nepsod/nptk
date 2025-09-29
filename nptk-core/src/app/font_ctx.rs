@@ -1,7 +1,9 @@
 use fontique::{
-    Collection, CollectionOptions, Query, QueryFamily, QueryFont, SourceCache, Blob
+    Collection, CollectionOptions, QueryFamily, QueryFont, SourceCache,
+    FontStyle, FontWeight, FontWidth, Attributes, Blob
 };
 use peniko::Font;
+use read_fonts::{FontRef, TableProvider};
 use std::sync::{Arc, RwLock};
 
 /// A font manager for nptk applications, powered by `fontique` with system font support.
@@ -13,6 +15,7 @@ use std::sync::{Arc, RwLock};
 pub struct FontContext {
     collection: Arc<RwLock<Collection>>,
     source_cache: Arc<RwLock<SourceCache>>,
+    fallback_list: Arc<RwLock<Vec<String>>>,
 }
 
 impl FontContext {
@@ -27,6 +30,7 @@ impl FontContext {
                 ..Default::default()
             }))),
             source_cache: Arc::new(RwLock::new(SourceCache::new(Default::default()))),
+            fallback_list: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
@@ -42,6 +46,7 @@ impl FontContext {
                 ..Default::default()
             }))),
             source_cache: Arc::new(RwLock::new(SourceCache::new(Default::default()))),
+            fallback_list: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
@@ -54,12 +59,24 @@ impl FontContext {
     }
 
     /// Selects the best font that matches the query.
-    pub fn select_best(&mut self, _query: &mut Query) -> Option<QueryFont> {
+    pub fn select_best<'a>(
+        &mut self,
+        families: impl IntoIterator<Item = QueryFamily<'a>>,
+        style: FontStyle,
+        weight: FontWeight,
+        stretch: FontWidth,
+    ) -> Option<QueryFont> {
         let mut collection = self.collection.write().unwrap();
         let mut source_cache = self.source_cache.write().unwrap();
         
         let mut fontique_query = collection.query(&mut source_cache);
-        fontique_query.set_families([QueryFamily::Generic(fontique::GenericFamily::SansSerif)]);
+        fontique_query.set_families(families);
+        let attributes = Attributes {
+            style,
+            weight,
+            width: stretch,
+        };
+        fontique_query.set_attributes(attributes);
         
         let mut result = None;
         fontique_query.matches_with(|font| {
@@ -75,31 +92,64 @@ impl FontContext {
         }
     }
 
-    /// Selects the best font for a specific character.
+    /// Selects the best font for a specific character, using the fallback list if necessary.
     pub fn select_for_char(&mut self, ch: char) -> Option<QueryFont> {
         let mut collection = self.collection.write().unwrap();
         let mut source_cache = self.source_cache.write().unwrap();
         
         let mut query = collection.query(&mut source_cache);
-        query.set_families([QueryFamily::Generic(fontique::GenericFamily::SansSerif)]);
+        
+        // First, try generic families
+        query.set_families([
+            QueryFamily::Generic(fontique::GenericFamily::SansSerif),
+            QueryFamily::Generic(fontique::GenericFamily::Serif),
+            QueryFamily::Generic(fontique::GenericFamily::Monospace),
+        ]);
         
         let mut result = None;
         query.matches_with(|font| {
-            result = Some(font.clone());
-            fontique::QueryStatus::Stop
+            if let Ok(file) = FontRef::new(font.blob.data()) {
+                if let Ok(cmap) = file.cmap() {
+                    if cmap.map_codepoint(ch).is_some() {
+                        result = Some(font.clone());
+                        return fontique::QueryStatus::Stop;
+                    }
+                }
+            }
+            fontique::QueryStatus::Continue
         });
-        
+
         if result.is_some() {
-            result
-        } else {
-            log::warn!("No suitable font found for character '{}'", ch);
-            None
+            return result;
         }
+
+        // If no font is found, try the fallback list
+        let fallback_list = self.fallback_list.read().unwrap();
+        for family_name in fallback_list.iter() {
+            query.set_families([QueryFamily::Named(family_name)]);
+            query.matches_with(|font| {
+                if let Ok(file) = FontRef::new(font.blob.data()) {
+                    if let Ok(cmap) = file.cmap() {
+                        if cmap.map_codepoint(ch).is_some() {
+                            result = Some(font.clone());
+                            return fontique::QueryStatus::Stop;
+                        }
+                    }
+                }
+                fontique::QueryStatus::Continue
+            });
+            if result.is_some() {
+                return result;
+            }
+        }
+        
+        log::warn!("No suitable font found for character '{}'", ch);
+        None
     }
 
     /// Get a font family by name.
-    pub fn get_family(&self, name: &str) -> Option<QueryFamily<'static>> {
-        Some(QueryFamily::Named(name.to_string().leak()))
+    pub fn get_family<'a>(&self, name: &'a str) -> Option<QueryFamily<'a>> {
+        Some(QueryFamily::Named(name))
     }
 
     /// Load a font into the collection.
@@ -107,31 +157,9 @@ impl FontContext {
         let name = name.to_string();
         let mut collection = self.collection.write().unwrap();
         
-        // Convert peniko::Font to Blob<u8>
-        let font_data = font.data.clone();
-        let result = collection.register_fonts(font_data, None);
+        let (data, _) = font.data.into_raw_parts();
+        let result = collection.register_fonts(Blob::new(data), None);
         log::debug!("Loaded font '{}' with {} families", name, result.len());
-    }
-
-    /// Load a system font into the collection.
-    pub fn load_system(&mut self, name: impl ToString, postscript_name: impl ToString) {
-        let name = name.to_string();
-        let postscript_name = postscript_name.to_string();
-        
-        // Try to find the system font by name
-        if let Some(font_path) = self.find_system_font_path(&name) {
-            if let Ok(font_data) = std::fs::read(&font_path) {
-                let mut collection = self.collection.write().unwrap();
-                let blob = Blob::new(Arc::new(font_data));
-                let result = collection.register_fonts(blob, None);
-                log::debug!("Loaded system font '{}' (PostScript: {}) with {} families", 
-                           name, postscript_name, result.len());
-            } else {
-                log::warn!("Failed to read system font file: {:?}", font_path);
-            }
-        } else {
-            log::warn!("System font '{}' not found", name);
-        }
     }
 
     /// Get the default font.
@@ -179,41 +207,6 @@ impl FontContext {
     }
 
     
-    /// Helper method to find system font path by name.
-    fn find_system_font_path(&self, name: &str) -> Option<std::path::PathBuf> {
-        // Common system font directories
-        let font_dirs = [
-            "/usr/share/fonts",
-            "/usr/local/share/fonts",
-            "/System/Library/Fonts",
-            "/Library/Fonts",
-            "~/.fonts",
-            "~/.local/share/fonts",
-        ];
-        
-        for dir in &font_dirs {
-            let expanded_dir = if dir.starts_with("~") {
-                format!("{}/{}", std::env::var("HOME").unwrap_or_else(|_| "/home".to_string()), &dir[2..])
-            } else {
-                dir.to_string()
-            };
-            if let Ok(entries) = std::fs::read_dir(&expanded_dir) {
-                for entry in entries.flatten() {
-                    if let Some(file_name) = entry.file_name().to_str() {
-                        if file_name.to_lowercase().contains(&name.to_lowercase()) {
-                            if let Some(ext) = entry.path().extension() {
-                                if matches!(ext.to_str(), Some("ttf") | Some("otf") | Some("woff") | Some("woff2")) {
-                                    return Some(entry.path());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        None
-    }
 }
 
 impl Default for FontContext {
