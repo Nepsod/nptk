@@ -2,7 +2,7 @@ use nptk::core::app::context::AppContext;
 use nptk::core::app::Application;
 use nptk::core::app::update::Update;
 use nptk::core::config::MayConfig;
-use nptk::core::layout::{AlignItems, Dimension, FlexDirection, LayoutStyle};
+use nptk::core::layout::{AlignItems, Dimension, FlexDirection, LayoutStyle, LengthPercentage, LengthPercentageAuto};
 use nptk::core::widget::{Widget, WidgetLayoutExt};
 use nptk::math::Vector2;
 use nptk::theme::theme::celeste::CelesteTheme;
@@ -55,12 +55,25 @@ impl Application for MenuButtonApp {
             Box::new(
                 MenuButton::new("File ▼")
                     .with_menu_items(menu_items)
+                    .with_layout_style(LayoutStyle {
+                        margin: nptk::core::layout::Rect::<LengthPercentageAuto> {
+                            top: LengthPercentageAuto::length(20.0),
+                            bottom: LengthPercentageAuto::length(0.0),
+                            left: LengthPercentageAuto::length(10.0),
+                            right: LengthPercentageAuto::length(0.0),
+                        },
+                        ..Default::default()
+                    })
             ),
         ])
         .with_layout_style(LayoutStyle {
             size: Vector2::new(Dimension::percent(1.0), Dimension::percent(1.0)),
             flex_direction: FlexDirection::Column,
             align_items: Some(AlignItems::Center),
+            gap: Vector2::new(
+                LengthPercentage::length(0.0),
+                LengthPercentage::length(10.0), // 10px vertical gap between items
+            ),
             ..Default::default()
         })
     }

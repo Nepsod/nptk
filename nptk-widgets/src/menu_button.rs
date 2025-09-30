@@ -4,7 +4,7 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{Layout, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::{MaybeSignal, state::StateSignal, Signal};
 use std::sync::Arc;
-use nptk_core::vg::kurbo::Rect;
+use nptk_core::vg::kurbo::{Affine, Rect, Vec2};
 use nptk_core::vg::Scene;
 use nptk_core::widget::{Widget, WidgetLayoutExt, WidgetChildExt};
 use nptk_core::window::{ElementState, MouseButton};
@@ -224,24 +224,27 @@ impl Widget for MenuButton {
         info: &mut AppInfo,
         context: AppContext,
     ) {
-        // Render the child button first
-        self.child.render(scene, theme, &layout.children[0], info, context.clone());
+        // Render the child button with proper transform
+        let mut child_scene = Scene::new();
+        self.child.render(&mut child_scene, theme, &layout.children[0], info, context.clone());
+        scene.append(
+            &child_scene,
+            Some(Affine::translate(Vec2::new(
+                layout.layout.location.x as f64,
+                layout.layout.location.y as f64,
+            ))),
+        );
 
         // Then, if the menu is open, render the popup on top
         if *self.is_menu_open.get() {
             if let Some(ref mut popup) = self.popup_data {
-                // Calculate popup position based on the child button's layout
-                let child_layout = &layout.children[0];
-                let button_bounds = Rect::new(
-                    child_layout.layout.location.x as f64,
-                    child_layout.layout.location.y as f64,
-                    (child_layout.layout.location.x + child_layout.layout.size.width) as f64,
-                    (child_layout.layout.location.y + child_layout.layout.size.height) as f64,
-                );
-
+                // Calculate popup position - use parent's layout since that's where the button is
                 let (popup_width, popup_height) = popup.calculate_size();
-                let popup_x = button_bounds.x0;
-                let popup_y = button_bounds.y1;
+                let popup_x = layout.layout.location.x as f64;
+                let popup_y = (layout.layout.location.y + layout.layout.size.height) as f64;
+
+                println!("[MenuButton::render] Rendering popup at pos=({}, {}), size=({}, {})", 
+                         popup_x, popup_y, popup_width, popup_height);
 
                 // Create a layout node for the popup
                 let mut popup_layout = LayoutNode {
@@ -271,22 +274,17 @@ impl Widget for MenuButton {
         let cursor_pos = info.cursor_pos;
 
         // Check for button clicks BEFORE propagating to child
-        // Use the child button's layout bounds for hit detection
-        if !layout.children.is_empty() {
-            let child_layout = &layout.children[0];
-            for (_, button, state) in &info.buttons {
-                if *button == MouseButton::Left {
-                    if let Some(pos) = cursor_pos {
-                        let bounds = child_layout.layout.size;
-                        let location = child_layout.layout.location;
-                        if pos.x as f32 >= location.x
-                            && pos.x as f32 <= location.x + bounds.width
-                            && pos.y as f32 >= location.y
-                            && pos.y as f32 <= location.y + bounds.height
-                        {
-                            if *state == ElementState::Released {
-                                was_button_clicked = true;
-                            }
+        // Use parent's layout for hit detection (since that's where the button actually is)
+        for (_, button, state) in &info.buttons {
+            if *button == MouseButton::Left {
+                if let Some(pos) = cursor_pos {
+                    if pos.x as f32 >= layout.layout.location.x
+                        && pos.x as f32 <= layout.layout.location.x + layout.layout.size.width
+                        && pos.y as f32 >= layout.layout.location.y
+                        && pos.y as f32 <= layout.layout.location.y + layout.layout.size.height
+                    {
+                        if *state == ElementState::Released {
+                            was_button_clicked = true;
                         }
                     }
                 }
@@ -298,18 +296,10 @@ impl Widget for MenuButton {
 
         if *self.is_menu_open.get() {
             if let Some(ref mut popup) = self.popup_data {
-                // Calculate popup position for update using child button's layout
-                let child_layout = &layout.children[0];
-                let button_bounds = Rect::new(
-                    child_layout.layout.location.x as f64,
-                    child_layout.layout.location.y as f64,
-                    (child_layout.layout.location.x + child_layout.layout.size.width) as f64,
-                    (child_layout.layout.location.y + child_layout.layout.size.height) as f64,
-                );
-
+                // Calculate popup position - use parent's layout since that's where the button is
                 let (popup_width, popup_height) = popup.calculate_size();
-                let popup_x = button_bounds.x0;
-                let popup_y = button_bounds.y1;
+                let popup_x = layout.layout.location.x as f64;
+                let popup_y = (layout.layout.location.y + layout.layout.size.height) as f64;
 
                 let mut popup_layout = LayoutNode {
                     layout: Layout::default(),
@@ -333,19 +323,18 @@ impl Widget for MenuButton {
             let mut click_outside = false;
             if let Some(pos) = cursor_pos {
                 if let Some(ref popup) = self.popup_data {
-                    let child_layout = &layout.children[0];
                     let (popup_width, popup_height) = popup.calculate_size();
                     let popup_rect = Rect::new(
-                        child_layout.layout.location.x as f64,
-                        child_layout.layout.location.y as f64 + child_layout.layout.size.height as f64,
-                        child_layout.layout.location.x as f64 + popup_width,
-                        child_layout.layout.location.y as f64 + child_layout.layout.size.height as f64 + popup_height,
+                        layout.layout.location.x as f64,
+                        layout.layout.location.y as f64 + layout.layout.size.height as f64,
+                        layout.layout.location.x as f64 + popup_width,
+                        layout.layout.location.y as f64 + layout.layout.size.height as f64 + popup_height,
                     );
                     let button_rect = Rect::new(
-                        child_layout.layout.location.x as f64,
-                        child_layout.layout.location.y as f64,
-                        child_layout.layout.location.x as f64 + child_layout.layout.size.width as f64,
-                        child_layout.layout.location.y as f64 + child_layout.layout.size.height as f64,
+                        layout.layout.location.x as f64,
+                        layout.layout.location.y as f64,
+                        layout.layout.location.x as f64 + layout.layout.size.width as f64,
+                        layout.layout.location.y as f64 + layout.layout.size.height as f64,
                     );
 
                     for (_, button, state) in &info.buttons {
