@@ -51,11 +51,11 @@ impl Application for MenuButtonApp {
         Container::new(vec![
             Box::new(Text::new("MenuButton Demo".to_string())),
             Box::new(Text::new("Click the button below to see the popup menu:".to_string())),
+            Box::new(Text::new("Use Tab/Shift+Tab to navigate, Space/Enter to open menu".to_string())),
             Box::new(
-                MenuButton::new(Text::new("File ▼".to_string()))
+                MenuButton::new("File ▼")
                     .with_menu_items(menu_items)
             ),
-            Box::new(Text::new("Use Tab/Shift+Tab to navigate, Space/Enter to open menu".to_string())),
         ])
         .with_layout_style(LayoutStyle {
             size: Vector2::new(Dimension::percent(1.0), Dimension::percent(1.0)),

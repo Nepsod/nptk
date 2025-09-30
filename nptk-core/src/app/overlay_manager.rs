@@ -63,6 +63,10 @@ pub struct OverlayLayer {
     pub is_visible: bool,
     /// Whether clicking outside this overlay should close it
     pub click_outside_to_close: bool,
+    /// Whether this overlay was just created (prevents immediate click-outside detection)
+    pub just_created: bool,
+    /// Frame count since creation (used to delay click-outside detection)
+    pub creation_frame: u32,
     /// The desired position of this overlay
     pub desired_position: Vector2<f64>,
     /// The actual rendered position of this overlay (may differ from desired due to bounds checking)
@@ -141,12 +145,14 @@ impl OverlayManager {
             transform: Affine::IDENTITY,
             clip_rect: None,
             content,
-            layout_node,
+            layout_node: layout_node.clone(),
             is_visible: true,
             click_outside_to_close: true, // Default to true for most overlays
-            desired_position: Vector2::new(0.0, 0.0),
-            actual_position: Vector2::new(0.0, 0.0),
-            size: Vector2::new(200.0, 100.0), // Default size
+            just_created: true, // Prevent immediate click-outside detection
+            creation_frame: 0, // Start at frame 0
+            desired_position: Vector2::new(layout_node.layout.location.x as f64, layout_node.layout.location.y as f64),
+            actual_position: Vector2::new(layout_node.layout.location.x as f64, layout_node.layout.location.y as f64),
+            size: Vector2::new(layout_node.layout.size.width as f64, layout_node.layout.size.height as f64),
             anchor_position: None,
             anchor_bounds: None,
         };
@@ -378,16 +384,35 @@ impl OverlayManager {
         // Check all visible overlays for click-outside detection
         for layer in &self.layers {
             if layer.is_visible && layer.click_outside_to_close {
-                let bounds = Rect::new(
-                    layer.actual_position.x,
-                    layer.actual_position.y,
-                    layer.actual_position.x + layer.size.x,
-                    layer.actual_position.y + layer.size.y,
-                );
-                
-                // If click is outside this overlay, mark it for closing
-                if !bounds.contains((x, y)) {
-                    overlays_to_close.push(layer.id);
+                if layer.just_created {
+                    // Skip click-outside detection for newly created overlays
+                } else {
+                    let bounds = Rect::new(
+                        layer.actual_position.x,
+                        layer.actual_position.y,
+                        layer.actual_position.x + layer.size.x,
+                        layer.actual_position.y + layer.size.y,
+                    );
+                    
+                    // Check if click is outside both the overlay and its anchor bounds
+                    let mut click_outside = !bounds.contains((x, y));
+                    
+                    // If there are anchor bounds, also check if click is outside those
+                    if let Some(anchor_bounds) = layer.anchor_bounds {
+                        println!("OverlayManager: Checking click ({}, {}) against anchor bounds {:?}", x, y, anchor_bounds);
+                        if anchor_bounds.contains((x, y)) {
+                            println!("OverlayManager: Click is on anchor, keeping overlay open");
+                            click_outside = false; // Click is on the anchor, don't close
+                        }
+                    }
+                    
+                    // If click is outside both overlay and anchor, mark it for closing
+                    if click_outside {
+                        println!("OverlayManager: Click outside both overlay and anchor, closing overlay {:?}", layer.id);
+                        overlays_to_close.push(layer.id);
+                    } else {
+                        println!("OverlayManager: Click inside overlay or anchor, keeping open");
+                    }
                 }
             }
         }
@@ -449,6 +474,19 @@ impl OverlayManager {
             true
         } else {
             false
+        }
+    }
+
+    /// Clear the just_created flag for all overlays (call this after each frame)
+    pub fn clear_just_created_flags(&mut self) {
+        for layer in &mut self.layers {
+            if layer.just_created {
+                layer.creation_frame += 1;
+                // Clear the flag after 2 frames to allow for proper event handling
+                if layer.creation_frame >= 2 {
+                    layer.just_created = false;
+                }
+            }
         }
     }
 

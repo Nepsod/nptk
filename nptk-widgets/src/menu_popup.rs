@@ -210,7 +210,8 @@ impl MenuPopup {
 
         let transform = Affine::translate((x, y));
         
-        text_render_context.render_text(
+        // Try to render text, but don't panic if font context is not available
+        let _ = text_render_context.render_text(
             font_cx,
             scene,
             text,
@@ -256,14 +257,14 @@ impl Widget for MenuPopup {
         }
     }
 
-    fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout: &LayoutNode, info: &mut AppInfo, _context: AppContext) -> () {
+    fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout: &LayoutNode, info: &mut AppInfo, _context: AppContext) {
         let widget_theme = theme.of(self.widget_id());
         
         // Pre-calculate theme colors
         let bg_color = if let Some(ref style) = widget_theme {
-            style.get_color("color_background").unwrap_or(Color::from_rgb8(255, 255, 255))
+            style.get_color("color_background").unwrap_or(Color::from_rgb8(240, 240, 240))
         } else {
-            Color::from_rgb8(255, 255, 255)
+            Color::from_rgb8(240, 240, 240)
         };
         
         let border_color = if let Some(ref style) = widget_theme {
@@ -402,14 +403,14 @@ impl Widget for MenuPopup {
             );
             
             // Check if mouse is within popup bounds
-            if pos.x as f64 >= popup_rect.x0
-                && pos.x as f64 <= popup_rect.x1
-                && pos.y as f64 >= popup_rect.y0
-                && pos.y as f64 <= popup_rect.y1
+            if pos.x as f32 >= popup_rect.x0 as f32
+                && pos.x as f32 <= popup_rect.x1 as f32
+                && pos.y as f32 >= popup_rect.y0 as f32
+                && pos.y as f32 <= popup_rect.y1 as f32
             {
                 // Find which item is being hovered
                 let item_height = 24.0;
-                let relative_y = pos.y as f64 - popup_rect.y0 - 4.0; // Account for padding
+                let relative_y = pos.y as f32 - popup_rect.y0 as f32 - 4.0; // Account for padding
                 let item_index = (relative_y / item_height) as usize;
                 
                 if item_index < self.items.len() {
