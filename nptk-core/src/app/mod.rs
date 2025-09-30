@@ -29,6 +29,9 @@ pub mod runner;
 /// Contains the focus management system.
 pub mod focus;
 
+/// Contains the overlay and popup management system.
+pub mod overlay_manager;
+
 /// The main application interface.
 ///
 /// Contains basic functions for the [MayRunner] to create and run an application.

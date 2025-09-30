@@ -5,6 +5,7 @@ use winit::keyboard::ModifiersState;
 use crate::app::diagnostics::Diagnostics;
 use crate::app::focus::SharedFocusManager;
 use crate::app::font_ctx::FontContext;
+use crate::app::overlay_manager::OverlayManager;
 
 /// The application information container.
 pub struct AppInfo {
@@ -28,6 +29,8 @@ pub struct AppInfo {
     pub size: Vector2<f64>,
     /// Focus manager for tracking widget focus state.
     pub focus_manager: SharedFocusManager,
+    /// Overlay manager for handling popups, modals, and other overlays.
+    pub overlay_manager: OverlayManager,
 }
 
 impl AppInfo {
@@ -56,6 +59,7 @@ impl Default for AppInfo {
             font_context: FontContext::default(),
             size: Vector2::new(0.0, 0.0),
             focus_manager: Arc::new(Mutex::new(FocusManager::new())),
+            overlay_manager: OverlayManager::new(),
         }
     }
 }
