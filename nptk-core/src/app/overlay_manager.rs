@@ -14,6 +14,7 @@ use crate::widget::Widget;
 use crate::layout::LayoutNode;
 use nptk_theme::theme::Theme;
 use crate::app::info::AppInfo;
+use nalgebra::Vector2;
 
 /// Unique identifier for overlays
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -61,6 +62,16 @@ pub struct OverlayLayer {
     pub is_visible: bool,
     /// Whether clicking outside this overlay should close it
     pub click_outside_to_close: bool,
+    /// The desired position of this overlay
+    pub desired_position: Vector2<f64>,
+    /// The actual rendered position of this overlay (may differ from desired due to bounds checking)
+    pub actual_position: Vector2<f64>,
+    /// The size of this overlay
+    pub size: Vector2<f64>,
+    /// The anchor point this overlay is positioned relative to
+    pub anchor_position: Option<Vector2<f64>>,
+    /// The anchor bounds this overlay is positioned relative to
+    pub anchor_bounds: Option<Rect>,
 }
 
 /// Information about a separate render context overlay
@@ -132,6 +143,11 @@ impl OverlayManager {
             layout_node,
             is_visible: true,
             click_outside_to_close: true, // Default to true for most overlays
+            desired_position: Vector2::new(0.0, 0.0),
+            actual_position: Vector2::new(0.0, 0.0),
+            size: Vector2::new(200.0, 100.0), // Default size
+            anchor_position: None,
+            anchor_bounds: None,
         };
         
         let index = self.layers.len();
@@ -340,7 +356,7 @@ impl OverlayManager {
     }
 
     /// Handle mouse click events for click-outside detection
-    pub fn handle_mouse_click(&mut self, _x: f64, _y: f64) -> bool {
+    pub fn handle_mouse_click(&mut self, x: f64, y: f64) -> bool {
         // If there's a modal overlay, don't process click-outside detection
         // Modals should handle their own click events
         if self.has_modal_overlay() {
@@ -352,16 +368,24 @@ impl OverlayManager {
         // Check all visible overlays for click-outside detection
         for layer in &self.layers {
             if layer.is_visible && layer.click_outside_to_close {
-                // For now, we'll assume all overlays should close on outside click
-                // TODO: Implement proper bounds checking when we have actual overlay bounds
-                overlays_to_close.push(layer.id);
+                let bounds = Rect::new(
+                    layer.actual_position.x,
+                    layer.actual_position.y,
+                    layer.actual_position.x + layer.size.x,
+                    layer.actual_position.y + layer.size.y,
+                );
+                
+                // If click is outside this overlay, mark it for closing
+                if !bounds.contains((x, y)) {
+                    overlays_to_close.push(layer.id);
+                }
             }
         }
         
         for context in &self.contexts {
             if context.is_visible && context.click_outside_to_close {
-                // For now, we'll assume all overlays should close on outside click
-                // TODO: Implement proper bounds checking when we have actual overlay bounds
+                // TODO: Implement bounds checking for contexts
+                // For now, assume all context overlays should close on outside click
                 overlays_to_close.push(context.id);
             }
         }
@@ -378,9 +402,23 @@ impl OverlayManager {
     }
 
     /// Check if a point is inside any visible overlay
-    pub fn is_point_inside_overlay(&self, _x: f64, _y: f64) -> bool {
-        // TODO: Implement proper bounds checking when we have actual overlay bounds
-        // For now, return false to allow all clicks to be considered "outside"
+    pub fn is_point_inside_overlay(&self, x: f64, y: f64) -> bool {
+        // Check all visible layers
+        for layer in &self.layers {
+            if layer.is_visible {
+                let bounds = Rect::new(
+                    layer.actual_position.x,
+                    layer.actual_position.y,
+                    layer.actual_position.x + layer.size.x,
+                    layer.actual_position.y + layer.size.y,
+                );
+                if bounds.contains((x, y)) {
+                    return true;
+                }
+            }
+        }
+        
+        // TODO: Check contexts when we have bounds for them
         false
     }
 
@@ -449,6 +487,136 @@ impl OverlayManager {
         }
         
         top_modal
+    }
+
+    /// Set the position and anchor for a layer
+    pub fn set_layer_position(
+        &mut self,
+        id: OverlayId,
+        position: Vector2<f64>,
+        anchor_bounds: Option<Rect>,
+    ) -> bool {
+        // Find the layer index
+        let layer_index = if let Some((index, _)) = self.layers.iter().enumerate().find(|(_, layer)| layer.id == id) {
+            index
+        } else {
+            return false;
+        };
+        
+        // Update the layer directly
+        let layer = &mut self.layers[layer_index];
+        let size = layer.size;
+        layer.desired_position = position;
+        layer.anchor_bounds = anchor_bounds;
+        layer.actual_position = Self::calculate_smart_position_static(
+            position,
+            size,
+            anchor_bounds,
+            Vector2::new(800.0, 600.0), // TODO: Get actual screen size
+        );
+        true
+    }
+
+    /// Set the size of a layer
+    pub fn set_layer_size(&mut self, id: OverlayId, size: Vector2<f64>) -> bool {
+        // Find the layer index
+        let layer_index = if let Some((index, _)) = self.layers.iter().enumerate().find(|(_, layer)| layer.id == id) {
+            index
+        } else {
+            return false;
+        };
+        
+        // Update the layer directly
+        let layer = &mut self.layers[layer_index];
+        let desired_position = layer.desired_position;
+        let anchor_bounds = layer.anchor_bounds;
+        layer.size = size;
+        // Recalculate position with new size
+        layer.actual_position = Self::calculate_smart_position_static(
+            desired_position,
+            size,
+            anchor_bounds,
+            Vector2::new(800.0, 600.0), // TODO: Get actual screen size
+        );
+        true
+    }
+
+    /// Calculate smart position that keeps overlay within screen bounds (static version)
+    fn calculate_smart_position_static(
+        desired_position: Vector2<f64>,
+        overlay_size: Vector2<f64>,
+        anchor_bounds: Option<Rect>,
+        screen_size: Vector2<f64>,
+    ) -> Vector2<f64> {
+        let mut position = desired_position;
+        
+        // Check horizontal bounds
+        if position.x + overlay_size.x > screen_size.x {
+            // Try to position to the left of the anchor
+            if let Some(anchor) = anchor_bounds {
+                position.x = anchor.min_x() - overlay_size.x - 10.0; // 10px gap
+            } else {
+                position.x = screen_size.x - overlay_size.x - 10.0;
+            }
+            
+            // If still out of bounds, center horizontally
+            if position.x < 0.0 {
+                position.x = (screen_size.x - overlay_size.x) / 2.0;
+            }
+        }
+        
+        // Check vertical bounds
+        if position.y + overlay_size.y > screen_size.y {
+            // Try to position above the anchor
+            if let Some(anchor) = anchor_bounds {
+                position.y = anchor.min_y() - overlay_size.y - 10.0; // 10px gap
+            } else {
+                position.y = screen_size.y - overlay_size.y - 10.0;
+            }
+            
+            // If still out of bounds, center vertically
+            if position.y < 0.0 {
+                position.y = (screen_size.y - overlay_size.y) / 2.0;
+            }
+        }
+        
+        // Ensure minimum margins from screen edges
+        let margin = 10.0;
+        position.x = position.x.max(margin);
+        position.y = position.y.max(margin);
+        
+        position
+    }
+
+    /// Update overlay positions based on screen size changes
+    pub fn update_positions_for_screen_size(&mut self, screen_size: Vector2<f64>) {
+        for layer in &mut self.layers {
+            if layer.is_visible {
+                let desired_position = layer.desired_position;
+                let size = layer.size;
+                let anchor_bounds = layer.anchor_bounds;
+                layer.actual_position = Self::calculate_smart_position_static(
+                    desired_position,
+                    size,
+                    anchor_bounds,
+                    screen_size,
+                );
+            }
+        }
+    }
+
+    /// Get the bounds of a layer
+    pub fn get_layer_bounds(&self, id: OverlayId) -> Option<Rect> {
+        if let Some(layer) = self.layers.iter().find(|l| l.id == id) {
+            Some(Rect::new(
+                layer.actual_position.x,
+                layer.actual_position.y,
+                layer.actual_position.x + layer.size.x,
+                layer.actual_position.y + layer.size.y,
+            ))
+        } else {
+            None
+        }
     }
 }
 

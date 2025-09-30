@@ -533,6 +533,9 @@ where
                             self.info.size =
                                 Vector2::new(new_size.width as f64, new_size.height as f64);
 
+                            // Update overlay positions for new screen size
+                            self.info.overlay_manager.update_positions_for_screen_size(self.info.size);
+
                             self.request_redraw();
 
                             self.update.insert(Update::DRAW | Update::LAYOUT);

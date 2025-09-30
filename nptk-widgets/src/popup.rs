@@ -126,6 +126,15 @@ impl Popup {
                 tooltip_content,
                 layout_node,
             ));
+            
+            // Set the position using smart positioning
+            if let Some(overlay_id) = self.overlay_id {
+                let position = self.calculate_position(None, Size::new(800.0, 600.0)); // TODO: Get actual screen size
+                let anchor_bounds = None; // TODO: Get actual anchor bounds
+                
+                info.overlay_manager.set_layer_position(overlay_id, position, anchor_bounds);
+                info.overlay_manager.set_layer_size(overlay_id, Vector2::new(200.0, 100.0));
+            }
         }
     }
 
