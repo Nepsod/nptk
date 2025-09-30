@@ -125,7 +125,7 @@ impl WidgetLayoutExt for RadioButton {
 }
 
 impl Widget for RadioButton {
-    fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout_node: &LayoutNode, info: &AppInfo, _context: AppContext) {
+    fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout_node: &LayoutNode, info: &mut AppInfo, _context: AppContext) {
         
         // Update focus state
         if let Ok(manager) = info.focus_manager.lock() {
@@ -249,7 +249,7 @@ impl Widget for RadioButton {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         // Register with focus manager

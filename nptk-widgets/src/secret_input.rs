@@ -145,7 +145,7 @@ impl SecretInput {
     }
 
     /// Calculate the actual width of text using Parley's font metrics
-    fn calculate_text_width(&self, text: &str, font_size: f32) -> f32 {
+    fn calculate_text_width(&self, text: &str, font_size: f32, info: &mut AppInfo) -> f32 {
         if text.is_empty() {
             return 0.0;
         }
@@ -161,11 +161,11 @@ impl SecretInput {
         
         // Use TextRenderContext to get accurate measurements from Parley
         // This handles all Unicode characters, emojis, and different scripts properly
-        self.text_render_context.measure_text_width(&display_text, font_size)
+        self.text_render_context.measure_text_width(&mut info.font_context, &display_text, font_size)
     }
 
     /// Calculate the X position of the cursor based on its character position.
-    fn cursor_x_position(&self, cursor_pos: usize, layout_node: &LayoutNode) -> f32 {
+    fn cursor_x_position(&self, cursor_pos: usize, layout_node: &LayoutNode, info: &mut AppInfo) -> f32 {
         let font_size = 16.0;
         let text_start_x = layout_node.layout.location.x + 8.0; // Padding
         let text = self.buffer.text();
@@ -176,13 +176,37 @@ impl SecretInput {
         
         // Calculate actual width of text up to cursor position
         let text_up_to_cursor: String = text.chars().take(cursor_pos).collect();
-        let actual_width = self.calculate_text_width(&text_up_to_cursor, font_size);
+        let actual_width = self.calculate_text_width(&text_up_to_cursor, font_size, info);
         
         text_start_x + actual_width
     }
 
+    /// Calculate cursor position from mouse coordinates (simple version without font context).
+    fn cursor_position_from_mouse_simple(&self, mouse_x: f32, layout_node: &LayoutNode) -> usize {
+        let font_size = 16.0;
+        let text_start_x = layout_node.layout.location.x + 8.0; // Padding
+        let relative_x = mouse_x - text_start_x;
+
+        if relative_x <= 0.0 {
+            return 0;
+        }
+
+        let text = self.buffer.text();
+        if text.is_empty() {
+            return 0;
+        }
+
+        // Simple character-based positioning (approximate)
+        let char_width = font_size * 0.6; // Approximate character width
+        let char_pos = (relative_x / char_width) as usize;
+        
+        // Clamp to text length
+        let text_len = text.chars().count();
+        char_pos.min(text_len)
+    }
+
     /// Calculate cursor position from mouse coordinates.
-    fn cursor_position_from_mouse(&self, mouse_x: f32, layout_node: &LayoutNode, _info: &AppInfo) -> usize {
+    fn cursor_position_from_mouse(&self, mouse_x: f32, layout_node: &LayoutNode, info: &mut AppInfo) -> usize {
         let font_size = 16.0;
         let text_start_x = layout_node.layout.location.x + 8.0; // Padding
         let relative_x = mouse_x - text_start_x;
@@ -199,7 +223,7 @@ impl SecretInput {
         
         for (i, c) in actual_text.chars().enumerate() {
             let char_text = c.to_string();
-            let char_width = self.calculate_text_width(&char_text, font_size);
+            let char_width = self.calculate_text_width(&char_text, font_size, info);
             
             if relative_x <= current_width + char_width / 2.0 {
                 return i;
@@ -310,7 +334,7 @@ impl Widget for SecretInput {
         scene: &mut Scene,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
-        info: &AppInfo,
+        info: &mut AppInfo,
         context: AppContext,
     ) {
         // Update focus state
@@ -405,8 +429,8 @@ impl Widget for SecretInput {
             };
 
             // Calculate selection bounds using the same method as cursor positioning
-            let selection_start_x = self.cursor_x_position(selection_range.start, layout_node);
-            let selection_end_x = self.cursor_x_position(selection_range.end, layout_node);
+            let selection_start_x = self.cursor_x_position(selection_range.start, layout_node, info);
+            let selection_end_x = self.cursor_x_position(selection_range.end, layout_node, info);
 
             // Only draw selection if there's actually a range (start != end)
             if selection_range.start != selection_range.end {
@@ -440,6 +464,7 @@ impl Widget for SecretInput {
             ));
             
             self.text_render_context.render_text(
+                &mut info.font_context,
                 scene,
                 &display_text,
                 None, // No specific font, use default (same as TextInput)
@@ -460,7 +485,7 @@ impl Widget for SecretInput {
 
             // Calculate cursor position using the same method as mouse positioning
             let cursor_pos = self.buffer.cursor().position;
-            let cursor_x = self.cursor_x_position(cursor_pos, layout_node);
+            let cursor_x = self.cursor_x_position(cursor_pos, layout_node, info);
 
             // Draw cursor line
             scene.stroke(
@@ -549,7 +574,7 @@ impl Widget for SecretInput {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
         let old_focus_state = self.focus_state;
 
@@ -715,7 +740,12 @@ impl Widget for SecretInput {
         }
 
         // Handle mouse selection (same logic as TextInput but with masked positioning)
-        if let Some(cursor_pos) = info.cursor_pos {
+        let cursor_pos = info.cursor_pos;
+        let button_events: Vec<_> = info.buttons.iter().collect();
+        
+        // Process mouse events in a separate scope to avoid borrowing conflicts
+        {
+            if let Some(cursor_pos) = cursor_pos {
             let in_bounds = cursor_pos.x as f32 >= layout.layout.location.x
                 && cursor_pos.x as f32 <= layout.layout.location.x + layout.layout.size.width
                 && cursor_pos.y as f32 >= layout.layout.location.y
@@ -732,7 +762,7 @@ impl Widget for SecretInput {
             }
 
             // Handle mouse button events
-            for (_, button, state) in &info.buttons {
+            for (_, button, state) in button_events {
                 if *button == nptk_core::window::MouseButton::Left {
                     match state {
                         nptk_core::window::ElementState::Pressed => {
@@ -746,7 +776,7 @@ impl Widget for SecretInput {
                                     context.set_focus(Some(self.focus_id));
                                     
                                     // Handle text area click
-                                    let click_pos = self.cursor_position_from_mouse(cursor_pos.x as f32, layout, info);
+                                    let click_pos = self.cursor_position_from_mouse_simple(cursor_pos.x as f32, layout);
                                     
                                     // Check for double-click first
                                     if self.handle_double_click(click_pos, layout) {
@@ -837,6 +867,7 @@ impl Widget for SecretInput {
                 self.toggle_button_pressed = false;
             }
         }
+        } // End of mouse handling scope
 
         // Update on focus state change
         if old_focus_state != self.focus_state {

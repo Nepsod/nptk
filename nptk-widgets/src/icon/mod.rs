@@ -51,7 +51,7 @@ impl Widget for Icon {
         scene: &mut Scene,
         _: &mut dyn Theme,
         layout_node: &LayoutNode,
-        _: &AppInfo,
+        _: &mut AppInfo,
         _: AppContext,
     ) {
         let icon = self.icon.get();
@@ -76,7 +76,7 @@ impl Widget for Icon {
         }
     }
 
-    fn update(&mut self, _: &LayoutNode, _: AppContext, _: &AppInfo) -> Update {
+    fn update(&mut self, _: &LayoutNode, _: AppContext, _: &mut AppInfo) -> Update {
         Update::empty()
     }
 

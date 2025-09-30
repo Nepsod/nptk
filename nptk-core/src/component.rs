@@ -54,7 +54,7 @@ impl<C: Component> Widget for Composed<C> {
         scene: &mut Scene,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
-        info: &AppInfo,
+        info: &mut AppInfo,
         context: AppContext,
     ) {
         if let Some(widget) = &mut self.widget {
@@ -75,7 +75,7 @@ impl<C: Component> Widget for Composed<C> {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         if let Some(widget) = &mut self.widget {
             widget.update(layout, context, info)
         } else {

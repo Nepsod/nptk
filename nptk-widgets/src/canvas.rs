@@ -38,7 +38,7 @@ impl Widget for Canvas {
         scene: &mut Scene,
         _: &mut dyn Theme,
         _: &LayoutNode,
-        info: &AppInfo,
+        info: &mut AppInfo,
         _: AppContext,
     ) {
         let mut canvas = Scene::new();
@@ -55,7 +55,7 @@ impl Widget for Canvas {
         }
     }
 
-    fn update(&mut self, _: &LayoutNode, _: AppContext, _: &AppInfo) -> Update {
+    fn update(&mut self, _: &LayoutNode, _: AppContext, _: &mut AppInfo) -> Update {
         Update::DRAW | Update::LAYOUT
     }
 

@@ -221,7 +221,7 @@ where
             self.widget
                 .as_mut()
                 .unwrap()
-                .update(&layout_node, context, &self.info),
+                .update(&layout_node, context, &mut self.info),
         );
 
         // check if app should re-evaluate layout
@@ -262,7 +262,7 @@ where
                 &mut self.scene,
                 &mut self.config.theme,
                 &layout_node,
-                &self.info,
+                &mut self.info,
                 context,
             );
 

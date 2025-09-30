@@ -4,8 +4,7 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::{MaybeSignal, Signal, state::StateSignal};
 use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Stroke, Point};
-use nptk_core::vg::peniko::{Fill, Color, Brush, Font};
-use nptk_core::vg::Glyph;
+use nptk_core::vg::peniko::{Fill, Color};
 use nptk_core::vg::Scene;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
@@ -267,17 +266,10 @@ impl TabsContainer {
     }
 
     /// Calculate text width for proper tab sizing
-    fn calculate_text_width(&self, text: &str, info: &AppInfo) -> f32 {
+    fn calculate_text_width(&self, text: &str, _info: &AppInfo) -> f32 {
         let _font_size = 14.0;
-        let font = info.font_context.default_font();
-        
-        let _peniko_font = {
-            if let Some(font) = font {
-                Font::new(font.blob.clone(), font.index)
-            } else {
-                return 0.0; // No font available
-            }
-        };
+        // Use approximate character width for text measurement
+        // TODO: Implement proper text measurement when needed
         
         // TODO: Fix the FileRef lifetime issue
         // let location = font_ref.axes().location::<&[VariationSetting; 0]>(&[]);
@@ -299,49 +291,18 @@ impl TabsContainer {
     }
 
     /// Render text on a tab
-    fn render_text(&self, scene: &mut Scene, text: &str, x: f64, y: f64, color: Color, info: &AppInfo) {
-        let font_size = 14.0;
-        
-        let font = info.font_context.default_font();
-        
-        let peniko_font = {
-            if let Some(font) = font {
-                Font::new(font.blob.clone(), font.index)
-            } else {
-                return; // No font available
-            }
-        };
+    fn render_text(&self, _scene: &mut Scene, _text: &str, _x: f64, _y: f64, _color: Color, _info: &AppInfo) {
+        let _font_size = 14.0;
+        // Use approximate character width for text measurement
+        // TODO: Implement proper text measurement when needed
         
         // TODO: Fix the FileRef lifetime issue
         // let location = font_ref.axes().location::<&[VariationSetting; 0]>(&[]);
         // let glyph_metrics = font_ref.glyph_metrics(Size::new(font_size), &location);
         // let charmap = font_ref.charmap();
 
-        // Use simple text rendering with peniko font
-        // TODO: Implement proper glyph-based text rendering with kerning
-        let pen_x = x as f32;
-        let pen_y = y as f32 + font_size;
-
-        // Simple text rendering - just draw the text as a string
-        // This is a temporary solution until we can properly implement glyph-based rendering
-        scene
-            .draw_glyphs(&peniko_font)
-            .font_size(font_size)
-            .brush(&Brush::Solid(color))
-            .draw(
-                &nptk_core::vg::peniko::Style::Fill(Fill::NonZero),
-                text.chars().enumerate().map(|(i, _c)| {
-                    // Simple positioning - each character gets equal width
-                    let char_width = font_size * 0.6; // Rough approximation
-                    let x = pen_x + (i as f32 * char_width);
-                    
-                    Glyph {
-                        id: 0, // Placeholder - would need proper glyph ID mapping
-                        x,
-                        y: pen_y,
-                    }
-                }),
-            );
+        // TODO: Implement proper text rendering
+        // For now, text rendering is handled by the TextRenderContext
     }
 }
 
@@ -351,7 +312,7 @@ impl Widget for TabsContainer {
         scene: &mut Scene,
         theme: &mut dyn Theme,
         layout: &LayoutNode,
-        _info: &AppInfo,
+        _info: &mut AppInfo,
         _context: AppContext,
     ) {
         let widget_theme = theme.of(self.widget_id());
@@ -561,7 +522,7 @@ impl Widget for TabsContainer {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         // Update mouse position

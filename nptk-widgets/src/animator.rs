@@ -37,7 +37,7 @@ impl<W: Widget, A: Fn(&mut W, f32) -> Update> Widget for Animator<W, A> {
         scene: &mut Scene,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
-        info: &AppInfo,
+        info: &mut AppInfo,
         context: AppContext,
     ) {
         self.widget.render(scene, theme, layout_node, info, context);
@@ -47,7 +47,7 @@ impl<W: Widget, A: Fn(&mut W, f32) -> Update> Widget for Animator<W, A> {
         self.widget.layout_style()
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let elapsed = self.start.elapsed();
 
         let mut update = self.widget.update(layout, context, info);

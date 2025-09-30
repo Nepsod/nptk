@@ -79,7 +79,7 @@ impl Widget for Button {
         scene: &mut Scene,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
-        info: &AppInfo,
+        info: &mut AppInfo,
         context: AppContext,
     ) {
         // Update focus state from focus manager
@@ -182,7 +182,7 @@ impl Widget for Button {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
         let old_state = self.state;
         let old_focus_state = self.focus_state;

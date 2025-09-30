@@ -86,7 +86,7 @@ impl Widget for Text {
         scene: &mut Scene,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
-        _info: &AppInfo,
+        info: &mut AppInfo,
         _: AppContext,
     ) {
         let font_size = *self.font_size.get();
@@ -102,6 +102,9 @@ impl Widget for Text {
         } else {
             theme.defaults().text().foreground()
         };
+        
+        log::debug!("Text widget rendering: '{}' with color: {:?} at position: ({}, {})", 
+                   *text, color, layout_node.layout.location.x, layout_node.layout.location.y);
 
         // Use TextRenderContext for proper text rendering
         let transform = nptk_core::vg::kurbo::Affine::translate((
@@ -110,6 +113,7 @@ impl Widget for Text {
         ));
         
         self.text_render_context.render_text(
+            &mut info.font_context,
             scene,
             text.as_ref(),
             None, // No specific font, use default
@@ -145,7 +149,7 @@ impl Widget for Text {
         }
     }
 
-    fn update(&mut self, _: &LayoutNode, _: AppContext, _: &AppInfo) -> Update {
+    fn update(&mut self, _: &LayoutNode, _: AppContext, _: &mut AppInfo) -> Update {
         Update::empty()
     }
 

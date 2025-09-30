@@ -65,7 +65,7 @@ impl<T: Send + 'static, W: Widget, F: Fn(Option<T>) -> W> Widget for WidgetFetch
         scene: &mut Scene,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
-        info: &AppInfo,
+        info: &mut AppInfo,
         context: AppContext,
     ) {
         if let Some(widget) = &mut self.widget {
@@ -84,7 +84,7 @@ impl<T: Send + 'static, W: Widget, F: Fn(Option<T>) -> W> Widget for WidgetFetch
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         if let Some(result) = self.result.lock().expect("failed to lock result").take() {

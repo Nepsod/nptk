@@ -52,7 +52,7 @@ impl Widget for Container {
         scene: &mut Scene,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
-        info: &AppInfo,
+        info: &mut AppInfo,
         context: AppContext,
     ) {
         for (i, child) in self.children.iter_mut().enumerate() {
@@ -78,7 +78,7 @@ impl Widget for Container {
         StyleNode { style, children }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         for (i, child) in self.children.iter_mut().enumerate() {

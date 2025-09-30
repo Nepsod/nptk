@@ -19,7 +19,7 @@ pub trait Widget {
         scene: &mut Scene,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
-        info: &AppInfo,
+        info: &mut AppInfo,
         context: AppContext,
     );
 
@@ -27,7 +27,7 @@ pub trait Widget {
     fn layout_style(&self) -> StyleNode;
 
     /// Update the widget state with given info and layout. Returns if the app should be updated.
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &AppInfo) -> Update;
+    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update;
 
     /// Return the widget id.
     fn widget_id(&self) -> WidgetId;

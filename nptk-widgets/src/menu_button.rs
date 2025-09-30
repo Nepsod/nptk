@@ -175,7 +175,7 @@ impl MenuButton {
         )
     }
 
-    fn render_text(text_render_context: &mut TextRenderContext, scene: &mut Scene, text: &str, x: f64, y: f64, color: Color) {
+    fn render_text(text_render_context: &mut TextRenderContext, font_cx: &mut nptk_core::app::font_ctx::FontContext, scene: &mut Scene, text: &str, x: f64, y: f64, color: Color) {
         let font_size = 14.0;
         
         if text.is_empty() {
@@ -185,6 +185,7 @@ impl MenuButton {
         let transform = Affine::translate((x, y));
         
         text_render_context.render_text(
+            font_cx,
             scene,
             text,
             None, // No specific font, use default
@@ -214,7 +215,7 @@ impl Widget for MenuButton {
         scene: &mut Scene,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
-        info: &AppInfo,
+        info: &mut AppInfo,
         context: AppContext,
     ) {
         // Update focus state from focus manager
@@ -397,13 +398,13 @@ impl Widget for MenuButton {
                 if item.label != "---" { // Skip separators
                     let text_x = item_rect.x0 + 8.0;
                     let text_y = item_rect.y0 + 2.0;
-                    Self::render_text(&mut self.text_render_context, scene, &item.label, text_x, text_y, item_text_color);
+                    Self::render_text(&mut self.text_render_context, &mut info.font_context, scene, &item.label, text_x, text_y, item_text_color);
                     
                     // Draw keyboard shortcut if present
                     if let Some(ref shortcut) = item.shortcut {
                         let shortcut_x = item_rect.x1 - 60.0; // Right-aligned
                         let shortcut_color = Color::from_rgb8(120, 120, 120); // Dimmed color
-                        Self::render_text(&mut self.text_render_context, scene, shortcut, shortcut_x, text_y, shortcut_color);
+                        Self::render_text(&mut self.text_render_context, &mut info.font_context, scene, shortcut, shortcut_x, text_y, shortcut_color);
                     }
                 } else {
                     // Draw separator line
@@ -431,7 +432,7 @@ impl Widget for MenuButton {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
         let old_state = self.state;
         let old_focus_state = self.focus_state;

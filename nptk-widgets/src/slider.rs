@@ -72,7 +72,7 @@ impl Widget for Slider {
         scene: &mut Scene,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
-        _: &AppInfo,
+        _: &mut AppInfo,
         _: AppContext,
     ) {
         let value = *self.value.get();
@@ -129,7 +129,7 @@ impl Widget for Slider {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, _: AppContext, info: &AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, _: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         if let Some(cursor) = info.cursor_pos {

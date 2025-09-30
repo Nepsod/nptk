@@ -50,7 +50,7 @@ impl Widget for Image {
         scene: &mut Scene,
         _: &mut dyn Theme,
         layout_node: &LayoutNode,
-        _: &AppInfo,
+        _: &mut AppInfo,
         _: AppContext,
     ) {
         let image = self.image.get();
@@ -71,7 +71,7 @@ impl Widget for Image {
         }
     }
 
-    fn update(&mut self, _: &LayoutNode, _: AppContext, _: &AppInfo) -> Update {
+    fn update(&mut self, _: &LayoutNode, _: AppContext, _: &mut AppInfo) -> Update {
         Update::empty()
     }
 

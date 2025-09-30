@@ -1,7 +1,7 @@
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{LayoutNode, LayoutStyle, Dimension, StyleNode, LengthPercentageAuto, LengthPercentage};
+use nptk_core::layout::{LayoutNode, LayoutStyle, Dimension, StyleNode, LengthPercentage};
 use nptk_core::signal::{MaybeSignal, Signal, state::StateSignal};
 use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Stroke, Point, BezPath};
 use nptk_core::vg::peniko::{Fill, Color, Mix};
@@ -569,7 +569,7 @@ impl Widget for ScrollContainer {
         self.widget_id()
     }
 
-    fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout: &LayoutNode, _info: &AppInfo, context: AppContext) -> () {
+    fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout: &LayoutNode, _info: &mut AppInfo, context: AppContext) -> () {
         let widget_theme = theme.of(self.widget_id());
         let widget_theme_ref = widget_theme.as_ref();
 
@@ -587,15 +587,15 @@ impl Widget for ScrollContainer {
             (layout.layout.location.y + layout.layout.size.height) as f64,
         );
 
-        let bg_color = if let Some(style) = widget_theme_ref {
+        let _bg_color = if let Some(style) = widget_theme_ref {
             style.get_color("color_background").unwrap_or(Color::WHITE)
         } else {
             Color::WHITE
         };
 
         // Calculate content area (excluding scrollbars)
-        let content_width = layout.layout.size.width - if self.needs_vertical_scrollbar() { self.scrollbar_width } else { 0.0 };
-        let content_height = layout.layout.size.height - if self.needs_horizontal_scrollbar() { self.scrollbar_width } else { 0.0 };
+        let _content_width = layout.layout.size.width - if self.needs_vertical_scrollbar() { self.scrollbar_width } else { 0.0 };
+        let _content_height = layout.layout.size.height - if self.needs_horizontal_scrollbar() { self.scrollbar_width } else { 0.0 };
         
         // Define content clipping rectangle
         let content_rect = Rect::new(
@@ -672,7 +672,7 @@ impl Widget for ScrollContainer {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         // Update child

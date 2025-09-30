@@ -2,8 +2,8 @@
 
 //! Text rendering using Parley for proper text layout and glyph mapping
 
-use parley::{FontContext, LayoutContext, StyleProperty, Alignment, Layout};
-use parley::fontique::{Collection, CollectionOptions};
+use parley::{LayoutContext, StyleProperty, Alignment, Layout};
+use crate::app::font_ctx::FontContext;
 use vello::Scene;
 use vello::kurbo::Affine;
 use vello::peniko::{Brush, Fill};
@@ -13,27 +13,15 @@ use fontique::QueryFont;
 #[derive(Clone, PartialEq, Default, Debug)]
 pub struct BrushIndex(pub usize);
 
-/// Text rendering context that manages font and layout contexts
+/// Text rendering context that manages layout contexts
 pub struct TextRenderContext {
-    font_cx: FontContext,
     layout_cx: LayoutContext,
 }
 
 impl TextRenderContext {
     /// Create a new text rendering context
     pub fn new() -> Self {
-        // Create FontContext with system fonts loaded
-        let font_cx = FontContext {
-            collection: Collection::new(CollectionOptions {
-                system_fonts: true,
-                ..Default::default()
-            }),
-            source_cache: Default::default(),
-        };
-        
-        
         Self {
-            font_cx,
             layout_cx: LayoutContext::new(),
         }
     }
@@ -41,6 +29,7 @@ impl TextRenderContext {
     /// Render text using Parley for proper layout and glyph mapping
     pub fn render_text(
         &mut self,
+        font_cx: &mut FontContext,
         scene: &mut Scene,
         text: &str,
         font: Option<QueryFont>,
@@ -53,15 +42,19 @@ impl TextRenderContext {
             return;
         }
 
+        log::debug!("TextRenderContext::render_text called with text: '{}'", text);
+
         // Try Parley first, but fall back to simple rendering if it fails
-        if let Err(_e) = self.try_render_with_parley(scene, text, font.clone(), font_size, color.clone(), transform, hint) {
-            self.render_simple_fallback(scene, text, font, font_size, color, transform);
+        if let Err(_e) = self.try_render_with_parley(font_cx, scene, text, font.clone(), font_size, color.clone(), transform, hint) {
+            log::debug!("Parley rendering failed, using simple fallback");
+            self.render_simple_fallback(font_cx, scene, text, font, font_size, color, transform);
         }
     }
 
     /// Try to render with Parley
     fn try_render_with_parley(
         &mut self,
+        _font_cx: &mut FontContext,
         scene: &mut Scene,
         text: &str,
         _font: Option<QueryFont>,
@@ -70,9 +63,13 @@ impl TextRenderContext {
         transform: Affine,
         hint: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // Create a text layout using Parley
+        log::debug!("Rendering text: '{}' with font size: {}", text, font_size);
+        
+        
+        // Use our existing font context but ensure it has system fonts loaded
         let display_scale = 1.0;
-        let mut builder = self.layout_cx.ranged_builder(&mut self.font_cx, text, display_scale, true);
+        let mut parley_font_cx = _font_cx.create_parley_font_context();
+        let mut builder = self.layout_cx.ranged_builder(&mut parley_font_cx, text, display_scale, true);
         
         // Set font size
         builder.push_default(StyleProperty::FontSize(font_size));
@@ -83,7 +80,6 @@ impl TextRenderContext {
         layout.break_all_lines(None);
         layout.align(None, Alignment::Start, Default::default());
         
-        
         // Create brushes array
         let brushes = vec![color];
         
@@ -93,15 +89,17 @@ impl TextRenderContext {
         Ok(())
     }
 
+
     /// Simple fallback rendering method
     fn render_simple_fallback(
         &self,
-        scene: &mut Scene,
+        _font_cx: &mut FontContext,
+        _scene: &mut Scene,
         text: &str,
         _font: Option<QueryFont>,
-        font_size: f32,
-        color: Brush,
-        transform: Affine,
+        _font_size: f32,
+        _color: Brush,
+        _transform: Affine,
     ) {
         
         // Use system fonts for fallback rendering
@@ -119,7 +117,7 @@ impl TextRenderContext {
         transform: Affine,
         hint: bool,
     ) {
-        let mut total_glyphs = 0;
+        let _total_glyphs = 0;
         for line in layout.lines() {
             for item in line.items() {
                 let parley::PositionedLayoutItem::GlyphRun(glyph_run) = item else {
@@ -141,7 +139,7 @@ impl TextRenderContext {
                 let brush = &brushes[0];
                 
                 let glyphs: Vec<_> = glyph_run.glyphs().collect();
-                total_glyphs += glyphs.len();
+                let _glyph_count = glyphs.len();
                 
                 
                 if !glyphs.is_empty() {
@@ -172,23 +170,16 @@ impl TextRenderContext {
     }
 
     /// Measure the width of text using Parley's layout system
-    pub fn measure_text_width(&self, text: &str, font_size: f32) -> f32 {
+    pub fn measure_text_width(&self, font_cx: &mut FontContext, text: &str, font_size: f32) -> f32 {
         if text.is_empty() {
             return 0.0;
         }
         
-        // Create a temporary layout context for measurement
-        let mut temp_layout_cx = LayoutContext::<[u8; 4]>::new();
-        
-        // Create a temporary font context for measurement
-        let mut temp_font_cx = FontContext {
-            collection: self.font_cx.collection.clone(),
-            source_cache: Default::default(),
-        };
-        
         // Create a text layout using Parley to get accurate measurements
         let display_scale = 1.0;
-        let mut builder = temp_layout_cx.ranged_builder(&mut temp_font_cx, text, display_scale, true);
+        let mut parley_font_cx = font_cx.create_parley_font_context();
+        let mut temp_layout_cx = LayoutContext::<[u8; 4]>::new();
+        let mut builder = temp_layout_cx.ranged_builder(&mut parley_font_cx, text, display_scale, true);
         
         // Set font size
         builder.push_default(StyleProperty::FontSize(font_size));

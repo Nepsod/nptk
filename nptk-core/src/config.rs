@@ -122,6 +122,7 @@ pub struct RenderConfig {
     pub device_selector: fn(&Vec<DeviceHandle>) -> &DeviceHandle,
     /// If true, defer system font loading to improve startup performance.
     /// Fonts will be loaded lazily when needed.
+    /// Note: Lazy loading may cause text rendering issues if fonts aren't loaded properly.
     pub lazy_font_loading: bool,
 }
 
@@ -133,7 +134,7 @@ impl Default for RenderConfig {
             present_mode: PresentMode::AutoNoVsync,
             init_threads: None,
             device_selector: |devices| devices.first().expect("No devices found"),
-            lazy_font_loading: true,
+            lazy_font_loading: false,
         }
     }
 }

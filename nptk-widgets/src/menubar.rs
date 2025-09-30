@@ -233,7 +233,7 @@ impl MenuBar {
         )
     }
 
-    fn render_text(text_render_context: &mut TextRenderContext, scene: &mut Scene, text: &str, x: f64, y: f64, color: Color) {
+    fn render_text(text_render_context: &mut TextRenderContext, font_cx: &mut nptk_core::app::font_ctx::FontContext, scene: &mut Scene, text: &str, x: f64, y: f64, color: Color) {
         let font_size = 14.0;
         
         if text.is_empty() {
@@ -243,6 +243,7 @@ impl MenuBar {
         let transform = Affine::translate((x, y));
         
         text_render_context.render_text(
+            font_cx,
             scene,
             text,
             None, // No specific font, use default
@@ -265,7 +266,7 @@ impl Widget for MenuBar {
         self.widget_id()
     }
 
-    fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout: &LayoutNode, _info: &AppInfo, _context: AppContext) -> () {
+    fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout: &LayoutNode, info: &mut AppInfo, _context: AppContext) -> () {
         // Don't render if not visible
         if !self.is_visible() {
             return;
@@ -354,7 +355,7 @@ impl Widget for MenuBar {
             // Draw item text centered in the item bounds
             let text_x = item_bounds.x0 + 6.0; // Small left padding
             let text_y = item_bounds.y0 + 2.0; // Adjust for proper baseline
-            Self::render_text(&mut self.text_render_context, scene, &item.label, text_x, text_y, item_text_color);
+            Self::render_text(&mut self.text_render_context, &mut info.font_context, scene, &item.label, text_x, text_y, item_text_color);
 
             // Draw submenu indicator below the text if item has submenu
             if item.has_submenu() {
@@ -454,13 +455,13 @@ impl Widget for MenuBar {
                         if submenu_item.label != "---" { // Skip separators
                             let submenu_text_x = item_rect.x0 + 8.0;
                             let submenu_text_y = item_rect.y0 + 2.0;
-                            Self::render_text(&mut self.text_render_context, scene, &submenu_item.label, submenu_text_x, submenu_text_y, submenu_text_color);
+                            Self::render_text(&mut self.text_render_context, &mut info.font_context, scene, &submenu_item.label, submenu_text_x, submenu_text_y, submenu_text_color);
                             
                             // Draw keyboard shortcut if present
                             if let Some(ref shortcut) = submenu_item.shortcut {
                                 let shortcut_x = item_rect.x1 - 60.0; // Right-aligned
                                 let shortcut_color = Color::from_rgb8(120, 120, 120); // Dimmed color
-                                Self::render_text(&mut self.text_render_context, scene, shortcut, shortcut_x, submenu_text_y, shortcut_color);
+                                Self::render_text(&mut self.text_render_context, &mut info.font_context, scene, shortcut, shortcut_x, submenu_text_y, shortcut_color);
                             }
                         } else {
                             // Draw separator line
@@ -483,7 +484,7 @@ impl Widget for MenuBar {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         // Don't process events if not visible

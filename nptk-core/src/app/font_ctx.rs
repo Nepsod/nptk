@@ -1,9 +1,5 @@
-use fontique::{
-    Collection, CollectionOptions, QueryFamily, QueryFont, SourceCache,
-    FontStyle, FontWeight, FontWidth, Attributes, Blob
-};
+use fontique::{Blob, Collection, CollectionOptions, QueryFamily, QueryFont, SourceCache};
 use peniko::Font;
-use read_fonts::{FontRef, TableProvider};
 use std::sync::{Arc, RwLock};
 
 /// A font manager for nptk applications, powered by `fontique` with system font support.
@@ -15,7 +11,6 @@ use std::sync::{Arc, RwLock};
 pub struct FontContext {
     collection: Arc<RwLock<Collection>>,
     source_cache: Arc<RwLock<SourceCache>>,
-    fallback_list: Arc<RwLock<Vec<String>>>,
 }
 
 impl FontContext {
@@ -30,7 +25,6 @@ impl FontContext {
                 ..Default::default()
             }))),
             source_cache: Arc::new(RwLock::new(SourceCache::new(Default::default()))),
-            fallback_list: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
@@ -40,120 +34,39 @@ impl FontContext {
     /// fontique's built-in fontconfig backend (on Linux). Use this only when you
     /// need immediate access to all system fonts.
     pub fn new_with_system_fonts() -> Self {
-        Self {
+        let context = Self {
             collection: Arc::new(RwLock::new(Collection::new(CollectionOptions {
                 system_fonts: true,
                 ..Default::default()
             }))),
             source_cache: Arc::new(RwLock::new(SourceCache::new(Default::default()))),
-            fallback_list: Arc::new(RwLock::new(Vec::new())),
-        }
-    }
-
-
-    /// Get a reference to the underlying `fontique` collection.
-    /// 
-    /// Note: This returns a read lock guard, so the caller must handle the lock properly.
-    pub fn collection(&self) -> std::sync::RwLockReadGuard<'_, Collection> {
-        self.collection.read().unwrap()
-    }
-
-    /// Selects the best font that matches the query.
-    pub fn select_best<'a>(
-        &mut self,
-        families: impl IntoIterator<Item = QueryFamily<'a>>,
-        style: FontStyle,
-        weight: FontWeight,
-        stretch: FontWidth,
-    ) -> Option<QueryFont> {
-        let mut collection = self.collection.write().unwrap();
-        let mut source_cache = self.source_cache.write().unwrap();
-        
-        let mut fontique_query = collection.query(&mut source_cache);
-        fontique_query.set_families(families);
-        let attributes = Attributes {
-            style,
-            weight,
-            width: stretch,
         };
-        fontique_query.set_attributes(attributes);
         
-        let mut result = None;
-        fontique_query.matches_with(|font| {
-            result = Some(font.clone());
-            fontique::QueryStatus::Stop
-        });
+        // Trigger font discovery immediately
+        {
+            let mut collection = context.collection.write().unwrap();
+            let mut source_cache = context.source_cache.write().unwrap();
+            let _ = collection.query(&mut source_cache); // This triggers font discovery
+            log::debug!("FontContext::new_with_system_fonts() loaded {} font families", collection.family_names().count());
+        }
         
-        if result.is_some() {
-            result
-        } else {
-            log::warn!("No suitable font found for query");
-            None
+        
+        context
+    }
+
+
+    /// Create a parley FontContext from our fontique collection
+    /// This bridges our custom font management with Parley's text layout engine
+    pub fn create_parley_font_context(&self) -> parley::FontContext {
+        let collection = self.collection.read().unwrap();
+        let source_cache = self.source_cache.read().unwrap();
+        
+        parley::FontContext {
+            collection: collection.clone(),
+            source_cache: source_cache.clone(),
         }
     }
 
-    /// Selects the best font for a specific character, using the fallback list if necessary.
-    pub fn select_for_char(&mut self, ch: char) -> Option<QueryFont> {
-        let mut collection = self.collection.write().unwrap();
-        let mut source_cache = self.source_cache.write().unwrap();
-        
-        // Helper closure to find a font that supports the character.
-        let find_font_for_char = |query: &mut fontique::Query, c: char| -> Option<QueryFont> {
-            let mut result = None;
-            query.matches_with(|font| {
-                if let Ok(file) = FontRef::new(font.blob.data()) {
-                    if let Ok(cmap) = file.cmap() {
-                        if cmap.map_codepoint(c).is_some() {
-                            result = Some(font.clone());
-                            return fontique::QueryStatus::Stop;
-                        }
-                    }
-                }
-                fontique::QueryStatus::Continue
-            });
-            result
-        };
-
-        let mut query = collection.query(&mut source_cache);
-
-        // 1. Try a comprehensive list of generic families.
-        query.set_families([
-            QueryFamily::Generic(fontique::GenericFamily::SansSerif),
-            QueryFamily::Generic(fontique::GenericFamily::Serif),
-            QueryFamily::Generic(fontique::GenericFamily::Monospace),
-            QueryFamily::Generic(fontique::GenericFamily::Cursive),
-            QueryFamily::Generic(fontique::GenericFamily::Fantasy),
-            // "SystemUi" can be a good catch-all for UI symbols.
-            QueryFamily::Generic(fontique::GenericFamily::SystemUi),
-        ]);
-        if let Some(font) = find_font_for_char(&mut query, ch) {
-            return Some(font);
-        }
-
-        // 2. If no font is found, try the user-defined fallback list.
-        let fallback_list = self.fallback_list.read().unwrap();
-        if !fallback_list.is_empty() {
-            let families = fallback_list.iter().map(|name| QueryFamily::Named(name));
-            query.set_families(families);
-            if let Some(font) = find_font_for_char(&mut query, ch) {
-                return Some(font);
-            }
-        }
-
-        // 3. As a last resort, clear the families to search everything.
-        query.set_families(std::iter::empty::<QueryFamily>());
-        if let Some(font) = find_font_for_char(&mut query, ch) {
-            return Some(font);
-        }
-        
-        log::warn!("No suitable font found for character '{}'", ch);
-        None
-    }
-
-    /// Get a font family by name.
-    pub fn get_family<'a>(&self, name: &'a str) -> Option<QueryFamily<'a>> {
-        Some(QueryFamily::Named(name))
-    }
 
     /// Load a font into the collection.
     pub fn load(&mut self, name: impl ToString, font: Font) {

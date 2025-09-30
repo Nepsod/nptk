@@ -84,7 +84,7 @@ impl Widget for GestureDetector {
         scene: &mut Scene,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
-        info: &AppInfo,
+        info: &mut AppInfo,
         context: AppContext,
     ) {
         self.child.render(scene, theme, layout_node, info, context)
@@ -94,7 +94,7 @@ impl Widget for GestureDetector {
         self.child.layout_style()
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         if let Some(cursor) = info.cursor_pos {
