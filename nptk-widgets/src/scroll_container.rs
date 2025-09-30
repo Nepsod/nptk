@@ -15,7 +15,9 @@ use nalgebra::Vector2;
 /// Vertical scrollbar position
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VerticalScrollbarPosition {
+    /// Position scrollbar on the left side
     Left,
+    /// Position scrollbar on the right side
     Right,
 }
 
@@ -28,7 +30,9 @@ impl Default for VerticalScrollbarPosition {
 /// Scrollbar buttons visibility
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScrollbarButtons {
+    /// Always show scrollbar buttons
     Always,
+    /// Never show scrollbar buttons
     Never,
 }
 
@@ -87,7 +91,7 @@ pub struct ScrollContainer {
     // Scroll state - make this reactive with MaybeSignal
     scroll_offset: StateSignal<Vector2<f32>>,
     // Last known scroll offset to detect changes in update()
-    last_scroll_offset: Vector2<f32>,
+    _last_scroll_offset: Vector2<f32>,
     content_size: Vector2<f32>,
     viewport_size: Vector2<f32>,
     
@@ -142,7 +146,7 @@ impl ScrollContainer {
             scrollbar_buttons: ScrollbarButtons::default(),
             button_size: 16.0,
             scroll_offset: StateSignal::new(Vector2::new(0.0, 0.0)),
-            last_scroll_offset: Vector2::new(0.0, 0.0),
+            _last_scroll_offset: Vector2::new(0.0, 0.0),
             content_size: Vector2::new(0.0, 0.0),
             viewport_size: Vector2::new(0.0, 0.0),
             dragging_vertical: false,

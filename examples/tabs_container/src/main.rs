@@ -1,11 +1,10 @@
 use nptk_core::{
     app::{context::AppContext, update::Update, Application},
-    layout::{Dimension, LayoutStyle, FlexDirection, LengthPercentage},
-    widget::{Widget, WidgetChildrenExt, WidgetLayoutExt},
+    layout::{Dimension, LayoutStyle},
+    widget::{Widget, WidgetLayoutExt},
 };
 use nptk_theme::theme::celeste::CelesteTheme;
 use nptk_widgets::{
-    container::Container,
     tabs_container::{TabItem, TabsContainer, TabPosition},
     text::Text,
 };

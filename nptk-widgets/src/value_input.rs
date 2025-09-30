@@ -213,7 +213,7 @@ impl ValueInput {
     }
 
     /// Calculate cursor position from mouse coordinates.
-    fn cursor_position_from_mouse(&self, mouse_x: f64, widget_left: f64, font_ctx: &FontContext) -> usize {
+    fn cursor_position_from_mouse(&self, mouse_x: f64, widget_left: f64, _font_ctx: &FontContext) -> usize {
         let text = self.buffer.text();
         if text.is_empty() {
             return 0;
@@ -412,7 +412,7 @@ impl Widget for ValueInput {
 
         if !display_text.is_empty() {
             // Determine text color (placeholder vs regular text)
-            let display_color = if self.buffer.text().is_empty() {
+            let _display_color = if self.buffer.text().is_empty() {
                 if let Some(style) = theme.of(self.widget_id()) {
                     style.get_color("color_placeholder").unwrap_or(Color::from_rgb8(150, 150, 150))
                 } else {

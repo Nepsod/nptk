@@ -152,39 +152,6 @@ impl TextInput {
         char_pos.min(text_len)
     }
 
-    /// Calculate cursor position from mouse coordinates.
-    fn cursor_position_from_mouse(&self, mouse_x: f32, layout_node: &LayoutNode, info: &mut AppInfo) -> usize {
-        let font_size = 16.0;
-        let text_start_x = layout_node.layout.location.x + 8.0; // Padding
-        let relative_x = mouse_x - text_start_x;
-
-        if relative_x <= 0.0 {
-            return 0;
-        }
-
-        let text = self.buffer.text();
-        if text.is_empty() {
-            return 0;
-        }
-
-        // Find the character position by calculating cumulative text widths
-        let mut current_width = 0.0;
-        let mut char_position = 0;
-        
-        for (i, c) in text.chars().enumerate() {
-            let char_text = c.to_string();
-            let char_width = self.calculate_text_width(&char_text, font_size, info);
-            
-            if relative_x <= current_width + char_width / 2.0 {
-                return i;
-            }
-            
-            current_width += char_width;
-            char_position = i + 1;
-        }
-        
-        char_position
-    }
 
     /// Find word boundaries around a given position.
     fn find_word_boundaries(&self, pos: usize) -> (usize, usize) {

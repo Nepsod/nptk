@@ -265,30 +265,6 @@ impl TabsContainer {
         )
     }
 
-    /// Calculate text width for proper tab sizing
-    fn calculate_text_width(&self, text: &str, _info: &AppInfo) -> f32 {
-        let _font_size = 14.0;
-        // Use approximate character width for text measurement
-        // TODO: Implement proper text measurement when needed
-        
-        // TODO: Fix the FileRef lifetime issue
-        // let location = font_ref.axes().location::<&[VariationSetting; 0]>(&[]);
-        // let glyph_metrics = font_ref.glyph_metrics(Size::new(font_size), &location);
-        // let charmap = font_ref.charmap();
-
-        // TODO: Fix the FileRef lifetime issue
-        // let mut width = 0.0;
-        // for c in text.chars() {
-        //     let gid = charmap.map(c).unwrap_or_default();
-        //     let advance = glyph_metrics.advance_width(gid).unwrap_or_default();
-        //     width += advance;
-        // }
-        // 
-        // width + 20.0 // Add padding
-        
-        // For now, just return a simple approximation
-        (text.len() as f32 * 8.0) + 20.0 // Approximate character width + padding
-    }
 
     /// Render text on a tab
     fn render_text(&self, _scene: &mut Scene, _text: &str, _x: f64, _y: f64, _color: Color, _info: &AppInfo) {

@@ -3,8 +3,8 @@ use nptk_core::app::update::Update;
 use nptk_core::app::Application;
 use nptk_core::config::MayConfig;
 use nptk_core::layout::{LayoutStyle, LengthPercentage, Dimension, FlexDirection, AlignItems};
-use nptk_core::signal::{Signal, state::StateSignal};
-use nptk_core::widget::{Widget, WidgetLayoutExt, WidgetChildrenExt};
+use nptk_core::signal::state::StateSignal;
+use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::theme::celeste::CelesteTheme;
 use nptk_widgets::container::Container;
 use nptk_widgets::text::Text;
@@ -22,7 +22,7 @@ impl Application for MenuBarApp {
     }
 
     fn build(_context: AppContext, _config: Self::State) -> impl Widget {
-        let status_text = StateSignal::new("Welcome! Use the menu bar above.".to_string());
+        let _status_text = StateSignal::new("Welcome! Use the menu bar above.".to_string());
 
         // Create comprehensive menu items
         let file_menu = MenuBarItem::new("file", "File")

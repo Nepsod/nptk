@@ -23,11 +23,17 @@ use nptk_theme::theme::Theme;
 /// Represents a menu item in the menu bar
 #[derive(Clone)]
 pub struct MenuBarItem {
+    /// Unique identifier for the menu item
     pub id: String,
+    /// Display text for the menu item
     pub label: String,
+    /// Optional keyboard shortcut text (e.g., "Ctrl+N")
     pub shortcut: Option<String>,
+    /// Whether the menu item is enabled/clickable
     pub enabled: bool,
+    /// Child menu items for submenus
     pub submenu: Vec<MenuBarItem>,
+    /// Callback function to execute when the menu item is activated
     pub on_activate: Option<Arc<dyn Fn() -> Update + Send + Sync>>,
 }
 
