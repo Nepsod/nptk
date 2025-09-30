@@ -59,6 +59,8 @@ pub struct OverlayLayer {
     pub layout_node: LayoutNode,
     /// Whether this layer is currently visible
     pub is_visible: bool,
+    /// Whether clicking outside this overlay should close it
+    pub click_outside_to_close: bool,
 }
 
 /// Information about a separate render context overlay
@@ -129,6 +131,7 @@ impl OverlayManager {
             content,
             layout_node,
             is_visible: true,
+            click_outside_to_close: true, // Default to true for most overlays
         };
         
         let index = self.layers.len();
@@ -334,6 +337,118 @@ impl OverlayManager {
         }
         
         highest
+    }
+
+    /// Handle mouse click events for click-outside detection
+    pub fn handle_mouse_click(&mut self, _x: f64, _y: f64) -> bool {
+        // If there's a modal overlay, don't process click-outside detection
+        // Modals should handle their own click events
+        if self.has_modal_overlay() {
+            return true; // Modal is handling the event
+        }
+        
+        let mut overlays_to_close = Vec::new();
+        
+        // Check all visible overlays for click-outside detection
+        for layer in &self.layers {
+            if layer.is_visible && layer.click_outside_to_close {
+                // For now, we'll assume all overlays should close on outside click
+                // TODO: Implement proper bounds checking when we have actual overlay bounds
+                overlays_to_close.push(layer.id);
+            }
+        }
+        
+        for context in &self.contexts {
+            if context.is_visible && context.click_outside_to_close {
+                // For now, we'll assume all overlays should close on outside click
+                // TODO: Implement proper bounds checking when we have actual overlay bounds
+                overlays_to_close.push(context.id);
+            }
+        }
+        
+        // Close overlays that should close on outside click
+        let mut any_closed = false;
+        for overlay_id in overlays_to_close {
+            if self.remove_overlay(overlay_id) {
+                any_closed = true;
+            }
+        }
+        
+        any_closed
+    }
+
+    /// Check if a point is inside any visible overlay
+    pub fn is_point_inside_overlay(&self, _x: f64, _y: f64) -> bool {
+        // TODO: Implement proper bounds checking when we have actual overlay bounds
+        // For now, return false to allow all clicks to be considered "outside"
+        false
+    }
+
+    /// Set click-outside-to-close behavior for a layer
+    pub fn set_layer_click_outside_to_close(&mut self, id: OverlayId, enabled: bool) -> bool {
+        if let Some(layer) = self.get_layer_mut(id) {
+            layer.click_outside_to_close = enabled;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Set click-outside-to-close behavior for a context
+    pub fn set_context_click_outside_to_close(&mut self, id: OverlayId, enabled: bool) -> bool {
+        if let Some(context) = self.get_context_mut(id) {
+            context.click_outside_to_close = enabled;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Handle keyboard events for modal overlays
+    pub fn handle_keyboard_event(&mut self, key_code: &str) -> bool {
+        // If there's a modal overlay, handle ESC key to close it
+        if self.has_modal_overlay() && key_code == "Escape" {
+            // Close the highest level modal overlay
+            let mut modal_to_close = None;
+            let mut highest_level = None;
+            
+            for context in &self.contexts {
+                if context.is_visible && context.is_modal {
+                    if highest_level.is_none() || context.level > highest_level.unwrap() {
+                        highest_level = Some(context.level);
+                        modal_to_close = Some(context.id);
+                    }
+                }
+            }
+            
+            if let Some(modal_id) = modal_to_close {
+                return self.remove_overlay(modal_id);
+            }
+        }
+        
+        false
+    }
+
+    /// Check if events should be blocked due to modal overlays
+    pub fn should_block_events(&self) -> bool {
+        self.has_modal_overlay()
+    }
+
+    /// Get the topmost modal overlay ID
+    pub fn get_top_modal(&self) -> Option<OverlayId> {
+        let mut top_modal = None;
+        let mut highest_level = None;
+        
+        for context in &self.contexts {
+            if context.is_visible && context.is_modal {
+                if highest_level.is_none() || context.level > highest_level.unwrap() {
+                    highest_level = Some(context.level);
+                    top_modal = Some(context.id);
+                }
+            }
+        }
+        
+        top_modal
     }
 }
 

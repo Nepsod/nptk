@@ -16,7 +16,7 @@ impl Application for PopupDemoApp {
     }
 
     fn build(_context: AppContext, _state: Self::State) -> impl Widget {
-        Text::new("Popup Demo - Overlay System Implemented!".to_string())
+        Text::new("Popup Demo - Click Outside Detection Implemented!".to_string())
     }
 }
 

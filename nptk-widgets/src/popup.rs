@@ -108,23 +108,24 @@ impl Popup {
     }
 
     /// Show the popup
-    pub fn show(&mut self, _info: &mut AppInfo) {
+    pub fn show(&mut self, info: &mut AppInfo) {
         if !self.is_visible {
             self.is_visible = true;
             
             // Add to overlay manager
-            let _layout_node = LayoutNode {
+            let layout_node = LayoutNode {
                 layout: nptk_core::layout::Layout::default(),
                 children: Vec::new(),
             };
             
-            // TODO: Fix the clone issue - we need to restructure this
-            // For now, we'll create a placeholder
-            // self.overlay_id = Some(info.overlay_manager.add_layer(
-            //     OverlayLevel::Popup,
-            //     self.content.clone(), // This doesn't work because Box<dyn Widget> doesn't implement Clone
-            //     layout_node,
-            // ));
+            // Create a simple tooltip as content for now
+            let tooltip_content = Box::new(Tooltip::new("This is a popup!".to_string()));
+            
+            self.overlay_id = Some(info.overlay_manager.add_layer(
+                nptk_core::app::overlay_manager::OverlayLevel::Popup,
+                tooltip_content,
+                layout_node,
+            ));
         }
     }
 
