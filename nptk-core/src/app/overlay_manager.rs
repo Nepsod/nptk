@@ -14,6 +14,7 @@ use crate::widget::Widget;
 use crate::layout::LayoutNode;
 use nptk_theme::theme::Theme;
 use crate::app::info::AppInfo;
+use crate::app::context::AppContext;
 use nalgebra::Vector2;
 
 /// Unique identifier for overlays
@@ -280,8 +281,8 @@ impl OverlayManager {
     pub fn render_overlays(
         &mut self,
         main_scene: &mut Scene,
-        _theme: &mut dyn Theme,
-        _info: &mut AppInfo,
+        theme: &mut dyn Theme,
+        context: AppContext,
     ) {
         // Render scene-based layers
         // We need to collect the visible layers first to avoid borrow checker issues
@@ -321,9 +322,18 @@ impl OverlayManager {
             }
 
             // Render the overlay content
-            if let Some(_layer) = self.get_layer_mut(id) {
-                // TODO: Implement actual widget rendering here
-                // For now, we'll just pop the layer
+            if let Some(layer) = self.get_layer_mut(id) {
+                // Create a temporary AppInfo for rendering
+                let mut temp_info = AppInfo::default();
+                
+                // Render the widget content using the provided context
+                layer.content.render(
+                    main_scene,
+                    theme,
+                    &layer.layout_node,
+                    &mut temp_info,
+                    context.clone(),
+                );
             }
             
             // Pop the layer

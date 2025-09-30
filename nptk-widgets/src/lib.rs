@@ -53,6 +53,9 @@ pub mod radio_button;
 /// Contains the [menubar::MenuBar] widget.
 pub mod menubar;
 
+/// Contains the [menu_popup::MenuPopup] widget.
+pub mod menu_popup;
+
 /// Contains the [scroll_container::ScrollContainer] widget.
 pub mod scroll_container;
 

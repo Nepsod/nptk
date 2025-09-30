@@ -268,9 +268,12 @@ where
 
             // Render overlays after main content
             log::debug!("Rendering overlays...");
-            // We need to avoid borrowing conflicts by not passing &mut self.info
-            // For now, we'll just render the main scene without overlays
-            // TODO: Fix the borrowing issue in overlay rendering
+            let context = self.context();
+            self.info.overlay_manager.render_overlays(
+                &mut self.scene,
+                &mut self.config.theme,
+                context,
+            );
 
             let renderer = self.renderer.as_mut().expect("Renderer not initialized");
             let render_ctx = self
