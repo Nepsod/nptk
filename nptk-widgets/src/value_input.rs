@@ -7,9 +7,10 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::{MaybeSignal, Signal, state::StateSignal};
 use nptk_core::text_input::TextBuffer;
+use nptk_core::text_render::TextRenderContext;
 use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Stroke};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
-use nptk_core::vg::{Glyph, Scene};
+use nptk_core::vg::Scene;
 use std::ops::Deref;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, KeyCode, PhysicalKey, MouseButton, Ime};
@@ -34,6 +35,8 @@ pub struct ValueInput {
     layout_style: MaybeSignal<LayoutStyle>,
     /// Text buffer for editing
     buffer: TextBuffer,
+    /// Text rendering context
+    text_render_context: TextRenderContext,
     /// Focus management
     focus_id: FocusId,
     focus_state: FocusState,
@@ -44,6 +47,8 @@ pub struct ValueInput {
     /// Mouse interaction
     mouse_down: bool,
     drag_start_pos: Option<usize>,
+    last_click_time: Instant,
+    last_click_pos: Option<usize>,
     /// Validation state
     is_valid: bool,
     /// Whether to allow negative values
@@ -62,6 +67,7 @@ impl ValueInput {
             placeholder: StateSignal::new("Enter number...".to_string()),
             layout_style: MaybeSignal::value(LayoutStyle::default()),
             buffer: TextBuffer::new(),
+            text_render_context: TextRenderContext::new(),
             focus_id: FocusId::new(),
             focus_state: FocusState::None,
             focus_via_keyboard: false,
@@ -69,6 +75,8 @@ impl ValueInput {
             cursor_visible: true,
             mouse_down: false,
             drag_start_pos: None,
+            last_click_time: Instant::now(),
+            last_click_pos: None,
             is_valid: true,
             allow_negative: false,
         }
@@ -212,6 +220,91 @@ impl ValueInput {
         self.sync_text_from_value();
     }
 
+    /// Calculate the actual width of text using Parley's font metrics
+    fn calculate_text_width(&self, text: &str, font_size: f32, info: &mut AppInfo) -> f32 {
+        if text.is_empty() {
+            return 0.0;
+        }
+        
+        // Use TextRenderContext to get accurate measurements from Parley
+        // This handles all Unicode characters, emojis, and different scripts properly
+        self.text_render_context.measure_text_width(&mut info.font_context, text, font_size)
+    }
+
+    /// Calculate the X position of the cursor based on its character position.
+    fn cursor_x_position(&self, cursor_pos: usize, layout_node: &LayoutNode, info: &mut AppInfo) -> f32 {
+        let font_size = 16.0f32; // Match TextInput font size
+        let text_start_x = layout_node.layout.location.x + 8.0; // Padding
+        let text = self.buffer.text();
+        
+        if cursor_pos == 0 || text.is_empty() {
+            return text_start_x;
+        }
+        
+        // Calculate actual width of text up to cursor position
+        let text_up_to_cursor: String = text.chars().take(cursor_pos).collect();
+        let actual_width = self.calculate_text_width(&text_up_to_cursor, font_size, info);
+        
+        text_start_x + actual_width
+    }
+
+
+    /// Check if this is a double-click and handle accordingly.
+    fn handle_double_click(&mut self, click_pos: usize, _layout_node: &LayoutNode) -> bool {
+        let now = Instant::now();
+        let time_since_last_click = now.duration_since(self.last_click_time);
+        let is_double_click = time_since_last_click.as_millis() < 500; // 500ms double-click window
+        let is_same_position = self.last_click_pos == Some(click_pos);
+
+        self.last_click_time = now;
+        self.last_click_pos = Some(click_pos);
+
+        if is_double_click && is_same_position {
+            let text = self.buffer.text();
+            
+            if text.is_empty() {
+                // Double-click on empty field - do nothing (no text to select)
+                return false;
+            } else {
+                // For numeric input, double-click should select the entire number
+                // This is more useful than word selection for numeric values
+                let text_len = text.chars().count();
+                self.buffer.cursor.selection_start = Some(0);
+                self.buffer.cursor.position = text_len;
+            }
+            
+            self.cursor_blink_timer = Instant::now();
+            self.cursor_visible = true;
+            return true;
+        }
+
+        false
+    }
+
+    /// Calculate cursor position from mouse coordinates (simple version without font context).
+    fn cursor_position_from_mouse_simple(&self, mouse_x: f32, layout_node: &LayoutNode) -> usize {
+        let font_size = 16.0;
+        let text_start_x = layout_node.layout.location.x + 8.0; // Padding
+        let relative_x = mouse_x - text_start_x;
+
+        if relative_x <= 0.0 {
+            return 0;
+        }
+
+        let text = self.buffer.text();
+        if text.is_empty() {
+            return 0;
+        }
+
+        // Simple character-based positioning (approximate)
+        let char_width = font_size * 0.6; // Approximate character width
+        let char_pos = (relative_x / char_width) as usize;
+        
+        // Clamp to text length
+        let text_len = text.chars().count();
+        char_pos.min(text_len)
+    }
+
     /// Calculate cursor position from mouse coordinates.
     fn cursor_position_from_mouse(&self, mouse_x: f64, widget_left: f64, _font_ctx: &FontContext) -> usize {
         let text = self.buffer.text();
@@ -352,7 +445,7 @@ impl Widget for ValueInput {
             self.buffer.text()
         };
 
-        let _font_size = 16.0; // TODO: Make this configurable
+        let font_size = 16.0f32; // Match TextInput font size
         // Use approximate character width for text measurement
         // TODO: Implement proper text measurement when needed
         
@@ -361,58 +454,40 @@ impl Widget for ValueInput {
         // let glyph_metrics = font_ref.glyph_metrics(Size::new(font_size), &location);
         // let charmap = font_ref.charmap();
 
-        // Render text selection highlight if focused and has selection
-        if is_focused && self.buffer.cursor.has_selection() && !self.buffer.text().is_empty() {
+        // Render text selection highlight if focused and has selection (same as TextInput)
+        if let Some(selection_range) = self.buffer.cursor().selection() {
+            // Use a very visible selection color
             let selection_color = if let Some(style) = theme.of(self.widget_id()) {
-                style.get_color("color_selection").unwrap_or(Color::from_rgb8(0, 120, 215))
+                style.get_color("color_selection").unwrap_or(Color::from_rgb8(255, 100, 100))
             } else {
-                Color::from_rgb8(0, 120, 215)
+                Color::from_rgb8(255, 100, 100) // Bright red for maximum visibility
             };
 
-            let selection_range = self.buffer.cursor.selection().unwrap();
-            let (_start, _end) = (selection_range.start, selection_range.end);
-            let _text = self.buffer.text();
-            
-            // Calculate selection bounds properly
-            let selection_start_x = layout_node.layout.location.x as f64 + 8.0;
-            let selection_end_x = layout_node.layout.location.x as f64 + 8.0;
-            
-            // TODO: Fix the FileRef lifetime issue
-            // for (i, ch) in text.chars().enumerate() {
-            //     let gid = charmap.map(ch).unwrap_or_default();
-            //     let advance = glyph_metrics.advance_width(gid).unwrap_or_default();
-            //     
-            //     if i == start {
-            //         selection_start_x = selection_start_x;
-            //     }
-            //     if i < start {
-            //         selection_start_x += advance as f64;
-            //     }
-            //     if i < end {
-            //         selection_end_x += advance as f64;
-            //     }
-            // }
-            
-            // Draw selection rectangle
-            let selection_rect = Rect::new(
-                selection_start_x,
-                layout_node.layout.location.y as f64 + 4.0,
-                selection_end_x,
-                layout_node.layout.location.y as f64 + layout_node.layout.size.height as f64 - 4.0,
-            );
-            
-            scene.fill(
-                Fill::NonZero,
-                Affine::default(),
-                &Brush::Solid(selection_color),
-                None,
-                &selection_rect,
-            );
+            // Calculate selection bounds using the same method as cursor positioning
+            let selection_start_x = self.cursor_x_position(selection_range.start, layout_node, info);
+            let selection_end_x = self.cursor_x_position(selection_range.end, layout_node, info);
+
+            // Only draw selection if there's actually a range (start != end)
+            if selection_range.start != selection_range.end {
+                // Draw selection background
+                scene.fill(
+                    Fill::NonZero,
+                    Affine::default(),
+                    &Brush::Solid(selection_color),
+                    None,
+                    &Rect::new(
+                        selection_start_x as f64,
+                        layout_node.layout.location.y as f64 + 4.0,
+                        selection_end_x as f64,
+                        layout_node.layout.location.y as f64 + layout_node.layout.size.height as f64 - 4.0,
+                    ),
+                );
+            }
         }
 
         if !display_text.is_empty() {
-            // Determine text color (placeholder vs regular text)
-            let _display_color = if self.buffer.text().is_empty() {
+            // Use the TextRenderContext for proper text rendering
+            let text_color = if self.buffer.text().is_empty() {
                 if let Some(style) = theme.of(self.widget_id()) {
                     style.get_color("color_placeholder").unwrap_or(Color::from_rgb8(150, 150, 150))
                 } else {
@@ -422,35 +497,22 @@ impl Widget for ValueInput {
                 text_color
             };
 
-            // Improved text rendering for value input
-            let mut pen_x = layout_node.layout.location.x + 8.0; // Left padding
-            let pen_y = layout_node.layout.location.y + 16.0 + 6.0; // Padding + baseline
-
-            // Calculate approximate character width based on font size
-            let avg_char_width = 16.0 * 0.6;
-
-            let mut glyphs = Vec::new();
-            for c in display_text.chars() {
-                let char_width = match c {
-                    'i' | 'l' | 'I' | '1' | '|' => avg_char_width * 0.5,
-                    'm' | 'M' | 'W' | 'w' => avg_char_width * 1.2,
-                    ' ' => avg_char_width * 0.8,
-                    '.' | ',' => avg_char_width * 0.4, // Punctuation
-                    '0'..='9' => avg_char_width * 0.8, // Numbers
-                    _ => avg_char_width,
-                };
-                
-                glyphs.push(Glyph {
-                    id: c as u32,
-                    x: pen_x,
-                    y: pen_y,
-                });
-                
-                pen_x += char_width;
-            }
+            // Render text using TextRenderContext (same positioning as TextInput)
+            let transform = nptk_core::vg::kurbo::Affine::translate((
+                layout_node.layout.location.x as f64 + 8.0, // Left padding
+                layout_node.layout.location.y as f64 + 4.5, // Position text within the input field (same as TextInput)
+            ));
             
-            // TODO: Implement proper glyph-based text rendering
-            // For now, text rendering is handled by the TextRenderContext
+            self.text_render_context.render_text(
+                &mut info.font_context,
+                scene,
+                &display_text,
+                None, // No specific font, use default
+                font_size, // Use the font_size variable
+                Brush::Solid(text_color),
+                transform,
+                true, // Hinting
+            );
         }
 
         // Update cursor blink in render method for immediate visual feedback
@@ -470,20 +532,9 @@ impl Widget for ValueInput {
                     Color::BLACK
                 };
                 
-                // Calculate cursor position based on text
-                let _cursor_pos = self.buffer.cursor().position;
-                let cursor_x = layout_node.layout.location.x + 8.0; // Left padding
-                
-                // TODO: Fix the FileRef lifetime issue
-                // Calculate cursor position based on character width
-                // for (i, ch) in self.buffer.text().chars().enumerate() {
-                //     if i >= cursor_pos {
-                //         break;
-                //     }
-                //     let gid = charmap.map(ch).unwrap_or_default();
-                //     let advance = glyph_metrics.advance_width(gid).unwrap_or_default();
-                //     cursor_x += advance;
-                // }
+                // Calculate cursor position using the same method as TextInput
+                let cursor_pos = self.buffer.cursor().position;
+                let cursor_x = self.cursor_x_position(cursor_pos, layout_node, info);
                 
                 let cursor_y = layout_node.layout.location.y + 4.0;
                 let cursor_height = layout_node.layout.size.height - 8.0;
@@ -698,23 +749,30 @@ impl Widget for ValueInput {
                         match state {
                             ElementState::Pressed => {
                                 if matches!(self.focus_state, FocusState::Focused | FocusState::Gained) {
-                                    // Set focus and position cursor
+                                    // Set focus first
                                     context.set_focus(Some(self.focus_id));
-                                    self.mouse_down = true;
                                     
-                                    // Calculate cursor position from mouse
-                                    let click_pos = self.cursor_position_from_mouse(
-                                        cursor_pos.x,
-                                        layout.layout.location.x as f64,
-                                        &info.font_context
-                                    );
-                                    self.buffer.cursor.position = click_pos;
-                                    self.buffer.cursor.selection_start = None;
-                                    self.drag_start_pos = Some(click_pos);
+                                    // Handle mouse click in bounds
+                                    let click_pos = self.cursor_position_from_mouse_simple(cursor_pos.x as f32, layout);
                                     
-                                    self.cursor_blink_timer = Instant::now();
-                                    self.cursor_visible = true;
-                                    update |= Update::DRAW;
+                                    // Check for double-click first
+                                    if self.handle_double_click(click_pos, layout) {
+                                        // Double-click handled - selection already set, don't modify cursor position or drag
+                                        self.mouse_down = true;
+                                        // Don't set drag_start_pos for double-click to avoid interfering with selection
+                                        update |= Update::DRAW;
+                                    } else {
+                                        // Single click - clear selection and set cursor position
+                                        self.buffer.cursor.selection_start = None;
+                                        self.buffer.cursor.position = click_pos;
+                                        self.mouse_down = true;
+                                        self.drag_start_pos = Some(click_pos);
+                                        
+                                        // Reset cursor blink
+                                        self.cursor_blink_timer = Instant::now();
+                                        self.cursor_visible = true;
+                                        update |= Update::DRAW;
+                                    }
                                 }
                             }
                             ElementState::Released => {
@@ -729,11 +787,7 @@ impl Widget for ValueInput {
                 // Handle mouse drag for selection (when in bounds and dragging)
                 if self.mouse_down && matches!(self.focus_state, FocusState::Focused | FocusState::Gained) {
                     if let Some(start_pos) = self.drag_start_pos {
-                        let current_pos = self.cursor_position_from_mouse(
-                            cursor_pos.x,
-                            layout.layout.location.x as f64,
-                            &info.font_context
-                        );
+                        let current_pos = self.cursor_position_from_mouse_simple(cursor_pos.x as f32, layout);
                         
                         if current_pos != self.buffer.cursor.position {
                             // Update selection
