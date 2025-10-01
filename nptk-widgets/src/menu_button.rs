@@ -96,7 +96,32 @@ impl std::fmt::Debug for MenuButton {
 impl MenuButton {
     /// Create a new menu button with the given label
     pub fn new(label: impl Into<String>) -> Self {
-        let button = Button::new(Text::new(label.into()));
+        use nptk_core::layout::{Dimension, LengthPercentage};
+        
+        let text = Text::new(label.into())
+            .with_font_size(16.0) // Smaller font size for button text
+            .with_layout_style(LayoutStyle {
+                size: nalgebra::Vector2::new(
+                    Dimension::percent(1.0), // Fill button width
+                    Dimension::auto(),
+                ),
+                ..Default::default()
+            });
+        
+        let button = Button::new(text)
+            .with_layout_style(LayoutStyle {
+                size: nalgebra::Vector2::new(
+                    Dimension::length(50.0), // Fixed button width
+                    Dimension::auto(),
+                ),
+                padding: nptk_core::layout::Rect::<LengthPercentage> {
+                    left: LengthPercentage::length(6.0),
+                    right: LengthPercentage::length(0.0),
+                    top: LengthPercentage::length(0.0),     // Less top padding
+                    bottom: LengthPercentage::length(24.0),  // More bottom padding to account for baseline
+                },
+                ..Default::default()
+            });
         Self {
             widget_id: WidgetId::new("nptk_widgets", "MenuButton"),
             child: Box::new(button),
@@ -225,15 +250,17 @@ impl Widget for MenuButton {
         context: AppContext,
     ) {
         // Render the child button with proper transform
-        let mut child_scene = Scene::new();
-        self.child.render(&mut child_scene, theme, &layout.children[0], info, context.clone());
-        scene.append(
-            &child_scene,
-            Some(Affine::translate(Vec2::new(
-                layout.layout.location.x as f64,
-                layout.layout.location.y as f64,
-            ))),
-        );
+        if !layout.children.is_empty() {
+            let mut child_scene = Scene::new();
+            self.child.render(&mut child_scene, theme, &layout.children[0], info, context.clone());
+            scene.append(
+                &child_scene,
+                Some(Affine::translate(Vec2::new(
+                    layout.layout.location.x as f64,
+                    layout.layout.location.y as f64,
+                ))),
+            );
+        }
 
         // Then, if the menu is open, render the popup on top
         if *self.is_menu_open.get() {
@@ -242,9 +269,6 @@ impl Widget for MenuButton {
                 let (popup_width, popup_height) = popup.calculate_size();
                 let popup_x = layout.layout.location.x as f64;
                 let popup_y = (layout.layout.location.y + layout.layout.size.height) as f64;
-
-                println!("[MenuButton::render] Rendering popup at pos=({}, {}), size=({}, {})", 
-                         popup_x, popup_y, popup_width, popup_height);
 
                 // Create a layout node for the popup
                 let mut popup_layout = LayoutNode {
@@ -337,8 +361,8 @@ impl Widget for MenuButton {
                         layout.layout.location.y as f64 + layout.layout.size.height as f64,
                     );
 
-                    for (_, button, state) in &info.buttons {
-                        if *button == MouseButton::Left && *state == ElementState::Pressed {
+            for (_, button, state) in &info.buttons {
+                if *button == MouseButton::Left && *state == ElementState::Pressed {
                             if !popup_rect.contains((pos.x, pos.y)) && !button_rect.contains((pos.x, pos.y)) {
                                 click_outside = true;
                             }
