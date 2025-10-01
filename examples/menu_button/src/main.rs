@@ -53,13 +53,13 @@ impl Application for MenuButtonApp {
             Box::new(Text::new("Click the button below to see the popup menu:".to_string())),
             Box::new(Text::new("Use Tab/Shift+Tab to navigate, Space/Enter to open menu".to_string())),
             Box::new(
-                MenuButton::new("File ▼")
+                MenuButton::new("File")
                     .with_menu_items(menu_items)
                     .with_layout_style(LayoutStyle {
                         margin: nptk::core::layout::Rect::<LengthPercentageAuto> {
-                            top: LengthPercentageAuto::length(20.0),
+                            top: LengthPercentageAuto::length(0.0),
                             bottom: LengthPercentageAuto::length(0.0),
-                            left: LengthPercentageAuto::length(10.0),
+                            left: LengthPercentageAuto::length(40.0),
                             right: LengthPercentageAuto::length(0.0),
                         },
                         ..Default::default()

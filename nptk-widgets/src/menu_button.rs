@@ -102,8 +102,11 @@ impl MenuButton {
         
         // Calculate button width based on text length (similar to MenuPopup)
         let font_size = 16.0;
-        let estimated_text_width = label_string.len() as f32 * 5.5;
-        let horizontal_padding = 12.0; // Left + right padding
+        // Use chars().count() instead of len() to handle Unicode correctly
+        // MenuPopup uses 8.0 pixels per char for 14px font, scaling to 16px font = ~9.1
+        let char_count = label_string.chars().count() as f32;
+        let estimated_text_width = char_count * 7.5;
+        let horizontal_padding = font_size; // Left + right padding
         let button_width = estimated_text_width + horizontal_padding;
         
         // Text widget has bottom-heavy layout:
@@ -111,7 +114,6 @@ impl MenuButton {
         // - Baseline renders at y + font_size (16px from top)
         // - Only line_gap (7.5px) space below baseline
         // To center visually, we need more bottom padding than top
-        let top_padding = 0.0;
         let bottom_padding = font_size + 2.0; // Compensate for baseline offset
         
         let text = Text::new(label_string)
@@ -131,8 +133,8 @@ impl MenuButton {
                     Dimension::length(bottom_padding + 4.0),
                 ),
                 padding: nptk_core::layout::Rect::<LengthPercentage> {
-                    left: LengthPercentage::length(6.0),
-                    right: LengthPercentage::length(0.0),
+                    left: LengthPercentage::length(font_size / 2.0),
+                    right: LengthPercentage::length(font_size / 2.0),
                     top: LengthPercentage::length(0.0),
                     bottom: LengthPercentage::length(bottom_padding),
                 },
