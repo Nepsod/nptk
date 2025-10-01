@@ -98,8 +98,17 @@ impl MenuButton {
     pub fn new(label: impl Into<String>) -> Self {
         use nptk_core::layout::{Dimension, LengthPercentage};
         
-        let text = Text::new(label.into())
-            .with_font_size(16.0) // Smaller font size for button text
+        let label_string = label.into();
+        
+        // Calculate button width based on text length (similar to MenuPopup)
+        // Using 8 pixels per character estimate + padding
+        let font_size = 16.0;
+        let estimated_text_width = label_string.len() as f32 * 5.5;
+        let horizontal_padding = 12.0; // Left + right padding
+        let button_width = estimated_text_width + horizontal_padding;
+        
+        let text = Text::new(label_string)
+            .with_font_size(font_size)
             .with_layout_style(LayoutStyle {
                 size: nalgebra::Vector2::new(
                     Dimension::percent(1.0), // Fill button width
@@ -111,14 +120,14 @@ impl MenuButton {
         let button = Button::new(text)
             .with_layout_style(LayoutStyle {
                 size: nalgebra::Vector2::new(
-                    Dimension::length(50.0), // Fixed button width
+                    Dimension::length(button_width),
                     Dimension::auto(),
                 ),
                 padding: nptk_core::layout::Rect::<LengthPercentage> {
                     left: LengthPercentage::length(6.0),
                     right: LengthPercentage::length(0.0),
                     top: LengthPercentage::length(0.0),     // Less top padding
-                    bottom: LengthPercentage::length(24.0),  // More bottom padding to account for baseline
+                    bottom: LengthPercentage::length(32.0),  // More bottom padding to account for baseline
                 },
                 ..Default::default()
             });
