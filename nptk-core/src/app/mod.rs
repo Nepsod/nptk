@@ -30,7 +30,6 @@ pub mod runner;
 pub mod focus;
 
 /// Contains the overlay and popup management system.
-pub mod overlay_manager;
 
 /// The main application interface.
 ///

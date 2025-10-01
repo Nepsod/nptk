@@ -266,12 +266,14 @@ where
                 context,
             );
 
-            // Render overlays after main content
-            log::debug!("Rendering overlays...");
+            // Render postfix content (overlays, popups) after main content
+            log::debug!("Rendering postfix content...");
             let context = self.context();
-            self.info.overlay_manager.render_overlays(
+            self.widget.as_mut().unwrap().render_postfix(
                 &mut self.scene,
                 &mut self.config.theme,
+                &layout_node,
+                &mut self.info,
                 context,
             );
 
@@ -537,7 +539,6 @@ where
                                 Vector2::new(new_size.width as f64, new_size.height as f64);
 
                             // Update overlay positions for new screen size
-                            self.info.overlay_manager.update_positions_for_screen_size(self.info.size);
 
                             self.request_redraw();
 
@@ -592,7 +593,6 @@ where
                                 match event.physical_key {
                                     PhysicalKey::Code(KeyCode::Tab) => {
                                         // Check if modal overlays should block tab navigation
-                                        if !self.info.overlay_manager.should_block_events() {
                                             if let Ok(mut manager) = self.info.focus_manager.lock() {
                                                 if self.info.modifiers.shift_key() {
                                                     // Shift+Tab: focus previous
@@ -609,18 +609,12 @@ where
                                     }
                                     PhysicalKey::Code(KeyCode::Escape) => {
                                         // Handle ESC key for modal overlays
-                                        if self.info.overlay_manager.handle_keyboard_event("Escape") {
-                                            self.update.insert(Update::DRAW);
-                                            self.request_redraw();
-                                            return; // Don't add ESC to key events if handled by modal
-                                        }
                                     }
                                     _ => {}
                                 }
                             }
                             
                             // Only add key events if not blocked by modal overlays
-                            if !self.info.overlay_manager.should_block_events() {
                                 self.info.keys.push((device_id, event));
                                 self.request_redraw();
                             }
@@ -636,12 +630,10 @@ where
                         if button == MouseButton::Left && state == ElementState::Pressed {
                             if let Some(cursor_pos) = self.info.cursor_pos {
                                 // First, check for click-outside detection on overlays
-                                let overlay_handled = self.info.overlay_manager.handle_mouse_click(cursor_pos.x, cursor_pos.y);
                                 
                                 if overlay_handled {
                                     // If an overlay was closed, request a redraw
                                     self.update.insert(Update::DRAW);
-                                } else if !self.info.overlay_manager.should_block_events() {
                                     // If no overlay handled the click and no modal is blocking, proceed with normal focus handling
                                     if let Ok(mut manager) = self.info.focus_manager.lock() {
                                         if manager.handle_click(cursor_pos.x, cursor_pos.y) {
@@ -653,7 +645,6 @@ where
                         }
                         
                         // Only add mouse events if not blocked by modal overlays
-                        if !self.info.overlay_manager.should_block_events() {
                             self.info.buttons.push((device_id, button, state));
                         }
                         self.request_redraw();

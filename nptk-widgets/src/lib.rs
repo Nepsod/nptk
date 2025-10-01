@@ -65,5 +65,3 @@ pub mod tabs_container;
 /// Contains the [menu_button::MenuButton] widget.
 pub mod menu_button;
 
-/// Contains the [popup::Popup] widget and related overlay components.
-pub mod popup;

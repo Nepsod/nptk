@@ -279,11 +279,21 @@ impl Widget for MenuButton {
                 ))),
             );
         }
+        // Popup rendering moved to render_postfix for proper z-ordering
+    }
 
-        // Then, if the menu is open, render the popup on top
+    fn render_postfix(
+        &mut self,
+        scene: &mut Scene,
+        theme: &mut dyn Theme,
+        layout: &LayoutNode,
+        info: &mut AppInfo,
+        context: AppContext,
+    ) {
+        // Render popup menu on top of everything else
         if *self.is_menu_open.get() {
             if let Some(ref mut popup) = self.popup_data {
-                // Calculate popup position - use parent's layout since that's where the button is
+                // Calculate popup position - below the button
                 let (popup_width, popup_height) = popup.calculate_size();
                 let popup_x = layout.layout.location.x as f64;
                 let popup_y = (layout.layout.location.y + layout.layout.size.height) as f64;

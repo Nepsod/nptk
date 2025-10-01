@@ -371,9 +371,18 @@ impl Widget for MenuBar {
             }
         }
 
-        // Render popup if open
+        // Popup rendering moved to render_postfix for proper z-ordering
+    }
+
+    fn render_postfix(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout: &LayoutNode, info: &mut AppInfo, _context: AppContext) {
+        // Don't render popup if menu bar not visible
+        if !self.is_visible() {
+            return;
+        }
+
+        // Render popup menu on top of everything else
         if let Some(open_index) = self.open_menu_index {
-            // Calculate position below the menu item first
+            // Calculate position below the menu item
             let item_bounds = self.get_item_bounds(layout, open_index);
             let popup_x = item_bounds.x0;
             let popup_y = item_bounds.y1;
@@ -392,11 +401,12 @@ impl Widget for MenuBar {
                 popup_layout.layout.size.width = popup_width as f32;
                 popup_layout.layout.size.height = popup_height as f32;
                 
-                // Now render the popup
+                // Render the popup
                 popup.render(scene, theme, &popup_layout, info, _context);
             }
         }
     }
+
 
     fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();

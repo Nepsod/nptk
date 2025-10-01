@@ -66,6 +66,27 @@ impl Widget for Container {
         }
     }
 
+    fn render_postfix(
+        &mut self,
+        scene: &mut Scene,
+        theme: &mut dyn Theme,
+        layout_node: &LayoutNode,
+        info: &mut AppInfo,
+        context: AppContext,
+    ) {
+        // Call render_postfix on all children after they've all been rendered
+        // This ensures overlays appear on top of all sibling content
+        for (i, child) in self.children.iter_mut().enumerate() {
+            child.render_postfix(
+                scene,
+                theme,
+                &layout_node.children[i],
+                info,
+                context.clone(),
+            );
+        }
+    }
+
     fn layout_style(&self) -> StyleNode {
         let style = self.style.get().clone();
 
