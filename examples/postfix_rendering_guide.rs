@@ -21,13 +21,14 @@ use nptk::core::app::update::Update;
 use nptk::core::app::Application;
 use nptk::core::config::MayConfig;
 use nptk::core::layout::{
-    AlignItems, Dimension, FlexDirection, Layout, LayoutNode, LayoutStyle, LengthPercentage,
+    AlignItems, Dimension, FlexDirection, LayoutNode, LayoutStyle, LengthPercentage,
     StyleNode,
 };
 use nptk::core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii};
 use nptk::core::vg::peniko::{Brush, Color, Fill};
 use nptk::core::vg::Scene;
 use nptk::core::widget::{BoxedWidget, Widget, WidgetChildExt, WidgetLayoutExt};
+use nptk::core::window::{ElementState, MouseButton};
 use nptk::math::Vector2;
 use nptk::theme::theme::celeste::CelesteTheme;
 use nptk::widgets::button::Button;
@@ -36,8 +37,6 @@ use nptk::widgets::text::Text;
 use nptk_core::signal::MaybeSignal;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
-use std::sync::Arc;
-use winit::event::{ElementState, MouseButton};
 
 // ============================================================================
 // Example 1: Simple Tooltip Widget
@@ -87,10 +86,18 @@ impl Widget for TooltipWidget {
         info: &mut AppInfo,
         context: AppContext,
     ) {
-        // Step 1: Render the main widget content (the child)
+        // Step 1: Render the main widget content (the child) with proper positioning
         if !layout.children.is_empty() {
+            let mut child_scene = Scene::new();
             self.child
-                .render(scene, theme, &layout.children[0], info, context);
+                .render(&mut child_scene, theme, &layout.children[0], info, context);
+            scene.append(
+                &child_scene,
+                Some(Affine::translate((
+                    layout.layout.location.x as f64,
+                    layout.layout.location.y as f64,
+                ))),
+            );
         }
     }
 
@@ -251,18 +258,21 @@ impl Widget for SimpleDropdown {
         scene.fill(Fill::NonZero, Affine::IDENTITY, color, None, &button_rect);
 
         // Draw selected item text
+        // Text baseline renders at y + font_size, so we need to position accordingly
         use nptk_core::text_render::TextRenderContext;
         let mut text_ctx = TextRenderContext::new();
+        let font_size = 16.0_f32;
+        let button_height = layout.layout.size.height as f64;
         text_ctx.render_text(
             &mut info.font_context,
             scene,
             &self.items[self.selected_index],
             None,
-            16.0,
+            font_size,
             Brush::Solid(Color::WHITE),
             Affine::translate((
                 layout.layout.location.x as f64 + 10.0,
-                layout.layout.location.y as f64 + 10.0 + 16.0,
+                layout.layout.location.y as f64 + font_size as f64,
             )),
             true,
         );
@@ -330,14 +340,17 @@ impl Widget for SimpleDropdown {
             }
 
             // Draw item text
+            // Text baseline renders at y + font_size
+            let item_font_size = 16.0_f32;
+            let y_offset = (item_height - item_font_size as f64) / 2.0 + item_font_size as f64;
             text_ctx.render_text(
                 &mut info.font_context,
                 scene,
                 item,
                 None,
-                16.0,
+                item_font_size,
                 Brush::Solid(Color::BLACK),
-                Affine::translate((list_x + 10.0, item_y + 10.0 + 16.0)),
+                Affine::translate((list_x + 10.0, item_y + 8.0)),
                 true,
             );
         }
@@ -422,11 +435,15 @@ impl Application for PostfixGuideApp {
             // Example 1: Tooltip
             Box::new(
                 TooltipWidget::new(
-                    Button::new(Text::new("Hover Me!".to_string())),
+                    Button::new(Text::new("Hover Me!".to_string()))
+                        .with_layout_style(LayoutStyle {
+                            size: Vector2::new(Dimension::length(120.0), Dimension::length(40.0)),
+                            ..Default::default()
+                        }),
                     "This is a tooltip rendered in postfix!",
                 )
                 .with_layout_style(LayoutStyle {
-                    size: Vector2::new(Dimension::length(150.0), Dimension::length(40.0)),
+                    size: Vector2::new(Dimension::auto(), Dimension::auto()),
                     ..Default::default()
                 }),
             ),

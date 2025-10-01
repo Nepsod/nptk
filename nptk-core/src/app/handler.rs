@@ -592,17 +592,16 @@ where
                                 use winit::keyboard::{KeyCode, PhysicalKey};
                                 match event.physical_key {
                                     PhysicalKey::Code(KeyCode::Tab) => {
-                                        // Check if modal overlays should block tab navigation
-                                            if let Ok(mut manager) = self.info.focus_manager.lock() {
-                                                if self.info.modifiers.shift_key() {
-                                                    // Shift+Tab: focus previous
-                                                    manager.focus_previous();
-                                                } else {
-                                                    // Tab: focus next
-                                                    manager.focus_next();
-                                                }
-                                                self.update.insert(Update::FOCUS | Update::DRAW);
+                                        // Check if modal overlays should block tab navigation... Handle tab navigation for focus
+                                        if let Ok(mut manager) = self.info.focus_manager.lock() {
+                                            if self.info.modifiers.shift_key() {
+                                                // Shift+Tab: focus previous
+                                                manager.focus_previous();
+                                            } else {
+                                                // Tab: focus next
+                                                manager.focus_next();
                                             }
+                                            self.update.insert(Update::FOCUS | Update::DRAW);
                                         }
                                         self.request_redraw();
                                         return; // Don't add tab keys to the key events list
@@ -615,9 +614,8 @@ where
                             }
                             
                             // Only add key events if not blocked by modal overlays
-                                self.info.keys.push((device_id, event));
-                                self.request_redraw();
-                            }
+                            self.info.keys.push((device_id, event));
+                            self.request_redraw();
                         }
                     },
 
@@ -629,24 +627,17 @@ where
                         // Handle focus on mouse clicks
                         if button == MouseButton::Left && state == ElementState::Pressed {
                             if let Some(cursor_pos) = self.info.cursor_pos {
-                                // First, check for click-outside detection on overlays
-                                
-                                if overlay_handled {
-                                    // If an overlay was closed, request a redraw
-                                    self.update.insert(Update::DRAW);
-                                    // If no overlay handled the click and no modal is blocking, proceed with normal focus handling
-                                    if let Ok(mut manager) = self.info.focus_manager.lock() {
-                                        if manager.handle_click(cursor_pos.x, cursor_pos.y) {
-                                            self.update.insert(Update::FOCUS | Update::DRAW);
-                                        }
+                                // Handle normal focus
+                                if let Ok(mut manager) = self.info.focus_manager.lock() {
+                                    if manager.handle_click(cursor_pos.x, cursor_pos.y) {
+                                        self.update.insert(Update::FOCUS | Update::DRAW);
                                     }
                                 }
                             }
                         }
                         
-                        // Only add mouse events if not blocked by modal overlays
-                            self.info.buttons.push((device_id, button, state));
-                        }
+                        // Add mouse events
+                        self.info.buttons.push((device_id, button, state));
                         self.request_redraw();
                     },
 
