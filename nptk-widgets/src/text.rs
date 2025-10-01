@@ -109,7 +109,7 @@ impl Widget for Text {
         // Use TextRenderContext for proper text rendering
         let transform = nptk_core::vg::kurbo::Affine::translate((
             layout_node.layout.location.x as f64,
-            layout_node.layout.location.y as f64 + font_size as f64,
+            layout_node.layout.location.y as f64,
         ));
         
         self.text_render_context.render_text(
