@@ -8,7 +8,7 @@ use std::fmt::{Debug, Display, Formatter};
 ///
 /// WidgetId::new("fancy_text_widget", "FancyText");
 /// ```
-#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct WidgetId {
     namespace: String,
     id: String,

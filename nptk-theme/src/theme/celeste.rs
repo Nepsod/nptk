@@ -348,4 +348,8 @@ impl Theme for CelesteTheme {
             CelesteTheme::Light(globals) => globals,
         }
     }
+    
+    fn widget_id(&self) -> WidgetId {
+        WidgetId::new("nptk-theme", "CelesteTheme")
+    }
 }
