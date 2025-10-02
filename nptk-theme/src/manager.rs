@@ -1,3 +1,191 @@
+//! # Theme Manager
+//!
+//! This module provides theme management functionality for the NPTK theming system,
+//! including runtime theme switching, caching, and thread-safe theme access.
+//!
+//! ## Overview
+//!
+//! The theme manager system consists of:
+//!
+//! - **[ThemeManager]**: Main theme manager with runtime switching and caching
+//! - **[ThemeVariant]**: Enum representing different theme variants
+//! - **[SharedThemeManager]**: Thread-safe theme manager for multi-threaded applications
+//!
+//! ## Key Features
+//!
+//! - **Runtime Theme Switching**: Switch themes without restarting the application
+//! - **Theme Caching**: Cache frequently accessed properties for better performance
+//! - **Thread Safety**: Thread-safe theme management for multi-threaded applications
+//! - **Multiple Theme Support**: Support for multiple theme variants
+//! - **Variable Caching**: Cache theme variables for faster access
+//!
+//! ## Usage Examples
+//!
+//! ### Basic Theme Management
+//!
+//! ```rust
+//! use nptk_theme::manager::{ThemeManager, ThemeVariant};
+//! use nptk_theme::properties::ThemeProperty;
+//! use nptk_theme::id::WidgetId;
+//! use peniko::Color;
+//!
+//! // Create a theme manager
+//! let mut manager = ThemeManager::new();
+//!
+//! // Switch to dark theme
+//! manager.switch_theme(&ThemeVariant::Dark);
+//!
+//! // Get theme properties with caching
+//! let button_id = WidgetId::new("nptk-widgets", "Button");
+//! let color = manager.get_property(button_id, &ThemeProperty::ColorIdle);
+//! ```
+//!
+//! ### Thread-Safe Theme Management
+//!
+//! ```rust
+//! use nptk_theme::manager::{create_shared_theme_manager, ThemeVariant};
+//! use std::sync::Arc;
+//! use std::thread;
+//!
+//! // Create a shared theme manager
+//! let shared_manager = create_shared_theme_manager();
+//!
+//! // Use in multiple threads
+//! let manager1 = shared_manager.clone();
+//! let manager2 = shared_manager.clone();
+//!
+//! let handle1 = thread::spawn(move || {
+//!     if let Ok(mut manager) = manager1.write() {
+//!         manager.switch_theme(&ThemeVariant::Dark);
+//!     }
+//! });
+//!
+//! let handle2 = thread::spawn(move || {
+//!     if let Ok(manager) = manager2.read() {
+//!         let variants = manager.available_variants();
+//!         println!("Available variants: {:?}", variants);
+//!     }
+//! });
+//!
+//! handle1.join().unwrap();
+//! handle2.join().unwrap();
+//! ```
+//!
+//! ### Custom Theme Management
+//!
+//! ```rust
+//! use nptk_theme::manager::{ThemeManager, ThemeVariant};
+//! use nptk_theme::theme::dark::DarkTheme;
+//! use std::sync::Arc;
+//!
+//! // Create a theme manager with a custom theme
+//! let custom_theme = Box::new(DarkTheme::new());
+//! let mut manager = ThemeManager::with_theme(custom_theme);
+//!
+//! // Add additional themes
+//! manager.add_theme(ThemeVariant::Custom("MyTheme".to_string()), Box::new(DarkTheme::new()));
+//!
+//! // Switch to custom theme
+//! manager.switch_theme(&ThemeVariant::Custom("MyTheme".to_string()));
+//! ```
+//!
+//! ### Theme Variable Access
+//!
+//! ```rust
+//! use nptk_theme::manager::ThemeManager;
+//! use nptk_theme::properties::ThemeValue;
+//! use peniko::Color;
+//!
+//! let manager = ThemeManager::new();
+//!
+//! // Get theme variables with caching
+//! let primary_color = manager.get_variable_color("primary");
+//! let border_radius = manager.get_variable("border_radius");
+//!
+//! // Use variables
+//! if let Some(color) = primary_color {
+//!     println!("Primary color: {:?}", color);
+//! }
+//! ```
+//!
+//! ## Performance Features
+//!
+//! ### Caching
+//!
+//! The theme manager caches frequently accessed properties and variables:
+//!
+//! ```rust
+//! use nptk_theme::manager::ThemeManager;
+//! use nptk_theme::properties::ThemeProperty;
+//! use nptk_theme::id::WidgetId;
+//!
+//! let manager = ThemeManager::new();
+//! let button_id = WidgetId::new("nptk-widgets", "Button");
+//!
+//! // First access - loads from theme
+//! let color1 = manager.get_property(button_id, &ThemeProperty::ColorIdle);
+//!
+//! // Second access - uses cache (faster)
+//! let color2 = manager.get_property(button_id, &ThemeProperty::ColorIdle);
+//!
+//! // Clear cache when needed
+//! manager.clear_caches();
+//! ```
+//!
+//! ### Thread Safety
+//!
+//! The theme manager is thread-safe and can be used across multiple threads:
+//!
+//! ```rust
+//! use nptk_theme::manager::create_shared_theme_manager;
+//! use std::sync::Arc;
+//! use std::thread;
+//!
+//! let shared_manager = create_shared_theme_manager();
+//!
+//! // Multiple threads can safely access the theme manager
+//! for i in 0..4 {
+//!     let manager = shared_manager.clone();
+//!     thread::spawn(move || {
+//!         if let Ok(manager) = manager.read() {
+//!             // Safe to read from multiple threads
+//!             let variants = manager.available_variants();
+//!             println!("Thread {}: {:?}", i, variants);
+//!         }
+//!     });
+//! }
+//! ```
+//!
+//! ## Theme Variants
+//!
+//! The [ThemeVariant] enum represents different theme types:
+//!
+//! ```rust
+//! use nptk_theme::manager::ThemeVariant;
+//!
+//! // Built-in variants
+//! let light = ThemeVariant::Light;
+//! let dark = ThemeVariant::Dark;
+//!
+//! // Custom variants
+//! let custom = ThemeVariant::Custom("MyCustomTheme".to_string());
+//! ```
+//!
+//! ## Best Practices
+//!
+//! 1. **Use Shared Manager**: Use [SharedThemeManager] for multi-threaded applications
+//! 2. **Cache Management**: Clear caches when switching themes
+//! 3. **Error Handling**: Always handle potential errors when accessing shared managers
+//! 4. **Performance**: Use caching for frequently accessed properties
+//! 5. **Thread Safety**: Use read locks for read-only access, write locks for modifications
+//!
+//! ## Performance Considerations
+//!
+//! - **Caching**: Properties and variables are cached for faster access
+//! - **Thread Safety**: Uses RwLock for efficient concurrent access
+//! - **Memory Usage**: Caches are cleared when switching themes
+//! - **Lock Contention**: Minimize lock contention by using appropriate lock types
+
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 

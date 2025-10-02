@@ -1,7 +1,200 @@
+//! # Style System
+//!
+//! This module provides the legacy style system for the NPTK theming system.
+//! It includes the [Style] struct for string-based property access and the
+//! [StyleVal] enum for different types of style values.
+//!
+//! ## Overview
+//!
+//! The style system provides:
+//!
+//! - **[Style]**: Legacy style map with string-based property access
+//! - **[StyleVal]**: Enum for different types of style values
+//! - **[DefaultStyles]**: Default style values for widgets
+//! - **Backward Compatibility**: Support for legacy string-based theming
+//!
+//! ## Key Features
+//!
+//! - **String-Based Access**: Legacy string-based property access
+//! - **Multiple Value Types**: Support for colors, gradients, brushes, and more
+//! - **Default Values**: Built-in default styles for widgets
+//! - **Backward Compatibility**: Maintains compatibility with existing code
+//! - **Performance**: Efficient storage and lookup of style properties
+//!
+//! ## Usage Examples
+//!
+//! ### Basic Style Creation
+//!
+//! ```rust
+//! use nptk_theme::style::{Style, StyleVal};
+//! use peniko::Color;
+//!
+//! // Create a new style
+//! let mut style = Style::new();
+//! style.set_color("color_idle", Color::from_rgb8(100, 150, 255));
+//! style.set_color("color_hovered", Color::from_rgb8(120, 170, 255));
+//!
+//! // Create from values
+//! let style = Style::from_values([
+//!     ("color_idle".to_string(), StyleVal::Color(Color::from_rgb8(100, 150, 255))),
+//!     ("color_hovered".to_string(), StyleVal::Color(Color::from_rgb8(120, 170, 255))),
+//! ]);
+//! ```
+//!
+//! ### Style Value Types
+//!
+//! ```rust
+//! use nptk_theme::style::{Style, StyleVal};
+//! use peniko::{Color, Gradient, Brush};
+//!
+//! let mut style = Style::new();
+//!
+//! // Color values
+//! style.set_color("background", Color::from_rgb8(255, 255, 255));
+//! style.set_color("text", Color::from_rgb8(0, 0, 0));
+//!
+//! // Gradient values
+//! let gradient = Gradient::new_linear(/* ... */);
+//! style.set_gradient("background_gradient", gradient);
+//!
+//! // Float values
+//! style.set_float("border_radius", 8.0);
+//! style.set_float("opacity", 0.9);
+//!
+//! // Integer values
+//! style.set_int("border_width", 2);
+//! style.set_uint("max_items", 100);
+//!
+//! // Boolean values
+//! style.set_bool("enabled", true);
+//! style.set_bool("visible", false);
+//! ```
+//!
+//! ### Style Access
+//!
+//! ```rust
+//! use nptk_theme::style::{Style, StyleVal};
+//! use peniko::Color;
+//!
+//! let style = Style::new();
+//!
+//! // Get color values
+//! let color = style.get_color("color_idle").unwrap_or(Color::BLACK);
+//!
+//! // Get float values
+//! let radius = style.get_float("border_radius").unwrap_or(4.0);
+//!
+//! // Get boolean values
+//! let enabled = style.get_bool("enabled").unwrap_or(false);
+//!
+//! // Check if property exists
+//! if style.has("color_hovered") {
+//!     println!("Has hovered color");
+//! }
+//! ```
+//!
+//! ### Default Styles
+//!
+//! ```rust
+//! use nptk_theme::style::DefaultStyles;
+//!
+//! let defaults = DefaultStyles::new(/* ... */);
+//!
+//! // Get default text styles
+//! let text_defaults = defaults.text();
+//! let text_color = text_defaults.foreground();
+//!
+//! // Get default container styles
+//! let container_defaults = defaults.container();
+//! let bg_color = container_defaults.background();
+//!
+//! // Get default interactive styles
+//! let interactive_defaults = defaults.interactive();
+//! let border_color = interactive_defaults.border();
+//! ```
+//!
+//! ## Style Value Types
+//!
+//! The [StyleVal] enum supports various data types:
+//!
+//! - **Color**: RGB colors for backgrounds, text, borders
+//! - **Gradient**: Color gradients for advanced styling
+//! - **Brush**: Peniko brush objects for complex drawing
+//! - **Float**: Floating-point values for sizes, opacities
+//! - **Int**: Signed integer values for counts, sizes
+//! - **UInt**: Unsigned integer values for counts, sizes
+//! - **Bool**: Boolean values for flags, states
+//!
+//! ## Performance Considerations
+//!
+//! - **IndexMap Storage**: Uses IndexMap for efficient insertion order preservation
+//! - **String Keys**: String-based keys have some performance overhead
+//! - **Memory Usage**: Stores strings for property names
+//! - **Lookup Performance**: O(1) average case lookup performance
+//!
+//! ## Best Practices
+//!
+//! 1. **Use Type-Safe Properties**: Prefer the new type-safe property system
+//! 2. **Provide Fallbacks**: Always provide fallback values for missing properties
+//! 3. **Use Constants**: Define property names as constants to avoid typos
+//! 4. **Document Properties**: Document what each property represents
+//! 5. **Test Styles**: Test that styles work correctly with your widgets
+//!
+//! ## Migration to Type-Safe Properties
+//!
+//! While this module provides backward compatibility, new code should use the
+//! type-safe property system in the [properties](crate::properties) module:
+//!
+//! ```rust
+//! // ❌ Old way (legacy)
+//! let color = style.get_color("color_idle").unwrap_or(Color::BLACK);
+//!
+//! // ✅ New way (type-safe)
+//! let color = theme.get_property(widget_id, &ThemeProperty::ColorIdle)
+//!     .unwrap_or(Color::BLACK);
+//! ```
+
 use indexmap::IndexMap;
 use peniko::{Brush, Color, Gradient};
 
 /// Styling map for defining widget appearance.
+///
+/// This struct provides a legacy string-based style system for widget theming.
+/// It stores style properties as key-value pairs where keys are strings and
+/// values are [StyleVal] enums.
+///
+/// # Examples
+///
+/// ```rust
+/// use nptk_theme::style::{Style, StyleVal};
+/// use peniko::Color;
+///
+/// // Create a new style
+/// let mut style = Style::new();
+/// style.set_color("color_idle", Color::from_rgb8(100, 150, 255));
+/// style.set_color("color_hovered", Color::from_rgb8(120, 170, 255));
+///
+/// // Create from values
+/// let style = Style::from_values([
+///     ("color_idle".to_string(), StyleVal::Color(Color::from_rgb8(100, 150, 255))),
+///     ("color_hovered".to_string(), StyleVal::Color(Color::from_rgb8(120, 170, 255))),
+/// ]);
+/// ```
+///
+/// # Performance
+///
+/// - **IndexMap Storage**: Uses IndexMap for efficient insertion order preservation
+/// - **String Keys**: String-based keys have some performance overhead
+/// - **Memory Usage**: Stores strings for property names
+/// - **Lookup Performance**: O(1) average case lookup performance
+///
+/// # Best Practices
+///
+/// 1. **Use Type-Safe Properties**: Prefer the new type-safe property system
+/// 2. **Provide Fallbacks**: Always provide fallback values for missing properties
+/// 3. **Use Constants**: Define property names as constants to avoid typos
+/// 4. **Document Properties**: Document what each property represents
+/// 5. **Test Styles**: Test that styles work correctly with your widgets
 #[derive(Clone, Debug)]
 pub struct Style {
     map: IndexMap<String, StyleVal>,
