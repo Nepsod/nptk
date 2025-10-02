@@ -140,9 +140,18 @@ impl Widget for Progress {
 
         // Draw progress fill
         if *self.indeterminate.get() {
-            // Indeterminate mode: animated progress
+            // Indeterminate mode: ping-pong animated progress
             let progress_width = width * 0.3; // 30% of total width
-            let progress_x = x + (self.animation_time as f64 * (width + progress_width) - progress_width).max(0.0).min(width - progress_width);
+            let available_width = width - progress_width;
+            
+            // Create ping-pong animation: 0.0 -> 1.0 -> 0.0 -> 1.0...
+            let ping_pong_time = if self.animation_time <= 0.5 {
+                self.animation_time * 2.0 // 0.0 -> 1.0
+            } else {
+                2.0 - (self.animation_time * 2.0) // 1.0 -> 0.0
+            };
+            
+            let progress_x = x + (ping_pong_time as f64 * available_width);
             
             let progress_rect = RoundedRect::new(
                 progress_x,
