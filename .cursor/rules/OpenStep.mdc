@@ -1,0 +1,110 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+# OpenStep-like GUI Toolkit Ruleset
+
+## Project Vision
+- Recreate the **look, feel, and architecture** of OpenStep/GNUstep in **Rust**.
+- Emphasize **modularity**, **historical fidelity**, and **Rust-idiomatic safety**.
+- Toolkit is divided into: `core`, `macros`, `widgets`, `theme`.
+
+---
+
+## Layer Responsibilities
+
+### core
+- Provide foundation-like layer:
+  - Event loop, responder chain, geometry (`Rect`, `Point`, `Size`).
+  - Application lifecycle (`App` struct).
+  - Safe equivalents of Objective-C patterns (delegates → traits, target-action → closures).
+- Ensure thread safety (`Arc<Mutex<T>>` where needed).
+
+### macros
+- Provide developer ergonomics:
+  - Procedural macros for widget trees (`openstep_ui! { … }`).
+  - Attribute macros for event handlers (`#[on_click]`).
+  - Reduce boilerplate for widget registration.
+- Syntax should remain minimalistic, reflecting OpenStep’s imperative clarity.
+
+### widgets
+- Implement ApplicationKit-like components:
+  - `Window`, `View`, `Button`, `TextField`, `Menu`, `ScrollView`.
+  - Container views, split views, browser views.
+  - Event handling via responder chain.
+- Widgets should be backend-agnostic; rendering delegated to `theme`.
+
+### theme
+- Provide visual styling and rendering backend:
+  - Default theme mimics OpenStep/GNUstep look (gray palette, sharp bevels).
+  - Rendering abstraction via `Renderer` trait (backends: `wgpu`, `vello`, `winit`).
+  - Allow pluggable themes without altering widget logic.
+
+---
+
+## Agent Roles
+
+### Code Agent
+- Generate clear, beginner-friendly APIs.
+- Translate Objective-C patterns into Rust traits/enums.
+- Ensure modularity and memory safety.
+- Use names and patterns familiar to GUI developers (e.g. `Window::show()`, `Button::on_click()`).
+
+### UI Agent
+- Propose widget hierarchies/layouts faithful to OpenStep.
+- Maintain pixel-perfect control in layouts.
+- Suggest widget hierarchies that are easy to read and modify.
+- Encourage explicit but simple layout (e.g. `view.set_frame(10, 10, 200, 40)`).
+
+### Docs Agent
+- Annotate Rust APIs with historical context (OpenStep → Cocoa → GNUstep).
+- Provide usage examples and compatibility notes.
+
+### Test Agent
+- Generate unit tests for widget behavior and event propagation.
+- Simulate user interaction sequences.
+- Validate rendering output against reference screenshots.
+
+---
+
+## Design Principles
+
+- **Object-oriented** → Traits + enums + composition.
+- **Target-action** → Closures or message bus.
+- **Responder chain** → Linked trait objects with bubbling.
+- **Manual layout** → Explicit `Rect` positioning.
+- **Drawing abstraction** → Backend-agnostic `Renderer` trait.
+- **Simplicity over strictness**: APIs should “just work” with minimal setup.
+- **Beginner-first ergonomics**: avoid exposing lifetimes, traits, or unsafe code.
+- **Consistency**: method names and patterns should mirror OpenStep/Cocoa style.
+
+---
+
+## Class Mapping
+
+| OpenStep Class | Rust Equivalent |
+|----------------|-----------------|
+| `NSApplication` | `App` (core) |
+| `NSResponder`   | `Responder` trait (core) |
+| `NSWindow`      | `Window` (widgets) |
+| `NSView`        | `View` trait + concrete views (widgets) |
+| `NSButton`      | `Button` struct (widgets) |
+| `NSColor`       | `Color` struct (theme) |
+| `NSFont`        | `Font` struct (theme) |
+
+---
+
+## References
+- OpenStep Specification (GNUstep mirror): https://www.gnustep.org/resources/OpenStepSpec/OpenStepSpec.html  
+- GNUstep GUI Library: https://github.com/gnustep/libs-gui  
+- Rust GUI inspirations: `gpui`, `iced`, `xilem`, `orbtk`
+
+---
+
+## Final Notes
+- **Feel like OpenStep, behave like beginner-friendly Rust toolkit**.
+- AI IDEs should prioritize **historical fidelity** in look and interaction, while embracing **modern Rust ergonomics** in implementation.
+- APIs should be **approachable, forgiving, and fun** to use.
+- Advanced Rust patterns may be used internally, but **never exposed** to the beginner-facing API.
+
