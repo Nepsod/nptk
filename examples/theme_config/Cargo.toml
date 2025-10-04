@@ -1,0 +1,11 @@
+[package]
+name = "theme_config"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "theme_config"
+path = "src/main.rs"
+
+[dependencies]
+nptk = { path = "../../" }

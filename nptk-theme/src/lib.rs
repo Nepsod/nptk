@@ -14,6 +14,7 @@
 //! - **[ThemeProperty](properties::ThemeProperty)**: Type-safe property keys
 //! - **[ThemeManager](manager::ThemeManager)**: Runtime theme switching and caching
 //! - **[ThemeHelper](helpers::ThemeHelper)**: Safe property access utilities
+//! - **[ThemeConfig](config::ThemeConfig)**: Theme configuration from environment variables and files
 //! - **Built-in Themes**: Light and dark theme implementations
 //!
 //! ## Quick Start
@@ -46,6 +47,33 @@
 //! // ✅ New way (safe)
 //! let color = theme.get_property(widget_id, &ThemeProperty::ColorIdle)
 //!     .unwrap_or(fallback_color);
+//! ```
+//!
+//! ## Theme Configuration
+//!
+//! Configure themes through environment variables, configuration files, or programmatically:
+//!
+//! ```rust
+//! use nptk_theme::config::ThemeConfig;
+//!
+//! // From environment variables
+//! let config = ThemeConfig::from_env_or_default();
+//! let theme = config.resolve_theme().unwrap();
+//!
+//! // From configuration file
+//! let config = ThemeConfig::from_file("theme.toml").unwrap();
+//! let theme = config.resolve_theme().unwrap();
+//! ```
+//!
+//! ### Environment Variables
+//!
+//! Set themes via environment variables:
+//!
+//! ```bash
+//! export NPTK_THEME=dark          # Use dark theme
+//! export NPTK_THEME=light         # Use light theme
+//! export NPTK_THEME=custom:my-theme  # Use custom theme
+//! export NPTK_THEME_FALLBACK=light   # Set fallback theme
 //! ```
 //!
 //! ## Theme Switching
@@ -107,6 +135,10 @@
 //! For detailed migration instructions from the old string-based system,
 //! see the documentation for each module and the examples in the `examples/` directory.
 
+/// Contains application integration traits and utilities.
+pub mod app_integration;
+/// Contains the [config::ThemeConfig] struct for theme configuration.
+pub mod config;
 /// Contains the [globals::Globals] struct.
 pub mod globals;
 /// Contains helper functions for safe theme property access.
@@ -121,3 +153,5 @@ pub mod properties;
 pub mod style;
 /// Contains the [theme::Theme] trait and built-in themes.
 pub mod theme;
+/// Contains the [theme_resolver::SelfContainedThemeResolver] for self-contained theme resolution.
+pub mod theme_resolver;

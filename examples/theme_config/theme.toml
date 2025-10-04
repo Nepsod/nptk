@@ -1,0 +1,27 @@
+# NPTK Theme Configuration File
+# This file demonstrates how to configure themes using TOML format
+
+[theme]
+# Default theme to use
+default = "dark"
+
+# Fallback theme if default fails
+fallback = "light"
+
+# Custom theme configuration
+[theme.custom]
+name = "my-custom-theme"
+path = "./themes/my-theme.toml"
+
+# Additional theme properties
+[theme.properties]
+# Custom color overrides
+primary_color = "#6496FF"
+secondary_color = "#8CA0F0"
+background_color = "#1E1E1E"
+text_color = "#DCDCDC"
+
+# Custom sizing
+border_radius = 8.0
+padding = 16.0
+font_size = 14.0
