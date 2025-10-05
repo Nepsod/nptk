@@ -5,19 +5,93 @@ use nptk::core::config::MayConfig;
 use nptk::core::layout::{AlignItems, Dimension, FlexDirection, LayoutStyle, LengthPercentage, LengthPercentageAuto};
 use nptk::core::widget::{Widget, WidgetLayoutExt};
 use nptk::math::Vector2;
+use nptk::theme::theme::Theme;
+use nptk::theme::theme::dark::DarkTheme;
 use nptk::theme::theme::celeste::CelesteTheme;
+use nptk::theme::config::{ThemeConfig, ThemeSource};
+use nptk::theme::id::WidgetId;
+use nptk::theme::style::{DefaultStyles, Style};
+use nptk::theme::globals::Globals;
+use nptk::core::vg::peniko::Color;
 use nptk::widgets::text::Text;
 use nptk::widgets::menu_button::{MenuButton, MenuItem};
 use nptk::widgets::container::Container;
 
+/// A wrapper theme that can switch between different themes
+#[derive(Clone)]
+pub enum ConfigurableTheme {
+    Light(CelesteTheme),
+    Dark(DarkTheme),
+}
+
+impl Theme for ConfigurableTheme {
+    fn of(&self, id: WidgetId) -> Option<Style> {
+        match self {
+            ConfigurableTheme::Light(theme) => theme.of(id),
+            ConfigurableTheme::Dark(theme) => theme.of(id),
+        }
+    }
+
+    fn defaults(&self) -> DefaultStyles {
+        match self {
+            ConfigurableTheme::Light(theme) => theme.defaults(),
+            ConfigurableTheme::Dark(theme) => theme.defaults(),
+        }
+    }
+
+    fn window_background(&self) -> Color {
+        match self {
+            ConfigurableTheme::Light(theme) => theme.window_background(),
+            ConfigurableTheme::Dark(theme) => theme.window_background(),
+        }
+    }
+
+    fn globals(&self) -> &Globals {
+        match self {
+            ConfigurableTheme::Light(theme) => theme.globals(),
+            ConfigurableTheme::Dark(theme) => theme.globals(),
+        }
+    }
+
+    fn globals_mut(&mut self) -> &mut Globals {
+        match self {
+            ConfigurableTheme::Light(theme) => theme.globals_mut(),
+            ConfigurableTheme::Dark(theme) => theme.globals_mut(),
+        }
+    }
+}
+
+impl Default for ConfigurableTheme {
+    fn default() -> Self {
+        ConfigurableTheme::Dark(DarkTheme::new())
+    }
+}
+
+impl ConfigurableTheme {
+    pub fn from_config(config: &ThemeConfig) -> Self {
+        match &config.default_theme {
+            ThemeSource::Light => ConfigurableTheme::Light(CelesteTheme::light()),
+            ThemeSource::Dark => ConfigurableTheme::Dark(DarkTheme::new()),
+            _ => ConfigurableTheme::Dark(DarkTheme::new()), // Default fallback
+        }
+    }
+}
+
 struct MenuButtonApp;
 
 impl Application for MenuButtonApp {
-    type Theme = CelesteTheme;
+    type Theme = ConfigurableTheme;
     type State = ();
 
     fn config(&self) -> MayConfig<Self::Theme> {
-        MayConfig::default()
+        // Load theme configuration and create the appropriate theme
+        let config = ThemeConfig::from_env_or_default();
+        let theme = ConfigurableTheme::from_config(&config);
+        
+        MayConfig {
+            theme,
+            ..Default::default()
+        }
     }
 
     fn build(_context: AppContext, _config: Self::State) -> impl Widget {
@@ -80,5 +154,33 @@ impl Application for MenuButtonApp {
 }
 
 fn main() {
-    MenuButtonApp.run(());
+    // Print environment variable information
+    println!("MenuButton Demo");
+    println!("===============");
+    println!("Set the following environment variables to configure the theme:");
+    println!("  NPTK_THEME=light     # Use light theme");
+    println!("  NPTK_THEME=dark      # Use dark theme");
+    println!();
+    
+    if let Ok(theme_env) = std::env::var("NPTK_THEME") {
+        println!("Current NPTK_THEME: {}", theme_env);
+    } else {
+        println!("NPTK_THEME not set, using default theme");
+    }
+    
+    println!();
+    println!("Starting application...");
+    
+    // Demonstrate theme configuration
+    let config = ThemeConfig::from_env_or_default();
+    println!("Theme configuration loaded:");
+    println!("  Default theme: {:?}", config.default_theme);
+    println!("  Fallback theme: {:?}", config.fallback_theme);
+    
+    println!();
+    println!("Running GUI application...");
+    
+    // Run the application
+    let app = MenuButtonApp;
+    app.run(());
 }

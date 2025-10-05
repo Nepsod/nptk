@@ -9,15 +9,81 @@ use nptk::core::signal::state::StateSignal;
 use nptk::core::signal::Signal;
 use nptk::core::widget::{Widget, WidgetLayoutExt};
 use nptk::math::Vector2;
+use nptk::theme::theme::Theme;
+use nptk::theme::theme::dark::DarkTheme;
 use nptk::theme::theme::celeste::CelesteTheme;
+use nptk::theme::config::{ThemeConfig, ThemeSource};
+use nptk::theme::id::WidgetId;
+use nptk::theme::style::{DefaultStyles, Style};
+use nptk::theme::globals::Globals;
+use nptk::core::vg::peniko::Color;
 use nptk::widgets::button::Button;
 use nptk::widgets::container::Container;
 use nptk::widgets::text::Text;
 
+/// A wrapper theme that can switch between different themes
+#[derive(Clone)]
+pub enum ConfigurableTheme {
+    Light(CelesteTheme),
+    Dark(DarkTheme),
+}
+
+impl Theme for ConfigurableTheme {
+    fn of(&self, id: WidgetId) -> Option<Style> {
+        match self {
+            ConfigurableTheme::Light(theme) => theme.of(id),
+            ConfigurableTheme::Dark(theme) => theme.of(id),
+        }
+    }
+
+    fn defaults(&self) -> DefaultStyles {
+        match self {
+            ConfigurableTheme::Light(theme) => theme.defaults(),
+            ConfigurableTheme::Dark(theme) => theme.defaults(),
+        }
+    }
+
+    fn window_background(&self) -> Color {
+        match self {
+            ConfigurableTheme::Light(theme) => theme.window_background(),
+            ConfigurableTheme::Dark(theme) => theme.window_background(),
+        }
+    }
+
+    fn globals(&self) -> &Globals {
+        match self {
+            ConfigurableTheme::Light(theme) => theme.globals(),
+            ConfigurableTheme::Dark(theme) => theme.globals(),
+        }
+    }
+
+    fn globals_mut(&mut self) -> &mut Globals {
+        match self {
+            ConfigurableTheme::Light(theme) => theme.globals_mut(),
+            ConfigurableTheme::Dark(theme) => theme.globals_mut(),
+        }
+    }
+}
+
+impl Default for ConfigurableTheme {
+    fn default() -> Self {
+        ConfigurableTheme::Dark(DarkTheme::new())
+    }
+}
+
+impl ConfigurableTheme {
+    pub fn from_config(config: &ThemeConfig) -> Self {
+        match &config.default_theme {
+            ThemeSource::Light => ConfigurableTheme::Light(CelesteTheme::light()),
+            ThemeSource::Dark => ConfigurableTheme::Dark(DarkTheme::new()),
+            _ => ConfigurableTheme::Dark(DarkTheme::new()), // Default fallback
+        }
+    }
+}
 struct FocusApp;
 
 impl Application for FocusApp {
-    type Theme = CelesteTheme;
+    type Theme = ConfigurableTheme;
     type State = ();
 
     fn build(context: AppContext, _: Self::State) -> impl Widget {
@@ -77,7 +143,14 @@ impl Application for FocusApp {
     }
 
     fn config(&self) -> MayConfig<Self::Theme> {
-        MayConfig::default()
+        // Load theme configuration and create the appropriate theme
+        let config = ThemeConfig::from_env_or_default();
+        let theme = ConfigurableTheme::from_config(&config);
+        
+        MayConfig {
+            theme,
+            ..Default::default()
+        }
     }
 }
 

@@ -1,8 +1,0 @@
-[package]
-name = "theme_demo"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-nptk = { path = "../../" }
-nalgebra = "0.32"

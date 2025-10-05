@@ -315,10 +315,10 @@ impl Widget for TabsContainer {
 
         // Draw tab bar background (slightly different color)
         let tab_bar_bounds = self.get_tab_bar_bounds(layout);
-        let tab_bar_color = if let Some(ref theme) = widget_theme {
-            theme.get_color("tab_bar_background").unwrap_or(Color::from_rgb8(250, 250, 250))
+        let tab_bar_color = if let Some(ref style) = widget_theme {
+            style.get_color("tab_bar_background").unwrap_or_else(|| theme.defaults().container().background())
         } else {
-            Color::from_rgb8(250, 250, 250)
+            theme.defaults().container().background()
         };
 
         scene.fill(
@@ -331,9 +331,9 @@ impl Widget for TabsContainer {
 
         // Draw tab bar border
         let border_color = if let Some(ref theme) = widget_theme {
-            theme.get_color("border").unwrap_or(Color::from_rgb8(180, 180, 180))
+            theme.get_color("border").unwrap_or_else(|| Color::from_rgb8(200, 200, 200)) // Default border color
         } else {
-            Color::from_rgb8(180, 180, 180)
+            Color::from_rgb8(200, 200, 200) // Default border color
         };
         
         scene.stroke(
@@ -352,18 +352,18 @@ impl Widget for TabsContainer {
             let is_pressed = self.pressed_tab == Some(index);
 
             // Tab background with rounded corners
-            let tab_color = if let Some(ref theme) = widget_theme {
+            let tab_color = if let Some(ref style) = widget_theme {
                 if is_active {
-                    theme.get_color("tab_active").unwrap_or(Color::WHITE)
+                    style.get_color("tab_active").unwrap_or_else(|| theme.defaults().container().background())
                 } else if is_pressed {
-                    theme.get_color("tab_pressed").unwrap_or(Color::from_rgb8(200, 200, 200))
+                    style.get_color("tab_pressed").unwrap_or_else(|| theme.defaults().interactive().active())
                 } else if is_hovered {
-                    theme.get_color("tab_hovered").unwrap_or(Color::from_rgb8(220, 220, 220))
+                    style.get_color("tab_hovered").unwrap_or_else(|| theme.defaults().interactive().hover())
                 } else {
-                    theme.get_color("tab_inactive").unwrap_or(Color::from_rgb8(230, 230, 230))
+                    style.get_color("tab_inactive").unwrap_or_else(|| theme.defaults().container().background())
                 }
             } else {
-                Color::from_rgb8(230, 230, 230)
+                theme.defaults().container().background()
             };
 
             // Create rounded rectangle for tab (only round top corners for top tabs)
@@ -396,9 +396,9 @@ impl Widget for TabsContainer {
 
             // Tab border with subtle styling
             let border_color = if let Some(ref theme) = widget_theme {
-                theme.get_color("border").unwrap_or(Color::from_rgb8(180, 180, 180))
+                theme.get_color("border").unwrap_or_else(|| Color::from_rgb8(200, 200, 200)) // Default border color
             } else {
-                Color::from_rgb8(180, 180, 180)
+                Color::from_rgb8(200, 200, 200) // Default border color
             };
             
             scene.stroke(
@@ -410,14 +410,14 @@ impl Widget for TabsContainer {
             );
 
             // Tab text with proper rendering and theme colors
-            let text_color = if let Some(ref theme) = widget_theme {
+            let text_color = if let Some(ref style) = widget_theme {
                 if is_active {
-                    theme.get_color("tab_text_active").unwrap_or(Color::BLACK)
+                    style.get_color("tab_text_active").unwrap_or_else(|| theme.defaults().text().foreground())
                 } else {
-                    theme.get_color("tab_text").unwrap_or(Color::from_rgb8(50, 50, 50))
+                    style.get_color("tab_text").unwrap_or_else(|| theme.defaults().text().foreground())
                 }
             } else {
-                if is_active { Color::BLACK } else { Color::from_rgb8(50, 50, 50) }
+                theme.defaults().text().foreground()
             };
 
             // Center text in tab
@@ -432,9 +432,9 @@ impl Widget for TabsContainer {
                 let close_hovered = self.hovered_close == Some(index);
                 
                 let close_color = if close_hovered {
-                    Color::from_rgb8(255, 100, 100)
+                    Color::from_rgb8(255, 100, 100) // Red for hovered close button
                 } else {
-                    Color::from_rgb8(150, 150, 150)
+                    theme.defaults().text().foreground() // Use theme text color for normal state
                 };
 
                 // Draw X for close button (draw two lines to form an X)
@@ -464,10 +464,10 @@ impl Widget for TabsContainer {
         
         if let Some(active_tab) = self.tabs.get_mut(active_tab_index) {
             // Draw content area background
-            let content_bg_color = if let Some(ref theme) = widget_theme {
-                theme.get_color("content_background").unwrap_or(Color::WHITE)
+            let content_bg_color = if let Some(ref style) = widget_theme {
+                style.get_color("content_background").unwrap_or_else(|| theme.defaults().container().background())
             } else {
-                Color::WHITE
+                theme.defaults().container().background()
             };
 
             scene.fill(
