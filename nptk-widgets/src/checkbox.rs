@@ -4,32 +4,71 @@ use nptk_core::app::update::Update;
 use nptk_core::layout;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentageAuto, StyleNode};
 use nptk_core::signal::MaybeSignal;
-use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Stroke};
-use nptk_core::vg::peniko::{Brush, Fill};
+use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Stroke, Line, Point};
+use nptk_core::vg::peniko::{Brush, Fill, Color};
 use nptk_core::vg::Scene;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use nptk_theme::helpers::ThemeHelper;
 use nalgebra::Vector2;
 
-/// A checkbox widget. Changes state when it's clicked.
+/// The state of a checkbox widget.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckboxState {
+    /// Unchecked state
+    Unchecked,
+    /// Checked state  
+    Checked,
+    /// Indeterminate state (partially selected, like in Windows file trees)
+    Indeterminate,
+}
+
+impl CheckboxState {
+    /// Cycle to the next state in the sequence: Unchecked -> Checked -> Indeterminate -> Unchecked
+    pub fn cycle_next(self) -> Self {
+        match self {
+            CheckboxState::Unchecked => CheckboxState::Checked,
+            CheckboxState::Checked => CheckboxState::Indeterminate,
+            CheckboxState::Indeterminate => CheckboxState::Unchecked,
+        }
+    }
+
+    /// Convert to boolean for backward compatibility (true = checked, false = unchecked/indeterminate)
+    pub fn to_bool(self) -> bool {
+        matches!(self, CheckboxState::Checked)
+    }
+
+    /// Create from boolean for backward compatibility
+    pub fn from_bool(value: bool) -> Self {
+        if value {
+            CheckboxState::Checked
+        } else {
+            CheckboxState::Unchecked
+        }
+    }
+}
+
+/// A checkbox widget with three states: unchecked, checked, and indeterminate.
+/// Changes state when clicked, cycling through: Unchecked -> Checked -> Indeterminate -> Unchecked
 ///
 /// ### Theming
-/// Styling the checkbox require following properties:
-/// - `color_unchecked` -  The color of the checkbox, when it's not checked (inner value is false).
-/// - `color_checked` - The color of the checkbox, when it's checked (inner value is true).
+/// Styling the checkbox requires the following properties:
+/// - `color_unchecked` - The color of the checkbox when unchecked
+/// - `color_checked` - The color of the checkbox when checked  
+/// - `color_indeterminate` - The color of the checkbox when indeterminate
 pub struct Checkbox {
     layout_style: MaybeSignal<LayoutStyle>,
-    value: MaybeSignal<bool>,
+    value: MaybeSignal<CheckboxState>,
     on_change: MaybeSignal<Update>,
 }
 
 impl Checkbox {
-    /// Create a new checkbox with the given value.
+    /// Create a new checkbox with the given state.
     ///
     /// The value should be a signal, so it's mutable.
-    pub fn new(value: impl Into<MaybeSignal<bool>>) -> Self {
+    pub fn new(value: impl Into<MaybeSignal<CheckboxState>>) -> Self {
         Self {
             layout_style: LayoutStyle {
                 size: Vector2::<Dimension>::new(Dimension::length(20.0), Dimension::length(20.0)),
@@ -47,8 +86,16 @@ impl Checkbox {
         }
     }
 
+    /// Create a new checkbox from a boolean value (for backward compatibility).
+    ///
+    /// The value should be a signal, so it's mutable.
+    pub fn new_bool(value: impl Into<MaybeSignal<bool>>) -> Self {
+        let bool_signal = value.into();
+        Self::new(bool_signal.map(|b| nptk_core::reference::Ref::Owned(CheckboxState::from_bool(*b))))
+    }
+
     /// Sets the value of the checkbox and returns itself.
-    pub fn with_value(mut self, value: impl Into<MaybeSignal<bool>>) -> Self {
+    pub fn with_value(mut self, value: impl Into<MaybeSignal<CheckboxState>>) -> Self {
         self.value = value.into();
         self
     }
@@ -75,54 +122,97 @@ impl Widget for Checkbox {
         _: &mut AppInfo,
         _: AppContext,
     ) {
-        let checked = *self.value.get();
-
-        let color = if let Some(style) = theme.of(self.widget_id()) {
-            if checked {
-                style.get_color("color_checked").unwrap()
-            } else {
-                style.get_color("color_unchecked").unwrap()
-            }
-        } else if checked {
-            theme.defaults().interactive().active()
-        } else {
-            theme.defaults().interactive().inactive()
+        let state = *self.value.get();
+        
+        // Get colors based on state using theme helper
+        let theme_checkbox_state = match state {
+            CheckboxState::Unchecked => nptk_theme::helpers::CheckboxState::Unchecked,
+            CheckboxState::Checked => nptk_theme::helpers::CheckboxState::Checked,
+            CheckboxState::Indeterminate => nptk_theme::helpers::CheckboxState::Indeterminate,
+        };
+        let border_color = ThemeHelper::get_checkbox_color_three_state(&*theme, self.widget_id(), theme_checkbox_state);
+        let fill_color = match state {
+            CheckboxState::Unchecked => None,
+            CheckboxState::Checked => Some(border_color),
+            CheckboxState::Indeterminate => Some(border_color),
         };
 
-        scene.stroke(
-            &Stroke::new(3.0),
-            Affine::default(),
-            &Brush::Solid(color),
-            None,
-            &RoundedRect::from_rect(
-                Rect::new(
-                    layout_node.layout.location.x as f64,
-                    layout_node.layout.location.y as f64,
-                    (layout_node.layout.location.x + layout_node.layout.size.width) as f64,
-                    (layout_node.layout.location.y + layout_node.layout.size.height) as f64,
-                ),
-                RoundedRectRadii::from_single_radius(5.0),
-            ),
+        let checkbox_rect = Rect::new(
+            layout_node.layout.location.x as f64,
+            layout_node.layout.location.y as f64,
+            (layout_node.layout.location.x + layout_node.layout.size.width) as f64,
+            (layout_node.layout.location.y + layout_node.layout.size.height) as f64,
         );
 
-        if checked {
-            scene.fill(
-                Fill::NonZero,
-                Affine::default(),
-                &Brush::Solid(color),
-                None,
-                &RoundedRect::from_rect(
-                    Rect::new(
-                        layout_node.layout.location.x as f64 + 5.0,
-                        layout_node.layout.location.y as f64 + 5.0,
-                        (layout_node.layout.location.x + layout_node.layout.size.width) as f64
-                            - 5.0,
-                        (layout_node.layout.location.y + layout_node.layout.size.height) as f64
-                            - 5.0,
-                    ),
-                    RoundedRectRadii::from_single_radius(2.5),
-                ),
-            );
+        let rounded_rect = RoundedRect::from_rect(checkbox_rect, RoundedRectRadii::from_single_radius(3.0));
+
+        // Draw border
+        scene.stroke(
+            &Stroke::new(2.0),
+            Affine::default(),
+            &Brush::Solid(border_color),
+            None,
+            &rounded_rect,
+        );
+
+        // Draw fill and symbols based on state
+        match state {
+            CheckboxState::Checked => {
+                // Draw filled background
+                let inner_rect = Rect::new(
+                    checkbox_rect.x0 + 2.0,
+                    checkbox_rect.y0 + 2.0,
+                    checkbox_rect.x1 - 2.0,
+                    checkbox_rect.y1 - 2.0,
+                );
+                let inner_rounded = RoundedRect::from_rect(inner_rect, RoundedRectRadii::from_single_radius(2.0));
+                scene.fill(Fill::NonZero, Affine::default(), &Brush::Solid(fill_color.unwrap()), None, &inner_rounded);
+                
+                // Draw checkmark
+                let center_x = (checkbox_rect.x0 + checkbox_rect.x1) / 2.0;
+                let center_y = (checkbox_rect.y0 + checkbox_rect.y1) / 2.0;
+                let size = checkbox_rect.width().min(checkbox_rect.height()) * 0.25;
+                
+                // Simple checkmark: two lines forming a V
+                let line1 = Line::new(
+                    Point::new(center_x - size * 0.5, center_y),
+                    Point::new(center_x - size * 0.1, center_y + size * 0.4),
+                );
+                
+                let line2 = Line::new(
+                    Point::new(center_x - size * 0.1, center_y + size * 0.4),
+                    Point::new(center_x + size * 0.6, center_y - size * 0.4),
+                );
+                
+                scene.stroke(&Stroke::new(2.0), Affine::default(), &Brush::Solid(Color::WHITE), None, &line1);
+                scene.stroke(&Stroke::new(2.0), Affine::default(), &Brush::Solid(Color::WHITE), None, &line2);
+            }
+            CheckboxState::Indeterminate => {
+                // Draw filled background
+                let inner_rect = Rect::new(
+                    checkbox_rect.x0 + 2.0,
+                    checkbox_rect.y0 + 2.0,
+                    checkbox_rect.x1 - 2.0,
+                    checkbox_rect.y1 - 2.0,
+                );
+                let inner_rounded = RoundedRect::from_rect(inner_rect, RoundedRectRadii::from_single_radius(2.0));
+                scene.fill(Fill::NonZero, Affine::default(), &Brush::Solid(fill_color.unwrap()), None, &inner_rounded);
+                
+                // Draw horizontal line (minus sign) - only for indeterminate state
+                let center_x = (checkbox_rect.x0 + checkbox_rect.x1) / 2.0;
+                let center_y = (checkbox_rect.y0 + checkbox_rect.y1) / 2.0;
+                let line_width = checkbox_rect.width() * 0.5;
+                
+                let line = Line::new(
+                    Point::new(center_x - line_width / 2.0, center_y),
+                    Point::new(center_x + line_width / 2.0, center_y),
+                );
+                
+                scene.stroke(&Stroke::new(2.5), Affine::default(), &Brush::Solid(Color::WHITE), None, &line);
+            }
+            CheckboxState::Unchecked => {
+                // No fill, no symbols for unchecked state - just the border
+            }
         }
     }
 
@@ -148,7 +238,9 @@ impl Widget for Checkbox {
                         update |= Update::DRAW;
 
                         if let Some(sig) = self.value.as_signal() {
-                            sig.set(!*sig.get());
+                            let current_state = *sig.get();
+                            let new_state = current_state.cycle_next();
+                            sig.set(new_state);
                         }
                     }
                 }

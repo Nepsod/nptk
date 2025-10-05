@@ -246,6 +246,17 @@ use crate::id::WidgetId;
 use crate::properties::ThemeProperty;
 use crate::theme::Theme;
 
+/// The state of a checkbox widget (duplicated from nptk-widgets to avoid circular dependency).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckboxState {
+    /// Unchecked state
+    Unchecked,
+    /// Checked state  
+    Checked,
+    /// Indeterminate state (partially selected, like in Windows file trees)
+    Indeterminate,
+}
+
 /// Helper functions for safe theme property access with proper fallbacks.
 ///
 /// This struct provides static helper functions that simplify common theming patterns
@@ -284,7 +295,7 @@ pub struct ThemeHelper;
 impl ThemeHelper {
     /// Get a color property with safe fallbacks.
     /// This is the recommended way to access theme colors in widgets.
-    pub fn get_color_safe<T: Theme>(
+    pub fn get_color_safe<T: Theme + ?Sized>(
         theme: &T,
         widget_id: WidgetId,
         property: &ThemeProperty,
@@ -399,6 +410,27 @@ impl ThemeHelper {
             Color::from_rgb8(130, 130, 230)
         } else {
             Color::from_rgb8(170, 170, 250)
+        };
+        
+        Self::get_color_safe(theme, widget_id, &property, fallback)
+    }
+    
+    /// Get a checkbox color based on three-state checkbox state with safe fallbacks.
+    pub fn get_checkbox_color_three_state<T: Theme + ?Sized>(
+        theme: &T,
+        widget_id: WidgetId,
+        state: CheckboxState,
+    ) -> Color {
+        let property = match state {
+            CheckboxState::Unchecked => ThemeProperty::ColorUnchecked,
+            CheckboxState::Checked => ThemeProperty::ColorChecked,
+            CheckboxState::Indeterminate => ThemeProperty::ColorIndeterminate,
+        };
+        
+        let fallback = match state {
+            CheckboxState::Unchecked => Color::from_rgb8(170, 170, 250),
+            CheckboxState::Checked => Color::from_rgb8(130, 130, 230),
+            CheckboxState::Indeterminate => Color::from_rgb8(150, 150, 240),
         };
         
         Self::get_color_safe(theme, widget_id, &property, fallback)

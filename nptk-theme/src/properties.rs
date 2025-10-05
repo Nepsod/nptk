@@ -217,6 +217,8 @@ pub enum ThemeProperty {
     ColorChecked,
     /// Checkbox color when unchecked.
     ColorUnchecked,
+    /// Checkbox color when in indeterminate state (partially selected).
+    ColorIndeterminate,
     
     // Slider-specific properties
     /// Slider thumb/ball color.
@@ -311,6 +313,7 @@ impl ThemeProperty {
             ThemeProperty::ColorPlaceholder => "color_placeholder",
             ThemeProperty::ColorChecked => "color_checked",
             ThemeProperty::ColorUnchecked => "color_unchecked",
+            ThemeProperty::ColorIndeterminate => "color_indeterminate",
             ThemeProperty::ColorBall => "color_ball",
             ThemeProperty::ColorBackgroundSelected => "color_background_selected",
             ThemeProperty::ColorBackgroundDisabled => "color_background_disabled",
