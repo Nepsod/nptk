@@ -35,6 +35,21 @@ impl CheckboxState {
         }
     }
 
+    /// Cycle to the next state, skipping indeterminate if not allowed.
+    /// For simple checkboxes: Unchecked -> Checked -> Unchecked
+    /// For three-state checkboxes: Unchecked -> Checked -> Indeterminate -> Unchecked
+    pub fn cycle_next_with_indeterminate(self, allow_indeterminate: bool) -> Self {
+        if allow_indeterminate {
+            self.cycle_next()
+        } else {
+            match self {
+                CheckboxState::Unchecked => CheckboxState::Checked,
+                CheckboxState::Checked => CheckboxState::Unchecked,
+                CheckboxState::Indeterminate => CheckboxState::Unchecked, // Force to unchecked if somehow indeterminate
+            }
+        }
+    }
+
     /// Convert to boolean for backward compatibility (true = checked, false = unchecked/indeterminate)
     pub fn to_bool(self) -> bool {
         matches!(self, CheckboxState::Checked)
@@ -67,12 +82,14 @@ pub struct Checkbox {
     value: MaybeSignal<CheckboxState>,
     on_change: MaybeSignal<Update>,
     locked_states: MaybeSignal<Vec<CheckboxState>>,
+    allow_indeterminate: bool,
 }
 
 impl Checkbox {
     /// Create a new checkbox with the given state.
     ///
     /// The value should be a signal, so it's mutable.
+    /// By default, indeterminate state is disabled for simple checkboxes.
     pub fn new(value: impl Into<MaybeSignal<CheckboxState>>) -> Self {
         Self {
             layout_style: LayoutStyle {
@@ -89,6 +106,7 @@ impl Checkbox {
             value: value.into(),
             on_change: Update::empty().into(),
             locked_states: Vec::new().into(),
+            allow_indeterminate: false,
         }
     }
 
@@ -98,6 +116,17 @@ impl Checkbox {
     pub fn new_bool(value: impl Into<MaybeSignal<bool>>) -> Self {
         let bool_signal = value.into();
         Self::new(bool_signal.map(|b| nptk_core::reference::Ref::Owned(CheckboxState::from_bool(*b))))
+    }
+
+    /// Enable the indeterminate state for this checkbox.
+    /// 
+    /// This allows the checkbox to cycle through all three states:
+    /// Unchecked -> Checked -> Indeterminate -> Unchecked
+    /// 
+    /// Use this for master checkboxes that control multiple sub-items.
+    pub fn with_indeterminate_state(mut self) -> Self {
+        self.allow_indeterminate = true;
+        self
     }
 
     /// Sets the value of the checkbox and returns itself.
@@ -368,7 +397,7 @@ impl Widget for Checkbox {
 
                         if let Some(sig) = self.value.as_signal() {
                             let current_state = *sig.get();
-                            let new_state = current_state.cycle_next();
+                            let new_state = current_state.cycle_next_with_indeterminate(self.allow_indeterminate);
                             sig.set(new_state);
                         }
                     }
