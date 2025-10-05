@@ -265,29 +265,33 @@ impl Widget for TextInput {
             }
         }
 
-        // Get colors from theme or use defaults
+        // Get colors from theme with proper fallbacks
         let bg_color = if let Some(style) = theme.of(self.widget_id()) {
-            style.get_color("color_background").unwrap_or(Color::WHITE)
+            style.get_color("color_background")
+                .unwrap_or_else(|| theme.defaults().container().background())
         } else {
-            Color::WHITE
+            theme.defaults().container().background()
         };
 
         let border_color = if let Some(style) = theme.of(self.widget_id()) {
             if is_focused {
-                style.get_color("color_border_focused").unwrap_or(Color::from_rgb8(100, 150, 255))
+                style.get_color("color_border_focused")
+                    .unwrap_or_else(|| theme.defaults().interactive().active())
             } else {
-                style.get_color("color_border").unwrap_or(Color::from_rgb8(200, 200, 200))
+                style.get_color("color_border")
+                    .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)) // Light gray border
             }
         } else if is_focused {
-            Color::from_rgb8(100, 150, 255)
+            theme.defaults().interactive().active()
         } else {
-            Color::from_rgb8(200, 200, 200)
+            Color::from_rgb8(200, 200, 200) // Light gray border
         };
 
         let _text_color = if let Some(style) = theme.of(self.widget_id()) {
-            style.get_color("color_text").unwrap_or(Color::BLACK)
+            style.get_color("color_text")
+                .unwrap_or_else(|| theme.defaults().text().foreground())
         } else {
-            Color::BLACK
+            theme.defaults().text().foreground()
         };
 
         let input_rect = RoundedRect::from_rect(
@@ -332,11 +336,12 @@ impl Widget for TextInput {
 
         // Render selection highlight first (behind text)
         if let Some(selection_range) = self.buffer.cursor().selection() {
-            // Use a very visible selection color
+            // Use theme selection color with proper fallback
             let selection_color = if let Some(style) = theme.of(self.widget_id()) {
-                style.get_color("color_selection").unwrap_or(Color::from_rgb8(255, 100, 100))
+                style.get_color("color_selection")
+                    .unwrap_or_else(|| theme.defaults().interactive().active())
             } else {
-                Color::from_rgb8(255, 100, 100) // Bright red for maximum visibility
+                theme.defaults().interactive().active()
             };
 
             // Calculate selection bounds using the same method as cursor positioning
@@ -363,7 +368,7 @@ impl Widget for TextInput {
 
         if !display_text.is_empty() {
             let text_color = if self.buffer.text().is_empty() {
-                Color::from_rgb8(150, 150, 150) // Placeholder color
+                theme.defaults().interactive().disabled() // Placeholder color from theme
             } else {
                 _text_color
             };
@@ -393,9 +398,10 @@ impl Widget for TextInput {
         // Render cursor when focused and visible (always show cursor when focused)
         if is_focused && self.cursor_visible {
             let cursor_color = if let Some(style) = theme.of(self.widget_id()) {
-                style.get_color("color_cursor").unwrap_or(Color::BLACK)
+                style.get_color("color_cursor")
+                    .unwrap_or_else(|| theme.defaults().text().foreground())
             } else {
-                Color::BLACK
+                theme.defaults().text().foreground()
             };
 
             // Calculate cursor position using the same method as mouse positioning

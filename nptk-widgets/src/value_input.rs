@@ -18,6 +18,15 @@ use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 
 /// A numeric input widget with validation and constraints.
+///
+/// ### Theming
+/// Styling the value input requires the following properties:
+/// - `color_background` - The background color of the input field.
+/// - `color_background_focused` - The background color when focused.
+/// - `color_border` - The border color of the input field.
+/// - `color_border_focused` - The border color when focused.
+/// - `color_border_error` - The border color when the value is invalid.
+/// - `color_text` - The text color.
 pub struct ValueInput {
     /// Current numeric value
     value: StateSignal<f64>,
@@ -373,39 +382,45 @@ impl Widget for ValueInput {
 
         let is_focused = matches!(self.focus_state, FocusState::Focused | FocusState::Gained);
         
-        // Get colors from theme or use defaults with more visible fallbacks
+        // Get colors from theme with proper fallbacks
         let background_color = if let Some(style) = theme.of(self.widget_id()) {
             if is_focused {
-                style.get_color("color_background_focused").unwrap_or(Color::WHITE)
+                style.get_color("color_background_focused")
+                    .unwrap_or_else(|| theme.defaults().interactive().active())
             } else {
-                style.get_color("color_background").unwrap_or(Color::from_rgb8(240, 240, 240))
+                style.get_color("color_background")
+                    .unwrap_or_else(|| theme.defaults().container().background())
             }
         } else if is_focused {
-            Color::WHITE
+            theme.defaults().interactive().active()
         } else {
-            Color::from_rgb8(240, 240, 240) // Slightly darker for visibility
+            theme.defaults().container().background()
         };
 
         let border_color = if let Some(style) = theme.of(self.widget_id()) {
             if !self.is_valid {
-                style.get_color("color_border_error").unwrap_or(Color::from_rgb8(255, 0, 0))
+                style.get_color("color_border_error")
+                    .unwrap_or_else(|| Color::from_rgb8(255, 0, 0)) // Red for error
             } else if is_focused {
-                style.get_color("color_border_focused").unwrap_or(Color::from_rgb8(0, 120, 255))
+                style.get_color("color_border_focused")
+                    .unwrap_or_else(|| theme.defaults().interactive().active())
             } else {
-                style.get_color("color_border").unwrap_or(Color::from_rgb8(120, 120, 120))
+                style.get_color("color_border")
+                    .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)) // Light gray border
             }
         } else if !self.is_valid {
-            Color::from_rgb8(255, 0, 0)
+            Color::from_rgb8(255, 0, 0) // Red for error
         } else if is_focused {
-            Color::from_rgb8(0, 120, 255)
+            theme.defaults().interactive().active()
         } else {
-            Color::from_rgb8(120, 120, 120) // Darker border for visibility
+            Color::from_rgb8(200, 200, 200) // Light gray border
         };
 
         let text_color = if let Some(style) = theme.of(self.widget_id()) {
-            style.get_color("color_text").unwrap_or(Color::BLACK)
+            style.get_color("color_text")
+                .unwrap_or_else(|| theme.defaults().text().foreground())
         } else {
-            Color::BLACK
+            theme.defaults().text().foreground()
         };
 
         // Draw background and border

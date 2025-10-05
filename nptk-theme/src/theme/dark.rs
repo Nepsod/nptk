@@ -146,7 +146,15 @@ impl Theme for DarkTheme {
                     ("color_background".to_string(), StyleVal::Color(self.variables.get_color("bg-secondary").unwrap())),
                     ("color_text".to_string(), StyleVal::Color(self.variables.get_color("text-primary").unwrap())),
                     ("color_hovered".to_string(), StyleVal::Color(self.variables.get_color("bg-tertiary").unwrap())),
-                    ("color_selected".to_string(), StyleVal::Color(self.variables.get_color("primary").unwrap())),
+                    ("color_selected".to_string(), StyleVal::Color(self.variables.get_color("primary-dark").unwrap())),
+                    ("color_disabled".to_string(), StyleVal::Color(self.variables.get_color("text-muted").unwrap())),
+                    ("color_border".to_string(), StyleVal::Color(self.variables.get_color("border-primary").unwrap())),
+                ])),
+
+                "MenuPopup" => Some(Style::from_values([
+                    ("color_background".to_string(), StyleVal::Color(self.variables.get_color("bg-secondary").unwrap())),
+                    ("color_text".to_string(), StyleVal::Color(self.variables.get_color("text-primary").unwrap())),
+                    ("color_hovered".to_string(), StyleVal::Color(self.variables.get_color("primary-dark").unwrap())),
                     ("color_disabled".to_string(), StyleVal::Color(self.variables.get_color("text-muted").unwrap())),
                     ("color_border".to_string(), StyleVal::Color(self.variables.get_color("border-primary").unwrap())),
                 ])),
@@ -222,6 +230,14 @@ impl Theme for DarkTheme {
                 "Progress" => Some(self.create_widget_style(&[
                     (ThemeProperty::Background, self.variables.get_color("bg-secondary").unwrap()),
                     (ThemeProperty::ColorProgress, self.variables.get_color("primary").unwrap()),
+                    (ThemeProperty::Border, self.variables.get_color("border-primary").unwrap()),
+                ])),
+
+                "MenuPopup" => Some(self.create_widget_style(&[
+                    (ThemeProperty::ColorBackground, self.variables.get_color("bg-secondary").unwrap()),
+                    (ThemeProperty::ColorText, self.variables.get_color("text-primary").unwrap()),
+                    (ThemeProperty::ColorMenuHovered, self.variables.get_color("primary-dark").unwrap()),
+                    (ThemeProperty::ColorMenuDisabled, self.variables.get_color("text-muted").unwrap()),
                     (ThemeProperty::Border, self.variables.get_color("border-primary").unwrap()),
                 ])),
 

@@ -233,14 +233,16 @@ impl Widget for RadioButton {
         if !label_text.is_empty() {
             let _text_color = if let Some(style) = theme.of(self.widget_id()) {
                 if self.disabled {
-                    style.get_color("color_text_disabled").unwrap_or(Color::from_rgb8(150, 150, 150))
+                    style.get_color("color_text_disabled")
+                        .unwrap_or_else(|| theme.defaults().interactive().disabled())
                 } else {
-                    style.get_color("color_text").unwrap_or(Color::BLACK)
+                    style.get_color("color_text")
+                        .unwrap_or_else(|| theme.defaults().text().foreground())
                 }
             } else if self.disabled {
-                Color::from_rgb8(150, 150, 150)
+                theme.defaults().interactive().disabled()
             } else {
-                Color::BLACK
+                theme.defaults().text().foreground()
             };
 
             // TODO: Implement text rendering similar to other widgets

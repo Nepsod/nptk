@@ -260,35 +260,40 @@ impl Widget for MenuPopup {
     fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout: &LayoutNode, info: &mut AppInfo, _context: AppContext) {
         let widget_theme = theme.of(self.widget_id());
         
-        // Pre-calculate theme colors
+        // Pre-calculate theme colors with proper fallbacks
         let bg_color = if let Some(ref style) = widget_theme {
-            style.get_color("color_background").unwrap_or(Color::from_rgb8(240, 240, 240))
+            style.get_color("color_background")
+                .unwrap_or_else(|| theme.defaults().container().background())
         } else {
-            Color::from_rgb8(240, 240, 240)
+            theme.defaults().container().background()
         };
         
         let border_color = if let Some(ref style) = widget_theme {
-            style.get_color("color_border").unwrap_or(Color::from_rgb8(200, 200, 200))
+            style.get_color("color_border")
+                .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)) // Light gray border
         } else {
-            Color::from_rgb8(200, 200, 200)
+            Color::from_rgb8(200, 200, 200) // Light gray border
         };
         
         let text_color = if let Some(ref style) = widget_theme {
-            style.get_color("color_text").unwrap_or(Color::BLACK)
+            style.get_color("color_text")
+                .unwrap_or_else(|| theme.defaults().text().foreground())
         } else {
-            Color::BLACK
+            theme.defaults().text().foreground()
         };
         
         let disabled_color = if let Some(ref style) = widget_theme {
-            style.get_color("color_disabled").unwrap_or(Color::from_rgb8(150, 150, 150))
+            style.get_color("color_disabled")
+                .unwrap_or_else(|| theme.defaults().interactive().disabled())
         } else {
-            Color::from_rgb8(150, 150, 150)
+            theme.defaults().interactive().disabled()
         };
         
         let hovered_color = if let Some(ref style) = widget_theme {
-            style.get_color("color_hovered").unwrap_or(Color::from_rgb8(220, 220, 220))
+            style.get_color("color_hovered")
+                .unwrap_or_else(|| theme.defaults().interactive().hover())
         } else {
-            Color::from_rgb8(220, 220, 220)
+            theme.defaults().interactive().hover()
         };
 
         // Calculate popup size

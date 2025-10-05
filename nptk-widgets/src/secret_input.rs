@@ -357,27 +357,31 @@ impl Widget for SecretInput {
 
         // Get colors from theme or use defaults (same as TextInput)
         let bg_color = if let Some(style) = theme.of(self.widget_id()) {
-            style.get_color("color_background").unwrap_or(Color::WHITE)
+            style.get_color("color_background")
+                .unwrap_or_else(|| theme.defaults().container().background())
         } else {
-            Color::WHITE
+            theme.defaults().container().background()
         };
 
         let border_color = if let Some(style) = theme.of(self.widget_id()) {
             if is_focused {
-                style.get_color("color_border_focused").unwrap_or(Color::from_rgb8(100, 150, 255))
+                style.get_color("color_border_focused")
+                    .unwrap_or_else(|| theme.defaults().interactive().active())
             } else {
-                style.get_color("color_border").unwrap_or(Color::from_rgb8(200, 200, 200))
+                style.get_color("color_border")
+                    .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)) // Light gray border
             }
         } else if is_focused {
-            Color::from_rgb8(100, 150, 255)
+            theme.defaults().interactive().active()
         } else {
-            Color::from_rgb8(200, 200, 200)
+            Color::from_rgb8(200, 200, 200) // Light gray border
         };
 
         let _text_color = if let Some(style) = theme.of(self.widget_id()) {
-            style.get_color("color_text").unwrap_or(Color::BLACK)
+            style.get_color("color_text")
+                .unwrap_or_else(|| theme.defaults().text().foreground())
         } else {
-            Color::BLACK
+            theme.defaults().text().foreground()
         };
 
         let input_rect = RoundedRect::from_rect(
