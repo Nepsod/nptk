@@ -58,10 +58,15 @@ impl CheckboxState {
 /// - `color_unchecked` - The color of the checkbox when unchecked
 /// - `color_checked` - The color of the checkbox when checked  
 /// - `color_indeterminate` - The color of the checkbox when indeterminate
+///
+/// ### State Locking
+/// Each state can be individually locked to prevent cycling from that state.
+/// When a state is locked, clicking the checkbox will not change its state.
 pub struct Checkbox {
     layout_style: MaybeSignal<LayoutStyle>,
     value: MaybeSignal<CheckboxState>,
     on_change: MaybeSignal<Update>,
+    locked_states: MaybeSignal<Vec<CheckboxState>>,
 }
 
 impl Checkbox {
@@ -83,6 +88,7 @@ impl Checkbox {
             .into(),
             value: value.into(),
             on_change: Update::empty().into(),
+            locked_states: Vec::new().into(),
         }
     }
 
@@ -105,6 +111,106 @@ impl Checkbox {
         self.on_change = on_change.into();
         self
     }
+
+    /// Lock specific states to prevent cycling from them.
+    /// 
+    /// When a state is locked, clicking the checkbox will not change its state.
+    /// 
+    /// # Arguments
+    /// * `states` - A vector of states to lock
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// // Lock only the checked state
+    /// checkbox.with_locked_states(vec![CheckboxState::Checked]);
+    /// 
+    /// // Lock multiple states
+    /// checkbox.with_locked_states(vec![CheckboxState::Checked, CheckboxState::Indeterminate]);
+    /// 
+    /// // Lock all states (checkbox becomes completely unclickable)
+    /// checkbox.with_locked_states(vec![
+    ///     CheckboxState::Unchecked, 
+    ///     CheckboxState::Checked, 
+    ///     CheckboxState::Indeterminate
+    /// ]);
+    /// ```
+    pub fn with_locked_states(mut self, states: impl Into<MaybeSignal<Vec<CheckboxState>>>) -> Self {
+        self.locked_states = states.into();
+        self
+    }
+
+    /// Lock a single state to prevent cycling from it.
+    /// 
+    /// This is a convenience method for locking just one state.
+    /// 
+    /// # Arguments
+    /// * `state` - The state to lock
+    /// 
+    /// # Examples
+    /// 
+    /// ```rust
+    /// // Lock the checked state
+    /// checkbox.with_locked_state(CheckboxState::Checked);
+    /// ```
+    pub fn with_locked_state(mut self, state: CheckboxState) -> Self {
+        let locked_vec = vec![state];
+        self.locked_states = locked_vec.into();
+        self
+    }
+
+    /// Check if the current state is locked.
+    /// 
+    /// Returns `true` if the current state is in the locked states list.
+    pub fn is_current_state_locked(&self) -> bool {
+        let current_state = *self.value.get();
+        let locked_states = self.locked_states.get();
+        locked_states.contains(&current_state)
+    }
+
+    /// Check if a specific state is locked.
+    /// 
+    /// Returns `true` if the given state is in the locked states list.
+    pub fn is_state_locked(&self, state: CheckboxState) -> bool {
+        let locked_states = self.locked_states.get();
+        locked_states.contains(&state)
+    }
+
+    /// Add a state to the locked states list.
+    /// 
+    /// This method allows dynamic addition of locked states at runtime.
+    /// Note: This only works if `locked_states` is a signal.
+    pub fn lock_state(&mut self, state: CheckboxState) {
+        if let Some(sig) = self.locked_states.as_signal() {
+            let mut locked_states = sig.get().clone();
+            if !locked_states.contains(&state) {
+                locked_states.push(state);
+                sig.set(locked_states);
+            }
+        }
+    }
+
+    /// Remove a state from the locked states list.
+    /// 
+    /// This method allows dynamic removal of locked states at runtime.
+    /// Note: This only works if `locked_states` is a signal.
+    pub fn unlock_state(&mut self, state: CheckboxState) {
+        if let Some(sig) = self.locked_states.as_signal() {
+            let mut locked_states = sig.get().clone();
+            locked_states.retain(|&s| s != state);
+            sig.set(locked_states);
+        }
+    }
+
+    /// Clear all locked states.
+    /// 
+    /// This method removes all states from the locked states list.
+    /// Note: This only works if `locked_states` is a signal.
+    pub fn unlock_all_states(&mut self) {
+        if let Some(sig) = self.locked_states.as_signal() {
+            sig.set(Vec::new());
+        }
+    }
 }
 
 impl WidgetLayoutExt for Checkbox {
@@ -124,13 +230,24 @@ impl Widget for Checkbox {
     ) {
         let state = *self.value.get();
         
+        // Check if current state is locked for graying out
+        let is_locked = self.is_current_state_locked();
+        
         // Get colors based on state using theme helper
         let theme_checkbox_state = match state {
             CheckboxState::Unchecked => nptk_theme::helpers::CheckboxState::Unchecked,
             CheckboxState::Checked => nptk_theme::helpers::CheckboxState::Checked,
             CheckboxState::Indeterminate => nptk_theme::helpers::CheckboxState::Indeterminate,
         };
-        let border_color = ThemeHelper::get_checkbox_color_three_state(&*theme, self.widget_id(), theme_checkbox_state);
+        let base_border_color = ThemeHelper::get_checkbox_color_three_state(&*theme, self.widget_id(), theme_checkbox_state);
+        
+        // Gray out colors if locked (like Windows disabled state)
+        let border_color = if is_locked {
+            Color::from_rgb8(150, 150, 150) // Light gray for locked/disabled appearance
+        } else {
+            base_border_color
+        };
+        
         let fill_color = match state {
             CheckboxState::Unchecked => None,
             CheckboxState::Checked => Some(border_color),
@@ -146,9 +263,11 @@ impl Widget for Checkbox {
 
         let rounded_rect = RoundedRect::from_rect(checkbox_rect, RoundedRectRadii::from_single_radius(3.0));
 
-        // Draw border
+        // Draw border with normal style (colors already grayed out if locked)
+        let border_width = 2.0;
+        
         scene.stroke(
-            &Stroke::new(2.0),
+            &Stroke::new(border_width),
             Affine::default(),
             &Brush::Solid(border_color),
             None,
@@ -184,8 +303,10 @@ impl Widget for Checkbox {
                     Point::new(center_x + size * 0.6, center_y - size * 0.4),
                 );
                 
-                scene.stroke(&Stroke::new(2.0), Affine::default(), &Brush::Solid(Color::WHITE), None, &line1);
-                scene.stroke(&Stroke::new(2.0), Affine::default(), &Brush::Solid(Color::WHITE), None, &line2);
+                // Use lighter gray for symbols if locked to make them more visible
+                let symbol_color = if is_locked { Color::from_rgb8(220, 220, 220) } else { Color::WHITE };
+                scene.stroke(&Stroke::new(2.0), Affine::default(), &Brush::Solid(symbol_color), None, &line1);
+                scene.stroke(&Stroke::new(2.0), Affine::default(), &Brush::Solid(symbol_color), None, &line2);
             }
             CheckboxState::Indeterminate => {
                 // Draw filled background
@@ -208,7 +329,9 @@ impl Widget for Checkbox {
                     Point::new(center_x + line_width / 2.0, center_y),
                 );
                 
-                scene.stroke(&Stroke::new(2.5), Affine::default(), &Brush::Solid(Color::WHITE), None, &line);
+                // Use lighter gray for symbols if locked to make them more visible
+                let symbol_color = if is_locked { Color::from_rgb8(220, 220, 220) } else { Color::WHITE };
+                scene.stroke(&Stroke::new(2.5), Affine::default(), &Brush::Solid(symbol_color), None, &line);
             }
             CheckboxState::Unchecked => {
                 // No fill, no symbols for unchecked state - just the border
@@ -234,6 +357,12 @@ impl Widget for Checkbox {
             {
                 for (_, btn, el) in &info.buttons {
                     if btn == &MouseButton::Left && *el == ElementState::Released {
+                        // Check if the current state is locked
+                        if self.is_current_state_locked() {
+                            // State is locked, don't change it
+                            return update;
+                        }
+
                         update |= *self.on_change.get();
                         update |= Update::DRAW;
 
