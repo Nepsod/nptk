@@ -10,7 +10,8 @@ use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Stroke, 
 use nptk_core::vg::peniko::{Brush, Fill, Color};
 use nptk_core::vg::Scene;
 use nptk_theme::id::WidgetId;
-use nptk_theme::rendering::{ThemeRenderer, WidgetState, InteractionState, CheckboxState as ThemeCheckboxState};
+use nptk_theme::theme::Theme;
+use nptk_theme::rendering::{WidgetState, InteractionState, CheckboxState as ThemeCheckboxState};
 
 
 /// Convert checkbox state to theme checkbox state
@@ -23,8 +24,8 @@ pub fn checkbox_state_to_theme_state(checkbox_state: crate::checkbox::CheckboxSt
 }
 
 /// Helper for rendering buttons using the theme system
-pub fn render_button_with_theme<T: ThemeRenderer + ?Sized>(
-    theme: &mut T,
+pub fn render_button_with_theme(
+    theme: &mut dyn Theme,
     widget_id: &WidgetId,
     button_state: crate::button::ButtonState,
     focus_state: FocusState,
@@ -80,8 +81,8 @@ pub fn render_button_with_theme<T: ThemeRenderer + ?Sized>(
 }
 
 /// Helper for rendering checkboxes using the theme system
-pub fn render_checkbox_with_theme<T: ThemeRenderer>(
-    theme: &mut T,
+pub fn render_checkbox_with_theme(
+    theme: &mut dyn Theme,
     widget_id: &WidgetId,
     checkbox_state: crate::checkbox::CheckboxState,
     is_disabled: bool,
@@ -134,8 +135,8 @@ pub fn render_checkbox_with_theme<T: ThemeRenderer>(
 }
 
 /// Draw checkbox symbol using theme colors
-fn draw_checkbox_symbol_with_theme<T: ThemeRenderer>(
-    theme: &T,
+fn draw_checkbox_symbol_with_theme(
+    theme: &dyn Theme,
     widget_id: &WidgetId,
     checkbox_state: ThemeCheckboxState,
     bounds: Rect,
@@ -182,8 +183,8 @@ fn draw_checkbox_symbol_with_theme<T: ThemeRenderer>(
 }
 
 /// Helper for rendering text inputs using the theme system
-pub fn render_text_input_with_theme<T: ThemeRenderer>(
-    theme: &mut T,
+pub fn render_text_input_with_theme(
+    theme: &mut dyn Theme,
     widget_id: &WidgetId,
     is_focused: bool,
     is_disabled: bool,
@@ -248,8 +249,8 @@ pub fn render_text_input_with_theme<T: ThemeRenderer>(
 }
 
 /// Helper for rendering sliders using the theme system
-pub fn render_slider_with_theme<T: ThemeRenderer>(
-    theme: &mut T,
+pub fn render_slider_with_theme(
+    theme: &mut dyn Theme,
     widget_id: &WidgetId,
     value: f32,
     is_disabled: bool,

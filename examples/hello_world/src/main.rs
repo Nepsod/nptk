@@ -56,6 +56,8 @@ impl Theme for ConfigurableTheme {
     }
 }
 
+// ThemeRenderer is automatically implemented via blanket impl for all Theme types
+
 impl Default for ConfigurableTheme {
     fn default() -> Self {
         ConfigurableTheme::Dark(DarkTheme::new())

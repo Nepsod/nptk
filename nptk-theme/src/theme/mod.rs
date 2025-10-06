@@ -200,34 +200,19 @@ mod tests {
     
     #[test]
     fn test_theme_rendering_system() {
-        // Test that built-in themes support rendering
-        let mut celeste_theme = CelesteTheme::light();
-        let mut dark_theme = DarkTheme::new();
+        // Test that built-in themes support rendering through supertrait
+        let celeste_theme = CelesteTheme::light();
+        let dark_theme = DarkTheme::new();
         
-        // Both themes should support rendering
-        assert!(celeste_theme.supports_rendering());
-        assert!(dark_theme.supports_rendering());
+        // Both themes should support rendering (now automatic via supertrait)
+        // We can test this by calling ThemeRenderer methods directly
+        let button_id = WidgetId::new("nptk-widgets", "Button");
+        let _color = celeste_theme.get_button_color(button_id.clone(), crate::rendering::WidgetState::Normal);
+        let _color = dark_theme.get_button_color(button_id, crate::rendering::WidgetState::Normal);
         
-        // Both themes should provide renderers
-        assert!(celeste_theme.as_renderer().is_some());
-        assert!(dark_theme.as_renderer().is_some());
-        
-        // Test opt-out behavior
-        struct FallbackTheme;
-        
-        impl Theme for FallbackTheme {
-            fn of(&self, _id: WidgetId) -> Option<Style> { None }
-            fn defaults(&self) -> DefaultStyles { unimplemented!() }
-            fn globals(&self) -> &Globals { unimplemented!() }
-            fn globals_mut(&mut self) -> &mut Globals { unimplemented!() }
-            fn widget_id(&self) -> WidgetId { WidgetId::new("test", "FallbackTheme") }
-            fn window_background(&self) -> Color { Color::WHITE }
-            fn supports_rendering(&self) -> bool { false }
-        }
-        
-        let mut fallback_theme = FallbackTheme;
-        assert!(!fallback_theme.supports_rendering());
-        assert!(fallback_theme.as_renderer().is_none());
+        // Test that themes can be used as ThemeRenderer directly
+        let _: &dyn ThemeRenderer = &celeste_theme;
+        let _: &dyn ThemeRenderer = &dark_theme;
     }
 }
 
@@ -235,7 +220,8 @@ mod tests {
 ///
 /// This trait defines the interface that all themes must implement. It provides
 /// both legacy string-based access for backward compatibility and new type-safe
-/// access methods for modern usage.
+/// access methods for modern usage. All themes automatically support centralized
+/// rendering through the ThemeRenderer supertrait.
 ///
 /// # Key Features
 ///
@@ -244,6 +230,7 @@ mod tests {
 /// - **Fallback System**: Automatic fallbacks for missing properties
 /// - **Variable Support**: CSS-like variables for consistent theming
 /// - **Widget Support**: Check which widgets are supported
+/// - **Centralized Rendering**: All themes support centralized widget rendering
 /// - **Extensibility**: Easy to implement custom themes
 ///
 /// # Implementation Requirements
@@ -266,6 +253,7 @@ mod tests {
 /// - `variables()` and `variables_mut()` - CSS-like variables
 /// - `supports_widget()` - Widget support checking
 /// - `supported_widgets()` - List of supported widgets
+/// - ThemeRenderer methods - Customize rendering behavior
 ///
 /// # Usage
 ///
@@ -306,7 +294,7 @@ mod tests {
 /// - **Lazy Loading**: Load complex styles only when needed
 /// - **Memory Usage**: Be mindful of memory usage for large themes
 /// - **Thread Safety**: Ensure thread safety if used across threads
-pub trait Theme {
+pub trait Theme: ThemeRenderer {
     /// Return the [Style] of the given widget using its ID.
     /// Returns [None] if the theme does not have styles for the given widget.
     /// In that case, you should use [Theme::defaults] to get widget style defaults.
@@ -389,21 +377,4 @@ pub trait Theme {
         WidgetId::new("nptk-theme", "UnknownTheme")
     }
     
-    /// Check if this theme supports centralized rendering via ThemeRenderer.
-    /// Returns true by default. Themes that don't support rendering should override this to return false.
-    /// 
-    /// Most themes should not need to override this method.
-    fn supports_rendering(&self) -> bool {
-        true
-    }
-    
-    /// Get a reference to the theme as a ThemeRenderer if it supports rendering.
-    /// Returns None by default. Themes that support rendering should override this to return Some(self).
-    /// 
-    /// To enable centralized rendering, themes should:
-    /// 1. Implement the ThemeRenderer trait
-    /// 2. Override this method to return Some(self)
-    fn as_renderer(&mut self) -> Option<&mut dyn ThemeRenderer> {
-        None
-    }
 }

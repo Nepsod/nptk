@@ -134,8 +134,40 @@ pub enum CheckboxState {
 
 /// Trait for theme-based widget rendering.
 /// This centralizes all widget drawing logic in the theme system.
-pub trait ThemeRenderer: Theme {
+pub trait ThemeRenderer {
     /// Get button color for the given state
+    fn get_button_color(&self, id: WidgetId, state: WidgetState) -> Color;
+
+    /// Get checkbox color for the given state and checkbox state
+    fn get_checkbox_color(&self, id: WidgetId, state: WidgetState, checkbox_state: CheckboxState) -> Color;
+
+    /// Get checkbox border color
+    fn get_checkbox_border_color(&self, id: WidgetId, state: WidgetState) -> Color;
+
+    /// Get text input color
+    fn get_text_input_color(&self, id: WidgetId, state: WidgetState) -> Color;
+
+    /// Get text input border color
+    fn get_text_input_border_color(&self, id: WidgetId, state: WidgetState) -> Color;
+
+    /// Get slider track color
+    fn get_slider_track_color(&self, id: WidgetId, state: WidgetState) -> Color;
+
+    /// Get slider thumb color
+    fn get_slider_thumb_color(&self, id: WidgetId, state: WidgetState) -> Color;
+
+    /// Get focus color for widgets
+    fn get_focus_color(&self, id: WidgetId) -> Color;
+
+    /// Get checkbox symbol color
+    fn get_checkbox_symbol_color(&self, id: WidgetId, checkbox_state: CheckboxState) -> Color;
+}
+
+/// Blanket implementation for all types that implement both Theme and ThemeRenderer
+impl<T> ThemeRenderer for T
+where
+    T: Theme,
+{
     fn get_button_color(&self, id: WidgetId, state: WidgetState) -> Color {
         if let Some(style) = self.of(id) {
             match state {
@@ -162,7 +194,6 @@ pub trait ThemeRenderer: Theme {
         }
     }
 
-    /// Get checkbox color for the given state and checkbox state
     fn get_checkbox_color(&self, id: WidgetId, _state: WidgetState, checkbox_state: CheckboxState) -> Color {
         if let Some(style) = self.of(id) {
             match checkbox_state {
@@ -179,7 +210,6 @@ pub trait ThemeRenderer: Theme {
         }
     }
 
-    /// Get checkbox border color
     fn get_checkbox_border_color(&self, _id: WidgetId, state: WidgetState) -> Color {
         if state.is_disabled() {
             self.defaults().interactive().disabled()
@@ -188,7 +218,6 @@ pub trait ThemeRenderer: Theme {
         }
     }
 
-    /// Get text input color
     fn get_text_input_color(&self, _id: WidgetId, state: WidgetState) -> Color {
         if state.is_disabled() {
             self.defaults().interactive().disabled()
@@ -197,7 +226,6 @@ pub trait ThemeRenderer: Theme {
         }
     }
 
-    /// Get text input border color
     fn get_text_input_border_color(&self, _id: WidgetId, state: WidgetState) -> Color {
         if state.is_focused() {
             self.defaults().interactive().active()
@@ -206,7 +234,6 @@ pub trait ThemeRenderer: Theme {
         }
     }
 
-    /// Get slider track color
     fn get_slider_track_color(&self, _id: WidgetId, state: WidgetState) -> Color {
         if state.is_disabled() {
             self.defaults().interactive().disabled()
@@ -215,7 +242,6 @@ pub trait ThemeRenderer: Theme {
         }
     }
 
-    /// Get slider thumb color
     fn get_slider_thumb_color(&self, _id: WidgetId, state: WidgetState) -> Color {
         if state.is_disabled() {
             self.defaults().interactive().disabled()
@@ -226,12 +252,10 @@ pub trait ThemeRenderer: Theme {
         }
     }
 
-    /// Get focus color for widgets
     fn get_focus_color(&self, _id: WidgetId) -> Color {
         Color::from_rgb8(100, 150, 255) // Blue focus color
     }
 
-    /// Get checkbox symbol color
     fn get_checkbox_symbol_color(&self, _id: WidgetId, checkbox_state: CheckboxState) -> Color {
         match checkbox_state {
             CheckboxState::Unchecked => Color::TRANSPARENT, // No symbol for unchecked state
