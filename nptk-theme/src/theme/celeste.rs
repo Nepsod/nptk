@@ -354,10 +354,8 @@ impl Theme for CelesteTheme {
         WidgetId::new("nptk-theme", "CelesteTheme")
     }
     
-    fn supports_rendering(&self) -> bool {
-        true
-    }
-    
+    // supports_rendering() uses default implementation (returns true)
+    // as_renderer() needs to be implemented to provide the renderer
     fn as_renderer(&mut self) -> Option<&mut dyn ThemeRenderer> {
         Some(self)
     }

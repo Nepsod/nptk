@@ -199,55 +199,35 @@ mod tests {
     use crate::theme::{celeste::CelesteTheme, dark::DarkTheme};
     
     #[test]
-    fn test_theme_rendering_detection() {
-        // Test CelesteTheme
+    fn test_theme_rendering_system() {
+        // Test that built-in themes support rendering
         let mut celeste_theme = CelesteTheme::light();
-        assert!(celeste_theme.supports_rendering());
-        
-        if let Some(_renderer) = celeste_theme.as_renderer() {
-            // Success - CelesteTheme can be cast to ThemeRenderer
-        } else {
-            panic!("CelesteTheme should be castable to ThemeRenderer");
-        }
-        
-        // Test DarkTheme
         let mut dark_theme = DarkTheme::new();
+        
+        // Both themes should support rendering
+        assert!(celeste_theme.supports_rendering());
         assert!(dark_theme.supports_rendering());
         
-        if let Some(_renderer) = dark_theme.as_renderer() {
-            // Success - DarkTheme can be cast to ThemeRenderer
-        } else {
-            panic!("DarkTheme should be castable to ThemeRenderer");
-        }
+        // Both themes should provide renderers
+        assert!(celeste_theme.as_renderer().is_some());
+        assert!(dark_theme.as_renderer().is_some());
         
-        // Test with trait object
-        let theme: &mut dyn Theme = &mut celeste_theme;
-        assert!(theme.supports_rendering());
+        // Test opt-out behavior
+        struct FallbackTheme;
         
-        if let Some(_renderer) = theme.as_renderer() {
-            // Success - trait object can be cast to ThemeRenderer
-        } else {
-            panic!("Trait object should be castable to ThemeRenderer");
-        }
-    }
-    
-    #[test]
-    fn test_theme_rendering_default_behavior() {
-        // Test that themes support rendering by default
-        struct TestTheme;
-        
-        impl Theme for TestTheme {
+        impl Theme for FallbackTheme {
             fn of(&self, _id: WidgetId) -> Option<Style> { None }
             fn defaults(&self) -> DefaultStyles { unimplemented!() }
             fn globals(&self) -> &Globals { unimplemented!() }
             fn globals_mut(&mut self) -> &mut Globals { unimplemented!() }
-            fn widget_id(&self) -> WidgetId { WidgetId::new("test", "TestTheme") }
+            fn widget_id(&self) -> WidgetId { WidgetId::new("test", "FallbackTheme") }
             fn window_background(&self) -> Color { Color::WHITE }
+            fn supports_rendering(&self) -> bool { false }
         }
         
-        let test_theme = TestTheme;
-        // Should support rendering by default
-        assert!(test_theme.supports_rendering());
+        let mut fallback_theme = FallbackTheme;
+        assert!(!fallback_theme.supports_rendering());
+        assert!(fallback_theme.as_renderer().is_none());
     }
 }
 
@@ -411,12 +391,18 @@ pub trait Theme {
     
     /// Check if this theme supports centralized rendering via ThemeRenderer.
     /// Returns true by default. Themes that don't support rendering should override this to return false.
+    /// 
+    /// Most themes should not need to override this method.
     fn supports_rendering(&self) -> bool {
         true
     }
     
     /// Get a reference to the theme as a ThemeRenderer if it supports rendering.
     /// Returns None by default. Themes that support rendering should override this to return Some(self).
+    /// 
+    /// To enable centralized rendering, themes should:
+    /// 1. Implement the ThemeRenderer trait
+    /// 2. Override this method to return Some(self)
     fn as_renderer(&mut self) -> Option<&mut dyn ThemeRenderer> {
         None
     }
