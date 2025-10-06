@@ -58,6 +58,10 @@ impl Theme for ConfigurableTheme {
             ConfigurableTheme::Dark(theme) => theme.globals_mut(),
         }
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl Default for ConfigurableTheme {

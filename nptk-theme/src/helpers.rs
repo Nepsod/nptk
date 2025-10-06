@@ -320,7 +320,7 @@ impl ThemeHelper {
             return color;
         }
         
-        // Use first fallback
+        // Use first fallback or black as last resort
         fallbacks.first().copied().unwrap_or(Color::BLACK)
     }
     

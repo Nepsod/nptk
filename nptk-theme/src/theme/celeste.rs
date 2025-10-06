@@ -353,6 +353,10 @@ impl Theme for CelesteTheme {
         WidgetId::new("nptk-theme", "CelesteTheme")
     }
     
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    
     // ThemeRenderer methods are now inherited via supertrait
 }
 

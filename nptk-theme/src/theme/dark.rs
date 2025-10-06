@@ -78,15 +78,15 @@ impl Theme for DarkTheme {
         match id.namespace() {
             "nptk-widgets" => match id.id() {
                 "Text" => Some(Style::from_values([
-                    ("color".to_string(), StyleVal::Color(self.variables.get_color("text-primary").unwrap())),
-                    ("color_invert".to_string(), StyleVal::Color(self.variables.get_color("bg-primary").unwrap())),
+                    ("color".to_string(), StyleVal::Color(self.variables.get_color("text-primary").unwrap_or(Color::WHITE))),
+                    ("color_invert".to_string(), StyleVal::Color(self.variables.get_color("bg-primary").unwrap_or(Color::BLACK))),
                 ])),
 
                 "Button" => Some(Style::from_values([
-                    ("color_idle".to_string(), StyleVal::Color(self.variables.get_color("primary").unwrap())),
-                    ("color_pressed".to_string(), StyleVal::Color(self.variables.get_color("primary-dark").unwrap())),
-                    ("color_hovered".to_string(), StyleVal::Color(self.variables.get_color("primary-light").unwrap())),
-                    ("color_focused".to_string(), StyleVal::Color(self.variables.get_color("primary").unwrap())),
+                    ("color_idle".to_string(), StyleVal::Color(self.variables.get_color("primary").unwrap_or(Color::from_rgb8(100, 150, 255)))),
+                    ("color_pressed".to_string(), StyleVal::Color(self.variables.get_color("primary-dark").unwrap_or(Color::from_rgb8(80, 130, 235)))),
+                    ("color_hovered".to_string(), StyleVal::Color(self.variables.get_color("primary-light").unwrap_or(Color::from_rgb8(120, 170, 255)))),
+                    ("color_focused".to_string(), StyleVal::Color(self.variables.get_color("primary").unwrap_or(Color::from_rgb8(100, 150, 255)))),
                 ])),
 
                 "Checkbox" => Some(Style::from_values([
@@ -250,24 +250,24 @@ impl Theme for DarkTheme {
     fn defaults(&self) -> DefaultStyles {
         DefaultStyles::new(
             DefaultTextStyles::new(
-                self.variables.get_color("text-primary").unwrap(),
-                self.variables.get_color("bg-primary").unwrap(),
+                self.variables.get_color("text-primary").unwrap_or(Color::WHITE),
+                self.variables.get_color("bg-primary").unwrap_or(Color::from_rgb8(30, 30, 30)),
             ),
             DefaultContainerStyles::new(
-                self.variables.get_color("text-secondary").unwrap(),
-                self.variables.get_color("bg-secondary").unwrap(),
+                self.variables.get_color("text-secondary").unwrap_or(Color::from_rgb8(200, 200, 200)),
+                self.variables.get_color("bg-secondary").unwrap_or(Color::from_rgb8(40, 40, 40)),
             ),
             DefaultInteractiveStyles::new(
-                self.variables.get_color("primary-dark").unwrap(),
-                self.variables.get_color("primary").unwrap(),
-                self.variables.get_color("primary-light").unwrap(),
-                self.variables.get_color("text-muted").unwrap(),
+                self.variables.get_color("primary-dark").unwrap_or(Color::from_rgb8(80, 130, 235)),
+                self.variables.get_color("primary").unwrap_or(Color::from_rgb8(100, 150, 255)),
+                self.variables.get_color("primary-light").unwrap_or(Color::from_rgb8(120, 170, 255)),
+                self.variables.get_color("text-muted").unwrap_or(Color::from_rgb8(150, 150, 150)),
             ),
         )
     }
 
     fn window_background(&self) -> Color {
-        self.variables.get_color("bg-primary").unwrap()
+        self.variables.get_color("bg-primary").unwrap_or(Color::from_rgb8(30, 30, 30))
     }
 
     fn globals(&self) -> &Globals {
@@ -288,6 +288,10 @@ impl Theme for DarkTheme {
     
     fn widget_id(&self) -> WidgetId {
         WidgetId::new("nptk-theme", "DarkTheme")
+    }
+    
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
     
     // ThemeRenderer methods are now inherited via supertrait

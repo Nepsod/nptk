@@ -93,14 +93,12 @@ impl Widget for Text {
         let hinting = *self.hinting.get();
         let text = self.text.get();
 
-        let color = if let Some(style) = theme.of(Self::widget_id(self)) {
-            if theme.globals().invert_text_color {
-                style.get_color("color_invert").unwrap()
-            } else {
-                style.get_color("color").unwrap()
-            }
+        let color = if theme.globals().invert_text_color {
+            theme.get_property(Self::widget_id(self), &nptk_theme::properties::ThemeProperty::ColorInvert)
+                .unwrap_or_else(|| theme.defaults().text().foreground())
         } else {
-            theme.defaults().text().foreground()
+            theme.get_property(Self::widget_id(self), &nptk_theme::properties::ThemeProperty::Color)
+                .unwrap_or_else(|| theme.defaults().text().foreground())
         };
         
         log::debug!("Text widget rendering: '{}' with color: {:?} at position: ({}, {})", 

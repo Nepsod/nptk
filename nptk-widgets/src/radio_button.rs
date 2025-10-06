@@ -231,18 +231,12 @@ impl Widget for RadioButton {
         // Draw label text
         let label_text = self.label.get();
         if !label_text.is_empty() {
-            let _text_color = if let Some(style) = theme.of(self.widget_id()) {
-                if self.disabled {
-                    style.get_color("color_text_disabled")
-                        .unwrap_or_else(|| theme.defaults().interactive().disabled())
-                } else {
-                    style.get_color("color_text")
-                        .unwrap_or_else(|| theme.defaults().text().foreground())
-                }
-            } else if self.disabled {
-                theme.defaults().interactive().disabled()
+            let _text_color = if self.disabled {
+                theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorTextDisabled)
+                    .unwrap_or_else(|| theme.defaults().interactive().disabled())
             } else {
-                theme.defaults().text().foreground()
+                theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+                    .unwrap_or_else(|| theme.defaults().text().foreground())
             };
 
             // TODO: Implement text rendering similar to other widgets

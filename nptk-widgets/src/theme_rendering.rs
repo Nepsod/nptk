@@ -23,6 +23,95 @@ pub fn checkbox_state_to_theme_state(checkbox_state: crate::checkbox::CheckboxSt
     }
 }
 
+/// Convert button state to unified widget state
+pub fn button_state_to_widget_state(button_state: crate::button::ButtonState, _focus_state: FocusState, is_focused: bool, disabled: bool) -> WidgetState {
+    // Handle disabled state first
+    if disabled {
+        return WidgetState::Disabled;
+    }
+
+    match button_state {
+        crate::button::ButtonState::Idle => {
+            if is_focused {
+                WidgetState::Focused
+            } else {
+                WidgetState::Normal
+            }
+        }
+        crate::button::ButtonState::Hovered => {
+            if is_focused {
+                WidgetState::FocusedHovered
+            } else {
+                WidgetState::Hovered
+            }
+        }
+        crate::button::ButtonState::Pressed => {
+            if is_focused {
+                WidgetState::FocusedPressed
+            } else {
+                WidgetState::Pressed
+            }
+        }
+        crate::button::ButtonState::Released => {
+            if is_focused {
+                WidgetState::FocusedReleased
+            } else {
+                WidgetState::Released
+            }
+        }
+    }
+}
+
+/// Convert radio button state to unified widget state
+pub fn radio_button_state_to_widget_state(radio_state: crate::radio_button::RadioButtonState, _focus_state: FocusState, is_focused: bool, is_selected: bool, disabled: bool) -> WidgetState {
+    // Handle disabled state first
+    if disabled {
+        return WidgetState::Disabled;
+    }
+
+    match radio_state {
+        crate::radio_button::RadioButtonState::Idle => {
+            if is_selected {
+                if is_focused {
+                    WidgetState::Selected
+                } else {
+                    WidgetState::Selected
+                }
+            } else if is_focused {
+                WidgetState::Focused
+            } else {
+                WidgetState::Normal
+            }
+        }
+        crate::radio_button::RadioButtonState::Hovered => {
+            if is_selected {
+                if is_focused {
+                    WidgetState::SelectedHovered
+                } else {
+                    WidgetState::SelectedHovered
+                }
+            } else if is_focused {
+                WidgetState::FocusedHovered
+            } else {
+                WidgetState::Hovered
+            }
+        }
+        crate::radio_button::RadioButtonState::Pressed => {
+            if is_selected {
+                if is_focused {
+                    WidgetState::SelectedPressed
+                } else {
+                    WidgetState::SelectedPressed
+                }
+            } else if is_focused {
+                WidgetState::FocusedPressed
+            } else {
+                WidgetState::Pressed
+            }
+        }
+    }
+}
+
 /// Helper for rendering buttons using the theme system
 pub fn render_button_with_theme(
     theme: &mut dyn Theme,
@@ -30,19 +119,11 @@ pub fn render_button_with_theme(
     button_state: crate::button::ButtonState,
     focus_state: FocusState,
     is_focused: bool,
+    disabled: bool,
     layout: &LayoutNode,
     scene: &mut Scene,
 ) {
-    let theme_state = widget_state_from_states(
-        match button_state {
-            crate::button::ButtonState::Idle => InteractionState::Idle,
-            crate::button::ButtonState::Hovered => InteractionState::Hovered,
-            crate::button::ButtonState::Pressed => InteractionState::Pressed,
-            crate::button::ButtonState::Released => InteractionState::Hovered,
-        },
-        focus_state,
-        is_focused,
-    );
+    let theme_state = button_state_to_widget_state(button_state, focus_state, is_focused, disabled);
     let bounds = Rect::new(
         layout.layout.location.x as f64,
         layout.layout.location.y as f64,
@@ -333,4 +414,118 @@ pub fn widget_state_from_states(interaction_state: InteractionState, _focus_stat
     // Note: FocusState::Selected doesn't exist in the current FocusState enum
     // This is a placeholder for future selection support
     base_state
+}
+
+/// Centralized text rendering helper for themes.
+/// This provides a consistent way to render text across all widgets.
+pub struct ThemeTextRenderer;
+
+impl ThemeTextRenderer {
+    /// Render text using theme colors and settings.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `theme` - The theme to use for colors and settings
+    /// * `widget_id` - The widget ID for theme property lookup
+    /// * `text` - The text to render
+    /// * `font_context` - The font context for rendering
+    /// * `scene` - The scene to render to
+    /// * `transform` - The transform to apply
+    /// * `font_size` - The font size to use
+    /// * `hinting` - Whether to use font hinting
+    /// * `invert_color` - Whether to invert the text color
+    /// 
+    /// # Returns
+    /// 
+    /// The color that was used for rendering the text.
+    pub fn render_text(
+        theme: &dyn Theme,
+        widget_id: WidgetId,
+        text: &str,
+        font_context: &mut nptk_core::app::font_ctx::FontContext,
+        scene: &mut Scene,
+        transform: Affine,
+        font_size: f32,
+        hinting: bool,
+        invert_color: bool,
+    ) -> Color {
+        let color = if invert_color {
+            theme.get_property(widget_id.clone(), &nptk_theme::properties::ThemeProperty::ColorInvert)
+                .unwrap_or_else(|| theme.defaults().text().foreground())
+        } else {
+            theme.get_property(widget_id.clone(), &nptk_theme::properties::ThemeProperty::Color)
+                .unwrap_or_else(|| theme.defaults().text().foreground())
+        };
+
+        // Create a temporary TextRenderContext for rendering
+        let mut text_render_context = nptk_core::text_render::TextRenderContext::new();
+        
+        text_render_context.render_text(
+            font_context,
+            scene,
+            text,
+            None, // No specific font, use default
+            font_size,
+            Brush::Solid(color),
+            transform,
+            hinting,
+        );
+
+        color
+    }
+
+    /// Render text with placeholder support (for input widgets).
+    /// 
+    /// # Arguments
+    /// 
+    /// * `theme` - The theme to use for colors and settings
+    /// * `widget_id` - The widget ID for theme property lookup
+    /// * `text` - The text to render
+    /// * `placeholder` - The placeholder text to show if text is empty
+    /// * `font_context` - The font context for rendering
+    /// * `scene` - The scene to render to
+    /// * `transform` - The transform to apply
+    /// * `font_size` - The font size to use
+    /// * `hinting` - Whether to use font hinting
+    /// 
+    /// # Returns
+    /// 
+    /// The color that was used for rendering the text.
+    pub fn render_text_with_placeholder(
+        theme: &dyn Theme,
+        widget_id: WidgetId,
+        text: &str,
+        placeholder: &str,
+        font_context: &mut nptk_core::app::font_ctx::FontContext,
+        scene: &mut Scene,
+        transform: Affine,
+        font_size: f32,
+        hinting: bool,
+    ) -> Color {
+        let (display_text, color) = if text.is_empty() {
+            let placeholder_color = theme.get_property(widget_id.clone(), &nptk_theme::properties::ThemeProperty::ColorPlaceholder)
+                .unwrap_or_else(|| Color::from_rgb8(150, 150, 150));
+            (placeholder, placeholder_color)
+        } else {
+            let text_color = theme.get_property(widget_id.clone(), &nptk_theme::properties::ThemeProperty::Color)
+                .unwrap_or_else(|| theme.defaults().text().foreground());
+            (text, text_color)
+        };
+
+        // Create a temporary TextRenderContext for rendering
+        let mut text_render_context = nptk_core::text_render::TextRenderContext::new();
+        
+        text_render_context.render_text(
+            font_context,
+            scene,
+            display_text,
+            None, // No specific font, use default
+            font_size,
+            Brush::Solid(color),
+            transform,
+            hinting,
+        );
+
+        color
+    }
 }

@@ -13,3 +13,4 @@ homepage.workspace = true
 [dependencies]
 indexmap = { workspace = true }
 peniko = { workspace = true }
+log = "0.4"

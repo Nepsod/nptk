@@ -162,6 +162,12 @@ use peniko::{Brush, Color, Gradient};
 /// This struct provides a legacy string-based style system for widget theming.
 /// It stores style properties as key-value pairs where keys are strings and
 /// values are [StyleVal] enums.
+/// 
+/// # Deprecated
+/// 
+/// This struct is deprecated in favor of the type-safe [ThemeStyle] and [ThemeProperty] system.
+/// Use [Theme::get_property] for new code.
+#[deprecated(since = "0.5.0", note = "Use ThemeStyle and ThemeProperty for type-safe access instead")]
 ///
 /// # Examples
 ///

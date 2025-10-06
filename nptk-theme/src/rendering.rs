@@ -55,8 +55,8 @@ use peniko::Color;
 use crate::id::WidgetId;
 use crate::theme::Theme;
 
-/// The state of a widget for rendering purposes.
-/// This combines interaction state with focus state for comprehensive rendering.
+/// The unified state of a widget for rendering purposes.
+/// This combines interaction state, focus state, and widget-specific states for comprehensive rendering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WidgetState {
     /// Widget is in its normal, idle state
@@ -79,12 +79,18 @@ pub enum WidgetState {
     SelectedHovered,
     /// Widget is both selected and pressed
     SelectedPressed,
+    /// Widget is released (for buttons after click)
+    Released,
+    /// Widget is both focused and released
+    FocusedReleased,
+    /// Widget is both selected and released
+    SelectedReleased,
 }
 
 impl WidgetState {
     /// Check if the widget is in a focused state
     pub fn is_focused(&self) -> bool {
-        matches!(self, WidgetState::Focused | WidgetState::FocusedHovered | WidgetState::FocusedPressed)
+        matches!(self, WidgetState::Focused | WidgetState::FocusedHovered | WidgetState::FocusedPressed | WidgetState::FocusedReleased)
     }
 
     /// Check if the widget is in a hovered state
@@ -97,15 +103,21 @@ impl WidgetState {
         matches!(self, WidgetState::Pressed | WidgetState::FocusedPressed | WidgetState::SelectedPressed)
     }
 
+    /// Check if the widget is in a released state
+    pub fn is_released(&self) -> bool {
+        matches!(self, WidgetState::Released | WidgetState::FocusedReleased | WidgetState::SelectedReleased)
+    }
+
     /// Check if the widget is in a selected state
     pub fn is_selected(&self) -> bool {
-        matches!(self, WidgetState::Selected | WidgetState::SelectedHovered | WidgetState::SelectedPressed)
+        matches!(self, WidgetState::Selected | WidgetState::SelectedHovered | WidgetState::SelectedPressed | WidgetState::SelectedReleased)
     }
 
     /// Check if the widget is disabled
     pub fn is_disabled(&self) -> bool {
         matches!(self, WidgetState::Disabled)
     }
+
 }
 
 /// The interaction state of a widget (simplified from current button states)
@@ -174,22 +186,32 @@ where
                 WidgetState::Normal => style.get_color("color_idle").unwrap_or(self.defaults().interactive().inactive()),
                 WidgetState::Hovered => style.get_color("color_hovered").unwrap_or(self.defaults().interactive().hover()),
                 WidgetState::Pressed => style.get_color("color_pressed").unwrap_or(self.defaults().interactive().active()),
+                WidgetState::Released => style.get_color("color_hovered").unwrap_or(self.defaults().interactive().hover()),
                 WidgetState::Focused => style.get_color("color_focused").unwrap_or(self.defaults().interactive().hover()),
                 WidgetState::FocusedHovered => style.get_color("color_focused").unwrap_or(self.defaults().interactive().hover()),
                 WidgetState::FocusedPressed => style.get_color("color_pressed").unwrap_or(self.defaults().interactive().active()),
+                WidgetState::FocusedReleased => style.get_color("color_focused").unwrap_or(self.defaults().interactive().hover()),
+                WidgetState::Selected => style.get_color("color_selected").unwrap_or(self.defaults().interactive().active()),
+                WidgetState::SelectedHovered => style.get_color("color_selected").unwrap_or(self.defaults().interactive().active()),
+                WidgetState::SelectedPressed => style.get_color("color_pressed").unwrap_or(self.defaults().interactive().active()),
+                WidgetState::SelectedReleased => style.get_color("color_selected").unwrap_or(self.defaults().interactive().active()),
                 WidgetState::Disabled => style.get_color("color_disabled").unwrap_or(self.defaults().interactive().disabled()),
-                _ => self.defaults().interactive().inactive(),
             }
         } else {
             match state {
                 WidgetState::Normal => self.defaults().interactive().inactive(),
                 WidgetState::Hovered => self.defaults().interactive().hover(),
                 WidgetState::Pressed => self.defaults().interactive().active(),
+                WidgetState::Released => self.defaults().interactive().hover(),
                 WidgetState::Focused => self.defaults().interactive().hover(),
                 WidgetState::FocusedHovered => self.defaults().interactive().hover(),
                 WidgetState::FocusedPressed => self.defaults().interactive().active(),
+                WidgetState::FocusedReleased => self.defaults().interactive().hover(),
+                WidgetState::Selected => self.defaults().interactive().active(),
+                WidgetState::SelectedHovered => self.defaults().interactive().active(),
+                WidgetState::SelectedPressed => self.defaults().interactive().active(),
+                WidgetState::SelectedReleased => self.defaults().interactive().active(),
                 WidgetState::Disabled => self.defaults().interactive().disabled(),
-                _ => self.defaults().interactive().inactive(),
             }
         }
     }
@@ -263,3 +285,4 @@ where
         }
     }
 }
+

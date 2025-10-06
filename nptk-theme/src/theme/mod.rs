@@ -298,6 +298,12 @@ pub trait Theme: ThemeRenderer {
     /// Return the [Style] of the given widget using its ID.
     /// Returns [None] if the theme does not have styles for the given widget.
     /// In that case, you should use [Theme::defaults] to get widget style defaults.
+    /// 
+    /// # Deprecated
+    /// 
+    /// This method is deprecated in favor of the type-safe [Theme::get_property] method.
+    /// Use [Theme::get_property] for new code.
+    #[deprecated(since = "0.5.0", note = "Use get_property() for type-safe access instead")]
     fn of(&self, id: WidgetId) -> Option<Style>;
     
     /// Return the type-safe [ThemeStyle] of the given widget using its ID.
@@ -376,5 +382,8 @@ pub trait Theme: ThemeRenderer {
     fn widget_id(&self) -> WidgetId {
         WidgetId::new("nptk-theme", "UnknownTheme")
     }
+    
+    /// Get a reference to this theme as Any for downcasting.
+    fn as_any(&self) -> &dyn std::any::Any;
     
 }

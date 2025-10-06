@@ -29,6 +29,7 @@ pub struct Button {
     focus_id: FocusId,
     focus_state: FocusState,
     focus_via_keyboard: bool, // Track if focus was gained via keyboard
+    disabled: bool,
 }
 
 impl Button {
@@ -51,12 +52,19 @@ impl Button {
             focus_id: FocusId::new(),
             focus_state: FocusState::None,
             focus_via_keyboard: false,
+            disabled: false,
         }
     }
 
     /// Sets the function to be called when the button is pressed.
     pub fn with_on_pressed(mut self, on_pressed: impl Into<MaybeSignal<Update>>) -> Self {
         self.on_pressed = on_pressed.into();
+        self
+    }
+
+    /// Set whether the button is disabled.
+    pub fn with_disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
         self
     }
 }
@@ -95,6 +103,7 @@ impl Widget for Button {
             self.state,
             self.focus_state,
             is_focused,
+            self.disabled,
             layout_node,
             scene,
         );

@@ -54,6 +54,10 @@ impl Theme for ConfigurableTheme {
             ConfigurableTheme::Dark(theme) => theme.globals_mut(),
         }
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 // ThemeRenderer is automatically implemented via blanket impl for all Theme types

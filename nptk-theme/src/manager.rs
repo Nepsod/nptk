@@ -351,11 +351,18 @@ impl ThemeManager {
     }
     
     /// Clone a theme (helper method).
-    fn clone_theme(&self, _theme: &dyn Theme) -> Box<dyn Theme + Send + Sync> {
-        // This is a simplified implementation - in practice, you'd need proper cloning
-        // For now, we'll create new instances of known themes
-        // TODO: Implement proper theme cloning based on theme type
-        Box::new(CelesteTheme::light())
+    fn clone_theme(&self, theme: &dyn Theme) -> Box<dyn Theme + Send + Sync> {
+        // Try to downcast to known theme types and clone them
+        if let Some(celeste_theme) = theme.as_any().downcast_ref::<CelesteTheme>() {
+            Box::new(celeste_theme.clone())
+        } else if let Some(dark_theme) = theme.as_any().downcast_ref::<DarkTheme>() {
+            Box::new(dark_theme.clone())
+        } else {
+            // Fallback: create a new Celeste theme
+            // This is not ideal but ensures we always return a valid theme
+            log::warn!("Unknown theme type, falling back to Celeste theme");
+            Box::new(CelesteTheme::light())
+        }
     }
 }
 

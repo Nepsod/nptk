@@ -329,11 +329,15 @@ impl ThemeConfig {
         for line in content.lines() {
             let line = line.trim();
             if line.starts_with("default = ") {
-                let theme = line.strip_prefix("default = ").unwrap().trim_matches('"');
-                config.default_theme = Self::parse_theme_source(theme);
+                if let Some(theme_str) = line.strip_prefix("default = ") {
+                    let theme = theme_str.trim_matches('"');
+                    config.default_theme = Self::parse_theme_source(theme);
+                }
             } else if line.starts_with("fallback = ") {
-                let theme = line.strip_prefix("fallback = ").unwrap().trim_matches('"');
-                config.fallback_theme = Some(Self::parse_theme_source(theme));
+                if let Some(theme_str) = line.strip_prefix("fallback = ") {
+                    let theme = theme_str.trim_matches('"');
+                    config.fallback_theme = Some(Self::parse_theme_source(theme));
+                }
             }
         }
 
