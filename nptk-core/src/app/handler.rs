@@ -277,15 +277,20 @@ where
                 context,
             );
 
-            let renderer = self.renderer.as_mut().expect("Renderer not initialized");
-            let render_ctx = self
-                .render_ctx
-                .as_ref()
-                .expect("Render context not initialized");
-            let surface = self.surface.as_ref().expect("Surface not initialized");
-            let window = self.window.as_ref().expect("Window not initialized");
-
-            let device_handle = render_ctx.devices.first().expect("No devices available");
+            // Only render if all resources are available
+            if let (Some(renderer), Some(render_ctx), Some(surface), Some(window)) = (
+                self.renderer.as_mut(),
+                self.render_ctx.as_ref(),
+                self.surface.as_ref(),
+                self.window.as_ref(),
+            ) {
+                let device_handle = match render_ctx.devices.first() {
+                    Some(handle) => handle,
+                    None => {
+                        log::warn!("No devices available, skipping render");
+                        return;
+                    }
+                };
 
             // check surface validity
             if window.inner_size().width != 0 && window.inner_size().height != 0 {
@@ -317,6 +322,7 @@ where
             } else {
                 log::debug!("Surface invalid. Skipping render.");
             }
+            } // Close the resource availability check
         }
 
         // check if app should re-evaluate
@@ -366,23 +372,34 @@ where
         // The full async approach would require significant architectural changes
         
         // Create render context immediately (this is relatively fast)
+        log::debug!("Creating render context...");
         let mut render_ctx = RenderContext::new();
+        log::debug!("Render context created successfully");
         
         // Create surface with a timeout to avoid blocking too long
-        self.surface = Some(
-            crate::tasks::block_on(async {
-                log::debug!("Creating surface...");
-                render_ctx
-                    .create_surface(
-                        self.window.clone().unwrap(),
-                        self.window.as_ref().unwrap().inner_size().width,
-                        self.window.as_ref().unwrap().inner_size().height,
-                        self.config.render.present_mode,
-                    )
-                    .await
-            })
-            .expect("Failed to create surface"),
-        );
+        if let Some(window) = &self.window {
+            log::debug!("Creating surface...");
+            self.surface = Some(
+                crate::tasks::block_on(async {
+                    log::debug!("Starting surface creation...");
+                    let result = render_ctx
+                        .create_surface(
+                            window.clone(),
+                            window.inner_size().width,
+                            window.inner_size().height,
+                            self.config.render.present_mode,
+                        )
+                        .await;
+                    log::debug!("Surface creation completed");
+                    result
+                })
+                .expect("Failed to create surface"),
+            );
+            log::debug!("Surface created successfully");
+        } else {
+            log::error!("Window not available during surface creation");
+            return;
+        }
 
         // Create renderer (this can be slow)
         log::debug!("Requesting device handle via selector...");
@@ -491,23 +508,31 @@ where
         window_id: WindowId,
         mut event: WindowEvent,
     ) {
-        self.plugins.run(|pl| {
-            pl.on_window_event(
-                &mut event,
-                &mut self.config,
-                self.window.as_ref().unwrap(),
-                self.renderer.as_mut().unwrap(),
-                &mut self.scene,
-                self.surface.as_mut().unwrap(),
-                &mut self.taffy,
-                self.window_node,
-                &mut self.info,
-                self.render_ctx.as_ref().unwrap(),
-                &self.update,
-                &mut self.last_update,
-                event_loop,
-            )
-        });
+        // Only run plugins if all resources are still available
+        if let (Some(window), Some(renderer), Some(surface), Some(render_ctx)) = (
+            self.window.as_ref(),
+            self.renderer.as_mut(),
+            self.surface.as_mut(),
+            self.render_ctx.as_ref(),
+        ) {
+            self.plugins.run(|pl| {
+                pl.on_window_event(
+                    &mut event,
+                    &mut self.config,
+                    window,
+                    renderer,
+                    &mut self.scene,
+                    surface,
+                    &mut self.taffy,
+                    self.window_node,
+                    &mut self.info,
+                    render_ctx,
+                    &self.update,
+                    &mut self.last_update,
+                    event_loop,
+                )
+            });
+        }
 
         if let Some(window) = &self.window {
             if window.id() == window_id {
@@ -551,12 +576,9 @@ where
                     WindowEvent::CloseRequested => {
                         log::info!("Window Close requested...");
 
-                        log::debug!("Destroying device handles...");
-                        if let Some(render_ctx) = self.render_ctx.as_mut() {
-                            for handle in &render_ctx.devices {
-                                handle.device.destroy();
-                            }
-                        }
+                        // Note: Devices will be automatically cleaned up when render_ctx Arc is dropped
+                        // Manual destruction is not needed and causes segfaults due to Arc immutability
+                        log::debug!("Cleaning up resources...");
 
                         if self.config.window.close_on_request {
                             event_loop.exit();
