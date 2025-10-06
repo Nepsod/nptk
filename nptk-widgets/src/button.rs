@@ -12,6 +12,7 @@ use nptk_core::widget::{BoxedWidget, Widget, WidgetChildExt, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton, KeyCode, PhysicalKey};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use crate::theme_rendering::render_button_with_theme;
 
 /// An interactive area with a child widget that runs a closure when pressed.
 ///
@@ -87,69 +88,29 @@ impl Widget for Button {
             self.focus_state = manager.get_focus_state(self.focus_id);
         }
 
-        let brush = if let Some(style) = theme.of(self.widget_id()) {
-            // Check for focused state first (only if focus was via keyboard), then button state
-            if matches!(self.focus_state, FocusState::Focused | FocusState::Gained) && self.focus_via_keyboard {
-                if let Some(focused_color) = style.get_color("color_focused") {
-                    Brush::Solid(focused_color)
-                } else {
-                    // Fallback to hovered color for focus if no focused color is defined
-                    Brush::Solid(style.get_color("color_hovered").unwrap_or(theme.defaults().interactive().hover()))
-                }
+        // Use centralized theme rendering if theme supports it (default behavior)
+        if theme.supports_rendering() {
+            if let Some(theme_renderer) = theme.as_renderer() {
+                let is_focused = matches!(self.focus_state, FocusState::Focused | FocusState::Gained) && self.focus_via_keyboard;
+                render_button_with_theme(
+                    theme_renderer,
+                    &self.widget_id(),
+                    self.state,
+                    self.focus_state,
+                    is_focused,
+                    layout_node,
+                    scene,
+                );
             } else {
-                match self.state {
-                    ButtonState::Idle => Brush::Solid(style.get_color("color_idle").unwrap()),
-                    ButtonState::Hovered => Brush::Solid(style.get_color("color_hovered").unwrap()),
-                    ButtonState::Pressed => Brush::Solid(style.get_color("color_pressed").unwrap()),
-                    ButtonState::Released => Brush::Solid(style.get_color("color_hovered").unwrap()),
-                }
+                // Theme claims to support rendering but doesn't provide renderer - use fallback
+                self.render_fallback(theme, layout_node, scene);
             }
         } else {
-            // Default colors - only show focus color if focus was via keyboard
-            if matches!(self.focus_state, FocusState::Focused | FocusState::Gained) && self.focus_via_keyboard {
-                Brush::Solid(theme.defaults().interactive().hover())
-            } else {
-                Brush::Solid(match self.state {
-                    ButtonState::Idle => theme.defaults().interactive().inactive(),
-                    ButtonState::Hovered => theme.defaults().interactive().hover(),
-                    ButtonState::Pressed => theme.defaults().interactive().active(),
-                    ButtonState::Released => theme.defaults().interactive().hover(),
-                })
-            }
-        };
-
-        let button_rect = RoundedRect::from_rect(
-            Rect::new(
-                layout_node.layout.location.x as f64,
-                layout_node.layout.location.y as f64,
-                (layout_node.layout.location.x + layout_node.layout.size.width) as f64,
-                (layout_node.layout.location.y + layout_node.layout.size.height) as f64,
-            ),
-            RoundedRectRadii::from_single_radius(10.0),
-        );
-
-        scene.fill(
-            Fill::NonZero,
-            Affine::default(),
-            &brush,
-            None,
-            &button_rect,
-        );
-
-        // Draw focus indicator (only if focus was gained via keyboard)
-        if matches!(self.focus_state, FocusState::Focused | FocusState::Gained) && self.focus_via_keyboard {
-            use nptk_core::vg::peniko::Color;
-            let focus_brush = Brush::Solid(Color::from_rgb8(100, 150, 255)); // Blue focus border
-            
-            scene.stroke(
-                &Stroke::new(3.0),
-                Affine::default(),
-                &focus_brush,
-                None,
-                &button_rect,
-            );
+            // Theme explicitly opted out of centralized rendering - use fallback
+            self.render_fallback(theme, layout_node, scene);
         }
-
+        
+        // Render child widget
         {
             theme.globals_mut().invert_text_color = true;
 
@@ -304,6 +265,80 @@ impl Widget for Button {
 
     fn widget_id(&self) -> WidgetId {
         WidgetId::new("nptk-widgets", "Button")
+    }
+}
+
+impl Button {
+    /// Fallback rendering method for themes that don't support centralized rendering
+    fn render_fallback(
+        &self,
+        theme: &mut dyn Theme,
+        layout_node: &LayoutNode,
+        scene: &mut Scene,
+    ) {
+        // Fallback to original rendering logic for themes that don't implement ThemeRenderer
+        let brush = if let Some(style) = theme.of(self.widget_id()) {
+            // Check for focused state first (only if focus was via keyboard), then button state
+            if matches!(self.focus_state, FocusState::Focused | FocusState::Gained) && self.focus_via_keyboard {
+                if let Some(focused_color) = style.get_color("color_focused") {
+                    Brush::Solid(focused_color)
+                } else {
+                    // Fallback to hovered color for focus if no focused color is defined
+                    Brush::Solid(style.get_color("color_hovered").unwrap_or(theme.defaults().interactive().hover()))
+                }
+            } else {
+                match self.state {
+                    ButtonState::Idle => Brush::Solid(style.get_color("color_idle").unwrap()),
+                    ButtonState::Hovered => Brush::Solid(style.get_color("color_hovered").unwrap()),
+                    ButtonState::Pressed => Brush::Solid(style.get_color("color_pressed").unwrap()),
+                    ButtonState::Released => Brush::Solid(style.get_color("color_hovered").unwrap()),
+                }
+            }
+        } else {
+            // Default colors - only show focus color if focus was via keyboard
+            if matches!(self.focus_state, FocusState::Focused | FocusState::Gained) && self.focus_via_keyboard {
+                Brush::Solid(theme.defaults().interactive().hover())
+            } else {
+                Brush::Solid(match self.state {
+                    ButtonState::Idle => theme.defaults().interactive().inactive(),
+                    ButtonState::Hovered => theme.defaults().interactive().hover(),
+                    ButtonState::Pressed => theme.defaults().interactive().active(),
+                    ButtonState::Released => theme.defaults().interactive().hover(),
+                })
+            }
+        };
+
+        let button_rect = RoundedRect::from_rect(
+            Rect::new(
+                layout_node.layout.location.x as f64,
+                layout_node.layout.location.y as f64,
+                (layout_node.layout.location.x + layout_node.layout.size.width) as f64,
+                (layout_node.layout.location.y + layout_node.layout.size.height) as f64,
+            ),
+            RoundedRectRadii::from_single_radius(10.0),
+        );
+
+        scene.fill(
+            Fill::NonZero,
+            Affine::default(),
+            &brush,
+            None,
+            &button_rect,
+        );
+
+        // Draw focus indicator (only if focus was gained via keyboard)
+        if matches!(self.focus_state, FocusState::Focused | FocusState::Gained) && self.focus_via_keyboard {
+            use nptk_core::vg::peniko::Color;
+            let focus_brush = Brush::Solid(Color::from_rgb8(100, 150, 255)); // Blue focus border
+            
+            scene.stroke(
+                &Stroke::new(3.0),
+                Affine::default(),
+                &focus_brush,
+                None,
+                &button_rect,
+            );
+        }
     }
 }
 

@@ -7,6 +7,7 @@ use crate::style::{
     StyleVal,
 };
 use crate::theme::Theme;
+use crate::rendering::ThemeRenderer;
 
 /// A smooth and minimalistic theme with a cold blue and purple touch.
 #[derive(Debug, Clone)]
@@ -352,4 +353,16 @@ impl Theme for CelesteTheme {
     fn widget_id(&self) -> WidgetId {
         WidgetId::new("nptk-theme", "CelesteTheme")
     }
+    
+    fn supports_rendering(&self) -> bool {
+        true
+    }
+    
+    fn as_renderer(&mut self) -> Option<&mut dyn ThemeRenderer> {
+        Some(self)
+    }
+}
+
+impl ThemeRenderer for CelesteTheme {
+    // Use default implementations from the trait
 }

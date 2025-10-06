@@ -8,6 +8,7 @@ use crate::style::{
     StyleVal,
 };
 use crate::theme::Theme;
+use crate::rendering::ThemeRenderer;
 
 /// A dark theme with high contrast and modern styling.
 #[derive(Debug, Clone)]
@@ -289,4 +290,16 @@ impl Theme for DarkTheme {
     fn widget_id(&self) -> WidgetId {
         WidgetId::new("nptk-theme", "DarkTheme")
     }
+    
+    fn supports_rendering(&self) -> bool {
+        true
+    }
+    
+    fn as_renderer(&mut self) -> Option<&mut dyn ThemeRenderer> {
+        Some(self)
+    }
+}
+
+impl ThemeRenderer for DarkTheme {
+    // Use default implementations from the trait
 }

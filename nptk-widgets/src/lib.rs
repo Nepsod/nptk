@@ -68,3 +68,6 @@ pub mod menu_button;
 /// Contains the [progress::Progress] widget.
 pub mod progress;
 
+/// Contains theme rendering bridge functionality.
+pub mod theme_rendering;
+

@@ -155,3 +155,5 @@ pub mod style;
 pub mod theme;
 /// Contains the [theme_resolver::SelfContainedThemeResolver] for self-contained theme resolution.
 pub mod theme_resolver;
+/// Contains centralized widget rendering functionality.
+pub mod rendering;
