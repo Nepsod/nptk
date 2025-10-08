@@ -266,33 +266,19 @@ impl Widget for TextInput {
         }
 
         // Get colors from theme with proper fallbacks
-        let bg_color = if let Some(style) = theme.of(self.widget_id()) {
-            style.get_color("color_background")
-                .unwrap_or_else(|| theme.defaults().container().background())
+        let bg_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackground)
+            .unwrap_or_else(|| Color::from_rgb8(255, 255, 255));
+
+        let border_color = if is_focused {
+            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorderFocused)
+                .unwrap_or_else(|| Color::from_rgb8(100, 150, 255))
         } else {
-            theme.defaults().container().background()
+            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorder)
+                .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)) // Light gray border
         };
 
-        let border_color = if let Some(style) = theme.of(self.widget_id()) {
-            if is_focused {
-                style.get_color("color_border_focused")
-                    .unwrap_or_else(|| theme.defaults().interactive().active())
-            } else {
-                style.get_color("color_border")
-                    .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)) // Light gray border
-            }
-        } else if is_focused {
-            theme.defaults().interactive().active()
-        } else {
-            Color::from_rgb8(200, 200, 200) // Light gray border
-        };
-
-        let _text_color = if let Some(style) = theme.of(self.widget_id()) {
-            style.get_color("color_text")
-                .unwrap_or_else(|| theme.defaults().text().foreground())
-        } else {
-            theme.defaults().text().foreground()
-        };
+        let _text_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+            .unwrap_or_else(|| Color::from_rgb8(0, 0, 0));
 
         let input_rect = RoundedRect::from_rect(
             Rect::new(
@@ -337,12 +323,8 @@ impl Widget for TextInput {
         // Render selection highlight first (behind text)
         if let Some(selection_range) = self.buffer.cursor().selection() {
             // Use theme selection color with proper fallback
-            let selection_color = if let Some(style) = theme.of(self.widget_id()) {
-                style.get_color("color_selection")
-                    .unwrap_or_else(|| theme.defaults().interactive().active())
-            } else {
-                theme.defaults().interactive().active()
-            };
+            let selection_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorSelection)
+                .unwrap_or_else(|| Color::from_rgb8(100, 150, 255));
 
             // Calculate selection bounds using the same method as cursor positioning
             let selection_start_x = self.cursor_x_position(selection_range.start, layout_node, info);
@@ -368,7 +350,7 @@ impl Widget for TextInput {
 
         if !display_text.is_empty() {
             let text_color = if self.buffer.text().is_empty() {
-                theme.defaults().interactive().disabled() // Placeholder color from theme
+                Color::from_rgb8(150, 150, 150) // Placeholder color from theme
             } else {
                 _text_color
             };
@@ -397,12 +379,8 @@ impl Widget for TextInput {
 
         // Render cursor when focused and visible (always show cursor when focused)
         if is_focused && self.cursor_visible {
-            let cursor_color = if let Some(style) = theme.of(self.widget_id()) {
-                style.get_color("color_cursor")
-                    .unwrap_or_else(|| theme.defaults().text().foreground())
-            } else {
-                theme.defaults().text().foreground()
-            };
+            let cursor_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorCursor)
+                .unwrap_or_else(|| Color::from_rgb8(0, 0, 0));
 
             // Calculate cursor position using the same method as mouse positioning
             let cursor_pos = self.buffer.cursor().position;

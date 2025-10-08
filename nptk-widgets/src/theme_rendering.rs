@@ -329,6 +329,109 @@ pub fn render_text_input_with_theme(
     }
 }
 
+/// Helper for rendering progress bars using the theme system
+pub fn render_progress_with_theme(
+    theme: &mut dyn Theme,
+    widget_id: &WidgetId,
+    value: f32,
+    is_indeterminate: bool,
+    animation_time: f32,
+    layout: &LayoutNode,
+    scene: &mut Scene,
+) {
+    let width = layout.layout.size.width as f64;
+    let height = layout.layout.size.height as f64;
+    let x = layout.layout.location.x as f64;
+    let y = layout.layout.location.y as f64;
+
+    // Get theme colors using ThemeRenderer - use proper progress bar colors
+    let background_color = theme.get_property(widget_id.clone(), &nptk_theme::properties::ThemeProperty::Color)
+        .unwrap_or_else(|| nptk_core::vg::peniko::Color::from_rgb8(220, 220, 220));
+    let progress_color = theme.get_property(widget_id.clone(), &nptk_theme::properties::ThemeProperty::ColorProgress)
+        .unwrap_or_else(|| nptk_core::vg::peniko::Color::from_rgb8(100, 150, 255));
+    let border_color = theme.get_property(widget_id.clone(), &nptk_theme::properties::ThemeProperty::ColorBorder)
+        .unwrap_or_else(|| nptk_core::vg::peniko::Color::from_rgb8(180, 180, 180));
+
+    // Draw background
+    let background_rect = RoundedRect::new(
+        x,
+        y,
+        x + width,
+        y + height,
+        RoundedRectRadii::from_single_radius(height / 4.0),
+    );
+
+    scene.fill(
+        Fill::NonZero,
+        Affine::IDENTITY,
+        background_color,
+        None,
+        &background_rect,
+    );
+
+    // Draw border
+    scene.stroke(
+        &Stroke::new(1.0),
+        Affine::IDENTITY,
+        border_color,
+        None,
+        &background_rect,
+    );
+
+    // Draw progress
+    if is_indeterminate {
+        // Indeterminate mode: ping-pong animated progress
+        let progress_width = width * 0.3; // 30% of total width
+        let available_width = width - progress_width;
+        
+        // Create ping-pong animation: 0.0 -> 1.0 -> 0.0 -> 1.0...
+        let ping_pong_time = if animation_time <= 0.5 {
+            animation_time * 2.0 // 0.0 -> 1.0
+        } else {
+            2.0 - (animation_time * 2.0) // 1.0 -> 0.0
+        };
+        
+        let progress_x = x + (ping_pong_time as f64 * available_width);
+        
+        let progress_rect = RoundedRect::new(
+            progress_x,
+            y + 1.0, // Small margin from border
+            progress_x + progress_width,
+            y + height - 1.0,
+            RoundedRectRadii::from_single_radius((height - 2.0) / 4.0),
+        );
+
+        scene.fill(
+            Fill::NonZero,
+            Affine::IDENTITY,
+            progress_color,
+            None,
+            &progress_rect,
+        );
+    } else {
+        // Determinate progress
+        let progress_width = width * value.clamp(0.0, 1.0) as f64;
+        
+        if progress_width > 0.0 {
+            let progress_rect = RoundedRect::new(
+                x + 1.0, // Small margin from border
+                y + 1.0,
+                x + progress_width - 1.0,
+                y + height - 1.0,
+                RoundedRectRadii::from_single_radius((height - 2.0) / 4.0),
+            );
+
+            scene.fill(
+                Fill::NonZero,
+                Affine::IDENTITY,
+                progress_color,
+                None,
+                &progress_rect,
+            );
+        }
+    }
+}
+
 /// Helper for rendering sliders using the theme system
 pub fn render_slider_with_theme(
     theme: &mut dyn Theme,
@@ -451,10 +554,10 @@ impl ThemeTextRenderer {
     ) -> Color {
         let color = if invert_color {
             theme.get_property(widget_id.clone(), &nptk_theme::properties::ThemeProperty::ColorInvert)
-                .unwrap_or_else(|| theme.defaults().text().foreground())
+                .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
         } else {
             theme.get_property(widget_id.clone(), &nptk_theme::properties::ThemeProperty::Color)
-                .unwrap_or_else(|| theme.defaults().text().foreground())
+                .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
         };
 
         // Create a temporary TextRenderContext for rendering
@@ -508,7 +611,7 @@ impl ThemeTextRenderer {
             (placeholder, placeholder_color)
         } else {
             let text_color = theme.get_property(widget_id.clone(), &nptk_theme::properties::ThemeProperty::Color)
-                .unwrap_or_else(|| theme.defaults().text().foreground());
+                .unwrap_or_else(|| Color::from_rgb8(0, 0, 0));
             (text, text_color)
         };
 

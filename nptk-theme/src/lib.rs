@@ -150,7 +150,6 @@ pub mod manager;
 /// Contains type-safe theme properties and values.
 pub mod properties;
 /// Contains styling structures.
-pub mod style;
 /// Contains the [theme::Theme] trait and built-in themes.
 pub mod theme;
 /// Contains the [theme_resolver::SelfContainedThemeResolver] for self-contained theme resolution.

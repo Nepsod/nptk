@@ -185,7 +185,6 @@ use peniko::Color;
 use crate::globals::Globals;
 use crate::id::WidgetId;
 use crate::properties::{ThemeProperty, ThemeStyle, ThemeVariables};
-use crate::style::{DefaultStyles, Style};
 use crate::rendering::ThemeRenderer;
 
 /// The Celeste Theme.
@@ -295,28 +294,13 @@ mod tests {
 /// - **Memory Usage**: Be mindful of memory usage for large themes
 /// - **Thread Safety**: Ensure thread safety if used across threads
 pub trait Theme: ThemeRenderer {
-    /// Return the [Style] of the given widget using its ID.
-    /// Returns [None] if the theme does not have styles for the given widget.
-    /// In that case, you should use [Theme::defaults] to get widget style defaults.
-    /// 
-    /// # Deprecated
-    /// 
-    /// This method is deprecated in favor of the type-safe [Theme::get_property] method.
-    /// Use [Theme::get_property] for new code.
-    #[deprecated(since = "0.5.0", note = "Use get_property() for type-safe access instead")]
-    fn of(&self, id: WidgetId) -> Option<Style>;
     
     /// Return the type-safe [ThemeStyle] of the given widget using its ID.
     /// Returns [None] if the theme does not have styles for the given widget.
     /// This is the preferred method for accessing theme properties.
-    fn style(&self, id: WidgetId) -> Option<ThemeStyle> {
-        // Default implementation converts from legacy Style
-        self.of(id).map(|_style| {
-            let theme_style = ThemeStyle::new();
-            // Convert legacy style properties to type-safe properties
-            // This is a fallback for backward compatibility
-            theme_style
-        })
+    fn style(&self, _id: WidgetId) -> Option<ThemeStyle> {
+        // Default implementation - themes should override this for better performance
+        None
     }
     
     /// Get a specific theme property for a widget with fallback to defaults.
@@ -330,19 +314,17 @@ pub trait Theme: ThemeRenderer {
     /// Get a default property value for when widget-specific styles are not available.
     fn get_default_property(&self, property: &ThemeProperty) -> Option<Color> {
         match property {
-            ThemeProperty::Color | ThemeProperty::Text => Some(self.defaults().text().foreground()),
-            ThemeProperty::Background => Some(self.defaults().container().background()),
+            ThemeProperty::Color | ThemeProperty::Text => Some(Color::from_rgb8(0, 0, 0)),
+            ThemeProperty::Background => Some(Color::from_rgb8(255, 255, 255)),
             ThemeProperty::Border => Some(Color::from_rgb8(200, 200, 200)),
-            ThemeProperty::ColorIdle => Some(self.defaults().interactive().inactive()),
-            ThemeProperty::ColorHovered => Some(self.defaults().interactive().hover()),
-            ThemeProperty::ColorPressed => Some(self.defaults().interactive().active()),
-            ThemeProperty::ColorDisabled => Some(self.defaults().interactive().disabled()),
+            ThemeProperty::ColorIdle => Some(Color::from_rgb8(200, 200, 200)),
+            ThemeProperty::ColorHovered => Some(Color::from_rgb8(180, 180, 180)),
+            ThemeProperty::ColorPressed => Some(Color::from_rgb8(160, 160, 160)),
+            ThemeProperty::ColorDisabled => Some(Color::from_rgb8(150, 150, 150)),
             _ => None,
         }
     }
     
-    /// Get the default widget styles.
-    fn defaults(&self) -> DefaultStyles;
     
     /// Get the background color of the window.
     fn window_background(&self) -> Color;
@@ -369,7 +351,7 @@ pub trait Theme: ThemeRenderer {
     
     /// Check if this theme supports a specific widget.
     fn supports_widget(&self, id: WidgetId) -> bool {
-        self.of(id).is_some()
+        self.style(id).is_some()
     }
     
     /// Get all supported widget IDs.

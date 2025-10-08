@@ -258,43 +258,21 @@ impl Widget for MenuPopup {
     }
 
     fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout: &LayoutNode, info: &mut AppInfo, _context: AppContext) {
-        let widget_theme = theme.of(self.widget_id());
-        
         // Pre-calculate theme colors with proper fallbacks
-        let bg_color = if let Some(ref style) = widget_theme {
-            style.get_color("color_background")
-                .unwrap_or_else(|| theme.defaults().container().background())
-        } else {
-            theme.defaults().container().background()
-        };
+        let bg_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackground)
+            .unwrap_or_else(|| Color::from_rgb8(255, 255, 255));
         
-        let border_color = if let Some(ref style) = widget_theme {
-            style.get_color("color_border")
-                .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)) // Light gray border
-        } else {
-            Color::from_rgb8(200, 200, 200) // Light gray border
-        };
+        let border_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorder)
+            .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)); // Light gray border
         
-        let text_color = if let Some(ref style) = widget_theme {
-            style.get_color("color_text")
-                .unwrap_or_else(|| theme.defaults().text().foreground())
-        } else {
-            theme.defaults().text().foreground()
-        };
+        let text_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+            .unwrap_or_else(|| Color::from_rgb8(0, 0, 0));
         
-        let disabled_color = if let Some(ref style) = widget_theme {
-            style.get_color("color_disabled")
-                .unwrap_or_else(|| theme.defaults().interactive().disabled())
-        } else {
-            theme.defaults().interactive().disabled()
-        };
+        let disabled_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorDisabled)
+            .unwrap_or_else(|| Color::from_rgb8(150, 150, 150));
         
-        let hovered_color = if let Some(ref style) = widget_theme {
-            style.get_color("color_hovered")
-                .unwrap_or_else(|| theme.defaults().interactive().hover())
-        } else {
-            theme.defaults().interactive().hover()
-        };
+        let hovered_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorHovered)
+            .unwrap_or_else(|| Color::from_rgb8(180, 180, 180));
 
         // Calculate popup size
         let (popup_width, popup_height) = self.calculate_size();

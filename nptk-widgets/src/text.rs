@@ -3,7 +3,7 @@ use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::MaybeSignal;
-use nptk_core::vg::peniko::Brush;
+use nptk_core::vg::peniko::{Brush, Color};
 use nptk_core::vg::{Scene};
 use nptk_core::text_render::TextRenderContext;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
@@ -95,10 +95,10 @@ impl Widget for Text {
 
         let color = if theme.globals().invert_text_color {
             theme.get_property(Self::widget_id(self), &nptk_theme::properties::ThemeProperty::ColorInvert)
-                .unwrap_or_else(|| theme.defaults().text().foreground())
+                .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
         } else {
             theme.get_property(Self::widget_id(self), &nptk_theme::properties::ThemeProperty::Color)
-                .unwrap_or_else(|| theme.defaults().text().foreground())
+                .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
         };
         
         log::debug!("Text widget rendering: '{}' with color: {:?} at position: ({}, {})", 

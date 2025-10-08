@@ -5,7 +5,7 @@ use nptk_core::layout;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentageAuto, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vg::kurbo::{Affine, Circle, Point, Rect, RoundedRect, RoundedRectRadii};
-use nptk_core::vg::peniko::{Brush, Fill};
+use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vg::Scene;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::MouseButton;
@@ -77,17 +77,13 @@ impl Widget for Slider {
     ) {
         let value = *self.value.get();
 
-        let brush = if let Some(style) = theme.of(self.widget_id()) {
-            Brush::Solid(style.get_color("color").unwrap())
-        } else {
-            Brush::Solid(theme.defaults().interactive().inactive())
-        };
+        let brush = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::Color)
+            .map(|color| Brush::Solid(color))
+            .unwrap_or_else(|| Brush::Solid(Color::from_rgb8(200, 200, 200)));
 
-        let ball_brush = if let Some(style) = theme.of(self.widget_id()) {
-            Brush::Solid(style.get_color("color_ball").unwrap())
-        } else {
-            Brush::Solid(theme.defaults().interactive().active())
-        };
+        let ball_brush = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBall)
+            .map(|color| Brush::Solid(color))
+            .unwrap_or_else(|| Brush::Solid(Color::from_rgb8(100, 150, 255)));
 
         let circle_radius = layout_node.layout.size.height as f64 / 1.15;
 

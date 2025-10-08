@@ -455,26 +455,14 @@ impl ScrollContainer {
         )
     }
 
-    fn render_scrollbar(&self, scene: &mut Scene, theme: Option<&nptk_theme::style::Style>, scrollbar_bounds: Rect, thumb_bounds: Rect, _is_vertical: bool, is_hovered: bool, is_pressed: bool) {
+    fn render_scrollbar(&self, scene: &mut Scene, _theme: Option<()>, scrollbar_bounds: Rect, thumb_bounds: Rect, _is_vertical: bool, is_hovered: bool, is_pressed: bool) {
         // Draw scrollbar track
-        let track_color = if let Some(style) = theme {
-            style.get_color("color_scrollbar").unwrap_or(Color::from_rgb8(230, 230, 230))
-        } else {
-            Color::from_rgb8(230, 230, 230)
-        };
+        let track_color = Color::from_rgb8(230, 230, 230);
 
         scene.fill(Fill::NonZero, Affine::IDENTITY, track_color, None, &scrollbar_bounds);
 
         // Draw scrollbar thumb
-        let thumb_color = if let Some(style) = theme {
-            if is_pressed {
-                style.get_color("color_scrollbar_thumb_active").unwrap_or(Color::from_rgb8(120, 120, 120))
-            } else if is_hovered {
-                style.get_color("color_scrollbar_thumb_hover").unwrap_or(Color::from_rgb8(150, 150, 150))
-            } else {
-                style.get_color("color_scrollbar_thumb").unwrap_or(Color::from_rgb8(180, 180, 180))
-            }
-        } else if is_pressed {
+        let thumb_color = if is_pressed {
             Color::from_rgb8(120, 120, 120)
         } else if is_hovered {
             Color::from_rgb8(150, 150, 150)
@@ -493,16 +481,8 @@ impl ScrollContainer {
         scene.fill(Fill::NonZero, Affine::IDENTITY, thumb_color, None, &thumb_rounded);
     }
 
-    fn render_scroll_button(&self, scene: &mut Scene, theme: Option<&nptk_theme::style::Style>, bounds: Rect, direction: ArrowDirection, is_hovered: bool, is_pressed: bool) {
-        let bg_color = if let Some(style) = theme {
-            if is_pressed {
-                style.get_color("color_scrollbar_thumb_active").unwrap_or(Color::from_rgb8(120, 120, 120))
-            } else if is_hovered {
-                style.get_color("color_scrollbar_thumb_hover").unwrap_or(Color::from_rgb8(150, 150, 150))
-            } else {
-                style.get_color("color_scrollbar_thumb").unwrap_or(Color::from_rgb8(180, 180, 180))
-            }
-        } else if is_pressed {
+    fn render_scroll_button(&self, scene: &mut Scene, _theme: Option<()>, bounds: Rect, direction: ArrowDirection, is_hovered: bool, is_pressed: bool) {
+        let bg_color = if is_pressed {
             Color::from_rgb8(120, 120, 120)
         } else if is_hovered {
             Color::from_rgb8(150, 150, 150)
@@ -574,9 +554,6 @@ impl Widget for ScrollContainer {
     }
 
     fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout: &LayoutNode, _info: &mut AppInfo, context: AppContext) -> () {
-        let widget_theme = theme.of(self.widget_id());
-        let widget_theme_ref = widget_theme.as_ref();
-
         // Update viewport size
         self.viewport_size = Vector2::new(
             layout.layout.size.width - if self.needs_vertical_scrollbar() { self.scrollbar_width } else { 0.0 },
@@ -591,11 +568,8 @@ impl Widget for ScrollContainer {
             (layout.layout.location.y + layout.layout.size.height) as f64,
         );
 
-        let _bg_color = if let Some(style) = widget_theme_ref {
-            style.get_color("color_background").unwrap_or(Color::WHITE)
-        } else {
-            Color::WHITE
-        };
+        let _bg_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackground)
+            .unwrap_or_else(|| Color::WHITE);
 
         // Calculate content area (excluding scrollbars)
         let _content_width = layout.layout.size.width - if self.needs_vertical_scrollbar() { self.scrollbar_width } else { 0.0 };
@@ -613,11 +587,8 @@ impl Widget for ScrollContainer {
         // scene.fill(Fill::NonZero, Affine::IDENTITY, bg_color, None, &content_rect);
 
         // Draw border
-        let border_color = if let Some(style) = widget_theme_ref {
-            style.get_color("color_border").unwrap_or(Color::from_rgb8(200, 200, 200))
-        } else {
-            Color::from_rgb8(200, 200, 200)
-        };
+        let border_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorder)
+            .unwrap_or_else(|| Color::from_rgb8(200, 200, 200));
         let stroke = Stroke::new(1.0);
         scene.stroke(&stroke, Affine::IDENTITY, border_color, None, &container_bounds);
         
@@ -652,26 +623,26 @@ impl Widget for ScrollContainer {
         if self.needs_vertical_scrollbar() {
             let scrollbar_bounds = self.get_vertical_scrollbar_bounds(layout);
             let thumb_bounds = self.get_vertical_thumb_bounds(scrollbar_bounds);
-            self.render_scrollbar(scene, widget_theme_ref, scrollbar_bounds, thumb_bounds, true, self.vertical_scrollbar_hovered, self.dragging_vertical);
+            self.render_scrollbar(scene, None, scrollbar_bounds, thumb_bounds, true, self.vertical_scrollbar_hovered, self.dragging_vertical);
 
             if self.scrollbar_buttons == ScrollbarButtons::Always {
                 let up_button_bounds = self.get_vertical_up_button_bounds(scrollbar_bounds);
                 let down_button_bounds = self.get_vertical_down_button_bounds(scrollbar_bounds);
-                self.render_scroll_button(scene, widget_theme_ref, up_button_bounds, ArrowDirection::Up, self.up_button_hovered, self.button_held == Some(ArrowDirection::Up));
-                self.render_scroll_button(scene, widget_theme_ref, down_button_bounds, ArrowDirection::Down, self.down_button_hovered, self.button_held == Some(ArrowDirection::Down));
+                self.render_scroll_button(scene, None, up_button_bounds, ArrowDirection::Up, self.up_button_hovered, self.button_held == Some(ArrowDirection::Up));
+                self.render_scroll_button(scene, None, down_button_bounds, ArrowDirection::Down, self.down_button_hovered, self.button_held == Some(ArrowDirection::Down));
             }
         }
 
         if self.needs_horizontal_scrollbar() {
             let scrollbar_bounds = self.get_horizontal_scrollbar_bounds(layout);
             let thumb_bounds = self.get_horizontal_thumb_bounds(scrollbar_bounds);
-            self.render_scrollbar(scene, widget_theme_ref, scrollbar_bounds, thumb_bounds, false, self.horizontal_scrollbar_hovered, self.dragging_horizontal);
+            self.render_scrollbar(scene, None, scrollbar_bounds, thumb_bounds, false, self.horizontal_scrollbar_hovered, self.dragging_horizontal);
 
             if self.scrollbar_buttons == ScrollbarButtons::Always {
                 let left_button_bounds = self.get_horizontal_left_button_bounds(scrollbar_bounds);
                 let right_button_bounds = self.get_horizontal_right_button_bounds(scrollbar_bounds);
-                self.render_scroll_button(scene, widget_theme_ref, left_button_bounds, ArrowDirection::Left, self.left_button_hovered, self.button_held == Some(ArrowDirection::Left));
-                self.render_scroll_button(scene, widget_theme_ref, right_button_bounds, ArrowDirection::Right, self.right_button_hovered, self.button_held == Some(ArrowDirection::Right));
+                self.render_scroll_button(scene, None, left_button_bounds, ArrowDirection::Left, self.left_button_hovered, self.button_held == Some(ArrowDirection::Left));
+                self.render_scroll_button(scene, None, right_button_bounds, ArrowDirection::Right, self.right_button_hovered, self.button_held == Some(ArrowDirection::Right));
             }
         }
     }

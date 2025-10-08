@@ -142,57 +142,37 @@ impl Widget for RadioButton {
         let radio_center_y = layout_node.layout.location.y + layout_node.layout.size.height / 2.0;
 
         // Radio button circle colors
-        let (bg_color, border_color, dot_color) = if let Some(style) = theme.of(self.widget_id()) {
-            let bg = if self.disabled {
-                style.get_color("color_background_disabled").unwrap_or(Color::from_rgb8(240, 240, 240))
-            } else if is_selected {
-                style.get_color("color_background_selected").unwrap_or(Color::WHITE)
-            } else {
-                style.get_color("color_background").unwrap_or(Color::WHITE)
-            };
-
-            let border = if self.disabled {
-                style.get_color("color_border_disabled").unwrap_or(Color::from_rgb8(200, 200, 200))
-            } else if is_focused && self.focus_via_keyboard {
-                style.get_color("color_border_focused").unwrap_or(Color::from_rgb8(0, 120, 255))
-            } else if matches!(self.state, RadioButtonState::Hovered) {
-                style.get_color("color_border_hovered").unwrap_or(Color::from_rgb8(100, 100, 100))
-            } else {
-                style.get_color("color_border").unwrap_or(Color::from_rgb8(150, 150, 150))
-            };
-
-            let dot = if self.disabled {
-                style.get_color("color_dot_disabled").unwrap_or(Color::from_rgb8(180, 180, 180))
-            } else {
-                style.get_color("color_dot").unwrap_or(Color::from_rgb8(0, 120, 255))
-            };
-
-            (bg, border, dot)
+        let bg_color = if self.disabled {
+            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackgroundDisabled)
+                .unwrap_or_else(|| Color::from_rgb8(240, 240, 240))
+        } else if is_selected {
+            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackgroundSelected)
+                .unwrap_or_else(|| Color::WHITE)
         } else {
-            // Default colors
-            let bg = if self.disabled {
-                Color::from_rgb8(240, 240, 240)
-            } else {
-                Color::WHITE
-            };
+            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackground)
+                .unwrap_or_else(|| Color::WHITE)
+        };
 
-            let border = if self.disabled {
-                Color::from_rgb8(200, 200, 200)
-            } else if is_focused && self.focus_via_keyboard {
-                Color::from_rgb8(0, 120, 255)
-            } else if matches!(self.state, RadioButtonState::Hovered) {
-                Color::from_rgb8(100, 100, 100)
-            } else {
-                Color::from_rgb8(150, 150, 150)
-            };
+        let border_color = if self.disabled {
+            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorderDisabled)
+                .unwrap_or_else(|| Color::from_rgb8(200, 200, 200))
+        } else if is_focused && self.focus_via_keyboard {
+            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorderFocused)
+                .unwrap_or_else(|| Color::from_rgb8(0, 120, 255))
+        } else if matches!(self.state, RadioButtonState::Hovered) {
+            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorderHovered)
+                .unwrap_or_else(|| Color::from_rgb8(100, 100, 100))
+        } else {
+            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorder)
+                .unwrap_or_else(|| Color::from_rgb8(150, 150, 150))
+        };
 
-            let dot = if self.disabled {
-                Color::from_rgb8(180, 180, 180)
-            } else {
-                Color::from_rgb8(0, 120, 255)
-            };
-
-            (bg, border, dot)
+        let dot_color = if self.disabled {
+            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorDotDisabled)
+                .unwrap_or_else(|| Color::from_rgb8(180, 180, 180))
+        } else {
+            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorDot)
+                .unwrap_or_else(|| Color::from_rgb8(0, 120, 255))
         };
 
         // Draw radio button circle background
@@ -233,10 +213,10 @@ impl Widget for RadioButton {
         if !label_text.is_empty() {
             let _text_color = if self.disabled {
                 theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorTextDisabled)
-                    .unwrap_or_else(|| theme.defaults().interactive().disabled())
+                    .unwrap_or_else(|| Color::from_rgb8(150, 150, 150))
             } else {
                 theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
-                    .unwrap_or_else(|| theme.defaults().text().foreground())
+                    .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
             };
 
             // TODO: Implement text rendering similar to other widgets

@@ -253,50 +253,24 @@ impl Widget for MenuBar {
             return;
         }
 
-        let widget_theme = theme.of(self.widget_id());
-        
         // Pre-calculate theme colors with proper fallbacks
-        let bg_color = if let Some(ref style) = widget_theme {
-            style.get_color("color_background")
-                .unwrap_or_else(|| theme.defaults().container().background())
-        } else {
-            theme.defaults().container().background()
-        };
+        let bg_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackground)
+            .unwrap_or_else(|| Color::from_rgb8(240, 240, 240));
         
-        let border_color = if let Some(ref style) = widget_theme {
-            style.get_color("color_border")
-                .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)) // Light gray border
-        } else {
-            Color::from_rgb8(200, 200, 200) // Light gray border
-        };
+        let border_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorder)
+            .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)); // Light gray border
         
-        let text_color = if let Some(ref style) = widget_theme {
-            style.get_color("color_text")
-                .unwrap_or_else(|| theme.defaults().text().foreground())
-        } else {
-            theme.defaults().text().foreground()
-        };
+        let text_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+            .unwrap_or_else(|| Color::from_rgb8(0, 0, 0));
         
-        let disabled_color = if let Some(ref style) = widget_theme {
-            style.get_color("color_disabled")
-                .unwrap_or_else(|| theme.defaults().interactive().disabled())
-        } else {
-            theme.defaults().interactive().disabled()
-        };
+        let disabled_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorDisabled)
+            .unwrap_or_else(|| Color::from_rgb8(150, 150, 150));
         
-        let selected_color = if let Some(ref style) = widget_theme {
-            style.get_color("color_selected")
-                .unwrap_or_else(|| theme.defaults().interactive().active())
-        } else {
-            theme.defaults().interactive().active()
-        };
+        let selected_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorMenuSelected)
+            .unwrap_or_else(|| Color::from_rgb8(100, 150, 255));
         
-        let hovered_color = if let Some(ref style) = widget_theme {
-            style.get_color("color_hovered")
-                .unwrap_or_else(|| theme.defaults().interactive().hover())
-        } else {
-            theme.defaults().interactive().hover()
-        };
+        let hovered_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorMenuHovered)
+            .unwrap_or_else(|| Color::from_rgb8(180, 180, 180));
         
         // Draw menu bar background
         let menu_rect = Rect::new(

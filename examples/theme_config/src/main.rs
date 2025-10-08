@@ -10,7 +10,6 @@ use nptk::theme::theme::celeste::CelesteTheme;
 use nptk::theme::config::{ThemeConfig, ThemeSource};
 use nptk::theme::theme_resolver::SelfContainedThemeResolver;
 use nptk::theme::id::WidgetId;
-use nptk::theme::style::{DefaultStyles, Style};
 use nptk::theme::globals::Globals;
 use nptk::color::Color;
 use nptk::widgets::container::Container;
@@ -24,17 +23,10 @@ pub enum ConfigurableTheme {
 }
 
 impl Theme for ConfigurableTheme {
-    fn of(&self, id: WidgetId) -> Option<Style> {
+    fn get_property(&self, id: WidgetId, property: &nptk::theme::properties::ThemeProperty) -> Option<Color> {
         match self {
-            ConfigurableTheme::Light(theme) => theme.of(id),
-            ConfigurableTheme::Dark(theme) => theme.of(id),
-        }
-    }
-
-    fn defaults(&self) -> DefaultStyles {
-        match self {
-            ConfigurableTheme::Light(theme) => theme.defaults(),
-            ConfigurableTheme::Dark(theme) => theme.defaults(),
+            ConfigurableTheme::Light(theme) => theme.get_property(id, property),
+            ConfigurableTheme::Dark(theme) => theme.get_property(id, property),
         }
     }
 

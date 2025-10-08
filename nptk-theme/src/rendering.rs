@@ -53,6 +53,7 @@
 
 use peniko::Color;
 use crate::id::WidgetId;
+use crate::properties::ThemeProperty;
 use crate::theme::Theme;
 
 /// The unified state of a widget for rendering purposes.
@@ -181,60 +182,34 @@ where
     T: Theme,
 {
     fn get_button_color(&self, id: WidgetId, state: WidgetState) -> Color {
-        if let Some(style) = self.of(id) {
-            match state {
-                WidgetState::Normal => style.get_color("color_idle").unwrap_or(self.defaults().interactive().inactive()),
-                WidgetState::Hovered => style.get_color("color_hovered").unwrap_or(self.defaults().interactive().hover()),
-                WidgetState::Pressed => style.get_color("color_pressed").unwrap_or(self.defaults().interactive().active()),
-                WidgetState::Released => style.get_color("color_hovered").unwrap_or(self.defaults().interactive().hover()),
-                WidgetState::Focused => style.get_color("color_focused").unwrap_or(self.defaults().interactive().hover()),
-                WidgetState::FocusedHovered => style.get_color("color_focused").unwrap_or(self.defaults().interactive().hover()),
-                WidgetState::FocusedPressed => style.get_color("color_pressed").unwrap_or(self.defaults().interactive().active()),
-                WidgetState::FocusedReleased => style.get_color("color_focused").unwrap_or(self.defaults().interactive().hover()),
-                WidgetState::Selected => style.get_color("color_selected").unwrap_or(self.defaults().interactive().active()),
-                WidgetState::SelectedHovered => style.get_color("color_selected").unwrap_or(self.defaults().interactive().active()),
-                WidgetState::SelectedPressed => style.get_color("color_pressed").unwrap_or(self.defaults().interactive().active()),
-                WidgetState::SelectedReleased => style.get_color("color_selected").unwrap_or(self.defaults().interactive().active()),
-                WidgetState::Disabled => style.get_color("color_disabled").unwrap_or(self.defaults().interactive().disabled()),
-            }
-        } else {
-            match state {
-                WidgetState::Normal => self.defaults().interactive().inactive(),
-                WidgetState::Hovered => self.defaults().interactive().hover(),
-                WidgetState::Pressed => self.defaults().interactive().active(),
-                WidgetState::Released => self.defaults().interactive().hover(),
-                WidgetState::Focused => self.defaults().interactive().hover(),
-                WidgetState::FocusedHovered => self.defaults().interactive().hover(),
-                WidgetState::FocusedPressed => self.defaults().interactive().active(),
-                WidgetState::FocusedReleased => self.defaults().interactive().hover(),
-                WidgetState::Selected => self.defaults().interactive().active(),
-                WidgetState::SelectedHovered => self.defaults().interactive().active(),
-                WidgetState::SelectedPressed => self.defaults().interactive().active(),
-                WidgetState::SelectedReleased => self.defaults().interactive().active(),
-                WidgetState::Disabled => self.defaults().interactive().disabled(),
-            }
+        match state {
+            WidgetState::Normal => self.get_property(id, &ThemeProperty::ColorIdle).unwrap_or(Color::from_rgb8(200, 200, 200)),
+            WidgetState::Hovered => self.get_property(id, &ThemeProperty::ColorHovered).unwrap_or(Color::from_rgb8(180, 180, 180)),
+            WidgetState::Pressed => self.get_property(id, &ThemeProperty::ColorPressed).unwrap_or(Color::from_rgb8(160, 160, 160)),
+            WidgetState::Released => self.get_property(id, &ThemeProperty::ColorHovered).unwrap_or(Color::from_rgb8(180, 180, 180)),
+            WidgetState::Focused => self.get_property(id, &ThemeProperty::ColorFocused).unwrap_or(Color::from_rgb8(100, 150, 255)),
+            WidgetState::FocusedHovered => self.get_property(id, &ThemeProperty::ColorFocused).unwrap_or(Color::from_rgb8(100, 150, 255)),
+            WidgetState::FocusedPressed => self.get_property(id, &ThemeProperty::ColorPressed).unwrap_or(Color::from_rgb8(80, 130, 235)),
+            WidgetState::FocusedReleased => self.get_property(id, &ThemeProperty::ColorFocused).unwrap_or(Color::from_rgb8(100, 150, 255)),
+            WidgetState::Selected => self.get_property(id, &ThemeProperty::ColorSelection).unwrap_or(Color::from_rgb8(100, 150, 255)),
+            WidgetState::SelectedHovered => self.get_property(id, &ThemeProperty::ColorSelection).unwrap_or(Color::from_rgb8(100, 150, 255)),
+            WidgetState::SelectedPressed => self.get_property(id, &ThemeProperty::ColorPressed).unwrap_or(Color::from_rgb8(80, 130, 235)),
+            WidgetState::SelectedReleased => self.get_property(id, &ThemeProperty::ColorSelection).unwrap_or(Color::from_rgb8(100, 150, 255)),
+            WidgetState::Disabled => self.get_property(id, &ThemeProperty::ColorDisabled).unwrap_or(Color::from_rgb8(150, 150, 150)),
         }
     }
 
     fn get_checkbox_color(&self, id: WidgetId, _state: WidgetState, checkbox_state: CheckboxState) -> Color {
-        if let Some(style) = self.of(id) {
-            match checkbox_state {
-                CheckboxState::Unchecked => style.get_color("color_unchecked").unwrap_or(self.defaults().container().background()),
-                CheckboxState::Checked => style.get_color("color_checked").unwrap_or(self.defaults().interactive().active()),
-                CheckboxState::Indeterminate => style.get_color("color_indeterminate").unwrap_or(self.defaults().interactive().hover()),
-            }
-        } else {
-            match checkbox_state {
-                CheckboxState::Unchecked => self.defaults().container().background(),
-                CheckboxState::Checked => self.defaults().interactive().active(),
-                CheckboxState::Indeterminate => self.defaults().interactive().hover(),
-            }
+        match checkbox_state {
+            CheckboxState::Unchecked => self.get_property(id, &ThemeProperty::ColorUnchecked).unwrap_or(Color::from_rgb8(255, 255, 255)),
+            CheckboxState::Checked => self.get_property(id, &ThemeProperty::ColorChecked).unwrap_or(Color::from_rgb8(100, 150, 255)),
+            CheckboxState::Indeterminate => self.get_property(id, &ThemeProperty::ColorIndeterminate).unwrap_or(Color::from_rgb8(150, 150, 150)),
         }
     }
 
     fn get_checkbox_border_color(&self, _id: WidgetId, state: WidgetState) -> Color {
         if state.is_disabled() {
-            self.defaults().interactive().disabled()
+            Color::from_rgb8(150, 150, 150)
         } else {
             Color::from_rgb8(200, 200, 200)
         }
@@ -242,15 +217,15 @@ where
 
     fn get_text_input_color(&self, _id: WidgetId, state: WidgetState) -> Color {
         if state.is_disabled() {
-            self.defaults().interactive().disabled()
+            Color::from_rgb8(150, 150, 150)
         } else {
-            self.defaults().container().background()
+            Color::from_rgb8(255, 255, 255)
         }
     }
 
     fn get_text_input_border_color(&self, _id: WidgetId, state: WidgetState) -> Color {
         if state.is_focused() {
-            self.defaults().interactive().active()
+            Color::from_rgb8(100, 150, 255)
         } else {
             Color::from_rgb8(200, 200, 200)
         }
@@ -258,7 +233,7 @@ where
 
     fn get_slider_track_color(&self, _id: WidgetId, state: WidgetState) -> Color {
         if state.is_disabled() {
-            self.defaults().interactive().disabled()
+            Color::from_rgb8(150, 150, 150)
         } else {
             Color::from_rgb8(220, 220, 220)
         }
@@ -266,11 +241,11 @@ where
 
     fn get_slider_thumb_color(&self, _id: WidgetId, state: WidgetState) -> Color {
         if state.is_disabled() {
-            self.defaults().interactive().disabled()
+            Color::from_rgb8(150, 150, 150)
         } else if state.is_pressed() {
-            self.defaults().interactive().active()
+            Color::from_rgb8(100, 150, 255)
         } else {
-            self.defaults().interactive().hover()
+            Color::from_rgb8(180, 180, 180)
         }
     }
 

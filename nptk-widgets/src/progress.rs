@@ -4,12 +4,11 @@ use nptk_core::app::update::Update;
 use nptk_core::layout;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentageAuto, StyleNode};
 use nptk_core::signal::MaybeSignal;
-use nptk_core::vg::kurbo::{Affine, RoundedRect, RoundedRectRadii, Stroke};
-use nptk_core::vg::peniko::{Brush, Fill};
 use nptk_core::vg::Scene;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use crate::theme_rendering::render_progress_with_theme;
 use nalgebra::Vector2;
 
 /// A progress bar widget to display progress from `0.0` to `1.0`.
@@ -84,113 +83,16 @@ impl Widget for Progress {
         _info: &mut AppInfo,
         _context: AppContext,
     ) {
-        let width = layout.layout.size.width as f64;
-        let height = layout.layout.size.height as f64;
-        let x = layout.layout.location.x as f64;
-        let y = layout.layout.location.y as f64;
-
-        // Get theme colors
-        let (background_color, progress_color, border_color) = if let Some(style) = theme.of(self.widget_id()) {
-            (
-                style.get_color("color").unwrap_or_else(|| nptk_core::vg::peniko::Color::from_rgb8(220, 220, 220)),
-                style.get_color("color_progress").unwrap_or_else(|| nptk_core::vg::peniko::Color::from_rgb8(100, 150, 255)),
-                style.get_color("color_border").unwrap_or_else(|| nptk_core::vg::peniko::Color::from_rgb8(180, 180, 180)),
-            )
-        } else {
-            (
-                nptk_core::vg::peniko::Color::from_rgb8(220, 220, 220),
-                nptk_core::vg::peniko::Color::from_rgb8(100, 150, 255),
-                nptk_core::vg::peniko::Color::from_rgb8(180, 180, 180),
-            )
-        };
-
-        // Draw background
-        let background_rect = RoundedRect::new(
-            x,
-            y,
-            x + width,
-            y + height,
-            RoundedRectRadii::from_single_radius(height / 4.0),
+        // Use centralized theme rendering (all themes support it via supertrait)
+        render_progress_with_theme(
+            theme,
+            &self.widget_id(),
+            *self.value.get(),
+            *self.indeterminate.get(),
+            self.animation_time,
+            layout,
+            scene,
         );
-
-        scene.fill(
-            Fill::NonZero,
-            Affine::IDENTITY,
-            background_color,
-            None,
-            &background_rect,
-        );
-
-        // Draw border
-        let border_rect = RoundedRect::new(
-            x,
-            y,
-            x + width,
-            y + height,
-            RoundedRectRadii::from_single_radius(height / 4.0),
-        );
-        
-        scene.stroke(
-            &Stroke::new(1.0),
-            Affine::IDENTITY,
-            &Brush::Solid(border_color),
-            None,
-            &border_rect,
-        );
-
-        // Draw progress fill
-        if *self.indeterminate.get() {
-            // Indeterminate mode: ping-pong animated progress
-            let progress_width = width * 0.3; // 30% of total width
-            let available_width = width - progress_width;
-            
-            // Create ping-pong animation: 0.0 -> 1.0 -> 0.0 -> 1.0...
-            let ping_pong_time = if self.animation_time <= 0.5 {
-                self.animation_time * 2.0 // 0.0 -> 1.0
-            } else {
-                2.0 - (self.animation_time * 2.0) // 1.0 -> 0.0
-            };
-            
-            let progress_x = x + (ping_pong_time as f64 * available_width);
-            
-            let progress_rect = RoundedRect::new(
-                progress_x,
-                y + 1.0, // Small margin from border
-                progress_x + progress_width,
-                y + height - 1.0,
-                RoundedRectRadii::from_single_radius((height - 2.0) / 4.0),
-            );
-
-            scene.fill(
-                Fill::NonZero,
-                Affine::IDENTITY,
-                progress_color,
-                None,
-                &progress_rect,
-            );
-        } else {
-            // Determinate mode: show actual progress
-            let progress_value = (*self.value.get()).clamp(0.0, 1.0);
-            let progress_width = width * progress_value as f64;
-            
-            if progress_width > 0.0 {
-                let progress_rect = RoundedRect::new(
-                    x + 1.0, // Small margin from border
-                    y + 1.0,
-                    x + progress_width - 1.0,
-                    y + height - 1.0,
-                    RoundedRectRadii::from_single_radius((height - 2.0) / 4.0),
-                );
-
-                scene.fill(
-                    Fill::NonZero,
-                    Affine::IDENTITY,
-                    progress_color,
-                    None,
-                    &progress_rect,
-                );
-            }
-        }
     }
 
     fn update(&mut self, _layout: &LayoutNode, _context: AppContext, _info: &mut AppInfo) -> Update {

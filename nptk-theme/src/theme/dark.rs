@@ -3,10 +3,6 @@ use peniko::Color;
 use crate::globals::Globals;
 use crate::id::WidgetId;
 use crate::properties::{ThemeProperty, ThemeStyle, ThemeVariables};
-use crate::style::{
-    DefaultContainerStyles, DefaultInteractiveStyles, DefaultStyles, DefaultTextStyles, Style,
-    StyleVal,
-};
 use crate::theme::Theme;
 
 /// A dark theme with high contrast and modern styling.
@@ -74,125 +70,52 @@ impl Default for DarkTheme {
 }
 
 impl Theme for DarkTheme {
-    fn of(&self, id: WidgetId) -> Option<Style> {
+    fn get_property(&self, id: WidgetId, property: &crate::properties::ThemeProperty) -> Option<Color> {
         match id.namespace() {
             "nptk-widgets" => match id.id() {
-                "Text" => Some(Style::from_values([
-                    ("color".to_string(), StyleVal::Color(self.variables.get_color("text-primary").unwrap_or(Color::WHITE))),
-                    ("color_invert".to_string(), StyleVal::Color(self.variables.get_color("bg-primary").unwrap_or(Color::BLACK))),
-                ])),
-
-                "Button" => Some(Style::from_values([
-                    ("color_idle".to_string(), StyleVal::Color(self.variables.get_color("primary").unwrap_or(Color::from_rgb8(100, 150, 255)))),
-                    ("color_pressed".to_string(), StyleVal::Color(self.variables.get_color("primary-dark").unwrap_or(Color::from_rgb8(80, 130, 235)))),
-                    ("color_hovered".to_string(), StyleVal::Color(self.variables.get_color("primary-light").unwrap_or(Color::from_rgb8(120, 170, 255)))),
-                    ("color_focused".to_string(), StyleVal::Color(self.variables.get_color("primary").unwrap_or(Color::from_rgb8(100, 150, 255)))),
-                ])),
-
-                "Checkbox" => Some(Style::from_values([
-                    ("color_checked".to_string(), StyleVal::Color(self.variables.get_color("primary").unwrap())),
-                    ("color_unchecked".to_string(), StyleVal::Color(self.variables.get_color("border-primary").unwrap())),
-                ])),
-
-                "Slider" => Some(Style::from_values([
-                    ("color".to_string(), StyleVal::Color(self.variables.get_color("border-primary").unwrap())),
-                    ("color_ball".to_string(), StyleVal::Color(self.variables.get_color("primary").unwrap())),
-                ])),
-
-                "TextInput" => Some(Style::from_values([
-                    ("color_background".to_string(), StyleVal::Color(self.variables.get_color("bg-secondary").unwrap())),
-                    ("color_border".to_string(), StyleVal::Color(self.variables.get_color("border-primary").unwrap())),
-                    ("color_border_focused".to_string(), StyleVal::Color(self.variables.get_color("primary").unwrap())),
-                    ("color_text".to_string(), StyleVal::Color(self.variables.get_color("text-primary").unwrap())),
-                    ("color_cursor".to_string(), StyleVal::Color(self.variables.get_color("text-primary").unwrap())),
-                    ("color_selection".to_string(), StyleVal::Color(self.variables.get_color("primary").unwrap())),
-                ])),
-
-                "SecretInput" => Some(Style::from_values([
-                    ("color_background".to_string(), StyleVal::Color(self.variables.get_color("bg-secondary").unwrap())),
-                    ("color_border".to_string(), StyleVal::Color(self.variables.get_color("border-primary").unwrap())),
-                    ("color_border_focused".to_string(), StyleVal::Color(self.variables.get_color("primary").unwrap())),
-                    ("color_text".to_string(), StyleVal::Color(self.variables.get_color("text-primary").unwrap())),
-                    ("color_cursor".to_string(), StyleVal::Color(self.variables.get_color("text-primary").unwrap())),
-                    ("color_selection".to_string(), StyleVal::Color(self.variables.get_color("primary").unwrap())),
-                ])),
-
-                "ValueInput" => Some(Style::from_values([
-                    ("color_background".to_string(), StyleVal::Color(self.variables.get_color("bg-secondary").unwrap())),
-                    ("color_background_focused".to_string(), StyleVal::Color(self.variables.get_color("bg-tertiary").unwrap())),
-                    ("color_border".to_string(), StyleVal::Color(self.variables.get_color("border-primary").unwrap())),
-                    ("color_border_focused".to_string(), StyleVal::Color(self.variables.get_color("primary").unwrap())),
-                    ("color_border_error".to_string(), StyleVal::Color(self.variables.get_color("error").unwrap())),
-                    ("color_text".to_string(), StyleVal::Color(self.variables.get_color("text-primary").unwrap())),
-                    ("color_cursor".to_string(), StyleVal::Color(self.variables.get_color("text-primary").unwrap())),
-                    ("color_placeholder".to_string(), StyleVal::Color(self.variables.get_color("text-muted").unwrap())),
-                ])),
-
-                "RadioButton" => Some(Style::from_values([
-                    ("color_background".to_string(), StyleVal::Color(self.variables.get_color("bg-secondary").unwrap())),
-                    ("color_background_selected".to_string(), StyleVal::Color(self.variables.get_color("bg-tertiary").unwrap())),
-                    ("color_background_disabled".to_string(), StyleVal::Color(self.variables.get_color("bg-primary").unwrap())),
-                    ("color_border".to_string(), StyleVal::Color(self.variables.get_color("border-primary").unwrap())),
-                    ("color_border_hovered".to_string(), StyleVal::Color(self.variables.get_color("border-secondary").unwrap())),
-                    ("color_border_focused".to_string(), StyleVal::Color(self.variables.get_color("primary").unwrap())),
-                    ("color_border_disabled".to_string(), StyleVal::Color(self.variables.get_color("border-primary").unwrap())),
-                    ("color_dot".to_string(), StyleVal::Color(self.variables.get_color("primary").unwrap())),
-                    ("color_dot_disabled".to_string(), StyleVal::Color(self.variables.get_color("text-muted").unwrap())),
-                    ("color_text".to_string(), StyleVal::Color(self.variables.get_color("text-primary").unwrap())),
-                    ("color_text_disabled".to_string(), StyleVal::Color(self.variables.get_color("text-muted").unwrap())),
-                ])),
-
-                "MenuBar" => Some(Style::from_values([
-                    ("color_background".to_string(), StyleVal::Color(self.variables.get_color("bg-secondary").unwrap())),
-                    ("color_text".to_string(), StyleVal::Color(self.variables.get_color("text-primary").unwrap())),
-                    ("color_hovered".to_string(), StyleVal::Color(self.variables.get_color("bg-tertiary").unwrap())),
-                    ("color_selected".to_string(), StyleVal::Color(self.variables.get_color("primary-dark").unwrap())),
-                    ("color_disabled".to_string(), StyleVal::Color(self.variables.get_color("text-muted").unwrap())),
-                    ("color_border".to_string(), StyleVal::Color(self.variables.get_color("border-primary").unwrap())),
-                ])),
-
-                "MenuPopup" => Some(Style::from_values([
-                    ("color_background".to_string(), StyleVal::Color(self.variables.get_color("bg-secondary").unwrap())),
-                    ("color_text".to_string(), StyleVal::Color(self.variables.get_color("text-primary").unwrap())),
-                    ("color_hovered".to_string(), StyleVal::Color(self.variables.get_color("primary-dark").unwrap())),
-                    ("color_disabled".to_string(), StyleVal::Color(self.variables.get_color("text-muted").unwrap())),
-                    ("color_border".to_string(), StyleVal::Color(self.variables.get_color("border-primary").unwrap())),
-                ])),
-
-                "ScrollContainer" => Some(Style::from_values([
-                    ("color_background".to_string(), StyleVal::Color(self.variables.get_color("bg-primary").unwrap())),
-                    ("color_border".to_string(), StyleVal::Color(self.variables.get_color("border-primary").unwrap())),
-                    ("color_scrollbar".to_string(), StyleVal::Color(self.variables.get_color("bg-secondary").unwrap())),
-                    ("color_scrollbar_thumb".to_string(), StyleVal::Color(self.variables.get_color("border-secondary").unwrap())),
-                    ("color_scrollbar_thumb_hover".to_string(), StyleVal::Color(self.variables.get_color("text-muted").unwrap())),
-                    ("color_scrollbar_thumb_active".to_string(), StyleVal::Color(self.variables.get_color("text-secondary").unwrap())),
-                ])),
-
-                "TabsContainer" => Some(Style::from_values([
-                    ("background".to_string(), StyleVal::Color(self.variables.get_color("bg-secondary").unwrap())),
-                    ("border".to_string(), StyleVal::Color(self.variables.get_color("border-primary").unwrap())),
-                    ("tab_bar_background".to_string(), StyleVal::Color(self.variables.get_color("bg-tertiary").unwrap())),
-                    ("content_background".to_string(), StyleVal::Color(self.variables.get_color("bg-primary").unwrap())),
-                    ("tab_active".to_string(), StyleVal::Color(self.variables.get_color("bg-primary").unwrap())),
-                    ("tab_inactive".to_string(), StyleVal::Color(self.variables.get_color("bg-secondary").unwrap())),
-                    ("tab_hovered".to_string(), StyleVal::Color(self.variables.get_color("bg-tertiary").unwrap())),
-                    ("tab_pressed".to_string(), StyleVal::Color(self.variables.get_color("bg-primary").unwrap())),
-                    ("tab_text".to_string(), StyleVal::Color(self.variables.get_color("text-secondary").unwrap())),
-                    ("tab_text_active".to_string(), StyleVal::Color(self.variables.get_color("text-primary").unwrap())),
-                ])),
-
-                "Progress" => Some(Style::from_values([
-                    ("color".to_string(), StyleVal::Color(self.variables.get_color("bg-secondary").unwrap())),
-                    ("color_progress".to_string(), StyleVal::Color(self.variables.get_color("primary").unwrap())),
-                    ("color_border".to_string(), StyleVal::Color(self.variables.get_color("border-primary").unwrap())),
-                ])),
-
+                "Text" => match property {
+                    crate::properties::ThemeProperty::Color => Some(self.variables.get_color("text-primary").unwrap_or(Color::WHITE)),
+                    crate::properties::ThemeProperty::ColorInvert => Some(self.variables.get_color("bg-primary").unwrap_or(Color::BLACK)),
+                    _ => None,
+                },
+                "Button" => match property {
+                    crate::properties::ThemeProperty::ColorIdle => Some(self.variables.get_color("primary").unwrap_or(Color::from_rgb8(100, 150, 255))),
+                    crate::properties::ThemeProperty::ColorPressed => Some(self.variables.get_color("primary-dark").unwrap_or(Color::from_rgb8(80, 130, 235))),
+                    crate::properties::ThemeProperty::ColorHovered => Some(self.variables.get_color("primary-light").unwrap_or(Color::from_rgb8(120, 170, 255))),
+                    crate::properties::ThemeProperty::ColorFocused => Some(self.variables.get_color("primary").unwrap_or(Color::from_rgb8(100, 150, 255))),
+                    _ => None,
+                },
+                "Checkbox" => match property {
+                    crate::properties::ThemeProperty::ColorChecked => Some(self.variables.get_color("primary").unwrap_or(Color::from_rgb8(100, 150, 255))),
+                    crate::properties::ThemeProperty::ColorUnchecked => Some(self.variables.get_color("border-primary").unwrap_or(Color::from_rgb8(80, 80, 80))),
+                    _ => None,
+                },
+                "Slider" => match property {
+                    crate::properties::ThemeProperty::Color => Some(self.variables.get_color("border-primary").unwrap_or(Color::from_rgb8(80, 80, 80))),
+                    crate::properties::ThemeProperty::ColorBall => Some(self.variables.get_color("primary").unwrap_or(Color::from_rgb8(100, 150, 255))),
+                    _ => None,
+                },
+                "TextInput" => match property {
+                    crate::properties::ThemeProperty::ColorBackground => Some(self.variables.get_color("bg-secondary").unwrap_or(Color::from_rgb8(40, 40, 40))),
+                    crate::properties::ThemeProperty::ColorBorder => Some(self.variables.get_color("border-primary").unwrap_or(Color::from_rgb8(80, 80, 80))),
+                    crate::properties::ThemeProperty::ColorBorderFocused => Some(self.variables.get_color("primary").unwrap_or(Color::from_rgb8(100, 150, 255))),
+                    crate::properties::ThemeProperty::ColorText => Some(self.variables.get_color("text-primary").unwrap_or(Color::from_rgb8(220, 220, 220))),
+                    crate::properties::ThemeProperty::ColorCursor => Some(self.variables.get_color("text-primary").unwrap_or(Color::from_rgb8(220, 220, 220))),
+                    crate::properties::ThemeProperty::ColorSelection => Some(self.variables.get_color("primary").unwrap_or(Color::from_rgb8(100, 150, 255))),
+                    _ => None,
+                },
+                "Progress" => match property {
+                    crate::properties::ThemeProperty::Color => Some(Color::from_rgb8(60, 60, 60)),
+                    crate::properties::ThemeProperty::ColorProgress => Some(self.variables.get_color("primary").unwrap_or(Color::from_rgb8(100, 150, 255))),
+                    crate::properties::ThemeProperty::ColorBorder => Some(self.variables.get_color("border-primary").unwrap_or(Color::from_rgb8(80, 80, 80))),
+                    _ => None,
+                },
                 _ => None,
             },
             _ => None,
         }
     }
-    
+
     fn style(&self, id: WidgetId) -> Option<ThemeStyle> {
         match id.namespace() {
             "nptk-widgets" => match id.id() {
@@ -228,9 +151,9 @@ impl Theme for DarkTheme {
                 ])),
 
                 "Progress" => Some(self.create_widget_style(&[
-                    (ThemeProperty::Background, self.variables.get_color("bg-secondary").unwrap()),
+                    (ThemeProperty::Color, Color::from_rgb8(60, 60, 60)),
                     (ThemeProperty::ColorProgress, self.variables.get_color("primary").unwrap()),
-                    (ThemeProperty::Border, self.variables.get_color("border-primary").unwrap()),
+                    (ThemeProperty::ColorBorder, self.variables.get_color("border-primary").unwrap()),
                 ])),
 
                 "MenuPopup" => Some(self.create_widget_style(&[
@@ -247,24 +170,6 @@ impl Theme for DarkTheme {
         }
     }
 
-    fn defaults(&self) -> DefaultStyles {
-        DefaultStyles::new(
-            DefaultTextStyles::new(
-                self.variables.get_color("text-primary").unwrap_or(Color::WHITE),
-                self.variables.get_color("bg-primary").unwrap_or(Color::from_rgb8(30, 30, 30)),
-            ),
-            DefaultContainerStyles::new(
-                self.variables.get_color("text-secondary").unwrap_or(Color::from_rgb8(200, 200, 200)),
-                self.variables.get_color("bg-secondary").unwrap_or(Color::from_rgb8(40, 40, 40)),
-            ),
-            DefaultInteractiveStyles::new(
-                self.variables.get_color("primary-dark").unwrap_or(Color::from_rgb8(80, 130, 235)),
-                self.variables.get_color("primary").unwrap_or(Color::from_rgb8(100, 150, 255)),
-                self.variables.get_color("primary-light").unwrap_or(Color::from_rgb8(120, 170, 255)),
-                self.variables.get_color("text-muted").unwrap_or(Color::from_rgb8(150, 150, 150)),
-            ),
-        )
-    }
 
     fn window_background(&self) -> Color {
         self.variables.get_color("bg-primary").unwrap_or(Color::from_rgb8(30, 30, 30))

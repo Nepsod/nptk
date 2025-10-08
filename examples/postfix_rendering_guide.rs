@@ -262,7 +262,7 @@ impl Widget for SimpleDropdown {
         use nptk_core::text_render::TextRenderContext;
         let mut text_ctx = TextRenderContext::new();
         let font_size = 16.0_f32;
-        let button_height = layout.layout.size.height as f64;
+        let _button_height = layout.layout.size.height as f64;
         text_ctx.render_text(
             &mut info.font_context,
             scene,
@@ -342,7 +342,7 @@ impl Widget for SimpleDropdown {
             // Draw item text
             // Text baseline renders at y + font_size
             let item_font_size = 16.0_f32;
-            let y_offset = (item_height - item_font_size as f64) / 2.0 + item_font_size as f64;
+            let _y_offset = (item_height - item_font_size as f64) / 2.0 + item_font_size as f64;
             text_ctx.render_text(
                 &mut info.font_context,
                 scene,
