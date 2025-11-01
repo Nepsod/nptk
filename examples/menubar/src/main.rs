@@ -25,7 +25,7 @@ pub enum ConfigurableTheme {
 }
 
 impl Theme for ConfigurableTheme {
-    fn get_property(&self, id: WidgetId, property: &nptk::theme::properties::ThemeProperty) -> Option<Color> {
+    fn get_property(&self, id: WidgetId, property: &nptk_theme::properties::ThemeProperty) -> Option<Color> {
         match self {
             ConfigurableTheme::Light(theme) => theme.get_property(id, property),
             ConfigurableTheme::Dark(theme) => theme.get_property(id, property),
