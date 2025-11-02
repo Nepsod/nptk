@@ -195,16 +195,28 @@ impl Widget for RadioButton {
             &radio_circle,
         );
 
-        // Draw selected dot
+        // Draw selected dot - black circle with smaller colored dot inside
         if is_selected {
-            let dot_size = radio_size * 0.6; // Make dot bigger and more visible
-            let dot_circle = Circle::new((radio_center_x as f64, radio_center_y as f64), dot_size as f64 / 2.0);
+            // Outer black circle (ring)
+            let outer_dot_size = radio_size * 0.6;
+            let outer_dot_circle = Circle::new((radio_center_x as f64, radio_center_y as f64), outer_dot_size as f64 / 2.0);
+            scene.stroke(
+                &Stroke::new(2.0),
+                Affine::default(),
+                &dot_color,
+                None,
+                &outer_dot_circle,
+            );
+            
+            // Inner colored dot using ColorBackgroundSelected
+            let inner_dot_size = radio_size * 0.35;
+            let inner_dot_circle = Circle::new((radio_center_x as f64, radio_center_y as f64), inner_dot_size as f64 / 2.0);
             scene.fill(
                 Fill::NonZero,
                 Affine::default(),
-                &Brush::Solid(dot_color),
+                &Brush::Solid(bg_color), // This is ColorBackgroundSelected when selected
                 None,
-                &dot_circle,
+                &inner_dot_circle,
             );
         }
 
