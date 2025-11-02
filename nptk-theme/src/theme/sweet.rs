@@ -106,6 +106,24 @@ impl Theme for SweetTheme {
                     crate::properties::ThemeProperty::CheckboxSymbol => Some(Color::from_rgb8(0, 0, 0)),
                     _ => None,
                 },
+                "RadioButton" => match property {
+                    // Background colors - using checkbox colors as base
+                    crate::properties::ThemeProperty::ColorBackgroundSelected => Some(self.variables.get_color("accent-original").unwrap_or(Color::from_rgb8(0, 232, 198))),
+                    crate::properties::ThemeProperty::ColorBackgroundDisabled => Some(self.variables.get_color("bg-tertiary").unwrap_or(Color::from_rgb8(24, 27, 40))),
+                    crate::properties::ThemeProperty::ColorBackground => Some(self.variables.get_color("bg-secondary").unwrap_or(Color::from_rgb8(30, 34, 51))),
+                    // Border colors - using checkbox border color as base
+                    crate::properties::ThemeProperty::ColorBorder => Some(self.variables.get_color("border-primary").unwrap_or(Color::from_rgb8(102, 106, 115))),
+                    crate::properties::ThemeProperty::ColorBorderHovered => Some(self.variables.get_color("accent-original").unwrap_or(Color::from_rgb8(0, 232, 198))),
+                    crate::properties::ThemeProperty::ColorBorderFocused => Some(self.variables.get_color("accent-original").unwrap_or(Color::from_rgb8(0, 232, 198))),
+                    crate::properties::ThemeProperty::ColorBorderDisabled => Some(self.variables.get_color("border-primary").unwrap_or(Color::from_rgb8(102, 106, 115))),
+                    // Dot colors - using checkbox symbol color as base
+                    crate::properties::ThemeProperty::ColorDot => Some(Color::from_rgb8(0, 0, 0)),
+                    crate::properties::ThemeProperty::ColorDotDisabled => Some(self.variables.get_color("text-muted").unwrap_or(Color::from_rgb8(102, 106, 115))),
+                    // Text colors
+                    crate::properties::ThemeProperty::ColorText => Some(self.variables.get_color("text-primary").unwrap_or(Color::from_rgb8(211, 218, 227))),
+                    crate::properties::ThemeProperty::ColorTextDisabled => Some(self.variables.get_color("text-muted").unwrap_or(Color::from_rgb8(102, 106, 115))),
+                    _ => None,
+                },
                 "Slider" => match property {
                     crate::properties::ThemeProperty::Color => Some(self.variables.get_color("border-primary").unwrap_or(Color::from_rgb8(102, 106, 115))),
                     crate::properties::ThemeProperty::ColorBall => Some(self.variables.get_color("primary").unwrap_or(Color::from_rgb8(197, 14, 210))),
@@ -170,6 +188,20 @@ impl Theme for SweetTheme {
                     (ThemeProperty::ColorUnchecked, self.variables.get_color("border-primary").unwrap()),
                     (ThemeProperty::ColorIndeterminate, self.variables.get_color("accent-original").unwrap()),
                     (ThemeProperty::CheckboxSymbol, Color::from_rgb8(0, 0, 0)),
+                ])),
+
+                "RadioButton" => Some(self.create_widget_style(&[
+                    (ThemeProperty::ColorBackgroundSelected, self.variables.get_color("accent-original").unwrap()),
+                    (ThemeProperty::ColorBackgroundDisabled, self.variables.get_color("bg-tertiary").unwrap()),
+                    (ThemeProperty::ColorBackground, self.variables.get_color("bg-secondary").unwrap()),
+                    (ThemeProperty::ColorBorder, self.variables.get_color("border-primary").unwrap()),
+                    (ThemeProperty::ColorBorderHovered, self.variables.get_color("primary").unwrap()),
+                    (ThemeProperty::ColorBorderFocused, self.variables.get_color("primary").unwrap()),
+                    (ThemeProperty::ColorBorderDisabled, self.variables.get_color("border-primary").unwrap()),
+                    (ThemeProperty::ColorDot, Color::from_rgb8(0, 0, 0)),
+                    (ThemeProperty::ColorDotDisabled, self.variables.get_color("text-muted").unwrap()),
+                    (ThemeProperty::ColorText, self.variables.get_color("text-primary").unwrap()),
+                    (ThemeProperty::ColorTextDisabled, self.variables.get_color("text-muted").unwrap()),
                 ])),
 
                 "Slider" => Some(self.create_widget_style(&[
