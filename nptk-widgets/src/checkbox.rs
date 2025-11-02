@@ -270,11 +270,21 @@ impl Widget for Checkbox {
         };
         let base_border_color = ThemeHelper::get_checkbox_color_three_state(&*theme, self.widget_id(), theme_checkbox_state);
         
+        // Get symbol color from theme
+        let base_symbol_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::CheckboxSymbol)
+            .unwrap_or(Color::from_rgb8(255, 255, 255));
+        
         // Gray out colors if locked (like Windows disabled state)
         let border_color = if is_locked {
             Color::from_rgb8(150, 150, 150) // Light gray for locked/disabled appearance
         } else {
             base_border_color
+        };
+        
+        let symbol_color = if is_locked {
+            Color::from_rgb8(220, 220, 220) // Light gray for locked symbols
+        } else {
+            base_symbol_color
         };
         
         let fill_color = match state {
@@ -332,8 +342,6 @@ impl Widget for Checkbox {
                     Point::new(center_x + size * 0.6, center_y - size * 0.4),
                 );
                 
-                // Use lighter gray for symbols if locked to make them more visible
-                let symbol_color = if is_locked { Color::from_rgb8(220, 220, 220) } else { Color::WHITE };
                 scene.stroke(&Stroke::new(2.0), Affine::default(), &Brush::Solid(symbol_color), None, &line1);
                 scene.stroke(&Stroke::new(2.0), Affine::default(), &Brush::Solid(symbol_color), None, &line2);
             }
@@ -358,8 +366,6 @@ impl Widget for Checkbox {
                     Point::new(center_x + line_width / 2.0, center_y),
                 );
                 
-                // Use lighter gray for symbols if locked to make them more visible
-                let symbol_color = if is_locked { Color::from_rgb8(220, 220, 220) } else { Color::WHITE };
                 scene.stroke(&Stroke::new(2.5), Affine::default(), &Brush::Solid(symbol_color), None, &line);
             }
             CheckboxState::Unchecked => {

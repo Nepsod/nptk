@@ -11,6 +11,7 @@
 //! - **[Theme]**: The core trait that defines how themes work
 //! - **[celeste::CelesteTheme]**: Light theme with cool blue-purple colors
 //! - **[dark::DarkTheme]**: Dark theme with high contrast and modern styling
+//! - **[sweet::SweetTheme]**: Modern dark theme with vibrant purple/magenta accents
 //!
 //! ## Key Features
 //!
@@ -193,6 +194,8 @@ pub mod celeste;
 pub mod dark;
 /// The System Theme.
 pub mod system;
+/// The Sweet Theme.
+pub mod sweet;
 
 #[cfg(test)]
 mod tests {
@@ -326,6 +329,7 @@ pub trait Theme: ThemeRenderer {
             ThemeProperty::ColorMenuHovered => Some(Color::from_rgb8(220, 220, 220)),
             ThemeProperty::ColorMenuSelected => Some(Color::from_rgb8(100, 150, 255)),
             ThemeProperty::ColorMenuDisabled => Some(Color::from_rgb8(150, 150, 150)),
+            ThemeProperty::CheckboxSymbol => Some(Color::from_rgb8(255, 255, 255)),
             _ => None,
         }
     }

@@ -4,13 +4,13 @@ use crate::config::{ThemeConfig, ThemeSource};
 use crate::globals::Globals;
 use crate::id::WidgetId;
 use crate::properties::ThemeProperty;
-use crate::theme::{celeste::CelesteTheme, dark::DarkTheme, Theme};
+use crate::theme::{celeste::CelesteTheme, dark::DarkTheme, sweet::SweetTheme, Theme};
 use std::any::Any;
 
-/// A theme that automatically selects between light and dark variants based on configuration.
+/// A theme that automatically selects between light, dark, and sweet variants based on configuration.
 ///
 /// This theme reads from environment variables or configuration files to automatically
-/// select the appropriate built-in theme (light or dark).
+/// select the appropriate built-in theme (light, dark, or sweet).
 ///
 /// # Usage
 ///
@@ -30,6 +30,8 @@ pub enum SystemTheme {
     Light(CelesteTheme),
     /// Dark theme variant.
     Dark(DarkTheme),
+    /// Sweet theme variant (modern dark with vibrant accents).
+    Sweet(SweetTheme),
 }
 
 impl SystemTheme {
@@ -52,6 +54,7 @@ impl SystemTheme {
         match &config.default_theme {
             ThemeSource::Light => SystemTheme::Light(CelesteTheme::light()),
             ThemeSource::Dark => SystemTheme::Dark(DarkTheme::new()),
+            ThemeSource::Sweet => SystemTheme::Sweet(SweetTheme::new()),
             _ => SystemTheme::Dark(DarkTheme::new()), // Default fallback
         }
     }
@@ -73,6 +76,7 @@ impl Theme for SystemTheme {
         match self {
             SystemTheme::Light(theme) => theme.get_property(id, property),
             SystemTheme::Dark(theme) => theme.get_property(id, property),
+            SystemTheme::Sweet(theme) => theme.get_property(id, property),
         }
     }
 
@@ -80,6 +84,7 @@ impl Theme for SystemTheme {
         match self {
             SystemTheme::Light(theme) => theme.style(id),
             SystemTheme::Dark(theme) => theme.style(id),
+            SystemTheme::Sweet(theme) => theme.style(id),
         }
     }
 
@@ -87,6 +92,7 @@ impl Theme for SystemTheme {
         match self {
             SystemTheme::Light(theme) => theme.window_background(),
             SystemTheme::Dark(theme) => theme.window_background(),
+            SystemTheme::Sweet(theme) => theme.window_background(),
         }
     }
 
@@ -94,6 +100,7 @@ impl Theme for SystemTheme {
         match self {
             SystemTheme::Light(theme) => theme.globals(),
             SystemTheme::Dark(theme) => theme.globals(),
+            SystemTheme::Sweet(theme) => theme.globals(),
         }
     }
 
@@ -101,6 +108,7 @@ impl Theme for SystemTheme {
         match self {
             SystemTheme::Light(theme) => theme.globals_mut(),
             SystemTheme::Dark(theme) => theme.globals_mut(),
+            SystemTheme::Sweet(theme) => theme.globals_mut(),
         }
     }
 
@@ -108,6 +116,7 @@ impl Theme for SystemTheme {
         match self {
             SystemTheme::Light(_) => WidgetId::new("nptk-theme", "SystemTheme-Light"),
             SystemTheme::Dark(_) => WidgetId::new("nptk-theme", "SystemTheme-Dark"),
+            SystemTheme::Sweet(_) => WidgetId::new("nptk-theme", "SystemTheme-Sweet"),
         }
     }
 

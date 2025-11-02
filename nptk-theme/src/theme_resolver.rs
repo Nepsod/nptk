@@ -61,7 +61,7 @@
 use std::collections::HashMap;
 
 use crate::config::{ThemeConfig, ThemeSource};
-use crate::theme::{Theme, celeste::CelesteTheme, dark::DarkTheme};
+use crate::theme::{Theme, celeste::CelesteTheme, dark::DarkTheme, sweet::SweetTheme};
 
 /// A self-contained theme resolver that can create themes without external imports.
 ///
@@ -168,6 +168,7 @@ impl SelfContainedThemeResolver {
                 let config = ThemeConfig::from_file(path)?;
                 self.resolve_from_config(&config)
             }
+            ThemeSource::Sweet => Ok(Box::new(SweetTheme::new())),
         }
     }
 

@@ -28,7 +28,7 @@ pub mod prelude {
     pub use crate::core::reference::{Ref, MutRef};
 
     // Theme
-    pub use crate::theme::theme::{system::SystemTheme, dark::DarkTheme, celeste::CelesteTheme};
+    pub use crate::theme::theme::{system::SystemTheme, dark::DarkTheme, celeste::CelesteTheme, sweet::SweetTheme};
     pub use crate::theme::config::{ThemeConfig, ThemeSource};
     pub use crate::theme::id::WidgetId;
     pub use crate::theme::globals::Globals;

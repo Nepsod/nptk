@@ -185,6 +185,7 @@ fn main() {
     let theme_name = match &config.default_theme {
         nptk::theme::config::ThemeSource::Light => "light",
         nptk::theme::config::ThemeSource::Dark => "dark",
+        nptk::theme::config::ThemeSource::Sweet => "sweet",
         nptk::theme::config::ThemeSource::Custom(name) => name,
         nptk::theme::config::ThemeSource::File(path) => path,
     };

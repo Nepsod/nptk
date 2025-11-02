@@ -194,6 +194,8 @@ pub enum ThemeSource {
     Light,
     /// Dark theme.
     Dark,
+    /// Sweet theme (modern dark theme with vibrant accents).
+    Sweet,
     /// Custom theme with a name.
     Custom(String),
     /// Theme loaded from a file.
@@ -482,6 +484,7 @@ impl ThemeConfig {
         match source.to_lowercase().as_str() {
             "light" => ThemeSource::Light,
             "dark" => ThemeSource::Dark,
+            "sweet" => ThemeSource::Sweet,
             s if s.starts_with("custom:") => {
                 let name = s.strip_prefix("custom:").unwrap().to_string();
                 ThemeSource::Custom(name)
