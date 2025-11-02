@@ -329,7 +329,7 @@ impl Widget for Checkbox {
                 // Draw checkmark
                 let center_x = (checkbox_rect.x0 + checkbox_rect.x1) / 2.0;
                 let center_y = (checkbox_rect.y0 + checkbox_rect.y1) / 2.0;
-                let size = checkbox_rect.width().min(checkbox_rect.height()) * 0.25;
+                let size = checkbox_rect.width().min(checkbox_rect.height()) * 0.45;
                 
                 // Simple checkmark: two lines forming a V
                 let line1 = Line::new(
@@ -342,8 +342,8 @@ impl Widget for Checkbox {
                     Point::new(center_x + size * 0.6, center_y - size * 0.4),
                 );
                 
-                scene.stroke(&Stroke::new(2.0), Affine::default(), &Brush::Solid(symbol_color), None, &line1);
-                scene.stroke(&Stroke::new(2.0), Affine::default(), &Brush::Solid(symbol_color), None, &line2);
+                scene.stroke(&Stroke::new(2.5), Affine::default(), &Brush::Solid(symbol_color), None, &line1);
+                scene.stroke(&Stroke::new(2.5), Affine::default(), &Brush::Solid(symbol_color), None, &line2);
             }
             CheckboxState::Indeterminate => {
                 // Draw filled background
