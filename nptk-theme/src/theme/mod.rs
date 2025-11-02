@@ -317,12 +317,15 @@ pub trait Theme: ThemeRenderer {
     fn get_default_property(&self, property: &ThemeProperty) -> Option<Color> {
         match property {
             ThemeProperty::Color | ThemeProperty::Text => Some(Color::from_rgb8(0, 0, 0)),
-            ThemeProperty::Background => Some(Color::from_rgb8(255, 255, 255)),
-            ThemeProperty::Border => Some(Color::from_rgb8(200, 200, 200)),
+            ThemeProperty::ColorBackground | ThemeProperty::Background => Some(Color::from_rgb8(255, 255, 255)),
+            ThemeProperty::Border | ThemeProperty::ColorBorder => Some(Color::from_rgb8(200, 200, 200)),
             ThemeProperty::ColorIdle => Some(Color::from_rgb8(200, 200, 200)),
             ThemeProperty::ColorHovered => Some(Color::from_rgb8(180, 180, 180)),
             ThemeProperty::ColorPressed => Some(Color::from_rgb8(160, 160, 160)),
             ThemeProperty::ColorDisabled => Some(Color::from_rgb8(150, 150, 150)),
+            ThemeProperty::ColorMenuHovered => Some(Color::from_rgb8(220, 220, 220)),
+            ThemeProperty::ColorMenuSelected => Some(Color::from_rgb8(100, 150, 255)),
+            ThemeProperty::ColorMenuDisabled => Some(Color::from_rgb8(150, 150, 150)),
             _ => None,
         }
     }

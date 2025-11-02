@@ -155,11 +155,6 @@ impl MenuPopup {
         self
     }
 
-    /// Get the widget ID
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "MenuPopup")
-    }
-
     /// Calculate the size needed for the popup based on items
     pub fn calculate_size(&self) -> (f64, f64) {
         let item_height = 24.0;
@@ -238,7 +233,7 @@ impl WidgetLayoutExt for MenuPopup {
 
 impl Widget for MenuPopup {
     fn widget_id(&self) -> WidgetId {
-        self.widget_id()
+        WidgetId::new("nptk-widgets", "MenuPopup")
     }
 
     fn layout_style(&self) -> StyleNode {
@@ -271,7 +266,7 @@ impl Widget for MenuPopup {
         let disabled_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorDisabled)
             .unwrap_or_else(|| Color::from_rgb8(150, 150, 150));
         
-        let hovered_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorHovered)
+        let hovered_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorMenuHovered)
             .unwrap_or_else(|| Color::from_rgb8(180, 180, 180));
 
         // Calculate popup size

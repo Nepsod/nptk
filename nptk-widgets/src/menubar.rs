@@ -174,11 +174,6 @@ impl MenuBar {
             }
         }
     }
-    
-
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "MenuBar")
-    }
 
     fn get_item_bounds(&self, layout: &LayoutNode, item_index: usize) -> Rect {
         // Calculate precise item width based on actual text metrics
@@ -244,7 +239,7 @@ impl Default for MenuBar {
 
 impl Widget for MenuBar {
     fn widget_id(&self) -> WidgetId {
-        self.widget_id()
+        WidgetId::new("nptk-widgets", "MenuBar")
     }
 
     fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout: &LayoutNode, info: &mut AppInfo, _context: AppContext) -> () {

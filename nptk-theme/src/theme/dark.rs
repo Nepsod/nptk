@@ -110,6 +110,24 @@ impl Theme for DarkTheme {
                     crate::properties::ThemeProperty::ColorBorder => Some(self.variables.get_color("border-primary").unwrap_or(Color::from_rgb8(80, 80, 80))),
                     _ => None,
                 },
+                "MenuBar" => match property {
+                    crate::properties::ThemeProperty::ColorBackground => Some(self.variables.get_color("bg-secondary").unwrap_or(Color::from_rgb8(40, 40, 40))),
+                    crate::properties::ThemeProperty::ColorBorder => Some(self.variables.get_color("border-primary").unwrap_or(Color::from_rgb8(80, 80, 80))),
+                    crate::properties::ThemeProperty::ColorText => Some(self.variables.get_color("text-primary").unwrap_or(Color::from_rgb8(220, 220, 220))),
+                    crate::properties::ThemeProperty::ColorDisabled => Some(self.variables.get_color("text-muted").unwrap_or(Color::from_rgb8(140, 140, 140))),
+                    crate::properties::ThemeProperty::ColorMenuSelected => Some(self.variables.get_color("primary").unwrap_or(Color::from_rgb8(100, 150, 255))),
+                    crate::properties::ThemeProperty::ColorMenuHovered => Some(self.variables.get_color("bg-tertiary").unwrap_or(Color::from_rgb8(50, 50, 50))),
+                    _ => None,
+                },
+                "MenuPopup" => match property {
+                    crate::properties::ThemeProperty::ColorBackground => Some(self.variables.get_color("bg-secondary").unwrap_or(Color::from_rgb8(40, 40, 40))),
+                    crate::properties::ThemeProperty::ColorBorder => Some(self.variables.get_color("border-primary").unwrap_or(Color::from_rgb8(80, 80, 80))),
+                    crate::properties::ThemeProperty::ColorText => Some(self.variables.get_color("text-primary").unwrap_or(Color::from_rgb8(220, 220, 220))),
+                    crate::properties::ThemeProperty::ColorDisabled => Some(self.variables.get_color("text-muted").unwrap_or(Color::from_rgb8(140, 140, 140))),
+                    crate::properties::ThemeProperty::ColorMenuHovered => Some(self.variables.get_color("primary-dark").unwrap_or(Color::from_rgb8(80, 130, 235))),
+                    crate::properties::ThemeProperty::ColorMenuDisabled => Some(self.variables.get_color("text-muted").unwrap_or(Color::from_rgb8(140, 140, 140))),
+                    _ => None,
+                },
                 _ => None,
             },
             _ => None,
@@ -154,6 +172,15 @@ impl Theme for DarkTheme {
                     (ThemeProperty::Color, Color::from_rgb8(60, 60, 60)),
                     (ThemeProperty::ColorProgress, self.variables.get_color("primary").unwrap()),
                     (ThemeProperty::ColorBorder, self.variables.get_color("border-primary").unwrap()),
+                ])),
+
+                "MenuBar" => Some(self.create_widget_style(&[
+                    (ThemeProperty::ColorBackground, self.variables.get_color("bg-secondary").unwrap()),
+                    (ThemeProperty::ColorBorder, self.variables.get_color("border-primary").unwrap()),
+                    (ThemeProperty::ColorText, self.variables.get_color("text-primary").unwrap()),
+                    (ThemeProperty::ColorDisabled, self.variables.get_color("text-muted").unwrap()),
+                    (ThemeProperty::ColorMenuSelected, self.variables.get_color("primary").unwrap()),
+                    (ThemeProperty::ColorMenuHovered, self.variables.get_color("bg-tertiary").unwrap()),
                 ])),
 
                 "MenuPopup" => Some(self.create_widget_style(&[

@@ -76,6 +76,13 @@ impl Theme for SystemTheme {
         }
     }
 
+    fn style(&self, id: WidgetId) -> Option<crate::properties::ThemeStyle> {
+        match self {
+            SystemTheme::Light(theme) => theme.style(id),
+            SystemTheme::Dark(theme) => theme.style(id),
+        }
+    }
+
     fn window_background(&self) -> Color {
         match self {
             SystemTheme::Light(theme) => theme.window_background(),
