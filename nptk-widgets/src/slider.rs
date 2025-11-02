@@ -4,7 +4,7 @@ use nptk_core::app::update::Update;
 use nptk_core::layout;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentageAuto, StyleNode};
 use nptk_core::signal::MaybeSignal;
-use nptk_core::vg::kurbo::{Affine, Circle, Point, Rect, RoundedRect, RoundedRectRadii};
+use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vg::Scene;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
@@ -77,43 +77,81 @@ impl Widget for Slider {
     ) {
         let value = *self.value.get();
 
-        let brush = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::Color)
+        // Background track color (unfilled portion)
+        let track_brush = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::Color)
             .map(|color| Brush::Solid(color))
             .unwrap_or_else(|| Brush::Solid(Color::from_rgb8(200, 200, 200)));
 
-        let ball_brush = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBall)
+        // Filled track color (up to thumb position) - using primary-dark
+        // For Sweet theme, primary-dark is (157, 51, 213), but we use primary as fallback
+        // Ideally we'd have a ThemeProperty for filled track, but for now use primary-dark directly
+        let filled_track_color = Color::from_rgb8(157, 51, 213); // primary-dark
+
+        let thumb_brush = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBall)
             .map(|color| Brush::Solid(color))
             .unwrap_or_else(|| Brush::Solid(Color::from_rgb8(100, 150, 255)));
 
-        let circle_radius = layout_node.layout.size.height as f64 / 1.15;
+        let track_height = 3.0; // Thin track
+        let track_center_y = (layout_node.layout.location.y + layout_node.layout.size.height / 2.0) as f64;
+        let track_top = track_center_y - track_height / 2.0;
+        let track_bottom = track_center_y + track_height / 2.0;
 
+        // Draw background track (full width)
         scene.fill(
             Fill::NonZero,
             Affine::default(),
-            &brush,
+            &track_brush,
             None,
             &RoundedRect::from_rect(
                 Rect::new(
                     layout_node.layout.location.x as f64,
-                    layout_node.layout.location.y as f64,
+                    track_top,
                     (layout_node.layout.location.x + layout_node.layout.size.width) as f64,
-                    (layout_node.layout.location.y + layout_node.layout.size.height) as f64,
+                    track_bottom,
                 ),
-                RoundedRectRadii::from_single_radius(20.0),
+                RoundedRectRadii::from_single_radius(track_height / 2.0),
             ),
         );
+
+        // Draw filled track (up to thumb position) using primary-dark
+        let filled_width = (layout_node.layout.size.width * value) as f64;
+        if filled_width > 0.0 {
+            scene.fill(
+                Fill::NonZero,
+                Affine::default(),
+                &Brush::Solid(filled_track_color),
+                None,
+                &RoundedRect::from_rect(
+                    Rect::new(
+                        layout_node.layout.location.x as f64,
+                        track_top,
+                        layout_node.layout.location.x as f64 + filled_width,
+                        track_bottom,
+                    ),
+                    RoundedRectRadii::from_single_radius(track_height / 2.0),
+                ),
+            );
+        }
+
+        // Draw rectangular thumb (old-style UI slider)
+        let thumb_width = 12.0;
+        let thumb_height = 16.0;
+        let thumb_x = layout_node.layout.location.x as f64 + (layout_node.layout.size.width * value) as f64 - thumb_width / 2.0;
+        let thumb_y = track_center_y - thumb_height / 2.0;
 
         scene.fill(
             Fill::NonZero,
             Affine::default(),
-            &ball_brush,
+            &thumb_brush,
             None,
-            &Circle::new(
-                Point::new(
-                    (layout_node.layout.location.x + layout_node.layout.size.width * value) as f64,
-                    (layout_node.layout.location.y + layout_node.layout.size.height / 2.0) as f64,
+            &RoundedRect::from_rect(
+                Rect::new(
+                    thumb_x,
+                    thumb_y,
+                    thumb_x + thumb_width,
+                    thumb_y + thumb_height,
                 ),
-                circle_radius,
+                RoundedRectRadii::from_single_radius(2.0), // Slightly rounded corners
             ),
         );
     }
