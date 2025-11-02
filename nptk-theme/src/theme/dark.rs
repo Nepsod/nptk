@@ -128,6 +128,15 @@ impl Theme for DarkTheme {
                     crate::properties::ThemeProperty::ColorMenuDisabled => Some(self.variables.get_color("text-muted").unwrap_or(Color::from_rgb8(140, 140, 140))),
                     _ => None,
                 },
+                "Toggle" => match property {
+                    crate::properties::ThemeProperty::ColorToggleTrackOn => Some(self.variables.get_color("primary").unwrap_or(Color::from_rgb8(100, 150, 255))),
+                    crate::properties::ThemeProperty::ColorToggleTrackOff => Some(Color::from_rgb8(60, 60, 60)),
+                    crate::properties::ThemeProperty::ColorToggleTrackBorder => Some(self.variables.get_color("border-primary").unwrap_or(Color::from_rgb8(80, 80, 80))),
+                    crate::properties::ThemeProperty::ColorToggleThumb => Some(Color::from_rgb8(255, 255, 255)),
+                    crate::properties::ThemeProperty::ColorToggleThumbBorder => Some(self.variables.get_color("border-primary").unwrap_or(Color::from_rgb8(150, 150, 150))),
+                    crate::properties::ThemeProperty::ColorToggleDisabled => Some(self.variables.get_color("text-muted").unwrap_or(Color::from_rgb8(140, 140, 140))),
+                    _ => None,
+                },
                 _ => None,
             },
             _ => None,
@@ -189,6 +198,15 @@ impl Theme for DarkTheme {
                     (ThemeProperty::ColorMenuHovered, self.variables.get_color("primary-dark").unwrap()),
                     (ThemeProperty::ColorMenuDisabled, self.variables.get_color("text-muted").unwrap()),
                     (ThemeProperty::Border, self.variables.get_color("border-primary").unwrap()),
+                ])),
+
+                "Toggle" => Some(self.create_widget_style(&[
+                    (ThemeProperty::ColorToggleTrackOn, self.variables.get_color("primary").unwrap()),
+                    (ThemeProperty::ColorToggleTrackOff, Color::from_rgb8(60, 60, 60)),
+                    (ThemeProperty::ColorToggleTrackBorder, self.variables.get_color("border-primary").unwrap()),
+                    (ThemeProperty::ColorToggleThumb, Color::from_rgb8(255, 255, 255)),
+                    (ThemeProperty::ColorToggleThumbBorder, self.variables.get_color("border-primary").unwrap()),
+                    (ThemeProperty::ColorToggleDisabled, self.variables.get_color("text-muted").unwrap()),
                 ])),
 
                 _ => None,

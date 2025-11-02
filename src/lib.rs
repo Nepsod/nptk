@@ -58,6 +58,7 @@ pub mod prelude {
     pub use crate::widgets::scroll_container::ScrollContainer;
     pub use crate::widgets::secret_input::SecretInput;
     pub use crate::widgets::slider::Slider;
+    pub use crate::widgets::toggle::Toggle;
     pub use crate::widgets::tabs_container::TabsContainer;
     pub use crate::widgets::text_input::TextInput;
     pub use crate::widgets::text::Text;

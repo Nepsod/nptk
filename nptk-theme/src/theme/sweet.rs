@@ -162,6 +162,15 @@ impl Theme for SweetTheme {
                     crate::properties::ThemeProperty::ColorMenuDisabled => Some(self.variables.get_color("text-muted").unwrap_or(Color::from_rgb8(102, 106, 115))),
                     _ => None,
                 },
+                "Toggle" => match property {
+                    crate::properties::ThemeProperty::ColorToggleTrackOn => Some(self.variables.get_color("accent-original").unwrap_or(Color::from_rgb8(0, 232, 198))),
+                    crate::properties::ThemeProperty::ColorToggleTrackOff => Some(self.variables.get_color("bg-secondary").unwrap_or(Color::from_rgb8(30, 34, 51))),
+                    crate::properties::ThemeProperty::ColorToggleTrackBorder => Some(self.variables.get_color("border-primary").unwrap_or(Color::from_rgb8(102, 106, 115))),
+                    crate::properties::ThemeProperty::ColorToggleThumb => Some(self.variables.get_color("accent-original").unwrap_or(Color::from_rgb8(0, 232, 198))),
+                    crate::properties::ThemeProperty::ColorToggleThumbBorder => Some(self.variables.get_color("bg-secondary").unwrap_or(Color::from_rgb8(30, 34, 51))),
+                    crate::properties::ThemeProperty::ColorToggleDisabled => Some(self.variables.get_color("text-muted").unwrap_or(Color::from_rgb8(102, 106, 115))),
+                    _ => None,
+                },
                 _ => None,
             },
             _ => None,
@@ -239,6 +248,15 @@ impl Theme for SweetTheme {
                     (ThemeProperty::ColorMenuHovered, self.variables.get_color("primary-dark").unwrap()),
                     (ThemeProperty::ColorMenuDisabled, self.variables.get_color("text-muted").unwrap()),
                     (ThemeProperty::Border, self.variables.get_color("border-primary").unwrap()),
+                ])),
+
+                "Toggle" => Some(self.create_widget_style(&[
+                    (ThemeProperty::ColorToggleTrackOn, self.variables.get_color("primary-dark").unwrap()),
+                    (ThemeProperty::ColorToggleTrackOff, Color::from_rgb8(240, 240, 240)),
+                    (ThemeProperty::ColorToggleTrackBorder, self.variables.get_color("border-primary").unwrap()),
+                    (ThemeProperty::ColorToggleThumb, Color::from_rgb8(255, 255, 255)),
+                    (ThemeProperty::ColorToggleThumbBorder, self.variables.get_color("border-primary").unwrap()),
+                    (ThemeProperty::ColorToggleDisabled, self.variables.get_color("text-muted").unwrap()),
                 ])),
 
                 _ => None,

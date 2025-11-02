@@ -242,6 +242,20 @@ pub enum ThemeProperty {
     /// Radio button text color when disabled.
     ColorTextDisabled,
     
+    // Toggle-specific properties
+    /// Toggle track color when ON.
+    ColorToggleTrackOn,
+    /// Toggle track color when OFF.
+    ColorToggleTrackOff,
+    /// Toggle track border color when OFF.
+    ColorToggleTrackBorder,
+    /// Toggle thumb color.
+    ColorToggleThumb,
+    /// Toggle thumb border color.
+    ColorToggleThumbBorder,
+    /// Toggle colors when disabled.
+    ColorToggleDisabled,
+    
     // Menu-specific properties
     /// Menu item color when hovered.
     ColorMenuHovered,
@@ -325,6 +339,12 @@ impl ThemeProperty {
             ThemeProperty::ColorDot => "color_dot",
             ThemeProperty::ColorDotDisabled => "color_dot_disabled",
             ThemeProperty::ColorTextDisabled => "color_text_disabled",
+            ThemeProperty::ColorToggleTrackOn => "color_toggle_track_on",
+            ThemeProperty::ColorToggleTrackOff => "color_toggle_track_off",
+            ThemeProperty::ColorToggleTrackBorder => "color_toggle_track_border",
+            ThemeProperty::ColorToggleThumb => "color_toggle_thumb",
+            ThemeProperty::ColorToggleThumbBorder => "color_toggle_thumb_border",
+            ThemeProperty::ColorToggleDisabled => "color_toggle_disabled",
             ThemeProperty::ColorMenuHovered => "color_hovered",
             ThemeProperty::ColorMenuSelected => "color_selected",
             ThemeProperty::ColorMenuDisabled => "color_disabled",
