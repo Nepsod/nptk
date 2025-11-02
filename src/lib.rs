@@ -11,3 +11,19 @@ pub use nptk_widgets as widgets;
 
 #[cfg(feature = "macros")]
 pub use nptk_macros as macros;
+
+/// A "prelude" for users of the nptk toolkit.
+///
+/// Importing this module brings into scope the most common types
+/// needed to build a basic nptk application.
+///
+/// ```rust
+/// use nptk::prelude::*;
+/// ```
+pub mod prelude {
+    pub use crate::core::app::{context::AppContext, Application};
+    pub use crate::core::widget::Widget;
+    pub use crate::theme::theme::system::SystemTheme;
+    pub use crate::widgets::text::Text;
+    // Add more common types as needed
+}

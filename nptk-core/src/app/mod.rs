@@ -38,7 +38,7 @@ pub trait Application: Sized {
     /// The theme of the application and its widgets.
     ///
     /// See [nptk_theme::theme] for built-in themes.
-    type Theme: Theme;
+    type Theme: Theme + Default;
 
     /// The global state of the application.
     type State;
@@ -49,7 +49,12 @@ pub trait Application: Sized {
     fn build(context: AppContext, state: Self::State) -> impl Widget;
 
     /// Returns the [MayConfig] for the application.
-    fn config(&self) -> MayConfig<Self::Theme>;
+    fn config(&self) -> MayConfig<Self::Theme> {
+        MayConfig {
+            theme: Self::Theme::default(),
+            ..Default::default()
+        }
+    }
 
     /// Builds and returns the [PluginManager] for the application.
     fn plugins(&self) -> PluginManager<Self::Theme> {

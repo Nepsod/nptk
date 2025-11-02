@@ -191,6 +191,8 @@ use crate::rendering::ThemeRenderer;
 pub mod celeste;
 /// The Dark Theme.
 pub mod dark;
+/// The System Theme.
+pub mod system;
 
 #[cfg(test)]
 mod tests {
