@@ -106,15 +106,40 @@ impl Default for WindowConfig {
 }
 
 /// Renderer configuration.
+///
+/// **Performance Note:** If you experience lag/performance issues, this may be due to
+/// known bugs in the Vello rendering backend. Various environment variables can be used
+/// to experiment with different rendering settings, though they may not resolve
+/// fundamental issues in Vello itself.
 #[derive(Clone)]
 pub struct RenderConfig {
     /// The antialiasing config
+    ///
+    /// Can be configured via `NPTK_ANTIALIASING` environment variable:
+    /// - `area` (default, fastest) - Area-based antialiasing
+    /// - `msaa8` - MSAA 8x (slower but higher quality)
+    /// - `msaa16` - MSAA 16x (slowest but best quality)
     pub antialiasing: AaConfig,
     /// If the backend should use the CPU for most drawing operations.
     ///
     /// **NOTE:** The GPU is still used during rasterization.
+    ///
+    /// Can be enabled via the `NPTK_USE_CPU` environment variable.
+    /// Set `NPTK_USE_CPU=true` to enable CPU-based path processing.
+    ///
+    /// **Note:** This option may not significantly improve performance if the
+    /// bottleneck is in GPU rasterization (which still happens) or other Vello bugs.
     pub cpu: bool,
     /// The presentation mode of the window/surface.
+    ///
+    /// Can be configured via `NPTK_PRESENT_MODE` environment variable:
+    /// - `auto` (default, no VSync) - Auto-detect, no VSync
+    /// - `vsync` or `auto_vsync` - Enable VSync (may smooth out but limit FPS)
+    /// - `immediate` - No sync (lowest latency, may cause tearing)
+    /// - `fifo` - FIFO queue (VSync-like)
+    /// - `mailbox` - Mailbox mode (triple buffering)
+    ///
+    /// **Note:** `immediate` mode typically provides the lowest latency.
     pub present_mode: PresentMode,
     /// The number of threads to use for initialization in [vello].
     pub init_threads: Option<NonZeroUsize>,
@@ -128,10 +153,98 @@ pub struct RenderConfig {
 
 impl Default for RenderConfig {
     fn default() -> Self {
+        // Check environment variable for CPU rendering
+        // Set NPTK_USE_CPU=true, NPTK_USE_CPU=1, or NPTK_USE_CPU=yes to enable CPU-based path processing
+        let use_cpu = match std::env::var("NPTK_USE_CPU") {
+            Ok(val) => {
+                let val_lower = val.to_lowercase();
+                // Support: true, 1, yes, on, enable
+                let enabled = val_lower == "true" 
+                    || val_lower == "1" 
+                    || val_lower == "yes" 
+                    || val_lower == "on"
+                    || val_lower == "enable";
+                
+                if enabled {
+                    // Print to stderr to ensure visibility even if logging isn't initialized
+                    eprintln!("[NPTK] NPTK_USE_CPU={} detected - enabling CPU path processing", val);
+                    eprintln!("[NPTK] Note: GPU is still used for rasterization, only path processing uses CPU");
+                    log::info!("NPTK_USE_CPU={} detected - enabling CPU path processing", val);
+                    log::info!("Note: GPU is still used for rasterization, only path processing uses CPU");
+                } else {
+                    log::debug!("NPTK_USE_CPU={} - CPU rendering disabled (expected: true, 1, yes, on, enable)", val);
+                }
+                enabled
+            }
+            Err(_) => {
+                false
+            }
+        };
+        
+        // Check environment variable for antialiasing
+        // Options: area (default, fastest), msaa8, msaa16
+        let antialiasing = match std::env::var("NPTK_ANTIALIASING") {
+            Ok(val) => {
+                let val_lower = val.to_lowercase();
+                let aa = match val_lower.as_str() {
+                    "msaa8" => {
+                        eprintln!("[NPTK] Using MSAA 8x antialiasing");
+                        AaConfig::Msaa8
+                    }
+                    "msaa16" => {
+                        eprintln!("[NPTK] Using MSAA 16x antialiasing");
+                        AaConfig::Msaa16
+                    }
+                    "area" | _ => {
+                        if val_lower != "area" {
+                            eprintln!("[NPTK] Unknown antialiasing: {}, using Area (fastest)", val);
+                        }
+                        AaConfig::Area
+                    }
+                };
+                aa
+            }
+            Err(_) => AaConfig::Area,
+        };
+        
+        // Check environment variable for present mode
+        // Options: auto, auto_vsync, fifo, immediate, mailbox
+        let present_mode = match std::env::var("NPTK_PRESENT_MODE") {
+            Ok(val) => {
+                let val_lower = val.to_lowercase();
+                let mode = match val_lower.as_str() {
+                    "auto_vsync" | "vsync" => {
+                        eprintln!("[NPTK] Using VSync present mode");
+                        PresentMode::AutoVsync
+                    }
+                    "fifo" => {
+                        eprintln!("[NPTK] Using FIFO present mode");
+                        PresentMode::Fifo
+                    }
+                    "immediate" => {
+                        eprintln!("[NPTK] Using Immediate present mode (no VSync, may cause tearing)");
+                        PresentMode::Immediate
+                    }
+                    "mailbox" => {
+                        eprintln!("[NPTK] Using Mailbox present mode");
+                        PresentMode::Mailbox
+                    }
+                    "auto" | _ => {
+                        if val_lower != "auto" {
+                            eprintln!("[NPTK] Unknown present mode: {}, using AutoNoVsync", val);
+                        }
+                        PresentMode::AutoNoVsync
+                    }
+                };
+                mode
+            }
+            Err(_) => PresentMode::AutoNoVsync,
+        };
+        
         Self {
-            antialiasing: AaConfig::Area,
-            cpu: false,
-            present_mode: PresentMode::AutoNoVsync,
+            antialiasing,
+            cpu: use_cpu,
+            present_mode,
             init_threads: None,
             device_selector: |devices| devices.first().expect("No devices found"),
             lazy_font_loading: false,

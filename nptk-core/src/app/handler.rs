@@ -252,12 +252,16 @@ where
         if self.update.get().intersects(Update::FORCE | Update::DRAW) {
             log::debug!("Draw update detected!");
 
+            let render_start = Instant::now();
+
             // clear scene
             self.scene.reset();
+            let scene_reset_time = render_start.elapsed();
 
             let context = self.context();
 
             log::debug!("Rendering root widget...");
+            let widget_render_start = Instant::now();
             self.widget.as_mut().unwrap().render(
                 &mut self.scene,
                 &mut self.config.theme,
@@ -265,9 +269,11 @@ where
                 &mut self.info,
                 context,
             );
+            let widget_render_time = widget_render_start.elapsed();
 
             // Render postfix content (overlays, popups) after main content
             log::debug!("Rendering postfix content...");
+            let postfix_render_start = Instant::now();
             let context = self.context();
             self.widget.as_mut().unwrap().render_postfix(
                 &mut self.scene,
@@ -276,6 +282,7 @@ where
                 &mut self.info,
                 context,
             );
+            let postfix_render_time = postfix_render_start.elapsed();
 
             // Only render if all resources are available
             if let (Some(renderer), Some(render_ctx), Some(surface), Some(window)) = (
@@ -294,15 +301,18 @@ where
 
             // check surface validity
             if window.inner_size().width != 0 && window.inner_size().height != 0 {
+                let surface_get_start = Instant::now();
                 let surface_texture = surface
                     .surface
                     .get_current_texture()
                     .expect("Failed to get surface texture");
+                let surface_get_time = surface_get_start.elapsed();
 
                 // make sure winit knows that the surface texture is ready to be presented
                 window.pre_present_notify();
 
                 // TODO: this panics if canvas didn't change (no operation was done) in debug mode
+                let gpu_render_start = Instant::now();
                 renderer
                     .render_to_surface(
                         &device_handle.device,
@@ -317,8 +327,28 @@ where
                         },
                     )
                     .expect("Failed to render to surface");
+                let gpu_render_time = gpu_render_start.elapsed();
 
+                let present_start = Instant::now();
                 surface_texture.present();
+                let present_time = present_start.elapsed();
+
+                let total_render_time = render_start.elapsed();
+                
+                // Only print profiling if NPTK_PROFILE is set (to avoid spam)
+                // Useful for debugging performance issues, especially with Vello rendering backend
+                if std::env::var("NPTK_PROFILE").is_ok() {
+                    eprintln!(
+                        "[NPTK Profile] Scene reset: {:.2}ms | Widget render: {:.2}ms | Postfix: {:.2}ms | Surface get: {:.2}ms | GPU render: {:.2}ms | Present: {:.2}ms | Total: {:.2}ms",
+                        scene_reset_time.as_secs_f64() * 1000.0,
+                        widget_render_time.as_secs_f64() * 1000.0,
+                        postfix_render_time.as_secs_f64() * 1000.0,
+                        surface_get_time.as_secs_f64() * 1000.0,
+                        gpu_render_time.as_secs_f64() * 1000.0,
+                        present_time.as_secs_f64() * 1000.0,
+                        total_render_time.as_secs_f64() * 1000.0
+                    );
+                }
             } else {
                 log::debug!("Surface invalid. Skipping render.");
             }
@@ -406,6 +436,10 @@ where
         let device_handle = (self.config.render.device_selector)(&render_ctx.devices);
 
         log::debug!("Creating renderer...");
+        if self.config.render.cpu {
+            eprintln!("[NPTK] Renderer configured with CPU path processing enabled");
+            log::info!("Renderer configured with CPU path processing enabled");
+        }
         self.renderer = Some(
             Renderer::new(
                 &device_handle.device,
