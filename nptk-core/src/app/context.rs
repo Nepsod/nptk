@@ -51,6 +51,13 @@ impl AppContext {
         self.update.clone()
     }
 
+    /// Make the application exit by setting [Update::EXIT].
+
+
+    pub fn exit(&self) {
+        self.update.insert(Update::EXIT);
+    }
+
     /// Hook the given [Signal] to the [UpdateManager] of this application.
     ///
     /// This makes the signal reactive, so it will notify the renderer when the inner value changes.

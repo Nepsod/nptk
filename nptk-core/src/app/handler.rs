@@ -364,6 +364,11 @@ where
                 window.request_redraw();
             }
         }
+        // update the app if requested
+        if self.update.get().intersects(Update::EXIT) {
+            event_loop.exit();
+            return;
+        }
 
         // reset AppInfo and update states
         self.info.reset();
