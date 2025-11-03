@@ -8,7 +8,8 @@ use taffy::{
     TraversePartialTree,
 };
 use vello::util::{RenderContext, RenderSurface};
-use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
+use vello::{AaConfig, AaSupport, RenderParams, Scene};
+use crate::renderer::{UnifiedRenderer, RendererOptions as UnifiedRendererOptions};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
@@ -34,7 +35,7 @@ where
     config: MayConfig<T>,
     attrs: WindowAttributes,
     window: Option<Arc<Window>>,
-    renderer: Option<Renderer>,
+    renderer: Option<UnifiedRenderer>,
     scene: Scene,
     surface: Option<RenderSurface<'a>>,
     taffy: TaffyTree,
@@ -441,9 +442,10 @@ where
             log::info!("Renderer configured with CPU path processing enabled");
         }
         self.renderer = Some(
-            Renderer::new(
+            UnifiedRenderer::new(
                 &device_handle.device,
-                RendererOptions {
+                self.config.render.backend,
+                UnifiedRendererOptions {
                     surface_format: Some(self.surface.as_ref().unwrap().format),
                     use_cpu: self.config.render.cpu,
                     antialiasing_support: match self.config.render.antialiasing {

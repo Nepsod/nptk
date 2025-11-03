@@ -111,8 +111,18 @@ impl Default for WindowConfig {
 /// known bugs in the Vello rendering backend. Various environment variables can be used
 /// to experiment with different rendering settings, though they may not resolve
 /// fundamental issues in Vello itself.
+///
+/// **Renderer Backend:** Can be configured via `NPTK_RENDERER` environment variable:
+/// - `vello` (default) - Standard Vello GPU renderer
+/// - `hybrid` - Vello Hybrid renderer (currently falls back to Vello; `vello_hybrid` requires different Scene API)
 #[derive(Clone)]
 pub struct RenderConfig {
+    /// The rendering backend to use
+    ///
+    /// Can be configured via `NPTK_RENDERER` environment variable:
+    /// - `vello` (default) - Standard Vello GPU renderer
+    /// - `hybrid` - Vello Hybrid renderer (currently falls back to Vello)
+    pub backend: crate::renderer::RendererBackend,
     /// The antialiasing config
     ///
     /// Can be configured via `NPTK_ANTIALIASING` environment variable:
@@ -241,7 +251,11 @@ impl Default for RenderConfig {
             Err(_) => PresentMode::AutoNoVsync,
         };
         
+        // Check environment variable for renderer backend
+        let backend = crate::renderer::RendererBackend::from_env();
+        
         Self {
+            backend,
             antialiasing,
             cpu: use_cpu,
             present_mode,

@@ -54,6 +54,9 @@ pub mod text_input;
 /// Contains text rendering functionality using Parley.
 pub mod text_render;
 
+/// Contains renderer abstraction for multiple Vello backends
+pub mod renderer;
+
 /// Re-export BrushIndex for use in other modules
 pub use text_render::BrushIndex;
 
