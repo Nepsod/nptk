@@ -135,8 +135,10 @@ impl Widget for Toggle {
             (
                 theme.get_property(widget_id.clone(), &ThemeProperty::ColorToggleTrackOn)
                     .unwrap_or_else(|| Color::from_rgb8(157, 51, 213)),
-                theme.get_property(widget_id.clone(), &ThemeProperty::ColorToggleTrackOn)
-                    .unwrap_or_else(|| Color::from_rgb8(157, 51, 213)), // same as track (no visible border)
+                // theme.get_property(widget_id.clone(), &ThemeProperty::ColorToggleTrackOn)
+                //     .unwrap_or_else(|| Color::from_rgb8(157, 51, 213)), // same as track (no visible border)
+                theme.get_property(widget_id.clone(), &ThemeProperty::ColorToggleThumbBorder)
+                    .unwrap_or_else(|| Color::from_rgb8(180, 180, 180)),
                 theme.get_property(widget_id.clone(), &ThemeProperty::ColorToggleThumb)
                     .unwrap_or_else(|| Color::from_rgb8(255, 255, 255)),
                 theme.get_property(widget_id.clone(), &ThemeProperty::ColorToggleThumbBorder)
@@ -165,7 +167,7 @@ impl Widget for Toggle {
             &track_rect,
         );
         
-        // Draw track border (darker outline for OFF state)
+        // Draw track border
         scene.stroke(
             &Stroke::new(2.0),
             Affine::default(),
