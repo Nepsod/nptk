@@ -22,12 +22,9 @@ impl<T: Theme> MayRunner<T> {
     pub fn new(config: MayConfig<T>) -> Self {
         // init task runner
         if let Some(config) = &config.tasks {
-            log::info!("Initializing task runner.");
+            log::info!("initializing task runner");
 
-            crate::tasks::runner::TaskRunner::new(config.stack_size, config.workers)
-                .expect("Failed to create task runner")
-                .init()
-                .expect("Failed to init task runner");
+            crate::tasks::init(*config);
         }
 
         let lazy_font_loading = config.render.lazy_font_loading;

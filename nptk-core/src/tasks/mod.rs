@@ -1,42 +1,49 @@
-use crate::tasks::runner::TaskRunner;
+//! An executor for running tasks in the background.
+use crate::config::TasksConfig;
+use arc_swap::ArcSwap;
+use runner::TaskRunner;
 use std::future::Future;
-use std::sync::OnceLock;
+use std::sync::{Arc, LazyLock};
 
-pub use futures::future;
-
-/// Contains the [TaskRunner] struct.
+/// An abstraction over a task runner.
 pub mod runner;
 
-/// A handle to a running task which can be awaited in order to get its result.
-pub type TaskHandle<T> = future::RemoteHandle<T>;
+static RUNNER: LazyLock<ArcSwap<TaskRunner>> =
+    LazyLock::new(|| ArcSwap::new(Arc::new(TaskRunner::None)));
 
-static RUNNER: OnceLock<TaskRunner> = OnceLock::new();
-
-/// Returns the global [TaskRunner] or panics if it hasn't been initialized yet.
-pub fn runner<'a>() -> &'a TaskRunner {
-    try_runner().expect("Task runner not initialized yet")
+/// Initializes the task runner.
+pub fn init(config: TasksConfig) {
+    #[cfg(feature = "tokio-runner")]
+    let runner = TaskRunner::Tokio(runner::tokio_runner::TokioRunner::new(config));
+    #[cfg(any(not(feature = "tokio-runner")))]
+    let runner = TaskRunner::None;
+    RUNNER.store(Arc::new(runner));
 }
 
-/// Returns the global [TaskRunner] or [None] if it hasn't been initialized yet.
-pub fn try_runner<'a>() -> Option<&'a TaskRunner> {
-    RUNNER.get()
-}
-
-/// Spawns the given [Future] on the task runner thread pool and returns a [TaskHandle] to await for the result.
-///
-/// Panics if the task runner hasn't been initialized yet.
-pub fn spawn<Fut>(fut: Fut) -> TaskHandle<Fut::Output>
+/// Spawns the given future.
+pub fn spawn<F>(fut: F) -> impl Future<Output = F::Output>
 where
-    Fut: Future + Send + 'static,
-    Fut::Output: Send,
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
 {
-    runner().run(fut)
+    let runner = RUNNER.load().clone();
+    async move { runner.spawn(fut).await }
 }
 
-/// Blocks the current thread until the given [Future] completes.
-pub fn block_on<Fut>(fut: Fut) -> Fut::Output
+/// Blocks on the given future.
+pub fn block_on<F>(fut: F) -> F::Output
 where
-    Fut: Future,
+    F: Future,
 {
-    futures::executor::block_on(fut)
+    RUNNER.load().block_on(fut)
+}
+
+/// Spawns the given blocking function.
+pub fn spawn_blocking<F, R>(fut: F) -> impl Future<Output = R>
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    let runner = RUNNER.load().clone();
+    async move { runner.spawn_blocking(fut).await }
 }
