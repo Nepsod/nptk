@@ -28,7 +28,7 @@ impl<T: Theme> MayRunner<T> {
         }
 
         let lazy_font_loading = config.render.lazy_font_loading;
-        
+
         Self {
             config,
             font_ctx: if lazy_font_loading {

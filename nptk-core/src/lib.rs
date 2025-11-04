@@ -57,6 +57,9 @@ pub mod text_render;
 /// Contains renderer abstraction for multiple Vello backends
 pub mod renderer;
 
+/// Contains the vector graphics interface abstraction
+pub mod vgi;
+
 /// Re-export BrushIndex for use in other modules
 pub use text_render::BrushIndex;
 

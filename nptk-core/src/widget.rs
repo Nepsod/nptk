@@ -1,10 +1,9 @@
-use vello::Scene;
-
 use crate::app::context::AppContext;
 use crate::app::info::AppInfo;
 use crate::app::update::Update;
 use crate::layout::{LayoutNode, LayoutStyle, StyleNode};
 use crate::signal::MaybeSignal;
+use crate::vgi::Graphics;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 
@@ -46,7 +45,7 @@ pub type BoxedWidget = Box<dyn Widget>;
 ///
 /// ```rust,no_run
 /// use nptk_core::widget::Widget;
-/// use nptk_core::vg::Scene;
+/// use nptk_core::vgi::Graphics;
 /// use nptk_core::layout::{LayoutNode, StyleNode};
 /// use nptk_core::app::{AppContext, AppInfo};
 /// use nptk_theme::theme::Theme;
@@ -60,15 +59,15 @@ pub type BoxedWidget = Box<dyn Widget>;
 /// }
 ///
 /// impl Widget for TooltipWidget {
-///     fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme,
+///     fn render(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme,
 ///               layout: &LayoutNode, info: &mut AppInfo, context: AppContext) {
 ///         // Render the main widget content (the child)
 ///         if !layout.children.is_empty() {
-///             self.child.render(scene, theme, &layout.children[0], info, context);
+///             self.child.render(graphics, theme, &layout.children[0], info, context);
 ///         }
 ///     }
 ///
-///     fn render_postfix(&mut self, scene: &mut Scene, theme: &mut dyn Theme,
+///     fn render_postfix(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme,
 ///                       layout: &LayoutNode, info: &mut AppInfo, context: AppContext) {
 ///         // Render tooltip on top if hovered
 ///         if self.is_hovered {
@@ -102,7 +101,7 @@ pub type BoxedWidget = Box<dyn Widget>;
 ///
 /// ```rust,no_run
 /// use nptk_core::widget::Widget;
-/// use nptk_core::vg::Scene;
+/// use nptk_core::vgi::Graphics;
 /// use nptk_core::layout::{LayoutNode, StyleNode, Layout};
 /// use nptk_core::app::{AppContext, AppInfo};
 /// use nptk_theme::theme::Theme;
@@ -117,15 +116,15 @@ pub type BoxedWidget = Box<dyn Widget>;
 /// }
 ///
 /// impl Widget for DropdownWidget {
-///     fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme,
+///     fn render(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme,
 ///               layout: &LayoutNode, info: &mut AppInfo, context: AppContext) {
 ///         // Render just the button showing selected item
 ///         if !layout.children.is_empty() {
-///             self.button.render(scene, theme, &layout.children[0], info, context);
+///             self.button.render(graphics, theme, &layout.children[0], info, context);
 ///         }
 ///     }
 ///
-///     fn render_postfix(&mut self, scene: &mut Scene, theme: &mut dyn Theme,
+///     fn render_postfix(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme,
 ///                       layout: &LayoutNode, info: &mut AppInfo, context: AppContext) {
 ///         // Render dropdown list on top when open
 ///         if self.is_open {
@@ -177,7 +176,7 @@ pub type BoxedWidget = Box<dyn Widget>;
 ///
 /// ```rust,no_run
 /// use nptk_core::widget::{Widget, BoxedWidget};
-/// use nptk_core::vg::Scene;
+/// use nptk_core::vgi::Graphics;
 /// use nptk_core::layout::{LayoutNode, StyleNode};
 /// use nptk_core::app::{AppContext, AppInfo};
 /// use nptk_theme::theme::Theme;
@@ -189,20 +188,20 @@ pub type BoxedWidget = Box<dyn Widget>;
 /// }
 ///
 /// impl Widget for MyContainer {
-///     fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme,
+///     fn render(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme,
 ///               layout: &LayoutNode, info: &mut AppInfo, context: AppContext) {
 ///         // Render all children
 ///         for (i, child) in self.children.iter_mut().enumerate() {
-///             child.render(scene, theme, &layout.children[i], info, context.clone());
+///             child.render(graphics, theme, &layout.children[i], info, context.clone());
 ///         }
 ///     }
 ///
-///     fn render_postfix(&mut self, scene: &mut Scene, theme: &mut dyn Theme,
+///     fn render_postfix(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme,
 ///                       layout: &LayoutNode, info: &mut AppInfo, context: AppContext) {
 ///         // IMPORTANT: Call render_postfix on all children!
 ///         // This ensures their overlays appear on top
 ///         for (i, child) in self.children.iter_mut().enumerate() {
-///             child.render_postfix(scene, theme, &layout.children[i], info, context.clone());
+///             child.render_postfix(graphics, theme, &layout.children[i], info, context.clone());
 ///         }
 ///     }
 ///
@@ -235,7 +234,7 @@ pub trait Widget {
     /// Render the widget to the canvas.
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
@@ -270,12 +269,12 @@ pub trait Widget {
     /// # Example
     /// 
     /// ```rust,ignore
-    /// fn render_postfix(&mut self, scene: &mut Scene, theme: &mut dyn Theme, 
+    /// fn render_postfix(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme, 
     ///                    layout_node: &LayoutNode, info: &mut AppInfo, 
     ///                    context: AppContext) {
     ///     if self.is_menu_open {
     ///         // Render popup menu on top of everything
-    ///         self.popup.render(scene, theme, &popup_layout, info, context);
+    ///         self.popup.render(graphics, theme, &popup_layout, info, context);
     ///     }
     /// }
     /// ```
@@ -286,7 +285,7 @@ pub trait Widget {
     /// - [`MenuButton`](nptk_widgets::menu_button::MenuButton) for a complete implementation
     fn render_postfix(
         &mut self,
-        _scene: &mut Scene,
+        _graphics: &mut dyn Graphics,
         _theme: &mut dyn Theme,
         _layout_node: &LayoutNode,
         _info: &mut AppInfo,

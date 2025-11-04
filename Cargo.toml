@@ -57,6 +57,9 @@ canvas = ["nptk-widgets/canvas"]
 # Use the `tokio` runtime for running tasks inside a task runner.
 tokio-runner = ["nptk-core/tokio-runner"]
 
+# Enables the `vello` vector graphics backend.
+vello-vg = ["nptk-core/vello-vg"]
+
 [lib]
 name = "nptk"
 path = "src/lib.rs"

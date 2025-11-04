@@ -4,9 +4,9 @@ use nptk_core::app::update::Update;
 use nptk_core::layout;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentageAuto, StyleNode};
 use nptk_core::signal::MaybeSignal;
-use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii};
+use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Shape};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
-use nptk_core::vg::Scene;
+use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::MouseButton;
 use nptk_theme::id::WidgetId;
@@ -69,7 +69,7 @@ impl WidgetLayoutExt for Slider {
 impl Widget for Slider {
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         _: &mut AppInfo,
@@ -97,7 +97,7 @@ impl Widget for Slider {
         let track_bottom = track_center_y + track_height / 2.0;
 
         // Draw background track (full width)
-        scene.fill(
+        graphics.fill(
             Fill::NonZero,
             Affine::default(),
             &track_brush,
@@ -110,13 +110,13 @@ impl Widget for Slider {
                     track_bottom,
                 ),
                 RoundedRectRadii::from_single_radius(track_height / 2.0),
-            ),
+            ).to_path(0.1),
         );
 
         // Draw filled track (up to thumb position) using primary-dark
         let filled_width = (layout_node.layout.size.width * value) as f64;
         if filled_width > 0.0 {
-            scene.fill(
+            graphics.fill(
                 Fill::NonZero,
                 Affine::default(),
                 &Brush::Solid(filled_track_color),
@@ -129,8 +129,8 @@ impl Widget for Slider {
                         track_bottom,
                     ),
                     RoundedRectRadii::from_single_radius(track_height / 2.0),
-                ),
-            );
+                ).to_path(0.1),
+            )
         }
 
         // Draw rectangular thumb (old-style UI slider)
@@ -139,7 +139,7 @@ impl Widget for Slider {
         let thumb_x = layout_node.layout.location.x as f64 + (layout_node.layout.size.width * value) as f64 - thumb_width / 2.0;
         let thumb_y = track_center_y - thumb_height / 2.0;
 
-        scene.fill(
+        graphics.fill(
             Fill::NonZero,
             Affine::default(),
             &thumb_brush,
@@ -152,7 +152,7 @@ impl Widget for Slider {
                     thumb_y + thumb_height,
                 ),
                 RoundedRectRadii::from_single_radius(2.0), // Slightly rounded corners
-            ),
+            ).to_path(0.1),
         );
     }
 

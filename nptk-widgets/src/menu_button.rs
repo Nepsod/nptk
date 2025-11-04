@@ -3,9 +3,10 @@ use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{Layout, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::{MaybeSignal, state::StateSignal, Signal};
+use nptk_core::vgi::vello_vg::VelloGraphics;
 use std::sync::Arc;
 use nptk_core::vg::kurbo::{Affine, Rect, Vec2};
-use nptk_core::vg::Scene;
+use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt, WidgetChildExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
@@ -261,7 +262,7 @@ impl WidgetLayoutExt for MenuButton {
 impl Widget for MenuButton {
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
@@ -269,9 +270,10 @@ impl Widget for MenuButton {
     ) {
         // Render the child button with proper transform
         if !layout.children.is_empty() {
-            let mut child_scene = Scene::new();
-            self.child.render(&mut child_scene, theme, &layout.children[0], info, context.clone());
-            scene.append(
+            let mut child_scene = nptk_core::vg::Scene::new();
+            let mut child_graphics = VelloGraphics::new(&mut child_scene);
+            self.child.render(&mut child_graphics, theme, &layout.children[0], info, context.clone());
+            graphics.append(
                 &child_scene,
                 Some(Affine::translate(Vec2::new(
                     layout.layout.location.x as f64,
@@ -284,7 +286,7 @@ impl Widget for MenuButton {
 
     fn render_postfix(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
@@ -308,7 +310,7 @@ impl Widget for MenuButton {
                 popup_layout.layout.size.width = popup_width as f32;
                 popup_layout.layout.size.height = popup_height as f32;
 
-                popup.render(scene, theme, &popup_layout, info, context);
+                popup.render(graphics, theme, &popup_layout, info, context);
             }
         }
     }
@@ -417,3 +419,4 @@ impl Widget for MenuButton {
         self.widget_id.clone()
     }
 }
+

@@ -36,3 +36,4 @@ harfrust = "0.2.0"
 default = []
 vg = ["skrifa"]
 tokio-runner = ["tokio"]
+vello-vg = []

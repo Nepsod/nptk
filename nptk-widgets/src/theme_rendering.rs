@@ -6,9 +6,9 @@
 
 use nptk_core::app::focus::FocusState;
 use nptk_core::layout::LayoutNode;
-use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Stroke, Line, Point};
+use nptk_core::vg::kurbo::{Affine, Line, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
 use nptk_core::vg::peniko::{Brush, Fill, Color};
-use nptk_core::vg::Scene;
+use nptk_core::vgi::Graphics;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use nptk_theme::rendering::{WidgetState, InteractionState, CheckboxState as ThemeCheckboxState};
@@ -121,7 +121,7 @@ pub fn render_button_with_theme(
     is_focused: bool,
     disabled: bool,
     layout: &LayoutNode,
-    scene: &mut Scene,
+    graphics: &mut dyn Graphics,
 ) {
     let theme_state = button_state_to_widget_state(button_state, focus_state, is_focused, disabled);
     let bounds = Rect::new(
@@ -138,12 +138,12 @@ pub fn render_button_with_theme(
     let brush = Brush::Solid(fill_color);
     
     // Fill the button background
-    scene.fill(
+    graphics.fill(
         Fill::NonZero,
         Affine::default(),
         &brush,
         None,
-        &rounded_rect,
+        &rounded_rect.to_path(0.1),
     );
     
     // Draw focus indicator if focused
@@ -151,12 +151,12 @@ pub fn render_button_with_theme(
         let focus_color = theme.get_focus_color(widget_id.clone());
         let focus_brush = Brush::Solid(focus_color);
         let focus_stroke = Stroke::new(3.0);
-        scene.stroke(
+        graphics.stroke(
             &focus_stroke,
             Affine::default(),
             &focus_brush,
             None,
-            &rounded_rect,
+            &rounded_rect.to_path(0.1),
         );
     }
 }
@@ -168,7 +168,7 @@ pub fn render_checkbox_with_theme(
     checkbox_state: crate::checkbox::CheckboxState,
     is_disabled: bool,
     layout: &LayoutNode,
-    scene: &mut Scene,
+    graphics: &mut dyn Graphics,
 ) {
     let theme_checkbox_state = checkbox_state_to_theme_state(checkbox_state);
     let theme_state = if is_disabled {
@@ -192,27 +192,27 @@ pub fn render_checkbox_with_theme(
     
     // Fill the checkbox background
     let fill_brush = Brush::Solid(fill_color);
-    scene.fill(
+    graphics.fill(
         Fill::NonZero,
         Affine::default(),
         &fill_brush,
         None,
-        &checkbox_rect,
+        &checkbox_rect.to_path(0.1),
     );
     
     // Draw the checkbox border
     let border_brush = Brush::Solid(border_color);
     let border_stroke = Stroke::new(1.0);
-    scene.stroke(
+    graphics.stroke(
         &border_stroke,
         Affine::default(),
         &border_brush,
         None,
-        &checkbox_rect,
+        &checkbox_rect.to_path(0.1),
     );
     
     // Draw the checkbox symbol (checkmark or indeterminate line)
-    draw_checkbox_symbol_with_theme(theme, widget_id, theme_checkbox_state, bounds, scene);
+    draw_checkbox_symbol_with_theme(theme, widget_id, theme_checkbox_state, bounds, graphics);
 }
 
 /// Draw checkbox symbol using theme colors
@@ -221,7 +221,7 @@ fn draw_checkbox_symbol_with_theme(
     widget_id: &WidgetId,
     checkbox_state: ThemeCheckboxState,
     bounds: Rect,
-    scene: &mut Scene,
+    graphics: &mut dyn Graphics,
 ) {
     let symbol_color = theme.get_checkbox_symbol_color(widget_id.clone(), checkbox_state);
     
@@ -245,7 +245,7 @@ fn draw_checkbox_symbol_with_theme(
                 let start = checkmark_points[i];
                 let end = checkmark_points[i + 1];
                 let line = Line::new(start, end);
-                scene.stroke(&symbol_stroke, Affine::default(), &symbol_brush, None, &line);
+                graphics.stroke(&symbol_stroke, Affine::default(), &symbol_brush, None, &line.to_path(0.1));
             }
         }
         ThemeCheckboxState::Indeterminate => {
@@ -255,7 +255,7 @@ fn draw_checkbox_symbol_with_theme(
                 Point::new(bounds.x0 + bounds.width() * 0.2, line_y),
                 Point::new(bounds.x0 + bounds.width() * 0.8, line_y)
             );
-            scene.stroke(&symbol_stroke, Affine::default(), &symbol_brush, None, &line);
+            graphics.stroke(&symbol_stroke, Affine::default(), &symbol_brush, None, &line.to_path(0.1));
         }
         ThemeCheckboxState::Unchecked => {
             // No symbol
@@ -270,7 +270,7 @@ pub fn render_text_input_with_theme(
     is_focused: bool,
     is_disabled: bool,
     layout: &LayoutNode,
-    scene: &mut Scene,
+    graphics: &mut dyn Graphics,
 ) {
     let theme_state = if is_disabled {
         WidgetState::Disabled
@@ -295,23 +295,23 @@ pub fn render_text_input_with_theme(
     
     // Fill the input background
     let fill_brush = Brush::Solid(fill_color);
-    scene.fill(
+    graphics.fill(
         Fill::NonZero,
         Affine::default(),
         &fill_brush,
         None,
-        &input_rect,
+        &input_rect.to_path(0.1),
     );
     
     // Draw the input border
     let border_brush = Brush::Solid(border_color);
     let border_stroke = Stroke::new(1.0);
-    scene.stroke(
+    graphics.stroke(
         &border_stroke,
         Affine::default(),
         &border_brush,
         None,
-        &input_rect,
+        &input_rect.to_path(0.1),
     );
     
     // Draw focus indicator if focused
@@ -319,12 +319,12 @@ pub fn render_text_input_with_theme(
         let focus_color = theme.get_focus_color(widget_id.clone());
         let focus_brush = Brush::Solid(focus_color);
         let focus_stroke = Stroke::new(2.0);
-        scene.stroke(
+        graphics.stroke(
             &focus_stroke,
             Affine::default(),
             &focus_brush,
             None,
-            &input_rect,
+            &input_rect.to_path(0.1),
         );
     }
 }
@@ -337,7 +337,7 @@ pub fn render_progress_with_theme(
     is_indeterminate: bool,
     animation_time: f32,
     layout: &LayoutNode,
-    scene: &mut Scene,
+    graphics: &mut dyn Graphics,
 ) {
     let width = layout.layout.size.width as f64;
     let height = layout.layout.size.height as f64;
@@ -361,21 +361,21 @@ pub fn render_progress_with_theme(
         RoundedRectRadii::from_single_radius(height / 4.0),
     );
 
-    scene.fill(
+    graphics.fill(
         Fill::NonZero,
         Affine::IDENTITY,
-        background_color,
+        &Brush::Solid(background_color),
         None,
-        &background_rect,
+        &background_rect.to_path(0.1),
     );
 
     // Draw border
-    scene.stroke(
+    graphics.stroke(
         &Stroke::new(1.0),
         Affine::IDENTITY,
-        border_color,
+        &Brush::Solid(border_color),
         None,
-        &background_rect,
+        &background_rect.to_path(0.1),
     );
 
     // Draw progress
@@ -401,12 +401,12 @@ pub fn render_progress_with_theme(
             RoundedRectRadii::from_single_radius((height - 2.0) / 4.0),
         );
 
-        scene.fill(
+        graphics.fill(
             Fill::NonZero,
             Affine::IDENTITY,
-            progress_color,
+            &Brush::Solid(progress_color),
             None,
-            &progress_rect,
+            &progress_rect.to_path(0.1),
         );
     } else {
         // Determinate progress
@@ -421,12 +421,12 @@ pub fn render_progress_with_theme(
                 RoundedRectRadii::from_single_radius((height - 2.0) / 4.0),
             );
 
-            scene.fill(
+            graphics.fill(
                 Fill::NonZero,
                 Affine::IDENTITY,
-                progress_color,
+                &Brush::Solid(progress_color),
                 None,
-                &progress_rect,
+                &progress_rect.to_path(0.1),
             );
         }
     }
@@ -440,7 +440,7 @@ pub fn render_slider_with_theme(
     is_disabled: bool,
     is_pressed: bool,
     layout: &LayoutNode,
-    scene: &mut Scene,
+    graphics: &mut dyn Graphics,
 ) {
     let theme_state = if is_disabled {
         WidgetState::Disabled
@@ -461,12 +461,12 @@ pub fn render_slider_with_theme(
     let track_color = theme.get_slider_track_color(widget_id.clone(), theme_state);
     let track_brush = Brush::Solid(track_color);
     let track_rect = RoundedRect::from_rect(bounds, RoundedRectRadii::from_single_radius(2.0));
-    scene.fill(
+    graphics.fill(
         Fill::NonZero,
         Affine::default(),
         &track_brush,
         None,
-        &track_rect,
+        &track_rect.to_path(0.1),
     );
     
     // Draw slider thumb
@@ -478,12 +478,12 @@ pub fn render_slider_with_theme(
     
     let thumb_color = theme.get_slider_thumb_color(widget_id.clone(), theme_state);
     let thumb_brush = Brush::Solid(thumb_color);
-    scene.fill(
+    graphics.fill(
         Fill::NonZero,
         Affine::default(),
         &thumb_brush,
         None,
-        &thumb_rounded,
+        &thumb_rounded.to_path(0.1),
     );
 }
 
@@ -546,7 +546,7 @@ impl ThemeTextRenderer {
         widget_id: WidgetId,
         text: &str,
         font_context: &mut nptk_core::app::font_ctx::FontContext,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         transform: Affine,
         font_size: f32,
         hinting: bool,
@@ -565,7 +565,7 @@ impl ThemeTextRenderer {
         
         text_render_context.render_text(
             font_context,
-            scene,
+            graphics,
             text,
             None, // No specific font, use default
             font_size,
@@ -600,7 +600,7 @@ impl ThemeTextRenderer {
         text: &str,
         placeholder: &str,
         font_context: &mut nptk_core::app::font_ctx::FontContext,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         transform: Affine,
         font_size: f32,
         hinting: bool,
@@ -620,7 +620,7 @@ impl ThemeTextRenderer {
         
         text_render_context.render_text(
             font_context,
-            scene,
+            graphics,
             display_text,
             None, // No specific font, use default
             font_size,
@@ -632,3 +632,4 @@ impl ThemeTextRenderer {
         color
     }
 }
+

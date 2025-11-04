@@ -4,6 +4,7 @@
 
 use parley::{LayoutContext, StyleProperty, Alignment, Layout};
 use crate::app::font_ctx::FontContext;
+use crate::vgi::Graphics;
 use vello::Scene;
 use vello::kurbo::Affine;
 use vello::peniko::{Brush, Fill};
@@ -30,7 +31,7 @@ impl TextRenderContext {
     pub fn render_text(
         &mut self,
         font_cx: &mut FontContext,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         text: &str,
         font: Option<QueryFont>,
         font_size: f32,
@@ -44,10 +45,16 @@ impl TextRenderContext {
 
         log::debug!("TextRenderContext::render_text called with text: '{}'", text);
 
-        // Try Parley first, but fall back to simple rendering if it fails
-        if let Err(_e) = self.try_render_with_parley(font_cx, scene, text, font.clone(), font_size, color.clone(), transform, hint) {
-            log::debug!("Parley rendering failed, using simple fallback");
-            self.render_simple_fallback(font_cx, scene, text, font, font_size, color, transform);
+        // Extract Scene from Graphics for Parley rendering
+        // Parley needs direct Scene access for glyph drawing
+        if let Some(scene) = graphics.as_scene_mut() {
+            // Try Parley first, but fall back to simple rendering if it fails
+            if let Err(_e) = self.try_render_with_parley(font_cx, scene, text, font.clone(), font_size, color.clone(), transform, hint) {
+                log::debug!("Parley rendering failed, using simple fallback");
+                self.render_simple_fallback(font_cx, scene, text, font, font_size, color, transform);
+            }
+        } else {
+            log::warn!("Graphics backend does not support text rendering via Parley");
         }
     }
 

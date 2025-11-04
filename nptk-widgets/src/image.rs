@@ -4,7 +4,7 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vg::kurbo::{Affine, Vec2};
-use nptk_core::vg::Scene;
+use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
@@ -47,7 +47,7 @@ impl WidgetLayoutExt for Image {
 impl Widget for Image {
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         _: &mut dyn Theme,
         layout_node: &LayoutNode,
         _: &mut AppInfo,
@@ -55,13 +55,16 @@ impl Widget for Image {
     ) {
         let image = self.image.get();
 
-        scene.draw_image(
-            &image,
-            Affine::translate(Vec2::new(
-                layout_node.layout.location.x as f64,
-                layout_node.layout.location.y as f64,
-            )),
-        );
+        // Use as_scene_mut() to get Scene for image drawing
+        if let Some(scene) = graphics.as_scene_mut() {
+            scene.draw_image(
+                &image,
+                Affine::translate(Vec2::new(
+                    layout_node.layout.location.x as f64,
+                    layout_node.layout.location.y as f64,
+                )),
+            );
+        }
     }
 
     fn layout_style(&self) -> StyleNode {

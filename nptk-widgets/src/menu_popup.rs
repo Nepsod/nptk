@@ -11,9 +11,9 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, LayoutStyle, LengthPercentage, Dimension, StyleNode};
 use std::sync::Arc;
 use nptk_core::signal::MaybeSignal;
-use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Line, Point, Stroke};
+use nptk_core::vg::kurbo::{Affine, Line, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
 use nptk_core::vg::peniko::{Color, Fill, Brush};
-use nptk_core::vg::Scene;
+use nptk_core::vgi::Graphics;
 use nptk_core::text_render::TextRenderContext;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
@@ -196,7 +196,7 @@ impl MenuPopup {
     }
 
     /// Render text helper
-    fn render_text(text_render_context: &mut TextRenderContext, font_cx: &mut nptk_core::app::font_ctx::FontContext, scene: &mut Scene, text: &str, x: f64, y: f64, color: Color) {
+    fn render_text(text_render_context: &mut TextRenderContext, font_cx: &mut nptk_core::app::font_ctx::FontContext, graphics: &mut dyn Graphics, text: &str, x: f64, y: f64, color: Color) {
         let font_size = 14.0;
         
         if text.is_empty() {
@@ -208,7 +208,7 @@ impl MenuPopup {
         // Try to render text, but don't panic if font context is not available
         let _ = text_render_context.render_text(
             font_cx,
-            scene,
+            graphics,
             text,
             None, // No specific font, use default
             font_size,
@@ -252,7 +252,7 @@ impl Widget for MenuPopup {
         }
     }
 
-    fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout: &LayoutNode, info: &mut AppInfo, _context: AppContext) {
+    fn render(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme, layout: &LayoutNode, info: &mut AppInfo, _context: AppContext) {
         // Pre-calculate theme colors with proper fallbacks
         let bg_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackground)
             .unwrap_or_else(|| Color::from_rgb8(255, 255, 255));
@@ -287,11 +287,11 @@ impl Widget for MenuPopup {
             popup_rect.y1,
             RoundedRectRadii::new(4.0, 4.0, 4.0, 4.0),
         );
-        scene.fill(Fill::NonZero, Affine::IDENTITY, bg_color, None, &popup_rounded);
+        graphics.fill(Fill::NonZero, Affine::IDENTITY, &Brush::Solid(bg_color), None, &popup_rounded.to_path(0.1));
 
         // Draw border
         let stroke = Stroke::new(1.0);
-        scene.stroke(&stroke, Affine::IDENTITY, border_color, None, &popup_rounded);
+        graphics.stroke(&stroke, Affine::IDENTITY, &Brush::Solid(border_color), None, &popup_rounded.to_path(0.1));
 
         // Draw menu items
         let item_height = 24.0;
@@ -322,7 +322,7 @@ impl Widget for MenuPopup {
                     item_rect.y1,
                     RoundedRectRadii::new(2.0, 2.0, 2.0, 2.0),
                 );
-                scene.fill(Fill::NonZero, Affine::IDENTITY, item_bg_color, None, &item_rounded);
+                graphics.fill(Fill::NonZero, Affine::IDENTITY, &Brush::Solid(item_bg_color), None, &item_rounded.to_path(0.1));
             }
 
             // Draw item content
@@ -330,7 +330,7 @@ impl Widget for MenuPopup {
                 // Draw item text
                 let text_x = item_rect.x0 + 8.0;
                 let text_y = item_rect.y0 + 2.0;
-                Self::render_text(&mut self.text_render_context, &mut info.font_context, scene, &item.label, text_x, text_y, item_text_color);
+                Self::render_text(&mut self.text_render_context, &mut info.font_context, graphics, &item.label, text_x, text_y, item_text_color);
                 
                 // Draw keyboard shortcut if present
                 if let Some(ref shortcut) = item.shortcut {
@@ -341,21 +341,21 @@ impl Widget for MenuPopup {
                     let shortcut_x = item_rect.x1 - 8.0 - shortcut_width;
                     
                     let shortcut_color = Color::from_rgb8(120, 120, 120); // Dimmed color
-                    Self::render_text(&mut self.text_render_context, &mut info.font_context, scene, shortcut, shortcut_x, text_y, shortcut_color);
+                    Self::render_text(&mut self.text_render_context, &mut info.font_context, graphics, shortcut, shortcut_x, text_y, shortcut_color);
                 }
             } else {
                 // Draw separator line
                 let sep_stroke = Stroke::new(1.0);
                 let sep_y = item_rect.y0 + (item_height / 2.0);
-                scene.stroke(
+                graphics.stroke(
                     &sep_stroke,
                     Affine::IDENTITY,
-                    Color::from_rgb8(200, 200, 200),
+                    &Brush::Solid(Color::from_rgb8(200, 200, 200)),
                     None,
                     &Line::new(
                         Point::new(item_rect.x0 + 8.0, sep_y),
                         Point::new(item_rect.x1 - 8.0, sep_y),
-                    ),
+                    ).to_path(0.1),
                 );
             }
         }

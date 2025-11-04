@@ -3,7 +3,7 @@ use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::MaybeSignal;
-use nptk_core::vg::Scene;
+use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetChildrenExt, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
@@ -49,7 +49,7 @@ impl WidgetLayoutExt for Container {
 impl Widget for Container {
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
@@ -57,7 +57,7 @@ impl Widget for Container {
     ) {
         for (i, child) in self.children.iter_mut().enumerate() {
             child.render(
-                scene,
+                graphics,
                 theme,
                 &layout_node.children[i],
                 info,
@@ -68,7 +68,7 @@ impl Widget for Container {
 
     fn render_postfix(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
@@ -78,7 +78,7 @@ impl Widget for Container {
         // This ensures overlays appear on top of all sibling content
         for (i, child) in self.children.iter_mut().enumerate() {
             child.render_postfix(
-                scene,
+                graphics,
                 theme,
                 &layout_node.children[i],
                 info,

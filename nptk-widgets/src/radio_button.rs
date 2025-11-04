@@ -4,9 +4,9 @@ use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode, Dimension};
 use nptk_core::signal::{MaybeSignal, Signal, state::StateSignal};
-use nptk_core::vg::kurbo::{Affine, Circle, Stroke};
+use nptk_core::vg::kurbo::{Affine, Circle, Shape, Stroke};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
-use nptk_core::vg::Scene;
+use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, KeyCode, PhysicalKey, MouseButton};
 use nptk_theme::id::WidgetId;
@@ -125,7 +125,7 @@ impl WidgetLayoutExt for RadioButton {
 }
 
 impl Widget for RadioButton {
-    fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout_node: &LayoutNode, info: &mut AppInfo, _context: AppContext) {
+    fn render(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme, layout_node: &LayoutNode, info: &mut AppInfo, _context: AppContext) {
         
         // Update focus state
         if let Ok(manager) = info.focus_manager.lock() {
@@ -177,22 +177,22 @@ impl Widget for RadioButton {
 
         // Draw radio button circle background
         let radio_circle = Circle::new((radio_center_x as f64, radio_center_y as f64), radio_size as f64 / 2.0);
-        scene.fill(
+        graphics.fill(
             Fill::NonZero,
             Affine::default(),
             &Brush::Solid(bg_color),
             None,
-            &radio_circle,
+            &radio_circle.to_path(0.1),
         );
 
         // Draw radio button border
         let border_width = if is_focused && self.focus_via_keyboard { 2.0 } else { 1.0 };
-        scene.stroke(
+        graphics.stroke(
             &Stroke::new(border_width),
             Affine::default(),
             &Brush::Solid(border_color),
             None,
-            &radio_circle,
+            &radio_circle.to_path(0.1),
         );
 
         // Draw selected dot - black circle with smaller colored dot inside
@@ -200,23 +200,23 @@ impl Widget for RadioButton {
             // Outer black circle (ring)
             let outer_dot_size = radio_size * 0.6;
             let outer_dot_circle = Circle::new((radio_center_x as f64, radio_center_y as f64), outer_dot_size as f64 / 2.0);
-            scene.stroke(
+            graphics.stroke(
                 &Stroke::new(2.0),
                 Affine::default(),
-                &dot_color,
+                &Brush::Solid(dot_color),
                 None,
-                &outer_dot_circle,
+                &outer_dot_circle.to_path(0.1),
             );
             
             // Inner colored dot using ColorBackgroundSelected
             let inner_dot_size = radio_size * 0.35;
             let inner_dot_circle = Circle::new((radio_center_x as f64, radio_center_y as f64), inner_dot_size as f64 / 2.0);
-            scene.fill(
+            graphics.fill(
                 Fill::NonZero,
                 Affine::default(),
                 &Brush::Solid(bg_color), // This is ColorBackgroundSelected when selected
                 None,
-                &inner_dot_circle,
+                &inner_dot_circle.to_path(0.1),
             );
         }
 

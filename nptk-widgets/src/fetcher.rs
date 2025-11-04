@@ -3,7 +3,7 @@ use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::tasks;
-use nptk_core::vg::Scene;
+use nptk_core::vgi::Graphics;
 use nptk_core::widget::Widget;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
@@ -61,14 +61,14 @@ impl<T: Send + 'static, W: Widget, F: Fn(Option<T>) -> W> WidgetFetcher<T, W, F>
 impl<T: Send + 'static, W: Widget, F: Fn(Option<T>) -> W> Widget for WidgetFetcher<T, W, F> {
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) {
         if let Some(widget) = &mut self.widget {
-            widget.render(scene, theme, layout_node, info, context.clone())
+            widget.render(graphics, theme, layout_node, info, context.clone())
         }
     }
 

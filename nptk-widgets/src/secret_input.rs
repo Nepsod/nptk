@@ -5,9 +5,9 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::text_input::TextBuffer;
-use nptk_core::vg::kurbo::{Affine, Line, Rect, RoundedRect, RoundedRectRadii, Stroke, Circle};
+use nptk_core::vg::kurbo::{Affine, Circle, Line, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
-use nptk_core::vg::Scene;
+use nptk_core::vgi::Graphics;
 use nptk_core::text_render::TextRenderContext;
 use std::ops::Deref;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
@@ -331,7 +331,7 @@ impl WidgetLayoutExt for SecretInput {
 impl Widget for SecretInput {
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
@@ -381,21 +381,21 @@ impl Widget for SecretInput {
         );
 
         // Draw background
-        scene.fill(
+        graphics.fill(
             Fill::NonZero,
             Affine::default(),
             &Brush::Solid(bg_color),
             None,
-            &input_rect,
+            &input_rect.to_path(0.1),
         );
 
         // Draw border
-        scene.stroke(
+        graphics.stroke(
             &Stroke::new(if is_focused { 2.0 } else { 1.0 }),
             Affine::default(),
             &Brush::Solid(border_color),
             None,
-            &input_rect,
+            &input_rect.to_path(0.1),
         );
 
         // Render masked text content or placeholder
@@ -422,7 +422,7 @@ impl Widget for SecretInput {
             // Only draw selection if there's actually a range (start != end)
             if selection_range.start != selection_range.end {
                 // Draw selection background
-                scene.fill(
+                graphics.fill(
                     Fill::NonZero,
                     Affine::default(),
                     &Brush::Solid(selection_color),
@@ -432,7 +432,7 @@ impl Widget for SecretInput {
                         layout_node.layout.location.y as f64 + 4.0,
                         selection_end_x as f64,
                         layout_node.layout.location.y as f64 + layout_node.layout.size.height as f64 - 4.0,
-                    ),
+                    ).to_path(0.1),
                 );
             }
         }
@@ -452,7 +452,7 @@ impl Widget for SecretInput {
             
             self.text_render_context.render_text(
                 &mut info.font_context,
-                scene,
+                graphics,
                 &display_text,
                 None, // No specific font, use default (same as TextInput)
                 font_size,
@@ -472,7 +472,7 @@ impl Widget for SecretInput {
             let cursor_x = self.cursor_x_position(cursor_pos, layout_node, info);
 
             // Draw cursor line
-            scene.stroke(
+                graphics.stroke(
                 &Stroke::new(1.0),
                 Affine::default(),
                 &Brush::Solid(cursor_color),
@@ -480,7 +480,7 @@ impl Widget for SecretInput {
                 &Line::new(
                     (cursor_x as f64, layout_node.layout.location.y as f64 + 4.0),
                     (cursor_x as f64, layout_node.layout.location.y as f64 + layout_node.layout.size.height as f64 - 4.0),
-                ),
+                ).to_path(0.1),
             );
         }
 
@@ -498,12 +498,12 @@ impl Widget for SecretInput {
             Color::from_rgb8(250, 250, 250)
         };
         
-        scene.fill(
+        graphics.fill(
             Fill::NonZero,
             Affine::default(),
             &Brush::Solid(toggle_bg_color),
             None,
-            &RoundedRect::from_rect(toggle_bounds, RoundedRectRadii::from_single_radius(4.0)),
+            &RoundedRect::from_rect(toggle_bounds, RoundedRectRadii::from_single_radius(4.0)).to_path(0.1),
         );
 
         // Draw eye icon (simplified)
@@ -516,29 +516,29 @@ impl Widget for SecretInput {
         // Draw eye outline (circle)
         let eye_radius = 6.0;
         let eye_circle = Circle::new((toggle_center_x, toggle_center_y), eye_radius);
-        scene.stroke(
+        graphics.stroke(
             &Stroke::new(1.5),
             Affine::default(),
             &Brush::Solid(eye_color),
             None,
-            &eye_circle,
+            &eye_circle.to_path(0.1),
         );
 
         // Draw eye pupil (inner circle)
         if self.show_password {
             let pupil_radius = 2.5;
             let pupil_circle = Circle::new((toggle_center_x, toggle_center_y), pupil_radius);
-            scene.fill(
+            graphics.fill(
                 Fill::NonZero,
                 Affine::default(),
                 &Brush::Solid(eye_color),
                 None,
-                &pupil_circle,
+                &pupil_circle.to_path(0.1),
             );
         } else {
             // Draw slash through eye when hidden
             let slash_length = 8.0;
-            scene.stroke(
+            graphics.stroke(
                 &Stroke::new(1.5),
                 Affine::default(),
                 &Brush::Solid(eye_color),
@@ -546,7 +546,7 @@ impl Widget for SecretInput {
                 &Line::new(
                     (toggle_center_x - slash_length / 2.0, toggle_center_y - slash_length / 2.0),
                     (toggle_center_x + slash_length / 2.0, toggle_center_y + slash_length / 2.0),
-                ),
+                ).to_path(0.1),
             );
         }
     }

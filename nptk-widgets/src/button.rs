@@ -6,7 +6,7 @@ use nptk_core::layout;
 use nptk_core::layout::{LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vg::kurbo::{Affine, Vec2};
-use nptk_core::vg::Scene;
+use nptk_core::vgi::{Graphics, vello_vg::VelloGraphics};
 use nptk_core::widget::{BoxedWidget, Widget, WidgetChildExt, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton, KeyCode, PhysicalKey};
 use nptk_theme::id::WidgetId;
@@ -84,7 +84,7 @@ impl WidgetLayoutExt for Button {
 impl Widget for Button {
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
@@ -105,24 +105,25 @@ impl Widget for Button {
             is_focused,
             self.disabled,
             layout_node,
-            scene,
+            graphics,
         );
         
         // Render child widget
         {
             theme.globals_mut().invert_text_color = true;
 
-            let mut child_scene = Scene::new();
+            let mut child_scene = nptk_core::vg::Scene::new();
+            let mut child_graphics = VelloGraphics::new(&mut child_scene);
 
             self.child.render(
-                &mut child_scene,
+                &mut child_graphics,
                 theme,
                 &layout_node.children[0],
                 info,
                 context,
             );
 
-            scene.append(
+            graphics.append(
                 &child_scene,
                 Some(Affine::translate(Vec2::new(
                     layout_node.layout.location.x as f64,

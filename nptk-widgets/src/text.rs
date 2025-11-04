@@ -4,7 +4,7 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vg::peniko::{Brush, Color};
-use nptk_core::vg::{Scene};
+use nptk_core::vgi::Graphics;
 use nptk_core::text_render::TextRenderContext;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
@@ -83,7 +83,7 @@ impl WidgetLayoutExt for Text {
 impl Widget for Text {
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
@@ -112,7 +112,7 @@ impl Widget for Text {
         
         self.text_render_context.render_text(
             &mut info.font_context,
-            scene,
+            graphics,
             text.as_ref(),
             None, // No specific font, use default
             font_size,

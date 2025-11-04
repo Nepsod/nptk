@@ -1,7 +1,7 @@
 use crate::icon::{ImageRendering, ShapeRendering, SvgError, TextRendering};
-use nptk_core::vg::Scene;
 use vello_svg::usvg;
 use vello_svg::usvg::Options;
+use nptk_core::vg::Scene;
 
 /// An SVG icon rendered as a Vello [Scene].
 pub struct SvgIcon(Scene);

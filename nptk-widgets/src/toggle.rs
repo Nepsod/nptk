@@ -4,9 +4,9 @@ use nptk_core::app::update::Update;
 use nptk_core::layout;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentageAuto, StyleNode};
 use nptk_core::signal::MaybeSignal;
-use nptk_core::vg::kurbo::{Affine, Rect, Stroke};
+use nptk_core::vg::kurbo::{Affine, Rect, Shape, Stroke};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
-use nptk_core::vg::Scene;
+use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
@@ -99,7 +99,7 @@ impl WidgetLayoutExt for Toggle {
 impl Widget for Toggle {
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         _: &mut AppInfo,
@@ -159,21 +159,21 @@ impl Widget for Toggle {
         };
 
         // Draw track background (full width) - rectangular shape
-        scene.fill(
+        graphics.fill(
             Fill::NonZero,
             Affine::default(),
             &Brush::Solid(track_color),
             None,
-            &track_rect,
+            &track_rect.to_path(0.1),
         );
         
         // Draw track border
-        scene.stroke(
+        graphics.stroke(
             &Stroke::new(2.0),
             Affine::default(),
             &Brush::Solid(track_border_color),
             None,
-            &track_rect,
+            &track_rect.to_path(0.1),
         );
 
         // Draw thumb - thin rectangular shape (tall and narrow), positioned near edges
@@ -198,21 +198,21 @@ impl Widget for Toggle {
         );
         
         // Draw thumb fill (rectangular/square)
-        scene.fill(
+        graphics.fill(
             Fill::NonZero,
             Affine::default(),
             &Brush::Solid(thumb_color),
             None,
-            &thumb_rect,
+            &thumb_rect.to_path(0.1),
         );
         
         // Draw subtle gray border on thumb (the "smaller bar" effect)
-        scene.stroke(
+        graphics.stroke(
             &Stroke::new(2.0),
             Affine::default(),
             &Brush::Solid(thumb_border_color),
             None,
-            &thumb_rect,
+            &thumb_rect.to_path(0.1),
         );
     }
 

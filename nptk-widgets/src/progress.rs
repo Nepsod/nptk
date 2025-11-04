@@ -4,7 +4,7 @@ use nptk_core::app::update::Update;
 use nptk_core::layout;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentageAuto, StyleNode};
 use nptk_core::signal::MaybeSignal;
-use nptk_core::vg::Scene;
+use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
@@ -77,7 +77,7 @@ impl WidgetLayoutExt for Progress {
 impl Widget for Progress {
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout: &LayoutNode,
         _info: &mut AppInfo,
@@ -91,7 +91,7 @@ impl Widget for Progress {
             *self.indeterminate.get(),
             self.animation_time,
             layout,
-            scene,
+            graphics,
         );
     }
 

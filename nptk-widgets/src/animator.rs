@@ -2,7 +2,7 @@ use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, StyleNode};
-use nptk_core::vg::Scene;
+use nptk_core::vgi::Graphics;
 use nptk_core::widget::Widget;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
@@ -34,13 +34,13 @@ impl<W: Widget, A: Fn(&mut W, f32) -> Update> Animator<W, A> {
 impl<W: Widget, A: Fn(&mut W, f32) -> Update> Widget for Animator<W, A> {
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) {
-        self.widget.render(scene, theme, layout_node, info, context);
+        self.widget.render(graphics, theme, layout_node, info, context);
     }
 
     fn layout_style(&self) -> StyleNode {
@@ -65,3 +65,4 @@ impl<W: Widget, A: Fn(&mut W, f32) -> Update> Widget for Animator<W, A> {
         WidgetId::new("nptk-widgets", "Animator")
     }
 }
+

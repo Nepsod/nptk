@@ -3,9 +3,9 @@ use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::{MaybeSignal, Signal, state::StateSignal};
-use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Stroke, Point};
-use nptk_core::vg::peniko::{Fill, Color};
-use nptk_core::vg::Scene;
+use nptk_core::vg::kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
+use nptk_core::vg::peniko::{Brush, Color, Fill};
+use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
@@ -267,7 +267,7 @@ impl TabsContainer {
 
 
     /// Render text on a tab
-    fn render_text(&self, _scene: &mut Scene, _text: &str, _x: f64, _y: f64, _color: Color, _info: &AppInfo) {
+    fn render_text(&self, _graphics: &mut dyn Graphics, _text: &str, _x: f64, _y: f64, _color: Color, _info: &AppInfo) {
         let _font_size = 14.0;
         // Use approximate character width for text measurement
         // TODO: Implement proper text measurement when needed
@@ -285,7 +285,7 @@ impl TabsContainer {
 impl Widget for TabsContainer {
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout: &LayoutNode,
         _info: &mut AppInfo,
@@ -300,12 +300,12 @@ impl Widget for TabsContainer {
         );
 
         if let Some(bg_color) = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackground) {
-            scene.fill(
+            graphics.fill(
                 Fill::NonZero,
                 Affine::IDENTITY,
-                &bg_color,
+                &Brush::Solid(bg_color),
                 None,
-                &container_bounds,
+                &container_bounds.to_path(0.1),
             );
         }
 
@@ -314,24 +314,24 @@ impl Widget for TabsContainer {
         let tab_bar_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::TabBarBackground)
             .unwrap_or_else(|| Color::from_rgb8(255, 255, 255));
 
-        scene.fill(
+        graphics.fill(
             Fill::NonZero,
             Affine::IDENTITY,
-            &tab_bar_color,
+            &Brush::Solid(tab_bar_color),
             None,
-            &tab_bar_bounds,
+            &tab_bar_bounds.to_path(0.1),
         );
 
         // Draw tab bar border
         let border_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorder)
             .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)); // Default border color
         
-        scene.stroke(
+        graphics.stroke(
             &Stroke::new(1.0),
             Affine::IDENTITY,
-            &border_color,
+            &Brush::Solid(border_color),
             None,
-            &tab_bar_bounds,
+            &tab_bar_bounds.to_path(0.1),
         );
 
         // Draw tabs
@@ -376,24 +376,24 @@ impl Widget for TabsContainer {
                 ),
             };
 
-            scene.fill(
+            graphics.fill(
                 Fill::NonZero,
                 Affine::IDENTITY,
-                &tab_color,
+                &Brush::Solid(tab_color),
                 None,
-                &tab_rounded,
+                &tab_rounded.to_path(0.1),
             );
 
             // Tab border with subtle styling
             let border_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorder)
                 .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)); // Default border color
             
-            scene.stroke(
+            graphics.stroke(
                 &Stroke::new(if is_active { 1.5 } else { 1.0 }),
                 Affine::IDENTITY,
-                &border_color,
+                &Brush::Solid(border_color),
                 None,
-                &tab_rounded,
+                &tab_rounded.to_path(0.1),
             );
 
             // Tab text with proper rendering and theme colors
@@ -409,7 +409,7 @@ impl Widget for TabsContainer {
             let text_x = tab_bounds.x0 + 10.0; // Left padding
             let text_y = tab_bounds.y0 + (tab_bounds.height() - 14.0) / 2.0; // Center vertically
             
-            self.render_text(scene, &tab.label, text_x, text_y, text_color, _info);
+            self.render_text(graphics, &tab.label, text_x, text_y, text_color, _info);
             
             // Close button if available
             if tab.on_close.is_some() {
@@ -428,17 +428,17 @@ impl Widget for TabsContainer {
                 let close_size = 6.0;
                 
                 // Draw the X lines
-                scene.stroke(
+                graphics.stroke(
                     &Stroke::new(2.0),
                     Affine::IDENTITY,
-                    &close_color,
+                    &Brush::Solid(close_color),
                     None,
                     &Rect::new(
                         close_center_x - close_size / 2.0,
                         close_center_y - close_size / 2.0,
                         close_center_x + close_size / 2.0,
                         close_center_y + close_size / 2.0,
-                    ),
+                    ).to_path(0.1),
                 );
             }
         }
@@ -453,30 +453,30 @@ impl Widget for TabsContainer {
             let content_bg_color = theme.get_property(widget_id, &nptk_theme::properties::ThemeProperty::ContentBackground)
                 .unwrap_or_else(|| Color::from_rgb8(255, 255, 255));
 
-            scene.fill(
+            graphics.fill(
                 Fill::NonZero,
                 Affine::IDENTITY,
-                &content_bg_color,
+                &Brush::Solid(content_bg_color),
                 None,
-                &content_bounds,
+                &content_bounds.to_path(0.1),
             );
 
             // Draw content area border
-            scene.stroke(
+            graphics.stroke(
                 &Stroke::new(1.0),
                 Affine::IDENTITY,
-                &border_color,
+                &Brush::Solid(border_color),
                 None,
-                &content_bounds,
+                &content_bounds.to_path(0.1),
             );
 
             // Render content directly in the content area using child layout if available
             if !layout.children.is_empty() {
                 // Use the first child's layout (which should be positioned correctly)
-                active_tab.content.render(scene, theme, &layout.children[0], _info, _context);
+                active_tab.content.render(graphics, theme, &layout.children[0], _info, _context);
             } else {
                 // Fallback: just render with original layout (content might overlap tabs)
-                active_tab.content.render(scene, theme, layout, _info, _context);
+                active_tab.content.render(graphics, theme, layout, _info, _context);
             }
         }
     }

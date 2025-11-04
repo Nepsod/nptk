@@ -5,9 +5,9 @@ use nptk_core::app::update::Update;
 use nptk_core::layout;
 use nptk_core::layout::{LayoutNode, LayoutStyle, LengthPercentage, Dimension, StyleNode, Layout};
 use nptk_core::signal::{MaybeSignal, Signal, state::StateSignal};
-use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Line, Point, Stroke};
+use nptk_core::vg::kurbo::{Affine, Line, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
 use nptk_core::vg::peniko::{Color, Fill, Brush};
-use nptk_core::vg::Scene;
+use nptk_core::vgi::Graphics;
 use nptk_core::text_render::TextRenderContext;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton, KeyCode, PhysicalKey};
@@ -209,7 +209,7 @@ impl MenuBar {
         )
     }
 
-    fn render_text(text_render_context: &mut TextRenderContext, font_cx: &mut nptk_core::app::font_ctx::FontContext, scene: &mut Scene, text: &str, x: f64, y: f64, color: Color) {
+    fn render_text(text_render_context: &mut TextRenderContext, font_cx: &mut nptk_core::app::font_ctx::FontContext, graphics: &mut dyn Graphics, text: &str, x: f64, y: f64, color: Color) {
         let font_size = 14.0;
         
         if text.is_empty() {
@@ -220,7 +220,7 @@ impl MenuBar {
         
         text_render_context.render_text(
             font_cx,
-            scene,
+            graphics,
             text,
             None, // No specific font, use default
             font_size,
@@ -242,7 +242,7 @@ impl Widget for MenuBar {
         WidgetId::new("nptk-widgets", "MenuBar")
     }
 
-    fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout: &LayoutNode, info: &mut AppInfo, _context: AppContext) -> () {
+    fn render(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme, layout: &LayoutNode, info: &mut AppInfo, _context: AppContext) -> () {
         // Don't render if not visible
         if !self.is_visible() {
             return;
@@ -275,11 +275,11 @@ impl Widget for MenuBar {
             (layout.layout.location.y + layout.layout.size.height) as f64,
         );
 
-        scene.fill(Fill::NonZero, Affine::IDENTITY, bg_color, None, &menu_rect);
+        graphics.fill(Fill::NonZero, Affine::IDENTITY, &Brush::Solid(bg_color), None, &menu_rect.to_path(0.1));
 
         // Draw border
         let stroke = Stroke::new(1.0);
-        scene.stroke(&stroke, Affine::IDENTITY, border_color, None, &menu_rect);
+        graphics.stroke(&stroke, Affine::IDENTITY, &Brush::Solid(border_color), None, &menu_rect.to_path(0.1));
 
         // Draw menu items
         for (i, item) in self.items.iter().enumerate() {
@@ -305,13 +305,13 @@ impl Widget for MenuBar {
                     item_bounds.y1,
                     RoundedRectRadii::new(4.0, 4.0, 4.0, 4.0),
                 );
-                scene.fill(Fill::NonZero, Affine::IDENTITY, item_bg_color, None, &item_rounded);
+                graphics.fill(Fill::NonZero, Affine::IDENTITY, &Brush::Solid(item_bg_color), None, &item_rounded.to_path(0.1));
             }
 
             // Draw item text centered in the item bounds
             let text_x = item_bounds.x0 + 6.0; // Small left padding
             let text_y = item_bounds.y0 + 2.0; // Adjust for proper baseline
-            Self::render_text(&mut self.text_render_context, &mut info.font_context, scene, &item.label, text_x, text_y, item_text_color);
+            Self::render_text(&mut self.text_render_context, &mut info.font_context, graphics, &item.label, text_x, text_y, item_text_color);
 
             // Draw submenu indicator below the text if item has submenu
             if item.has_submenu() {
@@ -323,25 +323,25 @@ impl Widget for MenuBar {
                 let arrow_stroke = Stroke::new(1.0);
                 
                 // Simple down arrow (V shape)
-                scene.stroke(
+                graphics.stroke(
                     &arrow_stroke,
                     Affine::IDENTITY,
-                    item_text_color,
+                    &Brush::Solid(item_text_color),
                     None,
                     &Line::new(
                         Point::new(arrow_x - arrow_size, arrow_y - arrow_size),
                         Point::new(arrow_x, arrow_y),
-                    ),
+                    ).to_path(0.1),
                 );
-                scene.stroke(
+                graphics.stroke(
                     &arrow_stroke,
                     Affine::IDENTITY,
-                    item_text_color,
+                    &Brush::Solid(item_text_color),
                     None,
                     &Line::new(
                         Point::new(arrow_x, arrow_y),
                         Point::new(arrow_x + arrow_size, arrow_y - arrow_size),
-                    ),
+                    ).to_path(0.1),
                 );
             }
         }
@@ -349,7 +349,7 @@ impl Widget for MenuBar {
         // Popup rendering moved to render_postfix for proper z-ordering
     }
 
-    fn render_postfix(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout: &LayoutNode, info: &mut AppInfo, _context: AppContext) {
+    fn render_postfix(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme, layout: &LayoutNode, info: &mut AppInfo, _context: AppContext) {
         // Don't render popup if menu bar not visible
         if !self.is_visible() {
             return;
@@ -377,7 +377,7 @@ impl Widget for MenuBar {
                 popup_layout.layout.size.height = popup_height as f32;
                 
                 // Render the popup
-                popup.render(scene, theme, &popup_layout, info, _context);
+                popup.render(graphics, theme, &popup_layout, info, _context);
             }
         }
     }

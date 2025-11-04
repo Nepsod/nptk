@@ -3,12 +3,12 @@ use crate::app::info::AppInfo;
 use crate::app::update::Update;
 use crate::layout::{LayoutNode, LayoutStyle, StyleNode};
 use crate::signal::MaybeSignal;
+use crate::vgi::Graphics;
 use crate::widget::{BoxedWidget, Widget, WidgetChildExt, WidgetChildrenExt, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
-use vello::Scene;
 
 /// A trait for creating a [Widget] from simple functions.
 ///
@@ -51,14 +51,14 @@ impl<C: Component> Composed<C> {
 impl<C: Component> Widget for Composed<C> {
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) {
         if let Some(widget) = &mut self.widget {
-            widget.render(scene, theme, layout_node, info, context)
+            widget.render(graphics, theme, layout_node, info, context)
         } else {
             self.widget = Some(Box::new(self.component.build(context.clone())));
         }

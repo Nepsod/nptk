@@ -2,7 +2,7 @@ use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::vg::kurbo::{Affine, Vec2};
-use nptk_core::vg::Scene;
+use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
@@ -48,7 +48,7 @@ impl Icon {
 impl Widget for Icon {
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         _: &mut dyn Theme,
         layout_node: &LayoutNode,
         _: &mut AppInfo,
@@ -66,7 +66,7 @@ impl Widget for Icon {
             layout_node.layout.location.y as f64,
         ));
 
-        scene.append(icon.scene(), Some(affine));
+        graphics.append(&icon.scene(), Some(affine));
     }
 
     fn layout_style(&self) -> StyleNode {
@@ -90,3 +90,4 @@ impl WidgetLayoutExt for Icon {
         self.layout_style = layout_style.into();
     }
 }
+

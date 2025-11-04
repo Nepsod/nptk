@@ -4,9 +4,9 @@ use nptk_core::app::update::Update;
 use nptk_core::layout;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentageAuto, StyleNode};
 use nptk_core::signal::MaybeSignal;
-use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Stroke, Line, Point};
+use nptk_core::vg::kurbo::{Affine, Line, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
 use nptk_core::vg::peniko::{Brush, Fill, Color};
-use nptk_core::vg::Scene;
+use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
@@ -251,7 +251,7 @@ impl WidgetLayoutExt for Checkbox {
 impl Widget for Checkbox {
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         _: &mut AppInfo,
@@ -305,12 +305,12 @@ impl Widget for Checkbox {
         // Draw border with normal style (colors already grayed out if locked)
         let border_width = 2.0;
         
-        scene.stroke(
+        graphics.stroke(
             &Stroke::new(border_width),
             Affine::default(),
             &Brush::Solid(border_color),
             None,
-            &rounded_rect,
+            &rounded_rect.to_path(0.1),
         );
 
         // Draw fill and symbols based on state
@@ -324,7 +324,7 @@ impl Widget for Checkbox {
                     checkbox_rect.y1 - 2.0,
                 );
                 let inner_rounded = RoundedRect::from_rect(inner_rect, RoundedRectRadii::from_single_radius(2.0));
-                scene.fill(Fill::NonZero, Affine::default(), &Brush::Solid(fill_color.unwrap()), None, &inner_rounded);
+                graphics.fill(Fill::NonZero, Affine::default(), &Brush::Solid(fill_color.unwrap()), None, &inner_rounded.to_path(0.1));
                 
                 // Draw checkmark
                 let center_x = (checkbox_rect.x0 + checkbox_rect.x1) / 2.0;
@@ -342,8 +342,8 @@ impl Widget for Checkbox {
                     Point::new(center_x + size * 0.6, center_y - size * 0.4),
                 );
                 
-                scene.stroke(&Stroke::new(2.5), Affine::default(), &Brush::Solid(symbol_color), None, &line1);
-                scene.stroke(&Stroke::new(2.5), Affine::default(), &Brush::Solid(symbol_color), None, &line2);
+                graphics.stroke(&Stroke::new(2.5), Affine::default(), &Brush::Solid(symbol_color), None, &line1.to_path(0.1));
+                graphics.stroke(&Stroke::new(2.5), Affine::default(), &Brush::Solid(symbol_color), None, &line2.to_path(0.1));
             }
             CheckboxState::Indeterminate => {
                 // Draw filled background
@@ -354,7 +354,7 @@ impl Widget for Checkbox {
                     checkbox_rect.y1 - 2.0,
                 );
                 let inner_rounded = RoundedRect::from_rect(inner_rect, RoundedRectRadii::from_single_radius(2.0));
-                scene.fill(Fill::NonZero, Affine::default(), &Brush::Solid(fill_color.unwrap()), None, &inner_rounded);
+                graphics.fill(Fill::NonZero, Affine::default(), &Brush::Solid(fill_color.unwrap()), None, &inner_rounded.to_path(0.1));
                 
                 // Draw horizontal line (minus sign) - only for indeterminate state
                 let center_x = (checkbox_rect.x0 + checkbox_rect.x1) / 2.0;
@@ -366,7 +366,7 @@ impl Widget for Checkbox {
                     Point::new(center_x + line_width / 2.0, center_y),
                 );
                 
-                scene.stroke(&Stroke::new(2.5), Affine::default(), &Brush::Solid(symbol_color), None, &line);
+                graphics.stroke(&Stroke::new(2.5), Affine::default(), &Brush::Solid(symbol_color), None, &line.to_path(0.1));
             }
             CheckboxState::Unchecked => {
                 // No fill, no symbols for unchecked state - just the border

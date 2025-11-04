@@ -3,9 +3,9 @@ use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, LayoutStyle, Dimension, StyleNode, LengthPercentage};
 use nptk_core::signal::{MaybeSignal, Signal, state::StateSignal};
-use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Stroke, Point, BezPath};
-use nptk_core::vg::peniko::{Fill, Color, Mix};
-use nptk_core::vg::Scene;
+use nptk_core::vg::kurbo::{Affine, BezPath, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
+use nptk_core::vg::peniko::{Brush, Color, Fill, Mix};
+use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton, MouseScrollDelta};
 use nptk_theme::id::WidgetId;
@@ -455,11 +455,11 @@ impl ScrollContainer {
         )
     }
 
-    fn render_scrollbar(&self, scene: &mut Scene, _theme: Option<()>, scrollbar_bounds: Rect, thumb_bounds: Rect, _is_vertical: bool, is_hovered: bool, is_pressed: bool) {
+    fn render_scrollbar(&self, graphics: &mut dyn Graphics, _theme: Option<()>, scrollbar_bounds: Rect, thumb_bounds: Rect, _is_vertical: bool, is_hovered: bool, is_pressed: bool) {
         // Draw scrollbar track
         let track_color = Color::from_rgb8(230, 230, 230);
 
-        scene.fill(Fill::NonZero, Affine::IDENTITY, track_color, None, &scrollbar_bounds);
+        graphics.fill(Fill::NonZero, Affine::IDENTITY, &Brush::Solid(track_color), None, &scrollbar_bounds.to_path(0.1));
 
         // Draw scrollbar thumb
         let thumb_color = if is_pressed {
@@ -478,10 +478,10 @@ impl ScrollContainer {
             RoundedRectRadii::new(4.0, 4.0, 4.0, 4.0),
         );
 
-        scene.fill(Fill::NonZero, Affine::IDENTITY, thumb_color, None, &thumb_rounded);
+        graphics.fill(Fill::NonZero, Affine::   IDENTITY, &Brush::Solid(thumb_color), None, &thumb_rounded.to_path(0.1));
     }
 
-    fn render_scroll_button(&self, scene: &mut Scene, _theme: Option<()>, bounds: Rect, direction: ArrowDirection, is_hovered: bool, is_pressed: bool) {
+    fn render_scroll_button(&self, graphics: &mut dyn Graphics, _theme: Option<()>, bounds: Rect, direction: ArrowDirection, is_hovered: bool, is_pressed: bool) {
         let bg_color = if is_pressed {
             Color::from_rgb8(120, 120, 120)
         } else if is_hovered {
@@ -489,7 +489,7 @@ impl ScrollContainer {
         } else {
             Color::from_rgb8(180, 180, 180)
         };
-        scene.fill(Fill::NonZero, Affine::IDENTITY, bg_color, None, &bounds);
+        graphics.fill(Fill::NonZero, Affine::IDENTITY, &Brush::Solid(bg_color), None, &bounds.to_path(0.1));
     
         let arrow_color = Color::BLACK;
         let center = bounds.center();
@@ -523,7 +523,7 @@ impl ScrollContainer {
             }
         }
         
-        scene.fill(Fill::NonZero, Affine::IDENTITY, arrow_color, None, &path);
+        graphics.fill(Fill::NonZero, Affine::IDENTITY, &Brush::Solid(arrow_color), None, &path.to_path(0.1));
     }
 
     fn update_visible_range(&mut self) {
@@ -553,7 +553,7 @@ impl Widget for ScrollContainer {
         self.widget_id()
     }
 
-    fn render(&mut self, scene: &mut Scene, theme: &mut dyn Theme, layout: &LayoutNode, _info: &mut AppInfo, context: AppContext) -> () {
+    fn render(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme, layout: &LayoutNode, _info: &mut AppInfo, context: AppContext) -> () {
         // Update viewport size
         self.viewport_size = Vector2::new(
             layout.layout.size.width - if self.needs_vertical_scrollbar() { self.scrollbar_width } else { 0.0 },
@@ -590,7 +590,7 @@ impl Widget for ScrollContainer {
         let border_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorder)
             .unwrap_or_else(|| Color::from_rgb8(200, 200, 200));
         let stroke = Stroke::new(1.0);
-        scene.stroke(&stroke, Affine::IDENTITY, border_color, None, &container_bounds);
+        graphics.stroke(&stroke, Affine::IDENTITY, &Brush::Solid(border_color), None, &container_bounds.to_path(0.1));
         
         // Render child content using layout-based scrolling
         if let Some(child) = &mut self.child {
@@ -602,7 +602,7 @@ impl Widget for ScrollContainer {
             };
 
             // Apply clipping to content area
-            scene.push_layer(Mix::Clip, 1.0, Affine::IDENTITY, &content_rect);
+            graphics.push_layer(Mix::Clip, 1.0, Affine::IDENTITY, &content_rect.to_path(0.1));
             
             // Create a temporary, scrolled layout node to pass to the child.
             // This is much more performant than a full re-layout.
@@ -610,10 +610,10 @@ impl Widget for ScrollContainer {
             scrolled_layout.layout.location.x -= self.scroll_offset.get().x;
             scrolled_layout.layout.location.y -= self.scroll_offset.get().y;
 
-            child.render(scene, theme, &scrolled_layout, _info, context);
+            child.render(graphics, theme, &scrolled_layout, _info, context);
 
             // Pop the clipping layer
-            scene.pop_layer();
+            graphics.pop_layer();
         }
 
         // Update visible range for virtual scrolling
@@ -623,26 +623,26 @@ impl Widget for ScrollContainer {
         if self.needs_vertical_scrollbar() {
             let scrollbar_bounds = self.get_vertical_scrollbar_bounds(layout);
             let thumb_bounds = self.get_vertical_thumb_bounds(scrollbar_bounds);
-            self.render_scrollbar(scene, None, scrollbar_bounds, thumb_bounds, true, self.vertical_scrollbar_hovered, self.dragging_vertical);
+            self.render_scrollbar(graphics, None, scrollbar_bounds, thumb_bounds, true, self.vertical_scrollbar_hovered, self.dragging_vertical);
 
             if self.scrollbar_buttons == ScrollbarButtons::Always {
                 let up_button_bounds = self.get_vertical_up_button_bounds(scrollbar_bounds);
                 let down_button_bounds = self.get_vertical_down_button_bounds(scrollbar_bounds);
-                self.render_scroll_button(scene, None, up_button_bounds, ArrowDirection::Up, self.up_button_hovered, self.button_held == Some(ArrowDirection::Up));
-                self.render_scroll_button(scene, None, down_button_bounds, ArrowDirection::Down, self.down_button_hovered, self.button_held == Some(ArrowDirection::Down));
+                self.render_scroll_button(graphics, None, up_button_bounds, ArrowDirection::Up, self.up_button_hovered, self.button_held == Some(ArrowDirection::Up));
+                self.render_scroll_button(graphics, None, down_button_bounds, ArrowDirection::Down, self.down_button_hovered, self.button_held == Some(ArrowDirection::Down));
             }
         }
 
         if self.needs_horizontal_scrollbar() {
             let scrollbar_bounds = self.get_horizontal_scrollbar_bounds(layout);
             let thumb_bounds = self.get_horizontal_thumb_bounds(scrollbar_bounds);
-            self.render_scrollbar(scene, None, scrollbar_bounds, thumb_bounds, false, self.horizontal_scrollbar_hovered, self.dragging_horizontal);
+            self.render_scrollbar(graphics, None, scrollbar_bounds, thumb_bounds, false, self.horizontal_scrollbar_hovered, self.dragging_horizontal);
 
             if self.scrollbar_buttons == ScrollbarButtons::Always {
                 let left_button_bounds = self.get_horizontal_left_button_bounds(scrollbar_bounds);
                 let right_button_bounds = self.get_horizontal_right_button_bounds(scrollbar_bounds);
-                self.render_scroll_button(scene, None, left_button_bounds, ArrowDirection::Left, self.left_button_hovered, self.button_held == Some(ArrowDirection::Left));
-                self.render_scroll_button(scene, None, right_button_bounds, ArrowDirection::Right, self.right_button_hovered, self.button_held == Some(ArrowDirection::Right));
+                self.render_scroll_button(graphics, None, left_button_bounds, ArrowDirection::Left, self.left_button_hovered, self.button_held == Some(ArrowDirection::Left));
+                self.render_scroll_button(graphics, None, right_button_bounds, ArrowDirection::Right, self.right_button_hovered, self.button_held == Some(ArrowDirection::Right));
             }
         }
     }

@@ -10,6 +10,7 @@ use taffy::{
 use vello::util::{RenderContext, RenderSurface};
 use vello::{AaConfig, AaSupport, RenderParams, Scene};
 use crate::renderer::{UnifiedRenderer, RendererOptions as UnifiedRendererOptions};
+use crate::vgi::vello_vg::VelloGraphics;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
@@ -263,8 +264,9 @@ where
 
             log::debug!("Rendering root widget...");
             let widget_render_start = Instant::now();
+            let mut graphics = VelloGraphics::new(&mut self.scene);
             self.widget.as_mut().unwrap().render(
-                &mut self.scene,
+                &mut graphics,
                 &mut self.config.theme,
                 &layout_node,
                 &mut self.info,
@@ -276,8 +278,9 @@ where
             log::debug!("Rendering postfix content...");
             let postfix_render_start = Instant::now();
             let context = self.context();
+            let mut graphics = VelloGraphics::new(&mut self.scene);
             self.widget.as_mut().unwrap().render_postfix(
-                &mut self.scene,
+                &mut graphics,
                 &mut self.config.theme,
                 &layout_node,
                 &mut self.info,

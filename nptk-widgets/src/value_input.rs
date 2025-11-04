@@ -8,9 +8,10 @@ use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::{MaybeSignal, Signal, state::StateSignal};
 use nptk_core::text_input::TextBuffer;
 use nptk_core::text_render::TextRenderContext;
-use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Stroke};
+use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vg::Scene;
+use nptk_core::vgi::Graphics;
 use std::ops::Deref;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, KeyCode, PhysicalKey, MouseButton, Ime};
@@ -369,7 +370,7 @@ impl WidgetLayoutExt for ValueInput {
 impl Widget for ValueInput {
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
@@ -417,21 +418,21 @@ impl Widget for ValueInput {
         );
 
         // Draw background
-        scene.fill(
+        graphics.fill(
             Fill::NonZero,
             Affine::default(),
             &Brush::Solid(background_color),
             None,
-            &input_rect,
+            &input_rect.to_path(0.1),
         );
 
         // Draw border
-        scene.stroke(
+        graphics.stroke(
             &Stroke::new(if is_focused { 2.0 } else { 1.0 }),
             Affine::default(),
             &Brush::Solid(border_color),
             None,
-            &input_rect,
+            &input_rect.to_path(0.1),
         );
 
         // Render text content or placeholder
@@ -464,7 +465,7 @@ impl Widget for ValueInput {
             // Only draw selection if there's actually a range (start != end)
             if selection_range.start != selection_range.end {
                 // Draw selection background
-                scene.fill(
+                graphics.fill(
                     Fill::NonZero,
                     Affine::default(),
                     &Brush::Solid(selection_color),
@@ -474,7 +475,7 @@ impl Widget for ValueInput {
                         layout_node.layout.location.y as f64 + 4.0,
                         selection_end_x as f64,
                         layout_node.layout.location.y as f64 + layout_node.layout.size.height as f64 - 4.0,
-                    ),
+                    ).to_path(0.1),
                 );
             }
         }
@@ -496,7 +497,7 @@ impl Widget for ValueInput {
             
             self.text_render_context.render_text(
                 &mut info.font_context,
-                scene,
+                graphics,
                 &display_text,
                 None, // No specific font, use default
                 font_size, // Use the font_size variable
@@ -527,7 +528,7 @@ impl Widget for ValueInput {
                 let cursor_y = layout_node.layout.location.y + 4.0;
                 let cursor_height = layout_node.layout.size.height - 8.0;
 
-                scene.stroke(
+                graphics.stroke(
                     &Stroke::new(1.0),
                     Affine::default(),
                     &Brush::Solid(cursor_color),
@@ -537,7 +538,7 @@ impl Widget for ValueInput {
                         cursor_y as f64,
                         cursor_x as f64,
                         (cursor_y + cursor_height) as f64,
-                    ),
+                    ).to_path(0.1),
                 );
             }
         }

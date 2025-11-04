@@ -2,7 +2,8 @@ use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
-use nptk_core::vg::Scene;
+use nptk_core::vgi::Graphics;
+use nptk_core::vgi::vello_vg::VelloGraphics;
 use nptk_core::widget::Widget;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
@@ -14,19 +15,19 @@ use nptk_theme::theme::Theme;
 /// ### Theming
 /// The canvas cannot be themed, since it does not draw something on itself.
 pub struct Canvas {
-    painter: Box<dyn FnMut(&mut Scene, &AppInfo)>,
+    painter: Box<dyn FnMut(&mut dyn Graphics, &AppInfo)>,
 }
 
 impl Canvas {
     /// Create a new Canvas widget from a painter function.
-    pub fn new(painter: impl FnMut(&mut Scene, &AppInfo) + 'static) -> Self {
+    pub fn new(painter: impl FnMut(&mut dyn Graphics, &AppInfo) + 'static) -> Self {
         Self {
             painter: Box::new(painter),
         }
     }
 
     /// Set a painter function and return itself.
-    pub fn with_painter(mut self, painter: impl FnMut(&mut Scene, &AppInfo) + 'static) -> Self {
+    pub fn with_painter(mut self, painter: impl FnMut(&mut dyn Graphics, &AppInfo) + 'static) -> Self {
         self.painter = Box::new(painter);
         self
     }
@@ -35,17 +36,17 @@ impl Canvas {
 impl Widget for Canvas {
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         _: &mut dyn Theme,
         _: &LayoutNode,
         info: &mut AppInfo,
         _: AppContext,
     ) {
-        let mut canvas = Scene::new();
+        let mut canvas = nptk_core::vg::Scene::new();
+        let mut child_graphics = VelloGraphics::new(&mut canvas);
+        (self.painter)(&mut child_graphics, info);
 
-        (self.painter)(&mut canvas, info);
-
-        scene.append(&canvas, None);
+        graphics.append(&canvas, None);
     }
 
     fn layout_style(&self) -> StyleNode {
@@ -63,3 +64,4 @@ impl Widget for Canvas {
         WidgetId::new("nptk-widgets", "Canvas")
     }
 }
+
