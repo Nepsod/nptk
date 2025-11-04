@@ -1,10 +1,34 @@
 //! Vector Graphics Interface abstraction.
 //!
-//! This module provides an abstraction over rendering backends, allowing widgets
-//! to be decoupled from the specific rendering implementation (e.g., Vello).
+//! This module provides a complete abstraction layer for graphics backends,
+//! allowing widgets to be decoupled from specific rendering implementations.
+//!
+//! ## Structure
+//!
+//! - **[Graphics]**: Trait for widget-level drawing operations (backward compatible)
+//! - **[Scene]**: Unified scene abstraction for different backends
+//! - **[Renderer]**: Unified renderer abstraction for different backends
+//! - **[Backend]**: Backend selection and configuration
+//! - **[RendererOptions]**: Configuration for creating renderers
+//!
+//! ## Usage
+//!
+//! Widgets use the [Graphics] trait for drawing. The renderer and scene management
+//! is handled by the application framework, allowing widgets to remain backend-agnostic.
 
 use vello::kurbo::{Affine, BezPath, Shape, Stroke};
 use vello::peniko::{Brush, Fill};
+
+// Re-export unified abstractions
+pub mod scene;
+pub mod renderer;
+pub mod backend;
+pub mod options;
+
+pub use scene::{Scene, SceneTrait};
+pub use renderer::{Renderer, RendererTrait};
+pub use backend::Backend;
+pub use options::RendererOptions;
 
 /// A trait for rendering vector graphics.
 ///
@@ -55,6 +79,26 @@ pub trait Graphics {
 /// Helper function to convert a shape to BezPath for use with Graphics trait.
 pub fn shape_to_path(shape: &impl Shape) -> BezPath {
     shape.to_path(0.1)
+}
+
+/// Create a Graphics implementation from a unified Scene.
+///
+/// This helper function allows widgets to draw to a unified Scene by creating
+/// an appropriate Graphics implementation based on the scene's backend.
+///
+/// # Returns
+/// * `Some(Box<dyn Graphics>)` if the scene backend is supported
+/// * `None` if the scene backend doesn't have a Graphics implementation yet
+pub fn graphics_from_scene(scene: &mut Scene) -> Option<Box<dyn Graphics + '_>> {
+    match scene {
+        Scene::Vello(vello_scene) => {
+            Some(Box::new(vello_vg::VelloGraphics::new(vello_scene)))
+        }
+        Scene::Hybrid(_) => {
+            // Hybrid backend doesn't have Graphics implementation yet
+            None
+        }
+    }
 }
 
 /// A default graphics implementation using Vello.

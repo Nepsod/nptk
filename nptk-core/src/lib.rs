@@ -54,10 +54,10 @@ pub mod text_input;
 /// Contains text rendering functionality using Parley.
 pub mod text_render;
 
-/// Contains renderer abstraction for multiple Vello backends
-pub mod renderer;
-
 /// Contains the vector graphics interface abstraction
+///
+/// This module provides a complete abstraction layer for graphics backends,
+/// including scene management, renderer management, and widget drawing APIs.
 pub mod vgi;
 
 /// Re-export BrushIndex for use in other modules

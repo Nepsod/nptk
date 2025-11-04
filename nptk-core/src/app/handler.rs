@@ -8,8 +8,8 @@ use taffy::{
     TraversePartialTree,
 };
 use vello::util::{RenderContext, RenderSurface};
-use vello::{AaConfig, AaSupport, RenderParams, Scene};
-use crate::renderer::{UnifiedRenderer, RendererOptions as UnifiedRendererOptions};
+use vello::{AaConfig, AaSupport, RenderParams};
+use crate::vgi::{Renderer, Scene, Backend, RendererOptions};
 use crate::vgi::vello_vg::VelloGraphics;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
@@ -36,7 +36,7 @@ where
     config: MayConfig<T>,
     attrs: WindowAttributes,
     window: Option<Arc<Window>>,
-    renderer: Option<UnifiedRenderer>,
+    renderer: Option<Renderer>,
     scene: Scene,
     surface: Option<RenderSurface<'a>>,
     taffy: TaffyTree,
@@ -83,7 +83,7 @@ where
             window: None,
             renderer: None,
             config,
-            scene: Scene::new(),
+            scene: Scene::new(Backend::Vello, 0, 0), // Will be updated on resize
             surface: None,
             taffy,
             widget: None,
@@ -264,7 +264,9 @@ where
 
             log::debug!("Rendering root widget...");
             let widget_render_start = Instant::now();
-            let mut graphics = VelloGraphics::new(&mut self.scene);
+            // Get Vello scene from UnifiedScene for rendering
+            let vello_scene = self.scene.as_vello_mut().expect("Scene must be Vello for now");
+            let mut graphics = VelloGraphics::new(vello_scene);
             self.widget.as_mut().unwrap().render(
                 &mut graphics,
                 &mut self.config.theme,
@@ -278,7 +280,8 @@ where
             log::debug!("Rendering postfix content...");
             let postfix_render_start = Instant::now();
             let context = self.context();
-            let mut graphics = VelloGraphics::new(&mut self.scene);
+            let vello_scene = self.scene.as_vello_mut().expect("Scene must be Vello for now");
+            let mut graphics = VelloGraphics::new(vello_scene);
             self.widget.as_mut().unwrap().render_postfix(
                 &mut graphics,
                 &mut self.config.theme,
@@ -450,10 +453,10 @@ where
             log::info!("Renderer configured with CPU path processing enabled");
         }
         self.renderer = Some(
-            UnifiedRenderer::new(
+            Renderer::new(
                 &device_handle.device,
-                self.config.render.backend,
-                UnifiedRendererOptions {
+                self.config.render.backend.clone(),
+                RendererOptions {
                     surface_format: Some(self.surface.as_ref().unwrap().format),
                     use_cpu: self.config.render.cpu,
                     antialiasing_support: match self.config.render.antialiasing {

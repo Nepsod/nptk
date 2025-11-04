@@ -7,8 +7,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use taffy::{NodeId, TaffyTree};
 use vello::util::{RenderContext, RenderSurface};
-use vello::Scene;
-use crate::renderer::UnifiedRenderer;
+use crate::vgi::{Renderer, Scene};
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowAttributes};
@@ -64,7 +63,7 @@ pub trait Plugin<T: Theme> {
         &mut self,
         _config: &mut MayConfig<T>,
         _window: &Arc<Window>,
-        _renderer: &mut UnifiedRenderer,
+        _renderer: &mut Renderer,
         _scene: &mut Scene,
         _surface: &mut RenderSurface<'_>,
         _taffy: &mut TaffyTree,
@@ -83,7 +82,7 @@ pub trait Plugin<T: Theme> {
         _event: &mut WindowEvent,
         _config: &mut MayConfig<T>,
         _window: &Arc<Window>,
-        _renderer: &mut UnifiedRenderer,
+        _renderer: &mut Renderer,
         _scene: &mut Scene,
         _surface: &mut RenderSurface<'_>,
         _taffy: &mut TaffyTree,

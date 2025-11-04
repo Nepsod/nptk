@@ -122,7 +122,7 @@ pub struct RenderConfig {
     /// Can be configured via `NPTK_RENDERER` environment variable:
     /// - `vello` (default) - Standard Vello GPU renderer
     /// - `hybrid` - Vello Hybrid renderer (currently falls back to Vello)
-    pub backend: crate::renderer::RendererBackend,
+    pub backend: crate::vgi::Backend,
     /// The antialiasing config
     ///
     /// Can be configured via `NPTK_ANTIALIASING` environment variable:
@@ -252,7 +252,7 @@ impl Default for RenderConfig {
         };
         
         // Check environment variable for renderer backend
-        let backend = crate::renderer::RendererBackend::from_env();
+        let backend = crate::vgi::Backend::from_env();
         
         Self {
             backend,

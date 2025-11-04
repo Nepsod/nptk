@@ -9,9 +9,25 @@ pub struct VelloGraphics<'a> {
 }
 
 impl<'a> VelloGraphics<'a> {
-    /// Create a new VelloGraphics from a Scene reference.
+    /// Create a new VelloGraphics from a Vello Scene reference.
+    ///
+    /// This is the primary constructor for VelloGraphics when working
+    /// with a direct `vello::Scene` reference.
     pub fn new(scene: &'a mut Scene) -> Self {
         Self { scene }
+    }
+
+    /// Create a VelloGraphics from a unified Scene enum.
+    ///
+    /// This method extracts the Vello scene from the unified Scene enum
+    /// and creates a VelloGraphics wrapper. Returns `None` if the scene
+    /// is not a Vello scene (e.g., it's a Hybrid scene).
+    ///
+    /// # Returns
+    /// * `Some(VelloGraphics)` if the scene is a Vello scene
+    /// * `None` if the scene is a different backend (e.g., Hybrid)
+    pub fn from_scene(scene: &'a mut super::Scene) -> Option<Self> {
+        scene.as_vello_mut().map(|s| Self { scene: s })
     }
 
     /// Get a mutable reference to the underlying Scene.
