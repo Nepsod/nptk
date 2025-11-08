@@ -15,7 +15,8 @@ use crate::vgi::surface::SurfaceTrait;
 /// for high-level Wayland abstractions and integrates with wgpu for rendering.
 #[cfg(target_os = "linux")]
 pub struct WaylandSurface {
-    /// Wayland connection
+    /// Wayland connection (kept for potential future use in cleanup or other operations)
+    #[allow(dead_code)]
     connection: wayland_client::Connection,
     /// Wayland event queue for processing events
     event_queue: wayland_client::EventQueue<WaylandState>,
@@ -42,7 +43,7 @@ pub struct WaylandSurface {
 
 /// State for Wayland event handling
 #[cfg(target_os = "linux")]
-struct WaylandState {
+pub(crate) struct WaylandState {
     /// Current window size from configure events
     size: (u32, u32),
     /// Flag indicating if a redraw is needed
@@ -291,10 +292,15 @@ impl WaylandSurface {
             let raw_handle = raw_window_handle::WaylandWindowHandle::new(wl_surface_ptr);
             let raw_display_handle = raw_window_handle::WaylandDisplayHandle::new(display_ptr);
             
-            // Create wgpu instance
+            // Use RenderContext's instance to create the surface
+            // This ensures we use the same instance that will enumerate adapters
+            // RenderContext doesn't expose its instance directly, so we need to create our own
+            // but with the same configuration that RenderContext uses
             let instance = vello::wgpu::Instance::new(vello::wgpu::InstanceDescriptor {
                 backends: vello::wgpu::Backends::PRIMARY,
-                ..Default::default()
+                dx12_shader_compiler: Default::default(),
+                flags: vello::wgpu::InstanceFlags::default(),
+                gles_minor_version: Default::default(),
             });
             
             // Create surface using unsafe API with raw handles
@@ -304,6 +310,7 @@ impl WaylandSurface {
                 raw_window_handle: raw_window_handle::RawWindowHandle::Wayland(raw_handle),
             };
             
+            log::debug!("Creating wgpu surface from Wayland raw window handle...");
             match unsafe { instance.create_surface_unsafe(surface_target_unsafe) } {
                 Ok(surface) => {
                     // Query surface format from adapter if available
@@ -340,11 +347,6 @@ impl WaylandSurface {
         })
     }
 
-    /// Get a reference to the event queue for external dispatching.
-    pub fn event_queue(&mut self) -> &mut wayland_client::EventQueue<WaylandState> {
-        &mut self.event_queue
-    }
-    
     /// Get a reference to the Wayland window.
     pub fn window(&self) -> &smithay_client_toolkit::shell::xdg::window::Window {
         &self.window

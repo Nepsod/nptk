@@ -344,11 +344,12 @@ where
         let renderer = self.renderer.as_mut()?;
         let render_ctx = self.render_ctx.as_ref()?;
         let surface = self.surface.as_mut()?;
-        let window = self.window.as_ref()?;
 
         let device_handle = render_ctx.devices.first()?;
 
-        if window.inner_size().width == 0 || window.inner_size().height == 0 {
+        // Get window size from surface (works for both Winit and Wayland)
+        let (width, height) = surface.size();
+        if width == 0 || height == 0 {
             log::debug!("Surface invalid. Skipping render.");
             return None;
         }
@@ -383,7 +384,10 @@ where
             .expect("Failed to get surface texture");
         let surface_get_time = surface_get_start.elapsed();
 
-        window.pre_present_notify();
+        // Pre-present notification (only for winit windows)
+        if let Some(window) = &self.window {
+            window.pre_present_notify();
+        }
 
         let gpu_render_start = Instant::now();
         renderer
@@ -394,8 +398,8 @@ where
                 &surface_texture,
                 &RenderParams {
                     base_color: self.config.theme.window_background(),
-                    width: window.inner_size().width,
-                    height: window.inner_size().height,
+                    width,
+                    height,
                     antialiasing_method: self.config.render.antialiasing,
                 },
             )
@@ -488,6 +492,29 @@ where
     fn initialize_async(&mut self, _event_loop: &ActiveEventLoop) {
         log::debug!("Starting async initialization...");
         
+        // Detect platform early
+        let platform = Platform::detect();
+        
+        // For Wayland, we need to create the surface first so RenderContext can enumerate
+        // adapters with Wayland compatibility. The issue is that RenderContext::new() 
+        // enumerates adapters, but without a Wayland surface, it can't test compatibility.
+        // So we create a temporary Wayland surface first, then create RenderContext,
+        // then recreate the surface properly with wgpu support.
+        if platform == Platform::Wayland {
+            log::debug!("Wayland detected: creating temporary surface for adapter enumeration");
+            // Create temporary Wayland surface (without wgpu surface) to help with adapter enumeration
+            let size = self.config.window.size;
+            let title = self.config.window.title.clone();
+            if let Ok(wayland_surface) = crate::vgi::wayland_surface::WaylandSurface::new(
+                size.x as u32,
+                size.y as u32,
+                &title,
+                None, // No render context yet
+            ) {
+                self.surface = Some(crate::vgi::Surface::Wayland(wayland_surface));
+            }
+        }
+        
         let mut render_ctx = Self::create_render_context();
         self.create_surface(&mut render_ctx);
         self.create_renderer(&render_ctx);
@@ -523,15 +550,31 @@ where
         let platform = Platform::detect();
         log::info!("Detected platform: {:?}", platform);
         
-        let window_size = window.inner_size();
+        // Get window size (for Wayland, we'll use the configured size)
+        let (width, height) = if platform == Platform::Wayland {
+            // For Wayland, use configured size since window doesn't exist yet
+            let size = self.config.window.size;
+            (size.x as u32, size.y as u32)
+        } else {
+            // For Winit, use actual window size
+            let window_size = window.inner_size();
+            (window_size.width, window_size.height)
+        };
         let title = self.config.window.title.clone();
+        
+        // For Wayland, if we already have a temporary surface, replace it with one that has wgpu surface
+        if platform == Platform::Wayland && matches!(self.surface, Some(crate::vgi::Surface::Wayland(_))) {
+            log::debug!("Replacing temporary Wayland surface with one that has wgpu surface");
+            // Drop the old temporary surface first
+            drop(self.surface.take());
+        }
         
         self.surface = Some(
             crate::vgi::platform::create_surface_blocking(
                 platform,
                 Some(window),
-                window_size.width,
-                window_size.height,
+                width,
+                height,
                 &title,
                 Some(render_ctx),
             )
@@ -543,6 +586,14 @@ where
     /// Create the renderer with the given render context.
     fn create_renderer(&mut self, render_ctx: &RenderContext) {
         log::debug!("Requesting device handle via selector...");
+        log::debug!("Available devices: {}", render_ctx.devices.len());
+        
+        if render_ctx.devices.is_empty() {
+            log::error!("No GPU devices found. This may be a Wayland compatibility issue.");
+            log::error!("Try running with NPTK_USE_NATIVE_WAYLAND=0 to use Winit-based rendering.");
+            panic!("No devices found - cannot create renderer. See logs for details.");
+        }
+        
         let device_handle = (self.config.render.device_selector)(&render_ctx.devices);
 
         log::debug!("Creating renderer...");
@@ -552,11 +603,15 @@ where
         }
         
         // Get window size for Hybrid renderer (needs width/height for RenderTargetConfig)
-        let (width, height) = if let Some(window) = self.window.as_ref() {
+        // Use surface size if available, otherwise fall back to window or default
+        let (width, height) = if let Some(surface) = &self.surface {
+            let (w, h) = surface.size();
+            (w, h)
+        } else if let Some(window) = self.window.as_ref() {
             let size = window.inner_size();
             (size.width, size.height)
         } else {
-            (1920, 1080) // Default size if window not yet created
+            (1920, 1080) // Default size if neither surface nor window available
         };
         
         // Note: Hybrid backend is disabled due to wgpu version conflict,
@@ -812,14 +867,25 @@ where
 
     /// Set up the window node in the layout tree.
     fn setup_window_node(&mut self) {
-        let window = self.window.as_ref().unwrap();
+        // Get window size - use surface size if available (for Wayland), otherwise use window size
+        let (width, height) = if let Some(surface) = &self.surface {
+            surface.size()
+        } else if let Some(window) = self.window.as_ref() {
+            let size = window.inner_size();
+            (size.width, size.height)
+        } else {
+            // Fallback to configured size
+            let size = self.config.window.size;
+            (size.x as u32, size.y as u32)
+        };
+        
         self.taffy
             .set_style(
                 self.window_node,
                 Style {
                     size: Size::<Dimension> {
-                        width: Dimension::length(window.inner_size().width as f32),
-                        height: Dimension::length(window.inner_size().height as f32),
+                        width: Dimension::length(width as f32),
+                        height: Dimension::length(height as f32),
                     },
                     ..Default::default()
                 },
