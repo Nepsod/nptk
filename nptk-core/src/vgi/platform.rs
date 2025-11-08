@@ -22,28 +22,28 @@ impl Platform {
     /// Detect the platform to use based on environment variables and system state.
     ///
     /// # Returns
-    /// * `Platform::Wayland` if `NPTK_USE_NATIVE_WAYLAND` is set to "true"/"1" and Wayland is available
-    /// * `Platform::Wayland` if `WAYLAND_DISPLAY` is set (indicates Wayland session)
-    /// * `Platform::Winit` otherwise
+    /// * `Platform::Wayland` if `NPTK_RENDERER` is set to "wayland" (native Wayland windowing)
+    /// * `Platform::Wayland` if `WAYLAND_DISPLAY` is set (indicates Wayland session, auto-detected)
+    /// * `Platform::Winit` otherwise (uses winit abstraction, works on X11/Wayland/X11)
     pub fn detect() -> Self {
         #[cfg(target_os = "linux")]
         {
-            // Check if native Wayland is explicitly requested
-            if let Ok(val) = std::env::var("NPTK_USE_NATIVE_WAYLAND") {
+            // Check if native Wayland is explicitly requested via NPTK_RENDERER=wayland
+            if let Ok(val) = std::env::var("NPTK_RENDERER") {
                 let val_lower = val.to_lowercase();
-                if matches!(val_lower.as_str(), "true" | "1" | "yes" | "on" | "enable") {
-                    eprintln!("[NPTK] NPTK_USE_NATIVE_WAYLAND detected, attempting native Wayland");
-                    log::info!("Native Wayland requested via NPTK_USE_NATIVE_WAYLAND");
+                if val_lower == "wayland" {
+                    eprintln!("[NPTK] NPTK_RENDERER=wayland detected, using native Wayland windowing");
+                    log::info!("Native Wayland windowing requested via NPTK_RENDERER=wayland");
                     return Platform::Wayland;
                 }
             }
 
-            // Check if we're in a Wayland session
-            if std::env::var("WAYLAND_DISPLAY").is_ok() {
-                eprintln!("[NPTK] WAYLAND_DISPLAY detected, using native Wayland");
-                log::info!("Wayland session detected, using native Wayland");
-                return Platform::Wayland;
-            }
+            // Check if we're in a Wayland session (auto-detect)
+            // if std::env::var("WAYLAND_DISPLAY").is_ok() {
+            //     eprintln!("[NPTK] WAYLAND_DISPLAY detected, using native Wayland windowing");
+            //     log::info!("Wayland session detected, using native Wayland windowing");
+            //     return Platform::Wayland;
+            // }
         }
 
         Platform::Winit

@@ -173,7 +173,30 @@ where
     }
 
     /// Update the app and process events.
-    fn update(&mut self, event_loop: &ActiveEventLoop) {
+    /// This is called by the winit event loop periodically.
+    pub fn update(&mut self, event_loop: &ActiveEventLoop) {
+        log::debug!("update() called");
+        
+        // For Wayland, process events first to trigger frame callbacks
+        let platform = Platform::detect();
+        if platform == Platform::Wayland {
+            if let Some(ref mut surface) = self.surface {
+                if surface.needs_event_dispatch() {
+                    if let Ok(needs_redraw) = surface.dispatch_events() {
+                        if needs_redraw {
+                            log::debug!("Wayland events triggered redraw");
+                            self.update.insert(Update::DRAW);
+                        }
+                    }
+                }
+            }
+        }
+        
+        self.update_internal(event_loop);
+    }
+
+    /// Update the app and process events (internal implementation).
+    fn update_internal(&mut self, event_loop: &ActiveEventLoop) {
         self.update_plugins(event_loop);
         
         let mut layout_node = self.ensure_layout_initialized();
@@ -181,7 +204,16 @@ where
         
         self.update_widget(&layout_node);
         
-        if self.update.get().intersects(Update::FORCE | Update::DRAW) {
+        let update_flags = self.update.get();
+        log::debug!("Update flags: {:?}, FORCE: {}, DRAW: {}", 
+            update_flags, 
+            update_flags.intersects(Update::FORCE),
+            update_flags.intersects(Update::DRAW));
+        
+        if update_flags.intersects(Update::FORCE | Update::DRAW) {
+            log::info!("Rendering frame (FORCE={}, DRAW={})", 
+                update_flags.intersects(Update::FORCE),
+                update_flags.intersects(Update::DRAW));
             self.render_frame(&layout_node, event_loop);
         }
 
@@ -191,10 +223,33 @@ where
 
     /// Update plugins with current state.
     fn update_plugins(&mut self, event_loop: &ActiveEventLoop) {
+        // For Wayland, window is None - skip plugin updates that require window
+        let platform = Platform::detect();
+        if platform == Platform::Wayland && self.window.is_none() {
+            // Skip plugin updates for Wayland when no winit window exists
+            return;
+        }
+        
+        // For Winit, window must exist - if it doesn't, something is wrong
+        let window_opt = self.window.as_ref();
+        if window_opt.is_none() {
+            // Window should exist for non-Wayland platforms
+            // But don't panic - just skip plugin updates until window is created
+            log::debug!("Window not yet created, skipping plugin updates");
+            return;
+        }
+        
+        // Check if renderer, surface, and gpu_context are initialized
+        // If not, skip plugin updates until initialization is complete
+        if self.renderer.is_none() || self.surface.is_none() || self.gpu_context.is_none() {
+            log::debug!("Renderer/surface/gpu_context not yet initialized, skipping plugin updates");
+            return;
+        }
+        
         self.plugins.run(|pl| {
             pl.on_update(
                 &mut self.config,
-                self.window.as_ref().expect("Window not initialized"),
+                window_opt.expect("Window not initialized"),
                 self.renderer.as_mut().expect("Renderer not initialized"),
                 &mut self.scene,
                 self.surface.as_mut().expect("Surface not initialized"),
@@ -276,6 +331,7 @@ where
 
     /// Render a frame to the screen.
     fn render_frame(&mut self, layout_node: &LayoutNode, event_loop: &ActiveEventLoop) {
+        eprintln!("[NPTK] render_frame() called - Draw update detected!");
         log::debug!("Draw update detected!");
         let render_start = Instant::now();
 
@@ -287,6 +343,40 @@ where
 
         if let Some(render_times) = self.render_to_surface(render_start, scene_reset_time, widget_render_time, postfix_render_time, event_loop) {
             self.print_render_profile(render_times);
+            // Clear both DRAW and FORCE flags after successful rendering
+            // FORCE should only trigger one render, not continuous rendering
+            self.update.set(self.update.get() & !(Update::DRAW | Update::FORCE));
+            eprintln!("[NPTK] render_frame() completed successfully");
+        } else {
+            // Rendering failed - check if it's due to invalid surface size
+            // If so, clear DRAW flag to prevent infinite loop (we'll retry when surface is configured)
+            let surface_size = match &self.surface {
+                Some(crate::vgi::Surface::Winit(_)) => {
+                    // For Winit, get size from window
+                    if let Some(window) = &self.window {
+                        let size = window.inner_size();
+                        (size.width, size.height)
+                    } else {
+                        (0, 0)
+                    }
+                }
+                #[cfg(target_os = "linux")]
+                Some(crate::vgi::Surface::Wayland(wayland_surface)) => {
+                    wayland_surface.size()
+                }
+                None => (0, 0),
+            };
+            
+            if surface_size.0 == 0 || surface_size.1 == 0 {
+                eprintln!("[NPTK] render_frame() failed - surface size is 0x0, clearing DRAW flag to prevent infinite loop");
+                // Clear DRAW flag but keep FORCE flag so we retry once surface is ready
+                self.update.set(self.update.get() & !Update::DRAW);
+            } else {
+                // Other error - keep DRAW flag for retry, but clear FORCE to prevent infinite loop
+                eprintln!("[NPTK] render_frame() failed - keeping DRAW flag for retry, clearing FORCE");
+                self.update.set(self.update.get() & !Update::FORCE);
+                log::debug!("Rendering failed, keeping DRAW flag for retry");
+            }
         }
     }
 
@@ -339,23 +429,79 @@ where
         postfix_render_time: Duration,
         event_loop: &ActiveEventLoop,
     ) -> Option<RenderTimes> {
-        let renderer = self.renderer.as_mut()?;
-        let gpu_context = self.gpu_context.as_ref()?;
-        let devices = gpu_context.enumerate_devices();
-        if devices.is_empty() {
+        log::debug!("render_to_surface() called");
+        
+        // Don't render until async initialization is complete
+        if !self.async_init_complete.load(Ordering::Relaxed) {
+            log::warn!("Async initialization not complete. Skipping render.");
             return None;
         }
+        
+        let renderer = match self.renderer.as_mut() {
+            Some(r) => r,
+            None => {
+                log::warn!("Renderer not initialized. Skipping render.");
+                return None;
+            }
+        };
+        
+        let gpu_context = match self.gpu_context.as_ref() {
+            Some(ctx) => ctx,
+            None => {
+                log::warn!("GPU context not initialized. Skipping render.");
+                return None;
+            }
+        };
+        
+        let devices = gpu_context.enumerate_devices();
+        if devices.is_empty() {
+            log::warn!("No devices found. Skipping render.");
+            return None;
+        }
+        
         let device_handle = (self.config.render.device_selector)(devices);
 
         // Get surface (must exist for rendering)
-        let surface = self.surface.as_mut()?;
+        let surface = match self.surface.as_mut() {
+            Some(s) => s,
+            None => {
+                log::warn!("Surface not initialized. Skipping render.");
+                return None;
+            }
+        };
+
+        // Check if Wayland surface is configured (must be configured before rendering)
+        if let crate::vgi::Surface::Wayland(ref wayland_surface) = &*surface {
+            if !wayland_surface.is_configured() {
+                log::warn!("Wayland surface not yet configured. Skipping render.");
+                return None;
+            }
+        }
 
         // Get window size from surface (works for both Winit and Wayland)
-        let (width, height) = surface.size();
+        // For Winit, we need to get size from the window since Surface::size() returns (0, 0)
+        let (width, height) = match &*surface {
+            crate::vgi::Surface::Winit(_) => {
+                // For Winit, get size from window
+                if let Some(window) = &self.window {
+                    let size = window.inner_size();
+                    (size.width, size.height)
+                } else {
+                    log::warn!("Winit surface but no window available");
+                    return None;
+                }
+            }
+            #[cfg(target_os = "linux")]
+            crate::vgi::Surface::Wayland(wayland_surface) => {
+                wayland_surface.size()
+            }
+        };
+        
         if width == 0 || height == 0 {
-            log::debug!("Surface invalid. Skipping render.");
+            log::warn!("Surface invalid ({}x{}). Skipping render.", width, height);
             return None;
         }
+        log::debug!("Surface size: {}x{}", width, height);
 
         // Dispatch Wayland events if needed and check for close request
         let should_close = if surface.needs_event_dispatch() {
@@ -382,9 +528,17 @@ where
         }
 
         let surface_get_start = Instant::now();
-        let surface_texture = surface
-            .get_current_texture()
-            .expect("Failed to get surface texture");
+        log::debug!("Getting surface texture...");
+        let mut surface_texture = match surface.get_current_texture() {
+            Ok(texture) => {
+                log::debug!("Successfully got surface texture");
+                texture
+            }
+            Err(e) => {
+                log::warn!("Failed to get surface texture: {}, skipping render", e);
+                return None;
+            }
+        };
         let surface_get_time = surface_get_start.elapsed();
 
         // Pre-present notification (only for winit windows)
@@ -392,25 +546,47 @@ where
             window.pre_present_notify();
         }
 
+        log::debug!("Rendering scene to surface ({}x{})...", width, height);
         let gpu_render_start = Instant::now();
-        renderer
-            .render_to_surface(
-                &device_handle.device,
-                &device_handle.queue,
-                &self.scene,
-                &surface_texture,
-                &RenderParams {
-                    base_color: self.config.theme.window_background(),
-                    width,
-                    height,
-                    antialiasing_method: self.config.render.antialiasing,
-                },
-            )
-            .expect("Failed to render to surface");
+        if let Err(e) = renderer.render_to_surface(
+            &device_handle.device,
+            &device_handle.queue,
+            &self.scene,
+            &surface_texture,
+            &RenderParams {
+                base_color: self.config.theme.window_background(),
+                width,
+                height,
+                antialiasing_method: self.config.render.antialiasing,
+            },
+        ) {
+            log::warn!("Failed to render to surface: {}, skipping present", e);
+            return None;
+        }
+        log::debug!("Successfully rendered scene to surface");
         let gpu_render_time = gpu_render_start.elapsed();
 
+        log::debug!("Presenting surface ({}x{})...", width, height);
         let present_start = Instant::now();
-        surface.present().expect("Failed to present surface");
+        
+        // For Winit surfaces, we need to present the SurfaceTexture directly
+        // The Surface::present() method is a no-op for Winit
+        match &mut *surface {
+            crate::vgi::Surface::Winit(_) => {
+                // Present the texture directly for Winit surfaces
+                surface_texture.present();
+            }
+            #[cfg(target_os = "linux")]
+            crate::vgi::Surface::Wayland(_) => {
+                // For Wayland, use the surface's present method
+                if let Err(e) = surface.present() {
+                    log::error!("Failed to present Wayland surface: {}", e);
+                    return None;
+                }
+            }
+        }
+        
+        log::debug!("Successfully presented surface");
         let present_time = present_start.elapsed();
 
         Some(RenderTimes {
@@ -444,7 +620,13 @@ where
     fn handle_update_flags(&mut self, event_loop: &ActiveEventLoop) {
         if self.update.get().intersects(Update::EVAL | Update::FORCE) {
             log::debug!("Evaluation update detected!");
-            if let Some(window) = self.window.as_ref() {
+            let platform = Platform::detect();
+            if platform == Platform::Wayland {
+                // For Wayland, trigger update via event loop or directly
+                // Since there's no winit window, we need to ensure update() is called
+                // The event loop should call update() periodically, but we can also trigger it here
+                // For now, rely on the event loop calling update() - it should work even without windows
+            } else if let Some(window) = self.window.as_ref() {
                 window.request_redraw();
             }
         }
@@ -454,8 +636,14 @@ where
             return;
         }
 
-        self.info.reset();
-        self.update.clear();
+        // CRITICAL: Don't clear DRAW or FORCE flags here - they're cleared after successful rendering
+        // Only clear other flags that have been processed
+        let flags_to_clear = self.update.get() & !(Update::DRAW | Update::FORCE);
+        if flags_to_clear.bits() != 0 {
+            self.info.reset();
+            // Preserve DRAW and FORCE flags - they're cleared in render_frame() after successful rendering
+            self.update.set(self.update.get() & (Update::DRAW | Update::FORCE));
+        }
     }
 
     /// Update diagnostics counters.
@@ -564,12 +752,99 @@ where
         // Create renderer with device
         self.create_renderer(device_handle_ref);
         
+        // Configure surface (both Wayland and Winit need configuration)
+        match &mut self.surface {
+            Some(crate::vgi::Surface::Wayland(ref mut wayland_surface)) => {
+                // Get surface format from renderer options or use default
+                let surface_format = wayland_surface.format();
+                
+                // Convert PresentMode from config to vello::wgpu::PresentMode
+                let present_mode = match self.config.render.present_mode {
+                    wgpu_types::PresentMode::AutoVsync => vello::wgpu::PresentMode::AutoVsync,
+                    wgpu_types::PresentMode::AutoNoVsync => vello::wgpu::PresentMode::AutoNoVsync,
+                    wgpu_types::PresentMode::Immediate => vello::wgpu::PresentMode::Immediate,
+                    wgpu_types::PresentMode::Fifo => vello::wgpu::PresentMode::Fifo,
+                    wgpu_types::PresentMode::FifoRelaxed => vello::wgpu::PresentMode::Fifo,
+                    wgpu_types::PresentMode::Mailbox => vello::wgpu::PresentMode::Mailbox,
+                };
+                
+                if let Err(e) = wayland_surface.configure_surface(
+                    &device_handle_ref.device,
+                    surface_format,
+                    present_mode,
+                ) {
+                    log::error!("Failed to configure Wayland surface: {}", e);
+                    panic!("Failed to configure Wayland surface: {}", e);
+                }
+                log::debug!("Wayland surface configured successfully");
+                
+                // Trigger initial redraw after surface is configured
+                // For Wayland, we need to manually trigger rendering since there's no winit window
+                self.update.insert(Update::FORCE | Update::DRAW);
+            }
+            Some(crate::vgi::Surface::Winit(ref mut winit_surface)) => {
+                // Configure Winit surface
+                let window = self.window.as_ref().expect("Window should exist for Winit");
+                let window_size = window.inner_size();
+                
+                // Get surface format - try to get it from the surface's capabilities
+                // For now, use a default format (Bgra8Unorm is common)
+                let surface_format = vello::wgpu::TextureFormat::Bgra8Unorm;
+                
+                // Convert PresentMode from config to vello::wgpu::PresentMode
+                let present_mode = match self.config.render.present_mode {
+                    wgpu_types::PresentMode::AutoVsync => vello::wgpu::PresentMode::AutoVsync,
+                    wgpu_types::PresentMode::AutoNoVsync => vello::wgpu::PresentMode::AutoNoVsync,
+                    wgpu_types::PresentMode::Immediate => vello::wgpu::PresentMode::Immediate,
+                    wgpu_types::PresentMode::Fifo => vello::wgpu::PresentMode::Fifo,
+                    wgpu_types::PresentMode::FifoRelaxed => vello::wgpu::PresentMode::Fifo,
+                    wgpu_types::PresentMode::Mailbox => vello::wgpu::PresentMode::Mailbox,
+                };
+                
+                let config = vello::wgpu::SurfaceConfiguration {
+                    usage: vello::wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    format: surface_format,
+                    width: window_size.width,
+                    height: window_size.height,
+                    present_mode,
+                    alpha_mode: vello::wgpu::CompositeAlphaMode::Auto,
+                    view_formats: vec![],
+                    desired_maximum_frame_latency: 2,
+                };
+                
+                winit_surface.configure(&device_handle_ref.device, &config);
+                log::debug!("Winit surface configured: {}x{} format={:?} present_mode={:?}", 
+                    window_size.width, window_size.height, surface_format, present_mode);
+                
+                // Ensure window is visible after surface is configured
+                // This might help if the window manager hides windows until they're ready
+                if let Some(window) = &self.window {
+                    window.set_visible(true);
+                }
+            }
+            None => {
+                log::error!("No surface available to configure");
+                panic!("No surface available to configure");
+            }
+        }
+        
         // Store GpuContext
         self.gpu_context = Some(Arc::new(gpu_context));
-        self.update.set(Update::FORCE);
         self.async_init_complete.store(true, Ordering::Relaxed);
         
         log::debug!("Async initialization complete");
+        
+        // For Wayland, Update::FORCE | Update::DRAW was already set in configure handler above
+        // For Winit, set Update::FORCE and request redraw
+        if platform != Platform::Wayland {
+            self.update.set(Update::FORCE);
+            if let Some(window) = &self.window {
+                log::debug!("Requesting initial redraw for winit window");
+                window.request_redraw();
+            }
+        } else {
+            log::debug!("Wayland: Update flags should already be set from configure handler");
+        }
     }
 
 
@@ -701,7 +976,7 @@ where
         match event {
             WindowEvent::Resized(new_size) => self.handle_resize(new_size, event_loop),
             WindowEvent::CloseRequested => self.handle_close_request(event_loop),
-            WindowEvent::RedrawRequested => self.update(event_loop),
+            WindowEvent::RedrawRequested => self.update_internal(event_loop),
             WindowEvent::CursorLeft { .. } => {
                 self.info.cursor_pos = None;
                 self.request_redraw();
@@ -865,11 +1140,15 @@ where
     /// Create the application window.
     fn create_window(&mut self, event_loop: &ActiveEventLoop) {
         log::debug!("Creating window...");
-        self.window = Some(Arc::new(
-            event_loop
-                .create_window(self.attrs.clone())
-                .expect("Failed to create window"),
-        ));
+        let window = event_loop
+            .create_window(self.attrs.clone())
+            .expect("Failed to create window");
+        
+        // Ensure window is visible
+        // Windows might be created hidden, so we explicitly show them
+        window.set_visible(true);
+        
+        self.window = Some(Arc::new(window));
     }
 
     /// Set up the window node in the layout tree.
@@ -924,7 +1203,13 @@ where
         log::info!("Resuming/Starting app execution...");
 
         self.notify_plugins_resume(event_loop);
-        self.create_window(event_loop);
+        
+        // Only create winit window if not using native Wayland
+        let platform = Platform::detect();
+        if platform != Platform::Wayland {
+            self.create_window(event_loop);
+        }
+        
         self.setup_window_node();
         self.create_initial_widget();
         self.initialize_async(event_loop);

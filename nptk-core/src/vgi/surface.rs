@@ -132,9 +132,11 @@ impl SurfaceTrait for Surface {
 
     fn size(&self) -> (u32, u32) {
         match self {
-            Surface::Winit(_) => {
-                // Winit surface size is managed externally
-                // Return a default, but this should not be called
+            Surface::Winit(surface) => {
+                // Winit surface size must be obtained from the window
+                // This is a limitation - we need access to the window to get size
+                // For now, return 0x0 and let the caller handle it
+                // The caller should use window.inner_size() instead
                 (0, 0)
             }
             #[cfg(target_os = "linux")]

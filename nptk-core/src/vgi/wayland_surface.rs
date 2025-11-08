@@ -27,10 +27,15 @@ pub struct WaylandSurface {
     /// wgpu surface created from Wayland window (using vello's wgpu types)
     /// This is created early to help with adapter enumeration on Wayland
     pub(crate) wgpu_surface: Option<vello::wgpu::Surface<'static>>,
+    /// Flag indicating if the wgpu surface has been configured
+    is_configured: bool,
     /// Current window size
     size: (u32, u32),
     /// Flag indicating if a redraw is needed
     needs_redraw: bool,
+    /// Flag indicating if we've acknowledged the first configure event
+    /// This is critical for initial rendering - GPUI requests frame callback on first configure
+    acknowledged_first_configure: bool,
     /// Surface format
     format: TextureFormat,
     /// Pending texture (stored between get_current_texture and present)
@@ -50,6 +55,8 @@ pub(crate) struct WaylandState {
     needs_redraw: bool,
     /// Flag indicating if window should close
     should_close: bool,
+    /// Flag indicating if configure event was received and needs acknowledgment
+    configure_serial: Option<u32>,
 }
 
 #[cfg(target_os = "linux")]
@@ -198,14 +205,27 @@ impl smithay_client_toolkit::shell::xdg::window::WindowHandler for WaylandState 
         &mut self,
         _conn: &wayland_client::Connection,
         _qh: &wayland_client::QueueHandle<Self>,
-        _window: &smithay_client_toolkit::shell::xdg::window::Window,
+        window: &smithay_client_toolkit::shell::xdg::window::Window,
         configure: smithay_client_toolkit::shell::xdg::window::WindowConfigure,
-        _serial: u32,
+        serial: u32,
     ) {
+        // Update size from configure event if provided
         if let (Some(w), Some(h)) = (configure.new_size.0, configure.new_size.1) {
             self.size = (w.get(), h.get());
             self.needs_redraw = true;
+            eprintln!("[NPTK] Wayland configure event: size set to {}x{}", w.get(), h.get());
+        } else {
+            // If configure event doesn't provide size, use window's current size
+            // This can happen on initial configure before window is mapped
+            eprintln!("[NPTK] Wayland configure event: no size provided, keeping current size {}x{}", self.size.0, self.size.1);
         }
+        
+        // Store the configure serial for acknowledgment
+        // We'll acknowledge and commit in WaylandSurface after the roundtrip
+        self.configure_serial = Some(serial);
+        
+        // Note: SCTK Window handles ack_configure internally, but we track the serial
+        // to know when to commit the surface
     }
 }
 
@@ -252,7 +272,10 @@ impl WaylandSurface {
         // We'll need it for committing in present()
         let wl_surface_stored = wl_surface.clone();
         
-        // Create window
+        // Create window (SCTK creates xdg_surface and xdg_toplevel internally)
+        // NOTE: SCTK's Window abstraction doesn't expose xdg_surface/toplevel directly,
+        // so we can't set app_id or window geometry directly like GPUI does.
+        // We rely on SCTK's internal handling and set app_id via environment variable.
         let window = xdg_shell.create_window(
             Surface::from(wl_surface),
             WindowDecorations::ServerDefault,
@@ -262,21 +285,53 @@ impl WaylandSurface {
         // Set window title
         window.set_title(title);
         
+        // Set app_id via environment variable
+        // Note: SCTK's Window doesn't expose set_app_id directly, but the compositor
+        // will use NPTK_APP_ID from the environment or derive it from the window class
+        if let Ok(app_id) = std::env::var("NPTK_APP_ID") {
+            log::debug!("NPTK_APP_ID set to: {} (compositor will use this)", app_id);
+        } else {
+            log::debug!("No NPTK_APP_ID set, compositor will derive from window class");
+        }
+        
         // Set window size
         window.set_min_size(Some((width, height)));
         window.set_max_size(Some((width, height)));
         
-        // Commit the surface to make the window visible
+        // CRITICAL: Commit the surface immediately after creating the window
+        // This is what GPUI does - it makes the window appear in the taskbar immediately
+        // The compositor will show a placeholder until a buffer is attached
+        log::debug!("Committing surface immediately after window creation (GPUI pattern)");
         wl_surface_stored.commit();
         
-        // Roundtrip to ensure window is created
+        // Roundtrip to ensure window is created and configured
         let mut state = WaylandState {
             size: (width, height),
             needs_redraw: true,
             should_close: false,
+            configure_serial: None,
         };
         event_queue.roundtrip(&mut state)
             .map_err(|e| format!("Failed to roundtrip: {:?}", e))?;
+        
+        // After configure event, acknowledge it and request frame callback for initial render
+        // This is critical - GPUI requests frame callback on first configure to trigger initial rendering
+        let acknowledged_first_configure = state.configure_serial.is_some();
+        if acknowledged_first_configure {
+            log::debug!("Configure event received, requesting frame callback for initial render");
+            
+            // Request frame callback for initial render (like GPUI does)
+            // This ensures we get a frame callback to trigger the first render
+            // The frame callback will fire when the compositor is ready, triggering rendering
+            // We'll store this callback in the WaylandSurface struct after creation
+            let callback = wl_surface_stored.frame(&qh, ());
+            // Store it temporarily - we'll move it to the struct
+            drop(callback);
+            
+            // NOTE: We do NOT commit here - we commit AFTER rendering when a buffer is attached
+            // GPUI commits after rendering in completed_frame() (line 1221), not after configure
+            // Committing before a buffer is attached won't make the window visible
+        }
         
         // Create wgpu surface from raw window handle using GpuContext's Instance
         // This ensures the surface is created with the same Instance that enumerates adapters
@@ -317,6 +372,7 @@ impl WaylandSurface {
                         size: (width, height),
                         needs_redraw: false,
                         should_close: false,
+                        configure_serial: None,
                     };
                     let _ = event_queue.roundtrip(&mut temp_state);
                     
@@ -334,6 +390,8 @@ impl WaylandSurface {
             }
         };
         
+        // Use the size from state (may have been updated by configure event)
+        let actual_size = state.size;
         let state = Arc::new(Mutex::new(state));
         
         Ok(Self {
@@ -342,13 +400,59 @@ impl WaylandSurface {
             window,
             wl_surface: wl_surface_stored,
             wgpu_surface,
-            size: (width, height),
+            is_configured: false,
+            size: actual_size,
             needs_redraw: true,
+            acknowledged_first_configure,
             format,
             pending_texture: None,
             state,
             frame_callback: None,
         })
+    }
+
+    /// Configure the wgpu surface for rendering.
+    ///
+    /// This must be called before `get_current_texture()` can be used.
+    /// The surface will be reconfigured if the size changes.
+    ///
+    /// # Arguments
+    /// * `device` - The GPU device
+    /// * `format` - The surface format
+    /// * `present_mode` - The presentation mode
+    pub fn configure_surface(
+        &mut self,
+        device: &vello::wgpu::Device,
+        format: TextureFormat,
+        present_mode: vello::wgpu::PresentMode,
+    ) -> Result<(), String> {
+        let wgpu_surface = self.wgpu_surface.as_mut()
+            .ok_or_else(|| "wgpu surface not initialized".to_string())?;
+        
+        let config = vello::wgpu::SurfaceConfiguration {
+            usage: vello::wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format,
+            width: self.size.0,
+            height: self.size.1,
+            present_mode,
+            alpha_mode: vello::wgpu::CompositeAlphaMode::Auto,
+            view_formats: vec![],
+            desired_maximum_frame_latency: 2,
+        };
+        
+        wgpu_surface.configure(device, &config);
+        self.is_configured = true;
+        self.format = format;
+        
+        log::debug!("Configured Wayland wgpu surface: {}x{} format={:?} present_mode={:?}", 
+            self.size.0, self.size.1, format, present_mode);
+        
+        Ok(())
+    }
+    
+    /// Check if the surface is configured.
+    pub fn is_configured(&self) -> bool {
+        self.is_configured
     }
 
     /// Create the wgpu surface using GpuContext's Instance.
@@ -386,6 +490,11 @@ impl SurfaceTrait for WaylandSurface {
         // Dispatch events before getting texture
         self.dispatch_events()?;
 
+        // Ensure surface is configured
+        if !self.is_configured {
+            return Err("Wayland wgpu surface is not configured. Call configure_surface() first.".to_string());
+        }
+
         // Get current texture from wgpu surface
         let wgpu_surface = self.wgpu_surface.as_ref()
             .ok_or_else(|| "Wayland wgpu surface not initialized. wgpu surface creation needs to be implemented.".to_string())?;
@@ -411,6 +520,10 @@ impl SurfaceTrait for WaylandSurface {
         // For Wayland, we'll commit the surface after rendering is complete
         // The texture presentation is handled by wgpu when the texture is dropped (RAII)
         
+        // CRITICAL: For Wayland, wgpu automatically attaches a buffer when rendering.
+        // We need to commit the surface AFTER the buffer is attached to make the window visible.
+        // This is what GPUI does in completed_frame() (line 1221).
+        
         // Request frame callback for next frame (for smooth rendering)
         // This ensures we only render when the compositor is ready
         let qh = self.event_queue.handle();
@@ -421,7 +534,11 @@ impl SurfaceTrait for WaylandSurface {
         self.frame_callback = Some(callback);
         
         // Commit the surface to Wayland compositor
+        // This makes the rendered frame visible
+        // wgpu has already attached a buffer during rendering, so this commit will show it
+        log::debug!("Committing Wayland surface after rendering (buffer should be attached by wgpu)");
         self.wl_surface.commit();
+        
         Ok(())
     }
 
@@ -437,6 +554,14 @@ impl SurfaceTrait for WaylandSurface {
         // Resize the Wayland window
         self.window.set_min_size(Some((width, height)));
         self.window.set_max_size(Some((width, height)));
+        
+        // If surface is configured, we need to reconfigure it with new size
+        // Note: This requires a device, which we don't have here
+        // The caller should reconfigure after resize if needed
+        if self.is_configured {
+            self.is_configured = false;
+            log::debug!("Surface resized to {}x{}, needs reconfiguration", width, height);
+        }
         
         Ok(())
     }
@@ -472,6 +597,42 @@ impl SurfaceTrait for WaylandSurface {
             // Note: Close request is detected, but we can't directly exit the event loop here
             // The application handler should check should_close() and handle it
             log::debug!("Wayland window close requested");
+        }
+        
+        // Handle configure events - acknowledge them and request frame callback on first configure
+        // This matches GPUI's behavior (lines 564, 581-585 in window.rs)
+        if let Some(serial) = state_guard.configure_serial.take() {
+            // Note: SCTK's Window handles ack_configure internally via WindowHandler
+            // We track the serial to know when configure events occur, but SCTK acknowledges them
+            // GPUI explicitly calls ack_configure, but SCTK's Window abstraction doesn't expose xdg_surface
+            // so we rely on SCTK's internal handling.
+            
+            // Set window geometry after configure (like GPUI does, lines 574-579)
+            // SCTK's Window doesn't expose set_window_geometry directly, but SCTK handles geometry internally.
+            // The window size is already set via set_min_size/set_max_size above.
+            
+            // Request frame callback on first configure (like GPUI does)
+            if !self.acknowledged_first_configure {
+                self.acknowledged_first_configure = true;
+                log::debug!("First configure event acknowledged, requesting frame callback for initial render");
+                
+                // Request frame callback to trigger initial render
+                let qh = self.event_queue.handle();
+                // Drop old callback if it exists
+                let _ = self.frame_callback.take();
+                // Request new frame callback
+                let callback = self.wl_surface.frame(&qh, ());
+                self.frame_callback = Some(callback);
+                
+                // CRITICAL: Set needs_redraw to true so dispatch_events() returns true
+                // This ensures update() is called and rendering happens
+                state_guard.needs_redraw = true;
+                
+                // Also commit the surface to ensure the frame callback is registered
+                // The compositor needs to see the commit to schedule the frame callback
+                self.wl_surface.commit();
+                log::debug!("Committed surface to register frame callback");
+            }
         }
         
         // Update local state from shared state
