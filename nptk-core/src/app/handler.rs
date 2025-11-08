@@ -495,23 +495,29 @@ where
         // Detect platform early
         let platform = Platform::detect();
         
-        // For Wayland, we need to create the surface first so RenderContext can enumerate
-        // adapters with Wayland compatibility. The issue is that RenderContext::new() 
-        // enumerates adapters, but without a Wayland surface, it can't test compatibility.
-        // So we create a temporary Wayland surface first, then create RenderContext,
-        // then recreate the surface properly with wgpu support.
+        // For Wayland, the key insight (from GPUI and wgpu docs) is that we need to create
+        // the wgpu Surface BEFORE enumerating adapters. On Wayland, some adapters may only
+        // be available after a surface is created. However, vello's RenderContext::new()
+        // enumerates adapters immediately without a surface.
+        //
+        // Solution: Create a temporary wgpu Instance and Wayland surface first, then
+        // create RenderContext (which will enumerate adapters, and should now find
+        // Wayland-compatible ones), then recreate the surface properly using RenderContext.
         if platform == Platform::Wayland {
-            log::debug!("Wayland detected: creating temporary surface for adapter enumeration");
-            // Create temporary Wayland surface (without wgpu surface) to help with adapter enumeration
+            log::debug!("Wayland detected: creating temporary wgpu surface for adapter enumeration");
+            // Create temporary Wayland surface WITH wgpu surface to help adapter enumeration
+            // This ensures that when RenderContext enumerates adapters, it can find
+            // Wayland-compatible adapters
             let size = self.config.window.size;
             let title = self.config.window.title.clone();
             if let Ok(wayland_surface) = crate::vgi::wayland_surface::WaylandSurface::new(
                 size.x as u32,
                 size.y as u32,
                 &title,
-                None, // No render context yet
+                None, // No render context yet - we'll create a temporary instance
             ) {
                 self.surface = Some(crate::vgi::Surface::Wayland(wayland_surface));
+                log::debug!("Temporary Wayland surface created, wgpu surface may be None");
             }
         }
         

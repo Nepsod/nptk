@@ -279,7 +279,9 @@ impl WaylandSurface {
             .map_err(|e| format!("Failed to roundtrip: {:?}", e))?;
         
         // Create wgpu surface from raw window handle
-        let (wgpu_surface, format) = if let Some(_render_ctx) = render_ctx {
+        // Even if render_ctx is None, we should still try to create a wgpu surface
+        // to help with adapter enumeration on Wayland
+        let (wgpu_surface, format) = {
             // Get raw window handle
             use wayland_client::Proxy;
             use std::ptr::NonNull;
@@ -292,10 +294,8 @@ impl WaylandSurface {
             let raw_handle = raw_window_handle::WaylandWindowHandle::new(wl_surface_ptr);
             let raw_display_handle = raw_window_handle::WaylandDisplayHandle::new(display_ptr);
             
-            // Use RenderContext's instance to create the surface
-            // This ensures we use the same instance that will enumerate adapters
-            // RenderContext doesn't expose its instance directly, so we need to create our own
-            // but with the same configuration that RenderContext uses
+            // Create wgpu Instance with same configuration that RenderContext uses
+            // This ensures compatibility when RenderContext enumerates adapters
             let instance = vello::wgpu::Instance::new(vello::wgpu::InstanceDescriptor {
                 backends: vello::wgpu::Backends::PRIMARY,
                 dx12_shader_compiler: Default::default(),
@@ -313,6 +313,7 @@ impl WaylandSurface {
             log::debug!("Creating wgpu surface from Wayland raw window handle...");
             match unsafe { instance.create_surface_unsafe(surface_target_unsafe) } {
                 Ok(surface) => {
+                    log::debug!("Successfully created wgpu surface from Wayland handle");
                     // Query surface format from adapter if available
                     // For now, we'll use a default format and update it when adapter is available
                     // The format will be queried later via get_capabilities() when we have an adapter
@@ -321,13 +322,14 @@ impl WaylandSurface {
                 }
                 Err(e) => {
                     eprintln!("[NPTK] Warning: Failed to create wgpu surface from Wayland handle: {:?}", e);
-                    eprintln!("[NPTK] Falling back to None - rendering will not work until this is fixed");
+                    if render_ctx.is_some() {
+                        eprintln!("[NPTK] Falling back to None - rendering will not work until this is fixed");
+                    } else {
+                        log::debug!("wgpu surface creation failed (no render context yet), will retry later");
+                    }
                     (None, TextureFormat::Bgra8Unorm)
                 }
             }
-        } else {
-            // No render context provided, can't create wgpu surface
-            (None, TextureFormat::Bgra8Unorm)
         };
         
         let state = Arc::new(Mutex::new(state));
