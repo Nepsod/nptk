@@ -20,24 +20,29 @@ pub struct MayRunner<T: Theme> {
 impl<T: Theme> MayRunner<T> {
     /// Create a new App with the given [MayConfig].
     pub fn new(config: MayConfig<T>) -> Self {
-        // init task runner
-        if let Some(config) = &config.tasks {
-            log::info!("initializing task runner");
-
-            crate::tasks::init(*config);
-        }
-
-        let lazy_font_loading = config.render.lazy_font_loading;
-
+        Self::initialize_task_runner(&config);
+        let font_ctx = Self::create_font_context(&config);
+        
         Self {
             config,
-            font_ctx: if lazy_font_loading {
-                // Use lazy loading with fontconfig backend (always enabled)
-                FontContext::new()
-            } else {
-                // Load system fonts immediately with fontconfig backend (always enabled)
-                FontContext::new_with_system_fonts()
-            },
+            font_ctx,
+        }
+    }
+
+    /// Initialize the task runner if configured.
+    fn initialize_task_runner(config: &MayConfig<T>) {
+        if let Some(task_config) = &config.tasks {
+            log::info!("initializing task runner");
+            crate::tasks::init(*task_config);
+        }
+    }
+
+    /// Create a font context based on the configuration.
+    fn create_font_context(config: &MayConfig<T>) -> FontContext {
+        if config.render.lazy_font_loading {
+            FontContext::new()
+        } else {
+            FontContext::new_with_system_fonts()
         }
     }
 
@@ -61,70 +66,97 @@ impl<T: Theme> MayRunner<T> {
         W: Widget,
         F: Fn(AppContext, S) -> W,
     {
-        let mut event_loop = EventLoopBuilder::default()
-            .build()
-            .expect("Failed to create event loop");
-
-        let mut attrs = WindowAttributes::default()
-            .with_inner_size(LogicalSize::new(
-                self.config.window.size.x,
-                self.config.window.size.y,
-            ))
-            .with_resizable(self.config.window.resizable)
-            .with_enabled_buttons(self.config.window.buttons)
-            .with_title(self.config.window.title.clone())
-            .with_maximized(self.config.window.maximized)
-            .with_visible(self.config.window.visible)
-            .with_transparent(self.config.window.transparent)
-            .with_blur(self.config.window.blur)
-            .with_decorations(self.config.window.decorations)
-            .with_window_icon(self.config.window.icon.clone())
-            .with_content_protected(self.config.window.content_protected)
-            .with_window_level(self.config.window.level)
-            .with_active(self.config.window.active)
-            .with_cursor(self.config.window.cursor.clone());
-
-        // since `with_max_inner_size()` doesn't support `Option` values, we need to manually set it
-        attrs.max_inner_size = self
-            .config
-            .window
-            .max_size
-            .map(|v| Size::Logical(LogicalSize::new(v.x, v.y)));
-
-        // since `with_min_inner_size()` doesn't support `Option` values, we need to manually set it
-        attrs.min_inner_size = self
-            .config
-            .window
-            .min_size
-            .map(|v| Size::Logical(LogicalSize::new(v.x, v.y)));
-
-        // since `with_position()` doesn't support `Option` values, we need to manually set it
-        attrs.position = self
-            .config
-            .window
-            .position
-            .map(|v| Position::Logical(LogicalPosition::new(v.x, v.y)));
-
-        // since `with_resize_increments()` doesn't support `Option` values, we need to manually set it
-        attrs.resize_increments = self
-            .config
-            .window
-            .resize_increments
-            .map(|v| Size::Logical(LogicalSize::new(v.x, v.y)));
+        let mut event_loop = Self::create_event_loop();
+        let mut attrs = Self::build_window_attributes(&self.config);
+        Self::apply_optional_window_attributes(&self.config, &mut attrs);
 
         log::info!("Launching Application...");
-
         let update = UpdateManager::new();
-
         plugins.run(|pl| pl.init(&mut event_loop, &update, &mut attrs, &mut self.config));
 
+        Self::run_app_handler(
+            event_loop,
+            attrs,
+            self.config,
+            builder,
+            state,
+            self.font_ctx,
+            update,
+            plugins,
+        );
+    }
+
+    /// Create and build the event loop.
+    fn create_event_loop() -> winit::event_loop::EventLoop<()> {
+        EventLoopBuilder::default()
+            .build()
+            .expect("Failed to create event loop")
+    }
+
+    /// Build window attributes from configuration.
+    fn build_window_attributes(config: &MayConfig<T>) -> WindowAttributes {
+        WindowAttributes::default()
+            .with_inner_size(LogicalSize::new(
+                config.window.size.x,
+                config.window.size.y,
+            ))
+            .with_resizable(config.window.resizable)
+            .with_enabled_buttons(config.window.buttons)
+            .with_title(config.window.title.clone())
+            .with_maximized(config.window.maximized)
+            .with_visible(config.window.visible)
+            .with_transparent(config.window.transparent)
+            .with_blur(config.window.blur)
+            .with_decorations(config.window.decorations)
+            .with_window_icon(config.window.icon.clone())
+            .with_content_protected(config.window.content_protected)
+            .with_window_level(config.window.level)
+            .with_active(config.window.active)
+            .with_cursor(config.window.cursor.clone())
+    }
+
+    /// Apply optional window attributes that require manual setting.
+    ///
+    /// These attributes don't have builder methods that accept `Option` values,
+    /// so they must be set directly on the attributes struct.
+    fn apply_optional_window_attributes(config: &MayConfig<T>, attrs: &mut WindowAttributes) {
+        Self::set_optional_size(&mut attrs.max_inner_size, &config.window.max_size);
+        Self::set_optional_size(&mut attrs.min_inner_size, &config.window.min_size);
+        Self::set_optional_position(&mut attrs.position, &config.window.position);
+        Self::set_optional_size(&mut attrs.resize_increments, &config.window.resize_increments);
+    }
+
+    /// Set an optional size attribute.
+    fn set_optional_size(target: &mut Option<Size>, source: &Option<nalgebra::Vector2<f64>>) {
+        *target = source.map(|v| Size::Logical(LogicalSize::new(v.x, v.y)));
+    }
+
+    /// Set an optional position attribute.
+    fn set_optional_position(target: &mut Option<Position>, source: &Option<nalgebra::Point2<f64>>) {
+        *target = source.map(|v| Position::Logical(LogicalPosition::new(v.x, v.y)));
+    }
+
+    /// Run the application handler with the event loop.
+    fn run_app_handler<S, W, F>(
+        event_loop: winit::event_loop::EventLoop<()>,
+        attrs: WindowAttributes,
+        config: MayConfig<T>,
+        builder: F,
+        state: S,
+        font_ctx: FontContext,
+        update: UpdateManager,
+        plugins: PluginManager<T>,
+    ) where
+        W: Widget,
+        F: Fn(AppContext, S) -> W,
+    {
         event_loop
             .run_app(&mut AppHandler::new(
                 attrs,
-                self.config,
+                config,
                 builder,
                 state,
-                self.font_ctx,
+                font_ctx,
                 update,
                 plugins,
             ))
