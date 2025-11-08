@@ -173,7 +173,23 @@ where
 
     /// Update the app and process events.
     fn update(&mut self, event_loop: &ActiveEventLoop) {
-        // update plugins
+        self.update_plugins(event_loop);
+        
+        let mut layout_node = self.ensure_layout_initialized();
+        layout_node = self.update_layout_if_needed(layout_node);
+        
+        self.update_widget(&layout_node);
+        
+        if self.update.get().intersects(Update::FORCE | Update::DRAW) {
+            self.render_frame(&layout_node);
+        }
+
+        self.handle_update_flags(event_loop);
+        self.update_diagnostics();
+    }
+
+    /// Update plugins with current state.
+    fn update_plugins(&mut self, event_loop: &ActiveEventLoop) {
         self.plugins.run(|pl| {
             pl.on_update(
                 &mut self.config,
@@ -192,211 +208,246 @@ where
                 event_loop,
             )
         });
+    }
 
-        // completely layout widgets if taffy is not set up yet (e.g. during first update)
+    /// Ensure layout is initialized, returning the current layout node.
+    fn ensure_layout_initialized(&mut self) -> LayoutNode {
         if self.taffy.child_count(self.window_node) == 0 {
-            log::debug!("Setting up layout...");
-
-            let style = self.widget.as_ref().unwrap().layout_style();
-
-            self.layout_widget(self.window_node, &style)
-                .expect("Failed to layout window");
-
-            self.compute_layout().expect("Failed to compute layout");
-
-            self.update.insert(Update::FORCE);
+            self.setup_initial_layout();
         }
 
         let style = self.widget.as_ref().unwrap().layout_style();
+        self.collect_layout(
+            self.taffy.child_at_index(self.window_node, 0).unwrap(),
+            &style,
+        )
+        .expect("Failed to collect layout")
+    }
 
-        let mut layout_node = self
-            .collect_layout(
-                self.taffy.child_at_index(self.window_node, 0).unwrap(),
-                &style,
-            )
-            .expect("Failed to collect layout");
+    /// Set up the initial layout tree.
+    fn setup_initial_layout(&mut self) {
+        log::debug!("Setting up layout...");
+        let style = self.widget.as_ref().unwrap().layout_style();
+        self.layout_widget(self.window_node, &style)
+            .expect("Failed to layout window");
+        self.compute_layout().expect("Failed to compute layout");
+        self.update.insert(Update::FORCE);
+    }
 
-        // update call to check if app should re-evaluate
+    /// Update layout if needed, returning the updated layout node.
+    fn update_layout_if_needed(&mut self, layout_node: LayoutNode) -> LayoutNode {
+        if !self.update.get().intersects(Update::LAYOUT | Update::FORCE) {
+            return layout_node;
+        }
+
+        log::debug!("Layout update detected!");
+        self.rebuild_layout();
+        
+        let style = self.widget.as_ref().unwrap().layout_style();
+        self.collect_layout(
+            self.taffy.child_at_index(self.window_node, 0).unwrap(),
+            &style,
+        )
+        .expect("Failed to collect layout")
+    }
+
+    /// Rebuild the layout tree from scratch.
+    fn rebuild_layout(&mut self) {
+        self.taffy
+            .set_children(self.window_node, &[])
+            .expect("Failed to set children");
+        
+        let style = self.widget.as_ref().unwrap().layout_style();
+        self.layout_widget(self.window_node, &style)
+            .expect("Failed to layout window");
+        self.compute_layout().expect("Failed to compute layout");
+    }
+
+    /// Update the widget with the current layout.
+    fn update_widget(&mut self, layout_node: &LayoutNode) {
         log::debug!("Updating root widget...");
         let context = self.context();
         self.update.insert(
             self.widget
                 .as_mut()
                 .unwrap()
-                .update(&layout_node, context, &mut self.info),
+                .update(layout_node, context, &mut self.info),
         );
+    }
 
-        // check if app should re-evaluate layout
-        if self.update.get().intersects(Update::LAYOUT | Update::FORCE) {
-            log::debug!("Layout update detected!");
+    /// Render a frame to the screen.
+    fn render_frame(&mut self, layout_node: &LayoutNode) {
+        log::debug!("Draw update detected!");
+        let render_start = Instant::now();
 
-            // clear all nodes (except root window node)
-            self.taffy
-                .set_children(self.window_node, &[])
-                .expect("Failed to set children");
+        self.scene.reset();
+        let scene_reset_time = render_start.elapsed();
 
-            let style = self.widget.as_ref().unwrap().layout_style();
+        let widget_render_time = self.render_widget(layout_node);
+        let postfix_render_time = self.render_postfix(layout_node);
 
-            self.layout_widget(self.window_node, &style)
-                .expect("Failed to layout window");
+        if let Some(render_times) = self.render_to_surface(render_start, scene_reset_time, widget_render_time, postfix_render_time) {
+            self.print_render_profile(render_times);
+        }
+    }
 
-            self.compute_layout().expect("Failed to compute layout");
+    /// Render the main widget content.
+    fn render_widget(&mut self, layout_node: &LayoutNode) -> Duration {
+        log::debug!("Rendering root widget...");
+        let start = Instant::now();
+        
+        let context = self.context();
+        let vello_scene = self.scene.as_vello_mut().expect("Scene must be Vello for now");
+        let mut graphics = VelloGraphics::new(vello_scene);
+        self.widget.as_mut().unwrap().render(
+            &mut graphics,
+            &mut self.config.theme,
+            layout_node,
+            &mut self.info,
+            context,
+        );
+        
+        start.elapsed()
+    }
 
-            layout_node = self
-                .collect_layout(
-                    self.taffy.child_at_index(self.window_node, 0).unwrap(),
-                    &style,
-                )
-                .expect("Failed to collect layout");
+    /// Render postfix content (overlays, popups).
+    fn render_postfix(&mut self, layout_node: &LayoutNode) -> Duration {
+        log::debug!("Rendering postfix content...");
+        let start = Instant::now();
+        
+        let context = self.context();
+        let vello_scene = self.scene.as_vello_mut().expect("Scene must be Vello for now");
+        let mut graphics = VelloGraphics::new(vello_scene);
+        self.widget.as_mut().unwrap().render_postfix(
+            &mut graphics,
+            &mut self.config.theme,
+            layout_node,
+            &mut self.info,
+            context,
+        );
+        
+        start.elapsed()
+    }
+
+    /// Render the scene to the surface, returning render times if successful.
+    fn render_to_surface(
+        &mut self,
+        render_start: Instant,
+        scene_reset_time: Duration,
+        widget_render_time: Duration,
+        postfix_render_time: Duration,
+    ) -> Option<RenderTimes> {
+        let renderer = self.renderer.as_mut()?;
+        let render_ctx = self.render_ctx.as_ref()?;
+        let surface = self.surface.as_ref()?;
+        let window = self.window.as_ref()?;
+
+        let device_handle = render_ctx.devices.first()?;
+
+        if window.inner_size().width == 0 || window.inner_size().height == 0 {
+            log::debug!("Surface invalid. Skipping render.");
+            return None;
         }
 
-        // check if app should redraw
-        if self.update.get().intersects(Update::FORCE | Update::DRAW) {
-            log::debug!("Draw update detected!");
+        let surface_get_start = Instant::now();
+        let surface_texture = surface
+            .surface
+            .get_current_texture()
+            .expect("Failed to get surface texture");
+        let surface_get_time = surface_get_start.elapsed();
 
-            let render_start = Instant::now();
+        window.pre_present_notify();
 
-            // clear scene
-            self.scene.reset();
-            let scene_reset_time = render_start.elapsed();
+        let gpu_render_start = Instant::now();
+        renderer
+            .render_to_surface(
+                &device_handle.device,
+                &device_handle.queue,
+                &self.scene,
+                &surface_texture,
+                &RenderParams {
+                    base_color: self.config.theme.window_background(),
+                    width: window.inner_size().width,
+                    height: window.inner_size().height,
+                    antialiasing_method: self.config.render.antialiasing,
+                },
+            )
+            .expect("Failed to render to surface");
+        let gpu_render_time = gpu_render_start.elapsed();
 
-            let context = self.context();
+        let present_start = Instant::now();
+        surface_texture.present();
+        let present_time = present_start.elapsed();
 
-            log::debug!("Rendering root widget...");
-            let widget_render_start = Instant::now();
-            // Get Vello scene from UnifiedScene for rendering
-            let vello_scene = self.scene.as_vello_mut().expect("Scene must be Vello for now");
-            let mut graphics = VelloGraphics::new(vello_scene);
-            self.widget.as_mut().unwrap().render(
-                &mut graphics,
-                &mut self.config.theme,
-                &layout_node,
-                &mut self.info,
-                context,
+        Some(RenderTimes {
+            scene_reset_time,
+            widget_render_time,
+            postfix_render_time,
+            surface_get_time,
+            gpu_render_time,
+            present_time,
+            total_time: render_start.elapsed(),
+        })
+    }
+
+    /// Print render profiling information if enabled.
+    fn print_render_profile(&self, times: RenderTimes) {
+        if std::env::var("NPTK_PROFILE").is_ok() {
+            eprintln!(
+                "[NPTK Profile] Scene reset: {:.2}ms | Widget render: {:.2}ms | Postfix: {:.2}ms | Surface get: {:.2}ms | GPU render: {:.2}ms | Present: {:.2}ms | Total: {:.2}ms",
+                times.scene_reset_time.as_secs_f64() * 1000.0,
+                times.widget_render_time.as_secs_f64() * 1000.0,
+                times.postfix_render_time.as_secs_f64() * 1000.0,
+                times.surface_get_time.as_secs_f64() * 1000.0,
+                times.gpu_render_time.as_secs_f64() * 1000.0,
+                times.present_time.as_secs_f64() * 1000.0,
+                times.total_time.as_secs_f64() * 1000.0
             );
-            let widget_render_time = widget_render_start.elapsed();
-
-            // Render postfix content (overlays, popups) after main content
-            log::debug!("Rendering postfix content...");
-            let postfix_render_start = Instant::now();
-            let context = self.context();
-            let vello_scene = self.scene.as_vello_mut().expect("Scene must be Vello for now");
-            let mut graphics = VelloGraphics::new(vello_scene);
-            self.widget.as_mut().unwrap().render_postfix(
-                &mut graphics,
-                &mut self.config.theme,
-                &layout_node,
-                &mut self.info,
-                context,
-            );
-            let postfix_render_time = postfix_render_start.elapsed();
-
-            // Only render if all resources are available
-            if let (Some(renderer), Some(render_ctx), Some(surface), Some(window)) = (
-                self.renderer.as_mut(),
-                self.render_ctx.as_ref(),
-                self.surface.as_ref(),
-                self.window.as_ref(),
-            ) {
-                let device_handle = match render_ctx.devices.first() {
-                    Some(handle) => handle,
-                    None => {
-                        log::warn!("No devices available, skipping render");
-                        return;
-                    }
-                };
-
-            // check surface validity
-            if window.inner_size().width != 0 && window.inner_size().height != 0 {
-                let surface_get_start = Instant::now();
-                let surface_texture = surface
-                    .surface
-                    .get_current_texture()
-                    .expect("Failed to get surface texture");
-                let surface_get_time = surface_get_start.elapsed();
-
-                // make sure winit knows that the surface texture is ready to be presented
-                window.pre_present_notify();
-
-                // TODO: this panics if canvas didn't change (no operation was done) in debug mode
-                let gpu_render_start = Instant::now();
-                renderer
-                    .render_to_surface(
-                        &device_handle.device,
-                        &device_handle.queue,
-                        &self.scene,
-                        &surface_texture,
-                        &RenderParams {
-                            base_color: self.config.theme.window_background(),
-                            width: window.inner_size().width,
-                            height: window.inner_size().height,
-                            antialiasing_method: self.config.render.antialiasing,
-                        },
-                    )
-                    .expect("Failed to render to surface");
-                let gpu_render_time = gpu_render_start.elapsed();
-
-                let present_start = Instant::now();
-                surface_texture.present();
-                let present_time = present_start.elapsed();
-
-                let total_render_time = render_start.elapsed();
-                
-                // Only print profiling if NPTK_PROFILE is set (to avoid spam)
-                // Useful for debugging performance issues, especially with Vello rendering backend
-                if std::env::var("NPTK_PROFILE").is_ok() {
-                    eprintln!(
-                        "[NPTK Profile] Scene reset: {:.2}ms | Widget render: {:.2}ms | Postfix: {:.2}ms | Surface get: {:.2}ms | GPU render: {:.2}ms | Present: {:.2}ms | Total: {:.2}ms",
-                        scene_reset_time.as_secs_f64() * 1000.0,
-                        widget_render_time.as_secs_f64() * 1000.0,
-                        postfix_render_time.as_secs_f64() * 1000.0,
-                        surface_get_time.as_secs_f64() * 1000.0,
-                        gpu_render_time.as_secs_f64() * 1000.0,
-                        present_time.as_secs_f64() * 1000.0,
-                        total_render_time.as_secs_f64() * 1000.0
-                    );
-                }
-            } else {
-                log::debug!("Surface invalid. Skipping render.");
-            }
-            } // Close the resource availability check
         }
+    }
 
-        // check if app should re-evaluate
+    /// Handle update flags (eval, exit).
+    fn handle_update_flags(&mut self, event_loop: &ActiveEventLoop) {
         if self.update.get().intersects(Update::EVAL | Update::FORCE) {
             log::debug!("Evaluation update detected!");
-
             if let Some(window) = self.window.as_ref() {
                 window.request_redraw();
             }
         }
-        // update the app if requested
+
         if self.update.get().intersects(Update::EXIT) {
             event_loop.exit();
             return;
         }
 
-        // reset AppInfo and update states
         self.info.reset();
         self.update.clear();
+    }
 
-        // update diagnostics
+    /// Update diagnostics counters.
+    fn update_diagnostics(&mut self) {
         if self.last_update.elapsed() >= Duration::from_secs(1) {
             self.last_update = Instant::now();
-
-            // calc avg updates per sec through updates per sec NOW divided by 2
             self.info.diagnostics.updates_per_sec =
                 (self.info.diagnostics.updates_per_sec + self.info.diagnostics.updates) / 2;
-
-            // reset current updates per seconds
             self.info.diagnostics.updates = 0;
         } else {
-            // increase updates per sec NOW by 1
             self.info.diagnostics.updates += 1;
         }
 
         log::debug!("Updates per sec: {}", self.info.diagnostics.updates_per_sec);
     }
+}
+
+/// Render timing information for profiling.
+struct RenderTimes {
+    scene_reset_time: Duration,
+    widget_render_time: Duration,
+    postfix_render_time: Duration,
+    surface_get_time: Duration,
+    gpu_render_time: Duration,
+    present_time: Duration,
+    total_time: Duration,
 }
 
 impl<T, W, S, F> AppHandler<'_, T, W, S, F>
@@ -410,40 +461,57 @@ where
     fn initialize_async(&mut self, _event_loop: &ActiveEventLoop) {
         log::debug!("Starting async initialization...");
         
-        // For now, we'll use a simplified approach that defers only the most expensive operations
-        // The full async approach would require significant architectural changes
-        
-        // Create render context immediately (this is relatively fast)
-        log::debug!("Creating render context...");
-        let mut render_ctx = RenderContext::new();
-        log::debug!("Render context created successfully");
-        
-        // Create surface with a timeout to avoid blocking too long
-        if let Some(window) = &self.window {
-            log::debug!("Creating surface...");
-            self.surface = Some(
-                crate::tasks::block_on(async {
-                    log::debug!("Starting surface creation...");
-                    let result = render_ctx
-                        .create_surface(
-                            window.clone(),
-                            window.inner_size().width,
-                            window.inner_size().height,
-                            self.config.render.present_mode,
-                        )
-                        .await;
-                    log::debug!("Surface creation completed");
-                    result
-                })
-                .expect("Failed to create surface"),
-            );
-            log::debug!("Surface created successfully");
-        } else {
-            log::error!("Window not available during surface creation");
-            return;
-        }
+        let mut render_ctx = Self::create_render_context();
+        self.create_surface(&mut render_ctx);
+        self.create_renderer(&render_ctx);
 
-        // Create renderer (this can be slow)
+        self.render_ctx = Some(Arc::new(render_ctx));
+        self.update.set(Update::FORCE);
+        self.async_init_complete.store(true, Ordering::Relaxed);
+        
+        log::debug!("Async initialization complete");
+    }
+
+    /// Create a new render context.
+    fn create_render_context() -> RenderContext {
+        log::debug!("Creating render context...");
+        let ctx = RenderContext::new();
+        log::debug!("Render context created successfully");
+        ctx
+    }
+
+    /// Create the rendering surface.
+    fn create_surface(&mut self, render_ctx: &mut RenderContext) {
+        let window = match &self.window {
+            Some(w) => w,
+            None => {
+                log::error!("Window not available during surface creation");
+                return;
+            }
+        };
+
+        log::debug!("Creating surface...");
+        self.surface = Some(
+            crate::tasks::block_on(async {
+                log::debug!("Starting surface creation...");
+                let result = render_ctx
+                    .create_surface(
+                        window.clone(),
+                        window.inner_size().width,
+                        window.inner_size().height,
+                        self.config.render.present_mode,
+                    )
+                    .await;
+                log::debug!("Surface creation completed");
+                result
+            })
+            .expect("Failed to create surface"),
+        );
+        log::debug!("Surface created successfully");
+    }
+
+    /// Create the renderer with the given render context.
+    fn create_renderer(&mut self, render_ctx: &RenderContext) {
         log::debug!("Requesting device handle via selector...");
         let device_handle = (self.config.render.device_selector)(&render_ctx.devices);
 
@@ -452,110 +520,46 @@ where
             eprintln!("[NPTK] Renderer configured with CPU path processing enabled");
             log::info!("Renderer configured with CPU path processing enabled");
         }
+        
         self.renderer = Some(
             Renderer::new(
                 &device_handle.device,
                 self.config.render.backend.clone(),
-                RendererOptions {
-                    surface_format: Some(self.surface.as_ref().unwrap().format),
-                    use_cpu: self.config.render.cpu,
-                    antialiasing_support: match self.config.render.antialiasing {
-                        AaConfig::Area => AaSupport::area_only(),
-                        AaConfig::Msaa8 => AaSupport {
-                            area: false,
-                            msaa8: true,
-                            msaa16: false,
-                        },
-                        AaConfig::Msaa16 => AaSupport {
-                            area: false,
-                            msaa8: false,
-                            msaa16: true,
-                        },
-                    },
-                    num_init_threads: self.config.render.init_threads,
-                },
+                Self::build_renderer_options(&self.config, &self.surface.as_ref().unwrap().format),
             )
             .expect("Failed to create renderer"),
         );
-
-        self.render_ctx = Some(Arc::new(render_ctx));
-        self.update.set(Update::FORCE);
-        self.async_init_complete.store(true, Ordering::Relaxed);
-        
-        log::debug!("Async initialization complete");
-    }
-}
-
-impl<T, W, S, F> ApplicationHandler for AppHandler<'_, T, W, S, F>
-where
-    T: Theme,
-    W: Widget,
-    F: Fn(AppContext, S) -> W,
-{
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        log::info!("Resuming/Starting app execution...");
-
-        self.plugins.run(|pl| {
-            pl.on_resume(
-                &mut self.config,
-                &mut self.scene,
-                &mut self.taffy,
-                self.window_node,
-                &mut self.info,
-                &self.update,
-                &mut self.last_update,
-                event_loop,
-            )
-        });
-
-        // Create window immediately for fast startup
-        log::debug!("Creating window...");
-        self.window = Some(Arc::new(
-            event_loop
-                .create_window(self.attrs.clone())
-                .expect("Failed to create window"),
-        ));
-
-        // Set window style immediately
-        self.taffy
-            .set_style(
-                self.window_node,
-                Style {
-                    size: Size::<Dimension> {
-                        width: Dimension::length(
-                            self.window.as_ref().unwrap().inner_size().width as f32,
-                        ),
-                        height: Dimension::length(
-                            self.window.as_ref().unwrap().inner_size().height as f32,
-                        ),
-                    },
-                    ..Default::default()
-                },
-            )
-            .expect("Failed to set window node style");
-
-        // Create a basic widget immediately for display
-        self.widget = Some((self.builder)(
-            AppContext::new(
-                self.update.clone(),
-                self.info.diagnostics,
-                Arc::new(RenderContext::new()), // Temporary render context
-                self.info.focus_manager.clone(),
-            ),
-            self.state.take().unwrap(),
-        ));
-
-        // Initialize heavy components asynchronously
-        self.initialize_async(event_loop);
     }
 
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        window_id: WindowId,
-        mut event: WindowEvent,
-    ) {
-        // Only run plugins if all resources are still available
+    /// Build renderer options from configuration.
+    fn build_renderer_options(config: &MayConfig<T>, surface_format: &vello::wgpu::TextureFormat) -> RendererOptions {
+        RendererOptions {
+            surface_format: Some(*surface_format),
+            use_cpu: config.render.cpu,
+            antialiasing_support: Self::convert_antialiasing_config(&config.render.antialiasing),
+            num_init_threads: config.render.init_threads,
+        }
+    }
+
+    /// Convert antialiasing config to support flags.
+    fn convert_antialiasing_config(config: &AaConfig) -> AaSupport {
+        match config {
+            AaConfig::Area => AaSupport::area_only(),
+            AaConfig::Msaa8 => AaSupport {
+                area: false,
+                msaa8: true,
+                msaa16: false,
+            },
+            AaConfig::Msaa16 => AaSupport {
+                area: false,
+                msaa8: false,
+                msaa16: true,
+            },
+        }
+    }
+
+    /// Update plugins for window event handling.
+    fn update_plugins_for_window_event(&mut self, event: &mut WindowEvent, event_loop: &ActiveEventLoop) {
         if let (Some(window), Some(renderer), Some(surface), Some(render_ctx)) = (
             self.window.as_ref(),
             self.renderer.as_mut(),
@@ -564,7 +568,7 @@ where
         ) {
             self.plugins.run(|pl| {
                 pl.on_window_event(
-                    &mut event,
+                    event,
                     &mut self.config,
                     window,
                     renderer,
@@ -580,150 +584,238 @@ where
                 )
             });
         }
+    }
+
+    /// Handle a window event.
+    fn handle_window_event(&mut self, event: WindowEvent, event_loop: &ActiveEventLoop) {
+        match event {
+            WindowEvent::Resized(new_size) => self.handle_resize(new_size, event_loop),
+            WindowEvent::CloseRequested => self.handle_close_request(event_loop),
+            WindowEvent::RedrawRequested => self.update(event_loop),
+            WindowEvent::CursorLeft { .. } => {
+                self.info.cursor_pos = None;
+                self.request_redraw();
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.info.cursor_pos = Some(Vector2::new(position.x, position.y));
+                self.request_redraw();
+            }
+            WindowEvent::ModifiersChanged(modifiers) => {
+                self.info.modifiers = modifiers.state();
+            }
+            WindowEvent::KeyboardInput { event, device_id, is_synthetic } => {
+                self.handle_keyboard_input(event, device_id, is_synthetic);
+            }
+            WindowEvent::MouseInput { device_id, button, state } => {
+                self.handle_mouse_input(device_id, button, state);
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                self.info.mouse_scroll_delta = Some(delta);
+                self.request_redraw();
+            }
+            WindowEvent::Ime(ime_event) => {
+                self.info.ime_events.push(ime_event);
+                self.request_redraw();
+            }
+            WindowEvent::Destroyed => log::info!("Window destroyed! Exiting..."),
+            _ => (),
+        }
+    }
+
+    /// Handle window resize event.
+    fn handle_resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>, _event_loop: &ActiveEventLoop) {
+        if new_size.width == 0 || new_size.height == 0 {
+            log::debug!("Window size is 0x0, ignoring resize event.");
+            return;
+        }
+
+        log::info!("Window resized to {}x{}", new_size.width, new_size.height);
+
+        if let Some(ctx) = &self.render_ctx {
+            if let Some(surface) = &mut self.surface {
+                ctx.resize_surface(surface, new_size.width, new_size.height);
+            }
+        }
+
+        self.update_window_node_size(new_size.width, new_size.height);
+        self.info.size = Vector2::new(new_size.width as f64, new_size.height as f64);
+        self.request_redraw();
+        self.update.insert(Update::DRAW | Update::LAYOUT);
+    }
+
+    /// Update the window node size in the layout tree.
+    fn update_window_node_size(&mut self, width: u32, height: u32) {
+        self.taffy
+            .set_style(
+                self.window_node,
+                Style {
+                    size: Size::<Dimension> {
+                        width: Dimension::length(width as f32),
+                        height: Dimension::length(height as f32),
+                    },
+                    ..Default::default()
+                },
+            )
+            .expect("Failed to set window node style");
+    }
+
+    /// Handle window close request.
+    fn handle_close_request(&mut self, event_loop: &ActiveEventLoop) {
+        log::info!("Window Close requested...");
+        log::debug!("Cleaning up resources...");
+
+        if self.config.window.close_on_request {
+            event_loop.exit();
+        }
+    }
+
+    /// Handle keyboard input event.
+    fn handle_keyboard_input(
+        &mut self,
+        event: winit::event::KeyEvent,
+        device_id: winit::event::DeviceId,
+        is_synthetic: bool,
+    ) {
+        if is_synthetic {
+            return;
+        }
+
+        if event.state == ElementState::Pressed {
+            use winit::keyboard::{KeyCode, PhysicalKey};
+            match event.physical_key {
+                PhysicalKey::Code(KeyCode::Tab) => {
+                    self.handle_tab_navigation();
+                    self.request_redraw();
+                    return;
+                }
+                PhysicalKey::Code(KeyCode::Escape) => {
+                    // Handle ESC key for modal overlays
+                }
+                _ => {}
+            }
+        }
+
+        self.info.keys.push((device_id, event));
+        self.request_redraw();
+    }
+
+    /// Handle tab navigation for focus management.
+    fn handle_tab_navigation(&mut self) {
+        if let Ok(mut manager) = self.info.focus_manager.lock() {
+            if self.info.modifiers.shift_key() {
+                manager.focus_previous();
+            } else {
+                manager.focus_next();
+            }
+            self.update.insert(Update::FOCUS | Update::DRAW);
+        }
+    }
+
+    /// Handle mouse input event.
+    fn handle_mouse_input(
+        &mut self,
+        device_id: winit::event::DeviceId,
+        button: MouseButton,
+        state: ElementState,
+    ) {
+        if button == MouseButton::Left && state == ElementState::Pressed {
+            if let Some(cursor_pos) = self.info.cursor_pos {
+                if let Ok(mut manager) = self.info.focus_manager.lock() {
+                    if manager.handle_click(cursor_pos.x, cursor_pos.y) {
+                        self.update.insert(Update::FOCUS | Update::DRAW);
+                    }
+                }
+            }
+        }
+
+        self.info.buttons.push((device_id, button, state));
+        self.request_redraw();
+    }
+
+    /// Notify plugins that the application is resuming.
+    fn notify_plugins_resume(&mut self, event_loop: &ActiveEventLoop) {
+        self.plugins.run(|pl| {
+            pl.on_resume(
+                &mut self.config,
+                &mut self.scene,
+                &mut self.taffy,
+                self.window_node,
+                &mut self.info,
+                &self.update,
+                &mut self.last_update,
+                event_loop,
+            )
+        });
+    }
+
+    /// Create the application window.
+    fn create_window(&mut self, event_loop: &ActiveEventLoop) {
+        log::debug!("Creating window...");
+        self.window = Some(Arc::new(
+            event_loop
+                .create_window(self.attrs.clone())
+                .expect("Failed to create window"),
+        ));
+    }
+
+    /// Set up the window node in the layout tree.
+    fn setup_window_node(&mut self) {
+        let window = self.window.as_ref().unwrap();
+        self.taffy
+            .set_style(
+                self.window_node,
+                Style {
+                    size: Size::<Dimension> {
+                        width: Dimension::length(window.inner_size().width as f32),
+                        height: Dimension::length(window.inner_size().height as f32),
+                    },
+                    ..Default::default()
+                },
+            )
+            .expect("Failed to set window node style");
+    }
+
+    /// Create the initial widget for display.
+    fn create_initial_widget(&mut self) {
+        self.widget = Some((self.builder)(
+            AppContext::new(
+                self.update.clone(),
+                self.info.diagnostics,
+                Arc::new(RenderContext::new()), // Temporary render context
+                self.info.focus_manager.clone(),
+            ),
+            self.state.take().unwrap(),
+        ));
+    }
+}
+
+impl<T, W, S, F> ApplicationHandler for AppHandler<'_, T, W, S, F>
+where
+    T: Theme,
+    W: Widget,
+    F: Fn(AppContext, S) -> W,
+{
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        log::info!("Resuming/Starting app execution...");
+
+        self.notify_plugins_resume(event_loop);
+        self.create_window(event_loop);
+        self.setup_window_node();
+        self.create_initial_widget();
+        self.initialize_async(event_loop);
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: WindowId,
+        mut event: WindowEvent,
+    ) {
+        self.update_plugins_for_window_event(&mut event, event_loop);
 
         if let Some(window) = &self.window {
             if window.id() == window_id {
-                match event {
-                    WindowEvent::Resized(new_size) => {
-                        if new_size.width != 0 && new_size.height != 0 {
-                            log::info!("Window resized to {}x{}", new_size.width, new_size.height);
-
-                            if let Some(ctx) = &self.render_ctx {
-                                if let Some(surface) = &mut self.surface {
-                                    ctx.resize_surface(surface, new_size.width, new_size.height);
-                                }
-                            }
-
-                            self.taffy
-                                .set_style(
-                                    self.window_node,
-                                    Style {
-                                        size: Size::<Dimension> {
-                                            width: Dimension::length(new_size.width as f32),
-                                            height: Dimension::length(new_size.height as f32),
-                                        },
-                                        ..Default::default()
-                                    },
-                                )
-                                .expect("Failed to set window node style");
-
-                            self.info.size =
-                                Vector2::new(new_size.width as f64, new_size.height as f64);
-
-                            // Update overlay positions for new screen size
-
-                            self.request_redraw();
-
-                            self.update.insert(Update::DRAW | Update::LAYOUT);
-                        } else {
-                            log::debug!("Window size is 0x0, ignoring resize event.");
-                        }
-                    },
-
-                    WindowEvent::CloseRequested => {
-                        log::info!("Window Close requested...");
-
-                        // Note: Devices will be automatically cleaned up when render_ctx Arc is dropped
-                        // Manual destruction is not needed and causes segfaults due to Arc immutability
-                        log::debug!("Cleaning up resources...");
-
-                        if self.config.window.close_on_request {
-                            event_loop.exit();
-                        }
-                    },
-
-                    WindowEvent::RedrawRequested => {
-                        self.update(event_loop);
-                    },
-
-                    WindowEvent::CursorLeft { .. } => {
-                        self.info.cursor_pos = None;
-                        self.request_redraw();
-                    },
-
-                    WindowEvent::CursorMoved { position, .. } => {
-                        self.info.cursor_pos = Some(Vector2::new(position.x, position.y));
-                        self.request_redraw();
-                    },
-
-                    WindowEvent::ModifiersChanged(modifiers) => {
-                        self.info.modifiers = modifiers.state();
-                    },
-
-                    WindowEvent::KeyboardInput {
-                        event,
-                        device_id,
-                        is_synthetic,
-                    } => {
-                        if !is_synthetic {
-                            // Handle tab navigation
-                            if event.state == ElementState::Pressed {
-                                use winit::keyboard::{KeyCode, PhysicalKey};
-                                match event.physical_key {
-                                    PhysicalKey::Code(KeyCode::Tab) => {
-                                        // Check if modal overlays should block tab navigation... Handle tab navigation for focus
-                                        if let Ok(mut manager) = self.info.focus_manager.lock() {
-                                            if self.info.modifiers.shift_key() {
-                                                // Shift+Tab: focus previous
-                                                manager.focus_previous();
-                                            } else {
-                                                // Tab: focus next
-                                                manager.focus_next();
-                                            }
-                                            self.update.insert(Update::FOCUS | Update::DRAW);
-                                        }
-                                        self.request_redraw();
-                                        return; // Don't add tab keys to the key events list
-                                    }
-                                    PhysicalKey::Code(KeyCode::Escape) => {
-                                        // Handle ESC key for modal overlays
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            
-                            // Only add key events if not blocked by modal overlays
-                            self.info.keys.push((device_id, event));
-                            self.request_redraw();
-                        }
-                    },
-
-                    WindowEvent::MouseInput {
-                        device_id,
-                        button,
-                        state,
-                    } => {
-                        // Handle focus on mouse clicks
-                        if button == MouseButton::Left && state == ElementState::Pressed {
-                            if let Some(cursor_pos) = self.info.cursor_pos {
-                                // Handle normal focus
-                                if let Ok(mut manager) = self.info.focus_manager.lock() {
-                                    if manager.handle_click(cursor_pos.x, cursor_pos.y) {
-                                        self.update.insert(Update::FOCUS | Update::DRAW);
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Add mouse events
-                        self.info.buttons.push((device_id, button, state));
-                        self.request_redraw();
-                    },
-
-                    WindowEvent::MouseWheel { delta, .. } => {
-                        self.info.mouse_scroll_delta = Some(delta);
-                        self.request_redraw();
-                    },
-
-                    WindowEvent::Ime(ime_event) => {
-                        self.info.ime_events.push(ime_event);
-                        self.request_redraw();
-                    },
-
-                    WindowEvent::Destroyed => log::info!("Window destroyed! Exiting..."),
-
-                    _ => (),
-                }
+                self.handle_window_event(event, event_loop);
             }
         }
     }
