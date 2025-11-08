@@ -50,13 +50,15 @@ impl WaylandGlobals {
         globals: &GlobalList,
         qh: &QueueHandle<WaylandState>,
     ) -> Result<Self, String> {
-        let compositor = globals
-            .bind::<wl_compositor::WlCompositor, _, _>(qh, 1..=COMPOSITOR_VERSION, ())
-            .map_err(|e| format!("Failed to bind wl_compositor: {:?}", e))?;
+        let compositor: wl_compositor::WlCompositor =
+            globals
+                .bind(qh, 1..=COMPOSITOR_VERSION, ())
+                .map_err(|e| format!("Failed to bind wl_compositor: {:?}", e))?;
 
-        let wm_base = globals
-            .bind::<xdg_wm_base::XdgWmBase, _, _>(qh, 1..=XDG_WM_BASE_VERSION, ())
-            .map_err(|e| format!("Failed to bind xdg_wm_base: {:?}", e))?;
+        let wm_base: xdg_wm_base::XdgWmBase =
+            globals
+                .bind(qh, 1..=XDG_WM_BASE_VERSION, ())
+                .map_err(|e| format!("Failed to bind xdg_wm_base: {:?}", e))?;
 
         let decoration_manager = match globals.bind::<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1, _, _>(
             qh,
@@ -391,9 +393,10 @@ impl WaylandSurface {
         let _ = self.frame_callback.take();
         let callback = self.wl_surface.frame(&qh, ());
         self.frame_callback = Some(callback.into());
+        let _ = self.event_queue.flush();
     }
 
-    fn handle_pending_configure(&mut self, pending: PendingConfigure) {
+    fn handle_pending_configure(&mut self, pending: PendingConfigure) -> Result<(), String> {
         if let Some((w, h)) = pending.new_size {
             self.size = (w.max(1), h.max(1));
             self.xdg_surface
@@ -410,7 +413,12 @@ impl WaylandSurface {
             self.request_frame_callback();
         }
 
+        self.event_queue
+            .flush()
+            .map_err(|e| format!("Failed to flush Wayland queue: {:?}", e))?;
+
         self.needs_redraw = true;
+        Ok(())
     }
 
     /// Configure the wgpu surface for rendering.
@@ -519,6 +527,9 @@ impl SurfaceTrait for WaylandSurface {
         // wgpu has already attached a buffer during rendering, so this commit will show it
         log::debug!("Committing Wayland surface after rendering (buffer should be attached by wgpu)");
         self.wl_surface.commit();
+        self.event_queue
+            .flush()
+            .map_err(|e| format!("Failed to flush Wayland queue: {:?}", e))?;
         
         self.needs_redraw = false;
         Ok(())
@@ -565,8 +576,16 @@ impl SurfaceTrait for WaylandSurface {
             .map_err(|e| format!("Failed to lock Wayland state: {:?}", e))?;
 
         self.event_queue
+            .prepare_read()
+            .map(|guard| guard.read().map_err(|e| format!("Failed to read Wayland events: {:?}", e)))
+            .transpose()?;
+
+        self.event_queue
             .dispatch_pending(&mut *state_guard)
             .map_err(|e| format!("Failed to dispatch Wayland events: {:?}", e))?;
+        self.event_queue
+            .flush()
+            .map_err(|e| format!("Failed to flush Wayland queue: {:?}", e))?;
 
         let pending = state_guard.take_pending_configure();
         let should_close = state_guard.should_close;
@@ -576,7 +595,7 @@ impl SurfaceTrait for WaylandSurface {
         drop(state_guard);
 
         if let Some(pending) = pending {
-            self.handle_pending_configure(pending);
+            self.handle_pending_configure(pending)?;
         } else {
             self.size = current_size;
         }
