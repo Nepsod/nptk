@@ -9,7 +9,7 @@ use taffy::{
 };
 use vello::util::{RenderContext, RenderSurface};
 use vello::{AaConfig, AaSupport, RenderParams};
-use crate::vgi::{Renderer, Scene, Backend, RendererOptions};
+use crate::vgi::{Renderer, Scene, RendererOptions};
 use crate::vgi::graphics_from_scene;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
@@ -532,10 +532,8 @@ where
             (1920, 1080) // Default size if window not yet created
         };
         
-        // Update scene size for Hybrid backend
-        if matches!(self.config.render.backend, Backend::Hybrid) {
-            self.scene = Scene::new(self.config.render.backend.clone(), width, height);
-        }
+        // Note: Hybrid backend is disabled due to wgpu version conflict,
+        // so scene recreation is not needed (Hybrid falls back to Vello)
         
         self.renderer = Some(
             Renderer::new(
@@ -655,11 +653,8 @@ where
             }
         }
 
-        // For Hybrid scenes, we need to recreate the scene with the new size
-        // since Hybrid scenes require width/height at creation time
-        if matches!(self.config.render.backend, Backend::Hybrid) {
-            self.scene = Scene::new(self.config.render.backend.clone(), new_size.width, new_size.height);
-        }
+        // Note: Hybrid backend is disabled due to wgpu version conflict,
+        // so scene recreation is not needed (Hybrid falls back to Vello)
 
         self.update_window_node_size(new_size.width, new_size.height);
         self.info.size = Vector2::new(new_size.width as f64, new_size.height as f64);

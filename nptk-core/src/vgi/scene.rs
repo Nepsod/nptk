@@ -47,15 +47,23 @@ impl Scene {
     /// * `backend` - The backend to use for scene creation
     /// * `width` - Scene width in pixels (used for Hybrid backend)
     /// * `height` - Scene height in pixels (used for Hybrid backend)
-    pub fn new(backend: super::backend::Backend, width: u32, height: u32) -> Self {
+    ///
+    /// # Note
+    /// If Hybrid backend is requested but unavailable (due to wgpu version conflict),
+    /// this will fall back to creating a Vello scene to match the renderer fallback behavior.
+    pub fn new(backend: super::backend::Backend, _width: u32, _height: u32) -> Self {
         match backend {
             super::backend::Backend::Vello => {
                 Scene::Vello(VelloScene::new())
             }
             super::backend::Backend::Hybrid => {
-                let w = width.min(u16::MAX as u32) as u16;
-                let h = height.min(u16::MAX as u32) as u16;
-                Scene::Hybrid(vello_hybrid::Scene::new(w, h))
+                // CRITICAL: vello_hybrid uses wgpu 26.0.1, while vello uses wgpu 23.0.1.
+                // These are incompatible versions. Since Renderer::new() falls back to Vello,
+                // we must also fall back to Vello scene to avoid renderer/scene mismatch.
+                eprintln!("[NPTK] WARNING: Hybrid scene requested but unavailable due to wgpu version conflict");
+                eprintln!("[NPTK] Falling back to Vello scene");
+                log::warn!("Hybrid scene requested but unavailable, falling back to Vello scene");
+                Scene::Vello(VelloScene::new())
             }
             super::backend::Backend::Custom(_) => {
                 // For now, custom backends fall back to Vello
