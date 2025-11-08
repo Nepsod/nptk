@@ -63,6 +63,8 @@ impl Renderer {
     /// * `device` - The GPU device
     /// * `backend` - The backend to use
     /// * `options` - Renderer options
+    /// * `width` - Render target width (used for Hybrid backend)
+    /// * `height` - Render target height (used for Hybrid backend)
     ///
     /// # Returns
     /// * `Ok(Renderer)` if creation succeeded
@@ -71,6 +73,8 @@ impl Renderer {
         device: &Device,
         backend: Backend,
         options: RendererOptions,
+        _width: u32,
+        _height: u32,
     ) -> Result<Self, String> {
         match backend {
             Backend::Vello => {
@@ -80,12 +84,15 @@ impl Renderer {
                 ))
             }
             Backend::Hybrid => {
-                // NOTE: vello_hybrid uses wgpu types directly, while vello uses vello::wgpu wrappers.
-                // This creates type incompatibility. For now, we'll need to add proper type conversion
-                // or use a different approach. Hybrid renderer creation is not yet fully implemented.
-                eprintln!("[NPTK] Hybrid renderer creation requires type conversion between vello::wgpu and wgpu types");
-                eprintln!("[NPTK] Falling back to Vello renderer for now");
-                log::warn!("Hybrid renderer requested but requires type conversion, using Vello");
+                // CRITICAL: vello_hybrid uses wgpu 26.0.1, while vello uses wgpu 23.0.1.
+                // These are incompatible versions and cannot be safely converted.
+                // For now, Hybrid backend is disabled until we can resolve the version conflict.
+                eprintln!("[NPTK] ERROR: Hybrid renderer is not available due to wgpu version conflict");
+                eprintln!("[NPTK] vello uses wgpu 23.0.1, while vello_hybrid uses wgpu 26.0.1");
+                eprintln!("[NPTK] Falling back to Vello renderer");
+                log::error!("Hybrid renderer requested but unavailable due to wgpu version conflict (vello=23.0.1, vello_hybrid=26.0.1)");
+                log::warn!("Falling back to Vello renderer");
+                
                 Ok(Renderer::Vello(
                     vello::Renderer::new(device, options.vello_options())
                         .map_err(|e| format!("Failed to create renderer: {:?}", e))?,
@@ -178,8 +185,8 @@ impl RendererTrait for Renderer {
                 Ok(())
             }
             (Renderer::Hybrid(_), Scene::Hybrid(_)) => {
-                // Hybrid renderer rendering is not yet fully implemented due to type incompatibilities
-                Err("Hybrid renderer rendering requires type conversion, not yet implemented".to_string())
+                // Hybrid renderer is disabled due to wgpu version conflict
+                Err("Hybrid renderer is not available due to wgpu version conflict between vello (23.0.1) and vello_hybrid (26.0.1)".to_string())
             }
             _ => {
                 Err("Renderer and scene backend mismatch".to_string())

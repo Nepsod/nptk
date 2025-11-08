@@ -10,7 +10,7 @@ use taffy::{
 use vello::util::{RenderContext, RenderSurface};
 use vello::{AaConfig, AaSupport, RenderParams};
 use crate::vgi::{Renderer, Scene, Backend, RendererOptions};
-use crate::vgi::vello_vg::VelloGraphics;
+use crate::vgi::graphics_from_scene;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
@@ -77,13 +77,14 @@ where
             .expect("Failed to create window node");
 
         let size = config.window.size;
+        let backend = config.render.backend.clone();
 
         Self {
             attrs,
             window: None,
             renderer: None,
             config,
-            scene: Scene::new(Backend::Vello, 0, 0), // Will be updated on resize
+            scene: Scene::new(backend, 0, 0), // Will be updated on resize
             surface: None,
             taffy,
             widget: None,
@@ -297,10 +298,11 @@ where
         let start = Instant::now();
         
         let context = self.context();
-        let vello_scene = self.scene.as_vello_mut().expect("Scene must be Vello for now");
-        let mut graphics = VelloGraphics::new(vello_scene);
+        // Use unified Graphics API that works with both Vello and Hybrid backends
+        let mut graphics = graphics_from_scene(&mut self.scene)
+            .expect("Failed to create graphics from scene");
         self.widget.as_mut().unwrap().render(
-            &mut graphics,
+            graphics.as_mut(),
             &mut self.config.theme,
             layout_node,
             &mut self.info,
@@ -316,10 +318,11 @@ where
         let start = Instant::now();
         
         let context = self.context();
-        let vello_scene = self.scene.as_vello_mut().expect("Scene must be Vello for now");
-        let mut graphics = VelloGraphics::new(vello_scene);
+        // Use unified Graphics API that works with both Vello and Hybrid backends
+        let mut graphics = graphics_from_scene(&mut self.scene)
+            .expect("Failed to create graphics from scene");
         self.widget.as_mut().unwrap().render_postfix(
-            &mut graphics,
+            graphics.as_mut(),
             &mut self.config.theme,
             layout_node,
             &mut self.info,
@@ -521,11 +524,26 @@ where
             log::info!("Renderer configured with CPU path processing enabled");
         }
         
+        // Get window size for Hybrid renderer (needs width/height for RenderTargetConfig)
+        let (width, height) = if let Some(window) = self.window.as_ref() {
+            let size = window.inner_size();
+            (size.width, size.height)
+        } else {
+            (1920, 1080) // Default size if window not yet created
+        };
+        
+        // Update scene size for Hybrid backend
+        if matches!(self.config.render.backend, Backend::Hybrid) {
+            self.scene = Scene::new(self.config.render.backend.clone(), width, height);
+        }
+        
         self.renderer = Some(
             Renderer::new(
                 &device_handle.device,
                 self.config.render.backend.clone(),
                 Self::build_renderer_options(&self.config, &self.surface.as_ref().unwrap().format),
+                width,
+                height,
             )
             .expect("Failed to create renderer"),
         );
@@ -635,6 +653,12 @@ where
             if let Some(surface) = &mut self.surface {
                 ctx.resize_surface(surface, new_size.width, new_size.height);
             }
+        }
+
+        // For Hybrid scenes, we need to recreate the scene with the new size
+        // since Hybrid scenes require width/height at creation time
+        if matches!(self.config.render.backend, Backend::Hybrid) {
+            self.scene = Scene::new(self.config.render.backend.clone(), new_size.width, new_size.height);
         }
 
         self.update_window_node_size(new_size.width, new_size.height);

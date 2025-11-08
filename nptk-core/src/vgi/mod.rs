@@ -94,12 +94,14 @@ pub fn graphics_from_scene(scene: &mut Scene) -> Option<Box<dyn Graphics + '_>> 
         Scene::Vello(vello_scene) => {
             Some(Box::new(vello_vg::VelloGraphics::new(vello_scene)))
         }
-        Scene::Hybrid(_) => {
-            // Hybrid backend doesn't have Graphics implementation yet
-            None
+        Scene::Hybrid(hybrid_scene) => {
+            Some(Box::new(hybrid_vg::HybridGraphics::new(hybrid_scene)))
         }
     }
 }
 
 /// A default graphics implementation using Vello.
 pub mod vello_vg;
+
+/// A Hybrid graphics implementation using Vello Hybrid.
+pub mod hybrid_vg;
