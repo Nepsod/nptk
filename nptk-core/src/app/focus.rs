@@ -152,16 +152,19 @@ impl FocusManager {
 
     /// Set focus to a specific widget.
     pub fn set_focus(&mut self, id: Option<FocusId>) {
-        self.previous_focused = self.focused_widget;
-        self.focused_widget = id;
-        self.last_focus_via_keyboard = false; // Default to mouse focus
+        self.set_focus_internal(id, false);
     }
 
     /// Set focus to a specific widget via keyboard.
     pub fn set_focus_via_keyboard(&mut self, id: Option<FocusId>) {
+        self.set_focus_internal(id, true);
+    }
+
+    /// Internal method to set focus with keyboard flag.
+    fn set_focus_internal(&mut self, id: Option<FocusId>, via_keyboard: bool) {
         self.previous_focused = self.focused_widget;
         self.focused_widget = id;
-        self.last_focus_via_keyboard = true;
+        self.last_focus_via_keyboard = via_keyboard;
     }
 
     /// Get the currently focused widget ID.
@@ -176,53 +179,72 @@ impl FocusManager {
 
     /// Move focus to the next widget in tab order.
     pub fn focus_next(&mut self) {
-        self.update_tab_order();
-        
-        if self.tab_order.is_empty() {
-            return;
+        if let Some(next_id) = self.find_next_in_tab_order() {
+            self.set_focus_via_keyboard(Some(next_id));
         }
-
-        let current_index = self.focused_widget
-            .and_then(|id| self.tab_order.iter().position(|&x| x == id))
-            .unwrap_or(0);
-
-        let next_index = (current_index + 1) % self.tab_order.len();
-        self.set_focus_via_keyboard(Some(self.tab_order[next_index]));
     }
 
     /// Move focus to the previous widget in tab order.
     pub fn focus_previous(&mut self) {
+        if let Some(prev_id) = self.find_previous_in_tab_order() {
+            self.set_focus_via_keyboard(Some(prev_id));
+        }
+    }
+
+    /// Find the next widget ID in tab order.
+    fn find_next_in_tab_order(&mut self) -> Option<FocusId> {
         self.update_tab_order();
         
         if self.tab_order.is_empty() {
-            return;
+            return None;
         }
 
-        let current_index = self.focused_widget
-            .and_then(|id| self.tab_order.iter().position(|&x| x == id))
-            .unwrap_or(0);
+        let current_index = self.find_current_tab_index();
+        let next_index = (current_index + 1) % self.tab_order.len();
+        Some(self.tab_order[next_index])
+    }
 
+    /// Find the previous widget ID in tab order.
+    fn find_previous_in_tab_order(&mut self) -> Option<FocusId> {
+        self.update_tab_order();
+        
+        if self.tab_order.is_empty() {
+            return None;
+        }
+
+        let current_index = self.find_current_tab_index();
         let prev_index = if current_index == 0 {
             self.tab_order.len() - 1
         } else {
             current_index - 1
         };
-        self.set_focus_via_keyboard(Some(self.tab_order[prev_index]));
+        Some(self.tab_order[prev_index])
+    }
+
+    /// Find the current widget's index in the tab order.
+    fn find_current_tab_index(&self) -> usize {
+        self.focused_widget
+            .and_then(|id| self.tab_order.iter().position(|&x| x == id))
+            .unwrap_or(0)
     }
 
     /// Handle mouse click for focus.
     pub fn handle_click(&mut self, x: f64, y: f64) -> bool {
-        // Find the widget under the cursor that can receive click focus
-        for widget in self.widgets.values() {
-            if widget.properties.click_focusable && widget.bounds.contains(x, y) {
-                self.set_focus(Some(widget.id));
-                return true;
-            }
+        if let Some(widget_id) = self.find_widget_at_position(x, y) {
+            self.set_focus(Some(widget_id));
+            true
+        } else {
+            self.set_focus(None);
+            false
         }
-        
-        // If no focusable widget was clicked, clear focus
-        self.set_focus(None);
-        false
+    }
+
+    /// Find the widget at the given position that can receive click focus.
+    fn find_widget_at_position(&self, x: f64, y: f64) -> Option<FocusId> {
+        self.widgets
+            .values()
+            .find(|widget| widget.properties.click_focusable && widget.bounds.contains(x, y))
+            .map(|widget| widget.id)
     }
 
     /// Update the tab order based on current widgets.
@@ -238,7 +260,6 @@ impl FocusManager {
             .filter(|w| w.properties.tab_focusable)
             .collect();
 
-        // Sort by tab index, then by registration order (widget ID)
         tab_widgets.sort_by_key(|w| (w.properties.tab_index, w.id.0));
         
         self.tab_order.extend(tab_widgets.iter().map(|w| w.id));
