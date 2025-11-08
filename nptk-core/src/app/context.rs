@@ -9,14 +9,14 @@ use crate::signal::rw::RwSignal;
 use crate::signal::state::StateSignal;
 use crate::signal::Signal;
 use std::sync::Arc;
-use vello::util::RenderContext;
+use crate::vgi::GpuContext;
 
 /// The application context for managing the application lifecycle.
 #[derive(Clone)]
 pub struct AppContext {
     update: UpdateManager,
     diagnostics: Diagnostics,
-    render: Arc<RenderContext>,
+    gpu_context: Arc<GpuContext>,
     focus_manager: SharedFocusManager,
 }
 
@@ -25,13 +25,13 @@ impl AppContext {
     pub fn new(
         update: UpdateManager,
         diagnostics: Diagnostics,
-        render: Arc<RenderContext>,
+        gpu_context: Arc<GpuContext>,
         focus_manager: SharedFocusManager,
     ) -> Self {
         Self {
             update,
             diagnostics,
-            render,
+            gpu_context,
             focus_manager,
         }
     }
@@ -41,9 +41,15 @@ impl AppContext {
         self.diagnostics.clone()
     }
 
-    /// Get the [RenderContext] of the application.
-    pub fn render_ctx(&self) -> Arc<RenderContext> {
-        self.render.clone()
+    /// Get the [GpuContext] of the application.
+    pub fn gpu_context(&self) -> Arc<GpuContext> {
+        self.gpu_context.clone()
+    }
+    
+    /// Get the [GpuContext] of the application (backward compatibility alias).
+    #[deprecated(note = "Use gpu_context() instead")]
+    pub fn render_ctx(&self) -> Arc<GpuContext> {
+        self.gpu_context.clone()
     }
 
     /// Get the [UpdateManager] of the application.

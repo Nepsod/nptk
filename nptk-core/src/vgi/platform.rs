@@ -70,28 +70,23 @@ pub async fn create_surface(
     width: u32,
     height: u32,
     title: &str,
-    render_ctx: Option<&mut vello::util::RenderContext>,
+    gpu_context: Option<&crate::vgi::GpuContext>,
 ) -> Result<Surface, String> {
     match platform {
         Platform::Winit => {
             let window = window.ok_or_else(|| "Window required for Winit platform".to_string())?;
-            let render_ctx = render_ctx.ok_or_else(|| "RenderContext required for Winit platform".to_string())?;
+            let gpu_context = gpu_context.ok_or_else(|| "GpuContext required for Winit platform".to_string())?;
             
-            let render_surface = render_ctx
-                .create_surface(
-                    window,
-                    width,
-                    height,
-                    vello::wgpu::PresentMode::AutoVsync,
-                )
-                .await
+            // Create surface using GpuContext's Instance
+            let instance = gpu_context.instance();
+            let surface = instance.create_surface(window.clone())
                 .map_err(|e| format!("Failed to create winit surface: {:?}", e))?;
             
-            // Extract the surface - RenderSurface contains Surface<'static>
-            Ok(Surface::Winit(render_surface.surface))
+            Ok(Surface::Winit(surface))
         }
         Platform::Wayland => {
-            let wayland_surface = WaylandSurface::new(width, height, title, render_ctx)?;
+            let gpu_context = gpu_context.ok_or_else(|| "GpuContext required for Wayland platform".to_string())?;
+            let wayland_surface = WaylandSurface::new(width, height, title, gpu_context)?;
             Ok(Surface::Wayland(wayland_surface))
         }
     }
@@ -107,9 +102,9 @@ pub fn create_surface_blocking(
     width: u32,
     height: u32,
     title: &str,
-    render_ctx: Option<&mut vello::util::RenderContext>,
+    gpu_context: Option<&crate::vgi::GpuContext>,
 ) -> Result<Surface, String> {
-    crate::tasks::block_on(create_surface(platform, window, width, height, title, render_ctx))
+    crate::tasks::block_on(create_surface(platform, window, width, height, title, gpu_context))
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -119,24 +114,19 @@ pub async fn create_surface(
     width: u32,
     height: u32,
     _title: &str,
-    render_ctx: Option<&mut vello::util::RenderContext>,
+    gpu_context: Option<&crate::vgi::GpuContext>,
 ) -> Result<Surface, String> {
     match platform {
         Platform::Winit => {
             let window = window.ok_or_else(|| "Window required for Winit platform".to_string())?;
-            let render_ctx = render_ctx.ok_or_else(|| "RenderContext required for Winit platform".to_string())?;
+            let gpu_context = gpu_context.ok_or_else(|| "GpuContext required for Winit platform".to_string())?;
             
-            let render_surface = render_ctx
-                .create_surface(
-                    window,
-                    width,
-                    height,
-                    vello::wgpu::PresentMode::AutoVsync,
-                )
-                .await
+            // Create surface using GpuContext's Instance
+            let instance = gpu_context.instance();
+            let surface = instance.create_surface(window.clone())
                 .map_err(|e| format!("Failed to create winit surface: {:?}", e))?;
             
-            Ok(Surface::Winit(render_surface.surface))
+            Ok(Surface::Winit(surface))
         }
     }
 }
@@ -148,8 +138,8 @@ pub fn create_surface_blocking(
     width: u32,
     height: u32,
     _title: &str,
-    render_ctx: Option<&mut vello::util::RenderContext>,
+    gpu_context: Option<&crate::vgi::GpuContext>,
 ) -> Result<Surface, String> {
-    crate::tasks::block_on(create_surface(platform, window, width, height, "", render_ctx))
+    crate::tasks::block_on(create_surface(platform, window, width, height, "", gpu_context))
 }
 

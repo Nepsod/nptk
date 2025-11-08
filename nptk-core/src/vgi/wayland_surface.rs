@@ -25,8 +25,8 @@ pub struct WaylandSurface {
     /// Wayland surface for committing
     wl_surface: wayland_client::protocol::wl_surface::WlSurface,
     /// wgpu surface created from Wayland window (using vello's wgpu types)
-    /// TODO: This needs to be properly initialized once wgpu surface creation is implemented
-    wgpu_surface: Option<vello::wgpu::Surface<'static>>,
+    /// This is created early to help with adapter enumeration on Wayland
+    pub(crate) wgpu_surface: Option<vello::wgpu::Surface<'static>>,
     /// Current window size
     size: (u32, u32),
     /// Flag indicating if a redraw is needed
@@ -217,12 +217,12 @@ impl WaylandSurface {
     /// * `width` - Initial window width in pixels
     /// * `height` - Initial window height in pixels
     /// * `title` - Window title
-    /// * `render_ctx` - Optional render context for wgpu surface creation
+    /// * `gpu_context` - GPU context to use for creating wgpu surface (must use same Instance)
     ///
     /// # Returns
     /// * `Ok(WaylandSurface)` if creation succeeded
     /// * `Err(String)` if creation failed
-    pub fn new(width: u32, height: u32, title: &str, render_ctx: Option<&mut vello::util::RenderContext>) -> Result<Self, String> {
+    pub fn new(width: u32, height: u32, title: &str, gpu_context: &crate::vgi::GpuContext) -> Result<Self, String> {
         use wayland_client::globals::registry_queue_init;
         use smithay_client_toolkit::compositor::{CompositorState, Surface};
         use smithay_client_toolkit::shell::xdg::window::WindowDecorations;
@@ -278,9 +278,8 @@ impl WaylandSurface {
         event_queue.roundtrip(&mut state)
             .map_err(|e| format!("Failed to roundtrip: {:?}", e))?;
         
-        // Create wgpu surface from raw window handle
-        // Even if render_ctx is None, we should still try to create a wgpu surface
-        // to help with adapter enumeration on Wayland
+        // Create wgpu surface from raw window handle using GpuContext's Instance
+        // This ensures the surface is created with the same Instance that enumerates adapters
         let (wgpu_surface, format) = {
             // Get raw window handle
             use wayland_client::Proxy;
@@ -294,14 +293,10 @@ impl WaylandSurface {
             let raw_handle = raw_window_handle::WaylandWindowHandle::new(wl_surface_ptr);
             let raw_display_handle = raw_window_handle::WaylandDisplayHandle::new(display_ptr);
             
-            // Create wgpu Instance with same configuration that RenderContext uses
-            // This ensures compatibility when RenderContext enumerates adapters
-            let instance = vello::wgpu::Instance::new(vello::wgpu::InstanceDescriptor {
-                backends: vello::wgpu::Backends::PRIMARY,
-                dx12_shader_compiler: Default::default(),
-                flags: vello::wgpu::InstanceFlags::default(),
-                gles_minor_version: Default::default(),
-            });
+            // Use GpuContext's Instance to create the surface
+            // This ensures compatibility - the surface will be created with the same Instance
+            // that enumerates adapters and creates devices
+            let instance = gpu_context.instance();
             
             // Create surface using unsafe API with raw handles
             // This is necessary because we need to pass raw pointers
@@ -310,10 +305,21 @@ impl WaylandSurface {
                 raw_window_handle: raw_window_handle::RawWindowHandle::Wayland(raw_handle),
             };
             
-            log::debug!("Creating wgpu surface from Wayland raw window handle...");
+            log::debug!("Creating wgpu surface from Wayland raw window handle using GpuContext's Instance...");
             match unsafe { instance.create_surface_unsafe(surface_target_unsafe) } {
                 Ok(surface) => {
                     log::debug!("Successfully created wgpu surface from Wayland handle");
+                    
+                    // Do an extra roundtrip to ensure the compositor has registered the surface
+                    // This helps with adapter enumeration on Wayland
+                    log::debug!("Performing extra roundtrip to ensure compositor registers wgpu surface");
+                    let mut temp_state = WaylandState {
+                        size: (width, height),
+                        needs_redraw: false,
+                        should_close: false,
+                    };
+                    let _ = event_queue.roundtrip(&mut temp_state);
+                    
                     // Query surface format from adapter if available
                     // For now, we'll use a default format and update it when adapter is available
                     // The format will be queried later via get_capabilities() when we have an adapter
@@ -322,11 +328,7 @@ impl WaylandSurface {
                 }
                 Err(e) => {
                     eprintln!("[NPTK] Warning: Failed to create wgpu surface from Wayland handle: {:?}", e);
-                    if render_ctx.is_some() {
-                        eprintln!("[NPTK] Falling back to None - rendering will not work until this is fixed");
-                    } else {
-                        log::debug!("wgpu surface creation failed (no render context yet), will retry later");
-                    }
+                    eprintln!("[NPTK] Falling back to None - rendering will not work until this is fixed");
                     (None, TextureFormat::Bgra8Unorm)
                 }
             }
@@ -349,6 +351,22 @@ impl WaylandSurface {
         })
     }
 
+    /// Create the wgpu surface using GpuContext's Instance.
+    /// This method is no longer needed since we create the surface in new(),
+    /// but kept for backward compatibility.
+    #[deprecated(note = "wgpu surface is now created in new() using GpuContext")]
+    pub(crate) fn create_wgpu_surface_from_device(
+        &mut self,
+        _device: &vello::wgpu::Device,
+    ) -> Result<(), String> {
+        // Surface should already be created in new()
+        if self.wgpu_surface.is_some() {
+            Ok(())
+        } else {
+            Err("wgpu surface not created - this should not happen".to_string())
+        }
+    }
+    
     /// Get a reference to the Wayland window.
     pub fn window(&self) -> &smithay_client_toolkit::shell::xdg::window::Window {
         &self.window

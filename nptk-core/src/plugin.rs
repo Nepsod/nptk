@@ -6,7 +6,7 @@ use nptk_theme::theme::Theme;
 use std::sync::Arc;
 use std::time::Instant;
 use taffy::{NodeId, TaffyTree};
-use vello::util::RenderContext;
+use crate::vgi::GpuContext;
 use crate::vgi::{Renderer, Scene, Surface};
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -69,7 +69,7 @@ pub trait Plugin<T: Theme> {
         _taffy: &mut TaffyTree,
         _window_node: NodeId,
         _info: &mut AppInfo,
-        _render_ctx: &RenderContext,
+        _gpu_context: &GpuContext,
         _update: &UpdateManager,
         _last_update: &mut Instant,
         _event_loop: &ActiveEventLoop,
@@ -88,7 +88,7 @@ pub trait Plugin<T: Theme> {
         _taffy: &mut TaffyTree,
         _window_node: NodeId,
         _info: &mut AppInfo,
-        _render_ctx: &RenderContext,
+        _gpu_context: &GpuContext,
         _update: &UpdateManager,
         _last_update: &mut Instant,
         _event_loop: &ActiveEventLoop,

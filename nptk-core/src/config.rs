@@ -1,6 +1,6 @@
 use nalgebra::{Point2, Vector2};
 use std::num::NonZeroUsize;
-use vello::util::DeviceHandle;
+use crate::vgi::DeviceHandle;
 pub use vello::AaConfig;
 pub use wgpu_types::PresentMode;
 pub use winit::window::{
@@ -154,7 +154,7 @@ pub struct RenderConfig {
     /// The number of threads to use for initialization in [vello].
     pub init_threads: Option<NonZeroUsize>,
     /// The selector function to determine which device to use for rendering. Defaults to using the first device found.
-    pub device_selector: fn(&Vec<DeviceHandle>) -> &DeviceHandle,
+    pub device_selector: fn(&[DeviceHandle]) -> &DeviceHandle,
     /// If true, defer system font loading to improve startup performance.
     /// Fonts will be loaded lazily when needed.
     /// Note: Lazy loading may cause text rendering issues if fonts aren't loaded properly.

@@ -7,7 +7,7 @@ use taffy::{
     AvailableSpace, Dimension, NodeId, PrintTree, Size, Style, TaffyResult, TaffyTree,
     TraversePartialTree,
 };
-use vello::util::RenderContext;
+use crate::vgi::{GpuContext, DeviceHandle};
 use vello::{AaConfig, AaSupport, RenderParams};
 use crate::vgi::{Renderer, Scene, RendererOptions, Surface, Platform, SurfaceTrait};
 use crate::vgi::graphics_from_scene;
@@ -45,7 +45,7 @@ where
     state: Option<S>,
     widget: Option<W>,
     info: AppInfo,
-    render_ctx: Option<Arc<RenderContext>>,
+    gpu_context: Option<Arc<GpuContext>>,
     update: UpdateManager,
     last_update: Instant,
     plugins: PluginManager<T>,
@@ -96,7 +96,7 @@ where
             window_node,
             builder,
             state: Some(state),
-            render_ctx: None,
+            gpu_context: None,
             update,
             last_update: Instant::now(),
             plugins,
@@ -109,7 +109,7 @@ where
         AppContext::new(
             self.update.clone(),
             self.info.diagnostics,
-            self.render_ctx.clone().unwrap(),
+            self.gpu_context.clone().unwrap(),
             self.info.focus_manager.clone(),
         )
     }
@@ -201,9 +201,7 @@ where
                 &mut self.taffy,
                 self.window_node,
                 &mut self.info,
-                self.render_ctx
-                    .as_mut()
-                    .expect("Render context not initialized"),
+                self.gpu_context.as_ref().expect("GPU context not initialized"),
                 &self.update,
                 &mut self.last_update,
                 event_loop,
@@ -342,10 +340,15 @@ where
         event_loop: &ActiveEventLoop,
     ) -> Option<RenderTimes> {
         let renderer = self.renderer.as_mut()?;
-        let render_ctx = self.render_ctx.as_ref()?;
-        let surface = self.surface.as_mut()?;
+        let gpu_context = self.gpu_context.as_ref()?;
+        let devices = gpu_context.enumerate_devices();
+        if devices.is_empty() {
+            return None;
+        }
+        let device_handle = (self.config.render.device_selector)(devices);
 
-        let device_handle = render_ctx.devices.first()?;
+        // Get surface (must exist for rendering)
+        let surface = self.surface.as_mut()?;
 
         // Get window size from surface (works for both Winit and Wayland)
         let (width, height) = surface.size();
@@ -492,152 +495,150 @@ where
     fn initialize_async(&mut self, _event_loop: &ActiveEventLoop) {
         log::debug!("Starting async initialization...");
         
-        // Detect platform early
-        let platform = Platform::detect();
-        
-        // For Wayland, the key insight (from GPUI and wgpu docs) is that we need to create
-        // the wgpu Surface BEFORE enumerating adapters. On Wayland, some adapters may only
-        // be available after a surface is created. However, vello's RenderContext::new()
-        // enumerates adapters immediately without a surface.
-        //
-        // Solution: Create a temporary wgpu Instance and Wayland surface first, then
-        // create RenderContext (which will enumerate adapters, and should now find
-        // Wayland-compatible ones), then recreate the surface properly using RenderContext.
-        if platform == Platform::Wayland {
-            log::debug!("Wayland detected: creating temporary wgpu surface for adapter enumeration");
-            // Create temporary Wayland surface WITH wgpu surface to help adapter enumeration
-            // This ensures that when RenderContext enumerates adapters, it can find
-            // Wayland-compatible adapters
-            let size = self.config.window.size;
-            let title = self.config.window.title.clone();
-            if let Ok(wayland_surface) = crate::vgi::wayland_surface::WaylandSurface::new(
-                size.x as u32,
-                size.y as u32,
-                &title,
-                None, // No render context yet - we'll create a temporary instance
-            ) {
-                self.surface = Some(crate::vgi::Surface::Wayland(wayland_surface));
-                log::debug!("Temporary Wayland surface created, wgpu surface may be None");
+        // Create GpuContext first (creates Instance)
+        // This follows GPUI's BladeContext pattern - create Instance before surfaces
+        let mut gpu_context = match GpuContext::new() {
+            Ok(ctx) => ctx,
+            Err(e) => {
+                log::error!("Failed to create GPU context: {}", e);
+                panic!("Failed to create GPU context: {}", e);
             }
-        }
+        };
         
-        let mut render_ctx = Self::create_render_context();
-        self.create_surface(&mut render_ctx);
-        self.create_renderer(&render_ctx);
-
-        self.render_ctx = Some(Arc::new(render_ctx));
+        // Detect platform
+        let platform = Platform::detect();
+        log::info!("Detected platform: {:?}", platform);
+        
+        // Create surface using GpuContext's Instance
+        // For Wayland: Create Wayland surface with wgpu surface using GpuContext's Instance
+        // For Winit: Create Winit surface using GpuContext's Instance
+        self.create_surface(&gpu_context);
+        
+        // Request adapter with surface (for Wayland compatibility)
+        let adapter = if platform == Platform::Wayland {
+            if let Some(ref surface) = self.surface {
+                // Get wgpu surface from our Surface enum
+                match surface {
+                    crate::vgi::Surface::Wayland(wayland_surf) => {
+                        if let Some(ref wgpu_surface) = wayland_surf.wgpu_surface {
+                            gpu_context.request_adapter_with_surface(wgpu_surface)
+                        } else {
+                            log::warn!("Wayland surface has no wgpu surface, falling back to adapter enumeration");
+                            None
+                        }
+                    }
+                    crate::vgi::Surface::Winit(_) => {
+                        // For Winit, enumerate adapters normally
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        
+        // Create device from adapter (or from first adapter if no surface adapter)
+        let device_handle = match if let Some(adapter) = adapter {
+            gpu_context.create_device_from_adapter(&adapter)
+        } else {
+            // Fallback: create device from first adapter
+            gpu_context.create_device_from_first_adapter(vello::wgpu::Backends::PRIMARY)
+        } {
+            Ok(handle) => handle,
+            Err(e) => {
+                log::error!("Failed to create device: {}", e);
+                panic!("Failed to create device: {}", e);
+            }
+        };
+        
+        // Store device in GpuContext
+        let device_handle_ref = {
+            gpu_context.add_device(device_handle);
+            // Get reference from GpuContext (we just added it, so it's the last one)
+            let devices = gpu_context.enumerate_devices();
+            devices.last().expect("Device should have been added")
+        };
+        
+        // Create renderer with device
+        self.create_renderer(device_handle_ref);
+        
+        // Store GpuContext
+        self.gpu_context = Some(Arc::new(gpu_context));
         self.update.set(Update::FORCE);
         self.async_init_complete.store(true, Ordering::Relaxed);
         
         log::debug!("Async initialization complete");
     }
 
-    /// Create a new render context.
-    fn create_render_context() -> RenderContext {
-        log::debug!("Creating render context...");
-        let ctx = RenderContext::new();
-        log::debug!("Render context created successfully");
-        ctx
-    }
 
     /// Create the rendering surface.
-    fn create_surface(&mut self, render_ctx: &mut RenderContext) {
-        let window = match &self.window {
-            Some(w) => w.clone(),
-            None => {
-                log::error!("Window not available during surface creation");
-                return;
-            }
-        };
-
-        log::debug!("Creating surface...");
-        
-        // Detect platform
+    fn create_surface(&mut self, gpu_context: &GpuContext) {
         let platform = Platform::detect();
         log::info!("Detected platform: {:?}", platform);
         
-        // Get window size (for Wayland, we'll use the configured size)
+        // Get window size and title
         let (width, height) = if platform == Platform::Wayland {
             // For Wayland, use configured size since window doesn't exist yet
             let size = self.config.window.size;
             (size.x as u32, size.y as u32)
         } else {
             // For Winit, use actual window size
+            let window = self.window.as_ref().expect("Window should exist for Winit");
             let window_size = window.inner_size();
             (window_size.width, window_size.height)
         };
         let title = self.config.window.title.clone();
         
-        // For Wayland, if we already have a temporary surface, replace it with one that has wgpu surface
-        if platform == Platform::Wayland && matches!(self.surface, Some(crate::vgi::Surface::Wayland(_))) {
-            log::debug!("Replacing temporary Wayland surface with one that has wgpu surface");
-            // Drop the old temporary surface first
-            drop(self.surface.take());
-        }
-        
+        // Create surface using platform-specific function
         self.surface = Some(
             crate::vgi::platform::create_surface_blocking(
                 platform,
-                Some(window),
+                self.window.clone(),
                 width,
                 height,
                 &title,
-                Some(render_ctx),
+                Some(gpu_context),
             )
             .expect("Failed to create surface"),
         );
         log::debug!("Surface created successfully");
     }
 
-    /// Create the renderer with the given render context.
-    fn create_renderer(&mut self, render_ctx: &RenderContext) {
-        log::debug!("Requesting device handle via selector...");
-        log::debug!("Available devices: {}", render_ctx.devices.len());
-        
-        if render_ctx.devices.is_empty() {
-            log::error!("No GPU devices found. This may be a Wayland compatibility issue.");
-            log::error!("Try running with NPTK_USE_NATIVE_WAYLAND=0 to use Winit-based rendering.");
-            panic!("No devices found - cannot create renderer. See logs for details.");
-        }
-        
-        let device_handle = (self.config.render.device_selector)(&render_ctx.devices);
-
-        log::debug!("Creating renderer...");
-        if self.config.render.cpu {
-            eprintln!("[NPTK] Renderer configured with CPU path processing enabled");
-            log::info!("Renderer configured with CPU path processing enabled");
-        }
-        
-        // Get window size for Hybrid renderer (needs width/height for RenderTargetConfig)
-        // Use surface size if available, otherwise fall back to window or default
-        let (width, height) = if let Some(surface) = &self.surface {
-            let (w, h) = surface.size();
-            (w, h)
-        } else if let Some(window) = self.window.as_ref() {
-            let size = window.inner_size();
-            (size.width, size.height)
+    /// Create the renderer from a device handle.
+    fn create_renderer(&mut self, device_handle: &DeviceHandle) {
+        // Get surface format from surface
+        let surface_format = if let Some(ref surface) = self.surface {
+            surface.format()
         } else {
-            (1920, 1080) // Default size if neither surface nor window available
+            vello::wgpu::TextureFormat::Bgra8Unorm // Default fallback
         };
         
-        // Note: Hybrid backend is disabled due to wgpu version conflict,
-        // so scene recreation is not needed (Hybrid falls back to Vello)
+        // Build renderer options
+        let options = Self::build_renderer_options(&self.config, &surface_format);
         
-        // Get surface format for renderer options
-        let surface_format = self.surface.as_ref()
-            .map(|s| s.format())
-            .unwrap_or(vello::wgpu::TextureFormat::Bgra8Unorm);
+        // Get surface size for renderer initialization
+        let (width, height) = if let Some(ref surface) = self.surface {
+            surface.size()
+        } else {
+            let size = self.config.window.size;
+            (size.x as u32, size.y as u32)
+        };
         
+        // Create renderer
         self.renderer = Some(
-            Renderer::new(
+            crate::vgi::Renderer::new(
                 &device_handle.device,
                 self.config.render.backend.clone(),
-                Self::build_renderer_options(&self.config, &surface_format),
+                options,
                 width,
                 height,
             )
             .expect("Failed to create renderer"),
         );
+        
+        log::debug!("Renderer created successfully");
     }
 
     /// Build renderer options from configuration.
@@ -669,11 +670,11 @@ where
 
     /// Update plugins for window event handling.
     fn update_plugins_for_window_event(&mut self, event: &mut WindowEvent, event_loop: &ActiveEventLoop) {
-        if let (Some(window), Some(renderer), Some(surface), Some(render_ctx)) = (
+        if let (Some(window), Some(renderer), Some(surface), Some(gpu_context)) = (
             self.window.as_ref(),
             self.renderer.as_mut(),
             self.surface.as_mut(),
-            self.render_ctx.as_ref(),
+            self.gpu_context.as_ref(),
         ) {
             self.plugins.run(|pl| {
                 pl.on_window_event(
@@ -686,7 +687,7 @@ where
                     &mut self.taffy,
                     self.window_node,
                     &mut self.info,
-                    render_ctx,
+                    gpu_context,
                     &self.update,
                     &mut self.last_update,
                     event_loop,
@@ -905,7 +906,7 @@ where
             AppContext::new(
                 self.update.clone(),
                 self.info.diagnostics,
-                Arc::new(RenderContext::new()), // Temporary render context
+                Arc::new(GpuContext::new().expect("Failed to create GPU context")), // Temporary GPU context
                 self.info.focus_manager.clone(),
             ),
             self.state.take().unwrap(),
@@ -949,7 +950,7 @@ where
 
         self.window = None;
         self.surface = None;
-        self.render_ctx = None;
+        self.gpu_context = None;
         self.renderer = None;
 
         self.plugins.run(|pl| {

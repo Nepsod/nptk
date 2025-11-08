@@ -20,6 +20,7 @@ use vello::kurbo::{Affine, BezPath, Shape, Stroke};
 use vello::peniko::{Brush, Fill};
 
 // Re-export unified abstractions
+pub mod gpu_context;
 pub mod scene;
 pub mod renderer;
 pub mod backend;
@@ -33,6 +34,7 @@ pub use scene::{Scene, SceneTrait};
 pub use renderer::{Renderer, RendererTrait};
 pub use backend::Backend;
 pub use options::RendererOptions;
+pub use gpu_context::{GpuContext, DeviceHandle};
 pub use surface::{Surface, SurfaceTrait};
 pub use platform::Platform;
 
