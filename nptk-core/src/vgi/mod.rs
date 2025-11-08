@@ -28,6 +28,8 @@ pub mod options;
 pub mod surface;
 #[cfg(target_os = "linux")]
 pub mod wayland_surface;
+#[cfg(target_os = "linux")]
+pub(crate) mod wl_client;
 pub mod platform;
 
 pub use scene::{Scene, SceneTrait};

@@ -578,7 +578,8 @@ where
             }
             #[cfg(target_os = "linux")]
             crate::vgi::Surface::Wayland(_) => {
-                // For Wayland, use the surface's present method
+                // Wayland also needs the texture to be presented before committing the surface.
+                surface_texture.present();
                 if let Err(e) = surface.present() {
                     log::error!("Failed to present Wayland surface: {}", e);
                     return None;
