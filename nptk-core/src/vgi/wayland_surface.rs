@@ -36,6 +36,8 @@ pub struct WaylandSurface {
     pending_texture: Option<SurfaceTexture>,
     /// Wayland state for event handling
     state: Arc<Mutex<WaylandState>>,
+    /// Frame callback for smooth rendering synchronization
+    frame_callback: Option<wayland_client::protocol::wl_callback::WlCallback>,
 }
 
 /// State for Wayland event handling
@@ -163,6 +165,29 @@ impl wayland_client::Dispatch<wayland_protocols::xdg::decoration::zv1::client::z
 }
 
 #[cfg(target_os = "linux")]
+impl wayland_client::Dispatch<wayland_client::protocol::wl_callback::WlCallback, ()> for WaylandState {
+    fn event(
+        state: &mut Self,
+        _callback: &wayland_client::protocol::wl_callback::WlCallback,
+        event: wayland_client::protocol::wl_callback::Event,
+        _data: &(),
+        _conn: &wayland_client::Connection,
+        _qh: &wayland_client::QueueHandle<Self>,
+    ) {
+        match event {
+            wayland_client::protocol::wl_callback::Event::Done { callback_data } => {
+                // Frame callback completed - compositor is ready for next frame
+                state.needs_redraw = true;
+                let _ = callback_data;
+            }
+            _ => {
+                // Other callback events (none currently defined)
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
 impl smithay_client_toolkit::shell::xdg::window::WindowHandler for WaylandState {
     fn request_close(&mut self, _conn: &wayland_client::Connection, _qh: &wayland_client::QueueHandle<Self>, _window: &smithay_client_toolkit::shell::xdg::window::Window) {
         self.should_close = true;
@@ -191,11 +216,12 @@ impl WaylandSurface {
     /// * `width` - Initial window width in pixels
     /// * `height` - Initial window height in pixels
     /// * `title` - Window title
+    /// * `render_ctx` - Optional render context for wgpu surface creation
     ///
     /// # Returns
     /// * `Ok(WaylandSurface)` if creation succeeded
     /// * `Err(String)` if creation failed
-    pub fn new(width: u32, height: u32, title: &str) -> Result<Self, String> {
+    pub fn new(width: u32, height: u32, title: &str, render_ctx: Option<&mut vello::util::RenderContext>) -> Result<Self, String> {
         use wayland_client::globals::registry_queue_init;
         use smithay_client_toolkit::compositor::{CompositorState, Surface};
         use smithay_client_toolkit::shell::xdg::window::WindowDecorations;
@@ -251,16 +277,51 @@ impl WaylandSurface {
         event_queue.roundtrip(&mut state)
             .map_err(|e| format!("Failed to roundtrip: {:?}", e))?;
         
-        // Roundtrip to ensure window is created
-        
         // Create wgpu surface from raw window handle
-        // TODO: vello::wgpu::Instance::create_surface API needs investigation
-        // For now, we'll leave wgpu_surface as None and return an error
-        // This can be refined once we understand the correct API
-        let wgpu_surface = None;
-        
-        // Get surface format (default to Bgra8Unorm, will be updated when adapter is available)
-        let format = TextureFormat::Bgra8Unorm;
+        let (wgpu_surface, format) = if let Some(_render_ctx) = render_ctx {
+            // Get raw window handle
+            use wayland_client::Proxy;
+            use std::ptr::NonNull;
+            let wl_surface_ptr = NonNull::new(wl_surface_stored.id().as_ptr() as *mut std::ffi::c_void)
+                .ok_or_else(|| "Invalid surface pointer".to_string())?;
+            let display_ptr = NonNull::new(connection.display().id().as_ptr() as *mut std::ffi::c_void)
+                .ok_or_else(|| "Invalid display pointer".to_string())?;
+            
+            // Create raw window handle (only needs surface pointer)
+            let raw_handle = raw_window_handle::WaylandWindowHandle::new(wl_surface_ptr);
+            let raw_display_handle = raw_window_handle::WaylandDisplayHandle::new(display_ptr);
+            
+            // Create wgpu instance
+            let instance = vello::wgpu::Instance::new(vello::wgpu::InstanceDescriptor {
+                backends: vello::wgpu::Backends::PRIMARY,
+                ..Default::default()
+            });
+            
+            // Create surface using unsafe API with raw handles
+            // This is necessary because we need to pass raw pointers
+            let surface_target_unsafe = vello::wgpu::SurfaceTargetUnsafe::RawHandle {
+                raw_display_handle: raw_window_handle::RawDisplayHandle::Wayland(raw_display_handle),
+                raw_window_handle: raw_window_handle::RawWindowHandle::Wayland(raw_handle),
+            };
+            
+            match unsafe { instance.create_surface_unsafe(surface_target_unsafe) } {
+                Ok(surface) => {
+                    // Query surface format from adapter if available
+                    // For now, we'll use a default format and update it when adapter is available
+                    // The format will be queried later via get_capabilities() when we have an adapter
+                    let format = TextureFormat::Bgra8Unorm;
+                    (Some(surface), format)
+                }
+                Err(e) => {
+                    eprintln!("[NPTK] Warning: Failed to create wgpu surface from Wayland handle: {:?}", e);
+                    eprintln!("[NPTK] Falling back to None - rendering will not work until this is fixed");
+                    (None, TextureFormat::Bgra8Unorm)
+                }
+            }
+        } else {
+            // No render context provided, can't create wgpu surface
+            (None, TextureFormat::Bgra8Unorm)
+        };
         
         let state = Arc::new(Mutex::new(state));
         
@@ -275,6 +336,7 @@ impl WaylandSurface {
             format,
             pending_texture: None,
             state,
+            frame_callback: None,
         })
     }
 
@@ -286,6 +348,13 @@ impl WaylandSurface {
     /// Get a reference to the Wayland window.
     pub fn window(&self) -> &smithay_client_toolkit::shell::xdg::window::Window {
         &self.window
+    }
+    
+    /// Check if the window should close.
+    pub fn should_close(&self) -> bool {
+        self.state.lock()
+            .map(|s| s.should_close)
+            .unwrap_or(false)
     }
 }
 
@@ -319,6 +388,15 @@ impl SurfaceTrait for WaylandSurface {
         // Note: The texture was already taken in get_current_texture(), so we need to handle this differently
         // For Wayland, we'll commit the surface after rendering is complete
         // The texture presentation is handled by wgpu when the texture is dropped (RAII)
+        
+        // Request frame callback for next frame (for smooth rendering)
+        // This ensures we only render when the compositor is ready
+        let qh = self.event_queue.handle();
+        // Drop old callback if it exists (automatically destroyed)
+        let _ = self.frame_callback.take();
+        // Request new frame callback with () as userdata
+        let callback = self.wl_surface.frame(&qh, ());
+        self.frame_callback = Some(callback);
         
         // Commit the surface to Wayland compositor
         self.wl_surface.commit();
@@ -365,6 +443,13 @@ impl SurfaceTrait for WaylandSurface {
             Err(e) => {
                 return Err(format!("Failed to dispatch events: {:?}", e));
             }
+        }
+        
+        // Check if window should close
+        if state_guard.should_close {
+            // Note: Close request is detected, but we can't directly exit the event loop here
+            // The application handler should check should_close() and handle it
+            log::debug!("Wayland window close requested");
         }
         
         // Update local state from shared state

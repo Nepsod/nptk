@@ -91,7 +91,7 @@ pub async fn create_surface(
             Ok(Surface::Winit(render_surface.surface))
         }
         Platform::Wayland => {
-            let wayland_surface = WaylandSurface::new(width, height, title)?;
+            let wayland_surface = WaylandSurface::new(width, height, title, render_ctx)?;
             Ok(Surface::Wayland(wayland_surface))
         }
     }

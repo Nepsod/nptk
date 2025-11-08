@@ -182,7 +182,7 @@ where
         self.update_widget(&layout_node);
         
         if self.update.get().intersects(Update::FORCE | Update::DRAW) {
-            self.render_frame(&layout_node);
+            self.render_frame(&layout_node, event_loop);
         }
 
         self.handle_update_flags(event_loop);
@@ -277,7 +277,7 @@ where
     }
 
     /// Render a frame to the screen.
-    fn render_frame(&mut self, layout_node: &LayoutNode) {
+    fn render_frame(&mut self, layout_node: &LayoutNode, event_loop: &ActiveEventLoop) {
         log::debug!("Draw update detected!");
         let render_start = Instant::now();
 
@@ -287,7 +287,7 @@ where
         let widget_render_time = self.render_widget(layout_node);
         let postfix_render_time = self.render_postfix(layout_node);
 
-        if let Some(render_times) = self.render_to_surface(render_start, scene_reset_time, widget_render_time, postfix_render_time) {
+        if let Some(render_times) = self.render_to_surface(render_start, scene_reset_time, widget_render_time, postfix_render_time, event_loop) {
             self.print_render_profile(render_times);
         }
     }
@@ -339,6 +339,7 @@ where
         scene_reset_time: Duration,
         widget_render_time: Duration,
         postfix_render_time: Duration,
+        event_loop: &ActiveEventLoop,
     ) -> Option<RenderTimes> {
         let renderer = self.renderer.as_mut()?;
         let render_ctx = self.render_ctx.as_ref()?;
@@ -352,13 +353,28 @@ where
             return None;
         }
 
-        // Dispatch Wayland events if needed
-        if surface.needs_event_dispatch() {
+        // Dispatch Wayland events if needed and check for close request
+        let should_close = if surface.needs_event_dispatch() {
             if let Ok(needs_redraw) = surface.dispatch_events() {
                 if needs_redraw {
                     self.update.insert(Update::DRAW);
                 }
             }
+            
+            // Check if Wayland window requested close (before mutable borrow)
+            if let crate::vgi::Surface::Wayland(wayland_surface) = &*surface {
+                wayland_surface.should_close()
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        
+        // Handle close request if needed
+        if should_close {
+            self.handle_close_request(event_loop);
+            return None; // Don't render if closing
         }
 
         let surface_get_start = Instant::now();
