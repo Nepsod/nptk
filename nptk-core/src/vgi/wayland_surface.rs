@@ -1,414 +1,416 @@
-//! Native Wayland surface implementation using smithay-client-toolkit.
+//! Native Wayland surface implementation using manual XDG management.
 //!
-//! This module provides a Wayland surface implementation that uses SCTK
-//! for high-level Wayland abstractions and integrates with wgpu for rendering.
+//! This module mirrors the GPUI Wayland pipeline: we create and manage XDG surfaces
+//! directly, acknowledge configure events ourselves, and only render when the compositor
+//! requests a new frame.
 
+use crate::vgi::surface::SurfaceTrait;
 #[cfg(target_os = "linux")]
 use std::sync::{Arc, Mutex};
 #[cfg(target_os = "linux")]
 use vello::wgpu::{SurfaceTexture, TextureFormat};
-use crate::vgi::surface::SurfaceTrait;
 
-/// Native Wayland surface implementation using smithay-client-toolkit.
-///
-/// This struct provides a Wayland surface implementation that uses SCTK
-/// for high-level Wayland abstractions and integrates with wgpu for rendering.
 #[cfg(target_os = "linux")]
-pub struct WaylandSurface {
-    /// Wayland connection (kept for potential future use in cleanup or other operations)
-    #[allow(dead_code)]
-    connection: wayland_client::Connection,
-    /// Wayland event queue for processing events
-    event_queue: wayland_client::EventQueue<WaylandState>,
-    /// SCTK window
-    window: smithay_client_toolkit::shell::xdg::window::Window,
-    /// Wayland surface for committing
-    wl_surface: wayland_client::protocol::wl_surface::WlSurface,
-    /// wgpu surface created from Wayland window (using vello's wgpu types)
-    /// This is created early to help with adapter enumeration on Wayland
-    pub(crate) wgpu_surface: Option<vello::wgpu::Surface<'static>>,
-    /// Flag indicating if the wgpu surface has been configured
-    is_configured: bool,
-    /// Current window size
-    size: (u32, u32),
-    /// Flag indicating if a redraw is needed
-    needs_redraw: bool,
-    /// Flag indicating if we've acknowledged the first configure event
-    /// This is critical for initial rendering - GPUI requests frame callback on first configure
-    acknowledged_first_configure: bool,
-    /// Surface format
-    format: TextureFormat,
-    /// Pending texture (stored between get_current_texture and present)
-    pending_texture: Option<SurfaceTexture>,
-    /// Wayland state for event handling
-    state: Arc<Mutex<WaylandState>>,
-    /// Frame callback for smooth rendering synchronization
-    frame_callback: Option<wayland_client::protocol::wl_callback::WlCallback>,
+use wayland_client::{
+    globals::{registry_queue_init, BindError, GlobalList},
+    protocol::{wl_callback, wl_compositor, wl_registry, wl_surface},
+    Connection, Dispatch, EventQueue, Proxy, QueueHandle,
+};
+#[cfg(target_os = "linux")]
+use wayland_protocols::xdg::{
+    decoration::zv1::client::zxdg_decoration_manager_v1,
+    shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base},
+};
+
+#[cfg(target_os = "linux")]
+use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1;
+#[cfg(target_os = "linux")]
+use raw_window_handle::{
+    RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle,
+};
+
+#[cfg(target_os = "linux")]
+const COMPOSITOR_VERSION: u32 = 4;
+#[cfg(target_os = "linux")]
+const XDG_WM_BASE_VERSION: u32 = 4;
+#[cfg(target_os = "linux")]
+const DECORATION_MANAGER_VERSION: u32 = 1;
+
+#[cfg(target_os = "linux")]
+#[derive(Clone)]
+struct WaylandGlobals {
+    compositor: wl_compositor::WlCompositor,
+    wm_base: xdg_wm_base::XdgWmBase,
+    decoration_manager: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
 }
 
-/// State for Wayland event handling
 #[cfg(target_os = "linux")]
+impl WaylandGlobals {
+    fn bind_all(
+        globals: &GlobalList,
+        qh: &QueueHandle<WaylandState>,
+    ) -> Result<Self, String> {
+        let compositor = globals
+            .bind::<wl_compositor::WlCompositor, _, _>(qh, 1..=COMPOSITOR_VERSION, ())
+            .map_err(|e| format!("Failed to bind wl_compositor: {:?}", e))?;
+
+        let wm_base = globals
+            .bind::<xdg_wm_base::XdgWmBase, _, _>(qh, 1..=XDG_WM_BASE_VERSION, ())
+            .map_err(|e| format!("Failed to bind xdg_wm_base: {:?}", e))?;
+
+        let decoration_manager = match globals.bind::<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1, _, _>(
+            qh,
+            1..=DECORATION_MANAGER_VERSION,
+            (),
+        ) {
+            Ok(proxy) => Some(proxy),
+            Err(BindError::NotPresent) => None,
+            Err(err) => return Err(format!("Failed to bind decoration manager: {:?}", err)),
+        };
+
+        Ok(Self {
+            compositor,
+            wm_base,
+            decoration_manager,
+        })
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Debug)]
+struct PendingConfigure {
+    serial: u32,
+    new_size: Option<(u32, u32)>,
+}
+
+/// Wayland state shared with the event queue.
+#[cfg(target_os = "linux")]
+#[derive(Debug)]
 pub(crate) struct WaylandState {
-    /// Current window size from configure events
-    size: (u32, u32),
-    /// Flag indicating if a redraw is needed
+    pending_size: Option<(u32, u32)>,
+    pending_configure: Option<PendingConfigure>,
+    current_size: (u32, u32),
     needs_redraw: bool,
-    /// Flag indicating if window should close
     should_close: bool,
-    /// Flag indicating if configure event was received and needs acknowledgment
-    configure_serial: Option<u32>,
 }
 
 #[cfg(target_os = "linux")]
-impl wayland_client::Dispatch<wayland_client::protocol::wl_registry::WlRegistry, wayland_client::globals::GlobalListContents> for WaylandState {
+impl WaylandState {
+    fn take_pending_configure(&mut self) -> Option<PendingConfigure> {
+        self.pending_configure.take()
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Default for WaylandState {
+    fn default() -> Self {
+        Self {
+            pending_size: None,
+            pending_configure: None,
+            current_size: (1, 1),
+            needs_redraw: false,
+            should_close: false,
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Dispatch<wl_registry::WlRegistry, GlobalList> for WaylandState {
     fn event(
         _state: &mut Self,
-        _registry: &wayland_client::protocol::wl_registry::WlRegistry,
-        event: wayland_client::protocol::wl_registry::Event,
+        _proxy: &wl_registry::WlRegistry,
+        _event: wl_registry::Event,
+        _data: &GlobalList,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        // GlobalList handles registry bookkeeping for us.
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Dispatch<wl_registry::WlRegistry, wayland_client::globals::GlobalListContents> for WaylandState {
+    fn event(
+        _state: &mut Self,
+        _proxy: &wl_registry::WlRegistry,
+        _event: wl_registry::Event,
         _data: &wayland_client::globals::GlobalListContents,
-        _conn: &wayland_client::Connection,
-        _qh: &wayland_client::QueueHandle<Self>,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
     ) {
-        // Registry events are handled by GlobalListContents
-        let _ = event;
     }
 }
 
 #[cfg(target_os = "linux")]
-impl wayland_client::Dispatch<wayland_client::protocol::wl_compositor::WlCompositor, smithay_client_toolkit::globals::GlobalData> for WaylandState {
+impl Dispatch<wl_compositor::WlCompositor, ()> for WaylandState {
     fn event(
         _state: &mut Self,
-        _compositor: &wayland_client::protocol::wl_compositor::WlCompositor,
-        _event: wayland_client::protocol::wl_compositor::Event,
-        _data: &smithay_client_toolkit::globals::GlobalData,
-        _conn: &wayland_client::Connection,
-        _qh: &wayland_client::QueueHandle<Self>,
+        _proxy: &wl_compositor::WlCompositor,
+        _event: wl_compositor::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
     ) {
-        // Compositor events are handled elsewhere
+        // We don't need compositor-specific events.
     }
 }
 
 #[cfg(target_os = "linux")]
-impl wayland_client::Dispatch<wayland_protocols::xdg::shell::client::xdg_wm_base::XdgWmBase, smithay_client_toolkit::globals::GlobalData> for WaylandState {
+impl Dispatch<xdg_wm_base::XdgWmBase, ()> for WaylandState {
     fn event(
         _state: &mut Self,
-        _wm_base: &wayland_protocols::xdg::shell::client::xdg_wm_base::XdgWmBase,
-        _event: wayland_protocols::xdg::shell::client::xdg_wm_base::Event,
-        _data: &smithay_client_toolkit::globals::GlobalData,
-        _conn: &wayland_client::Connection,
-        _qh: &wayland_client::QueueHandle<Self>,
+        proxy: &xdg_wm_base::XdgWmBase,
+        event: xdg_wm_base::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
     ) {
-        // XdgWmBase events are handled elsewhere
+        if let xdg_wm_base::Event::Ping { serial } = event {
+            proxy.pong(serial);
+        }
     }
 }
 
 #[cfg(target_os = "linux")]
-impl wayland_client::Dispatch<wayland_protocols::xdg::decoration::zv1::client::zxdg_decoration_manager_v1::ZxdgDecorationManagerV1, smithay_client_toolkit::globals::GlobalData> for WaylandState {
+impl Dispatch<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1, ()> for WaylandState {
     fn event(
         _state: &mut Self,
-        _decoration_manager: &wayland_protocols::xdg::decoration::zv1::client::zxdg_decoration_manager_v1::ZxdgDecorationManagerV1,
-        _event: wayland_protocols::xdg::decoration::zv1::client::zxdg_decoration_manager_v1::Event,
-        _data: &smithay_client_toolkit::globals::GlobalData,
-        _conn: &wayland_client::Connection,
-        _qh: &wayland_client::QueueHandle<Self>,
+        _proxy: &zxdg_decoration_manager_v1::ZxdgDecorationManagerV1,
+        _event: zxdg_decoration_manager_v1::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
     ) {
-        // Decoration manager events are handled elsewhere
     }
 }
 
 #[cfg(target_os = "linux")]
-impl wayland_client::Dispatch<wayland_client::protocol::wl_surface::WlSurface, smithay_client_toolkit::compositor::SurfaceData> for WaylandState {
+impl Dispatch<wl_surface::WlSurface, ()> for WaylandState {
     fn event(
         _state: &mut Self,
-        _surface: &wayland_client::protocol::wl_surface::WlSurface,
-        _event: wayland_client::protocol::wl_surface::Event,
-        _data: &smithay_client_toolkit::compositor::SurfaceData,
-        _conn: &wayland_client::Connection,
-        _qh: &wayland_client::QueueHandle<Self>,
+        _proxy: &wl_surface::WlSurface,
+        _event: wl_surface::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
     ) {
-        // Surface events are handled elsewhere
     }
 }
 
 #[cfg(target_os = "linux")]
-impl wayland_client::Dispatch<wayland_protocols::xdg::shell::client::xdg_surface::XdgSurface, smithay_client_toolkit::shell::xdg::window::WindowData> for WaylandState {
-    fn event(
-        _state: &mut Self,
-        _xdg_surface: &wayland_protocols::xdg::shell::client::xdg_surface::XdgSurface,
-        _event: wayland_protocols::xdg::shell::client::xdg_surface::Event,
-        _data: &smithay_client_toolkit::shell::xdg::window::WindowData,
-        _conn: &wayland_client::Connection,
-        _qh: &wayland_client::QueueHandle<Self>,
-    ) {
-        // XdgSurface events are handled by XdgShell
-    }
-}
-
-#[cfg(target_os = "linux")]
-impl wayland_client::Dispatch<wayland_protocols::xdg::shell::client::xdg_toplevel::XdgToplevel, smithay_client_toolkit::shell::xdg::window::WindowData> for WaylandState {
-    fn event(
-        _state: &mut Self,
-        _toplevel: &wayland_protocols::xdg::shell::client::xdg_toplevel::XdgToplevel,
-        _event: wayland_protocols::xdg::shell::client::xdg_toplevel::Event,
-        _data: &smithay_client_toolkit::shell::xdg::window::WindowData,
-        _conn: &wayland_client::Connection,
-        _qh: &wayland_client::QueueHandle<Self>,
-    ) {
-        // XdgToplevel events are handled by XdgShell
-    }
-}
-
-#[cfg(target_os = "linux")]
-impl wayland_client::Dispatch<wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1, smithay_client_toolkit::shell::xdg::window::WindowData> for WaylandState {
-    fn event(
-        _state: &mut Self,
-        _decoration: &wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
-        _event: wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1::Event,
-        _data: &smithay_client_toolkit::shell::xdg::window::WindowData,
-        _conn: &wayland_client::Connection,
-        _qh: &wayland_client::QueueHandle<Self>,
-    ) {
-        // Decoration events are handled elsewhere
-    }
-}
-
-#[cfg(target_os = "linux")]
-impl wayland_client::Dispatch<wayland_client::protocol::wl_callback::WlCallback, ()> for WaylandState {
+impl Dispatch<xdg_surface::XdgSurface, ()> for WaylandState {
     fn event(
         state: &mut Self,
-        _callback: &wayland_client::protocol::wl_callback::WlCallback,
-        event: wayland_client::protocol::wl_callback::Event,
+        _proxy: &xdg_surface::XdgSurface,
+        event: xdg_surface::Event,
         _data: &(),
-        _conn: &wayland_client::Connection,
-        _qh: &wayland_client::QueueHandle<Self>,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
     ) {
-        match event {
-            wayland_client::protocol::wl_callback::Event::Done { callback_data } => {
-                // Frame callback completed - compositor is ready for next frame
-                state.needs_redraw = true;
-                let _ = callback_data;
-            }
-            _ => {
-                // Other callback events (none currently defined)
-            }
+        if let xdg_surface::Event::Configure { serial } = event {
+            let new_size = state.pending_size.take();
+            state.pending_configure = Some(PendingConfigure { serial, new_size });
+            state.needs_redraw = true;
         }
     }
 }
 
 #[cfg(target_os = "linux")]
-impl smithay_client_toolkit::shell::xdg::window::WindowHandler for WaylandState {
-    fn request_close(&mut self, _conn: &wayland_client::Connection, _qh: &wayland_client::QueueHandle<Self>, _window: &smithay_client_toolkit::shell::xdg::window::Window) {
-        self.should_close = true;
-    }
-
-    fn configure(
-        &mut self,
-        _conn: &wayland_client::Connection,
-        _qh: &wayland_client::QueueHandle<Self>,
-        window: &smithay_client_toolkit::shell::xdg::window::Window,
-        configure: smithay_client_toolkit::shell::xdg::window::WindowConfigure,
-        serial: u32,
+impl Dispatch<xdg_toplevel::XdgToplevel, ()> for WaylandState {
+    fn event(
+        state: &mut Self,
+        _proxy: &xdg_toplevel::XdgToplevel,
+        event: xdg_toplevel::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
     ) {
-        // Update size from configure event if provided
-        if let (Some(w), Some(h)) = (configure.new_size.0, configure.new_size.1) {
-            self.size = (w.get(), h.get());
-            self.needs_redraw = true;
-            eprintln!("[NPTK] Wayland configure event: size set to {}x{}", w.get(), h.get());
-        } else {
-            // If configure event doesn't provide size, use window's current size
-            // This can happen on initial configure before window is mapped
-            eprintln!("[NPTK] Wayland configure event: no size provided, keeping current size {}x{}", self.size.0, self.size.1);
+        match event {
+            xdg_toplevel::Event::Configure { width, height, .. } => {
+                if width > 0 && height > 0 {
+                    state.pending_size = Some((width as u32, height as u32));
+                } else {
+                    state.pending_size = None;
+                }
+            }
+            xdg_toplevel::Event::Close => {
+                state.should_close = true;
+            }
+            _ => {}
         }
-        
-        // Store the configure serial for acknowledgment
-        // We'll acknowledge and commit in WaylandSurface after the roundtrip
-        self.configure_serial = Some(serial);
-        
-        // Note: SCTK Window handles ack_configure internally, but we track the serial
-        // to know when to commit the surface
     }
+}
+
+#[cfg(target_os = "linux")]
+impl Dispatch<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1, ()> for WaylandState {
+    fn event(
+        _state: &mut Self,
+        _proxy: &zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
+        _event: zxdg_toplevel_decoration_v1::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Dispatch<wl_callback::WlCallback, ()> for WaylandState {
+    fn event(
+        state: &mut Self,
+        _proxy: &wl_callback::WlCallback,
+        event: wl_callback::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        if let wl_callback::Event::Done { .. } = event {
+            state.needs_redraw = true;
+        }
+    }
+}
+
+/// Manual Wayland surface implementation.
+#[cfg(target_os = "linux")]
+pub struct WaylandSurface {
+    _connection: Connection,
+    event_queue: EventQueue<WaylandState>,
+    _globals: WaylandGlobals,
+    wl_surface: wl_surface::WlSurface,
+    xdg_surface: xdg_surface::XdgSurface,
+    xdg_toplevel: xdg_toplevel::XdgToplevel,
+    _decoration: Option<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1>,
+    pub(crate) wgpu_surface: Option<vello::wgpu::Surface<'static>>,
+    is_configured: bool,
+    size: (u32, u32),
+    needs_redraw: bool,
+    acknowledged_first_configure: bool,
+    format: TextureFormat,
+    pending_texture: Option<SurfaceTexture>,
+    state: Arc<Mutex<WaylandState>>,
+    frame_callback: Option<wl_callback::WlCallback>,
 }
 
 #[cfg(target_os = "linux")]
 impl WaylandSurface {
-    /// Create a new Wayland surface.
-    ///
-    /// # Arguments
-    /// * `width` - Initial window width in pixels
-    /// * `height` - Initial window height in pixels
-    /// * `title` - Window title
-    /// * `gpu_context` - GPU context to use for creating wgpu surface (must use same Instance)
-    ///
-    /// # Returns
-    /// * `Ok(WaylandSurface)` if creation succeeded
-    /// * `Err(String)` if creation failed
     pub fn new(width: u32, height: u32, title: &str, gpu_context: &crate::vgi::GpuContext) -> Result<Self, String> {
-        use wayland_client::globals::registry_queue_init;
-        use smithay_client_toolkit::compositor::{CompositorState, Surface};
-        use smithay_client_toolkit::shell::xdg::window::WindowDecorations;
-        use smithay_client_toolkit::shell::xdg::XdgShell;
-
-        // Connect to Wayland display
-        let connection = wayland_client::Connection::connect_to_env()
+        let connection = Connection::connect_to_env()
             .map_err(|e| format!("Failed to connect to Wayland display: {:?}", e))?;
-        
-        // Initialize registry and event queue
-        let (globals, mut event_queue) = registry_queue_init(&connection)
-            .map_err(|e| format!("Failed to initialize registry: {:?}", e))?;
+
+        let (global_list, mut event_queue) =
+            registry_queue_init::<WaylandState>(&connection)
+                .map_err(|e| format!("Failed to initialize registry: {:?}", e))?;
         let qh = event_queue.handle();
-        
-        // Bind compositor
-        let compositor_state = CompositorState::bind(&globals, &qh)
-            .map_err(|e| format!("Failed to bind compositor: {:?}", e))?;
-        
-        // Bind xdg shell
-        let xdg_shell = XdgShell::bind(&globals, &qh)
-            .map_err(|e| format!("Failed to bind xdg shell: {:?}", e))?;
-        
-        // Create surface
-        let wl_surface = compositor_state.create_surface(&qh);
-        
-        // Store wl_surface reference for later use (before creating window)
-        // We'll need it for committing in present()
-        let wl_surface_stored = wl_surface.clone();
-        
-        // Create window (SCTK creates xdg_surface and xdg_toplevel internally)
-        // NOTE: SCTK's Window abstraction doesn't expose xdg_surface/toplevel directly,
-        // so we can't set app_id or window geometry directly like GPUI does.
-        // We rely on SCTK's internal handling and set app_id via environment variable.
-        let window = xdg_shell.create_window(
-            Surface::from(wl_surface),
-            WindowDecorations::ServerDefault,
-            &qh,
-        );
-        
-        // Set window title
-        window.set_title(title);
-        
-        // Set app_id via environment variable
-        // Note: SCTK's Window doesn't expose set_app_id directly, but the compositor
-        // will use NPTK_APP_ID from the environment or derive it from the window class
+
+        let globals = WaylandGlobals::bind_all(&global_list, &qh)
+            .map_err(|e| format!("Failed to bind Wayland globals: {}", e))?;
+
+        let wl_surface: wl_surface::WlSurface = globals.compositor.create_surface(&qh, ());
+        let xdg_surface = globals.wm_base.get_xdg_surface(&wl_surface, &qh, ());
+        let xdg_toplevel = xdg_surface.get_toplevel(&qh, ());
+        let decoration = globals
+            .decoration_manager
+            .as_ref()
+            .map(|manager| manager.get_toplevel_decoration(&xdg_toplevel, &qh, ()));
+
+        xdg_toplevel.set_title(title.to_owned());
         if let Ok(app_id) = std::env::var("NPTK_APP_ID") {
-            log::debug!("NPTK_APP_ID set to: {} (compositor will use this)", app_id);
-        } else {
-            log::debug!("No NPTK_APP_ID set, compositor will derive from window class");
+            xdg_toplevel.set_app_id(app_id);
         }
-        
-        // Set window size
-        window.set_min_size(Some((width, height)));
-        window.set_max_size(Some((width, height)));
-        
-        // CRITICAL: Commit the surface immediately after creating the window
-        // This is what GPUI does - it makes the window appear in the taskbar immediately
-        // The compositor will show a placeholder until a buffer is attached
-        log::debug!("Committing surface immediately after window creation (GPUI pattern)");
-        wl_surface_stored.commit();
-        
-        // Roundtrip to ensure window is created and configured
+        xdg_toplevel.set_min_size(width as i32, height as i32);
+        xdg_toplevel.set_max_size(width as i32, height as i32);
+
+        wl_surface.commit();
+
         let mut state = WaylandState {
-            size: (width, height),
+            pending_size: Some((width, height)),
+            pending_configure: None,
+            current_size: (width, height),
             needs_redraw: true,
             should_close: false,
-            configure_serial: None,
         };
-        event_queue.roundtrip(&mut state)
-            .map_err(|e| format!("Failed to roundtrip: {:?}", e))?;
-        
-        // After configure event, acknowledge it and request frame callback for initial render
-        // This is critical - GPUI requests frame callback on first configure to trigger initial rendering
-        let acknowledged_first_configure = state.configure_serial.is_some();
-        if acknowledged_first_configure {
-            log::debug!("Configure event received, requesting frame callback for initial render");
-            
-            // Request frame callback for initial render (like GPUI does)
-            // This ensures we get a frame callback to trigger the first render
-            // The frame callback will fire when the compositor is ready, triggering rendering
-            // We'll store this callback in the WaylandSurface struct after creation
-            let callback = wl_surface_stored.frame(&qh, ());
-            // Store it temporarily - we'll move it to the struct
-            drop(callback);
-            
-            // NOTE: We do NOT commit here - we commit AFTER rendering when a buffer is attached
-            // GPUI commits after rendering in completed_frame() (line 1221), not after configure
-            // Committing before a buffer is attached won't make the window visible
-        }
-        
-        // Create wgpu surface from raw window handle using GpuContext's Instance
-        // This ensures the surface is created with the same Instance that enumerates adapters
-        let (wgpu_surface, format) = {
-            // Get raw window handle
-            use wayland_client::Proxy;
-            use std::ptr::NonNull;
-            let wl_surface_ptr = NonNull::new(wl_surface_stored.id().as_ptr() as *mut std::ffi::c_void)
-                .ok_or_else(|| "Invalid surface pointer".to_string())?;
-            let display_ptr = NonNull::new(connection.display().id().as_ptr() as *mut std::ffi::c_void)
-                .ok_or_else(|| "Invalid display pointer".to_string())?;
-            
-            // Create raw window handle (only needs surface pointer)
-            let raw_handle = raw_window_handle::WaylandWindowHandle::new(wl_surface_ptr);
-            let raw_display_handle = raw_window_handle::WaylandDisplayHandle::new(display_ptr);
-            
-            // Use GpuContext's Instance to create the surface
-            // This ensures compatibility - the surface will be created with the same Instance
-            // that enumerates adapters and creates devices
-            let instance = gpu_context.instance();
-            
-            // Create surface using unsafe API with raw handles
-            // This is necessary because we need to pass raw pointers
-            let surface_target_unsafe = vello::wgpu::SurfaceTargetUnsafe::RawHandle {
-                raw_display_handle: raw_window_handle::RawDisplayHandle::Wayland(raw_display_handle),
-                raw_window_handle: raw_window_handle::RawWindowHandle::Wayland(raw_handle),
-            };
-            
-            log::debug!("Creating wgpu surface from Wayland raw window handle using GpuContext's Instance...");
-            match unsafe { instance.create_surface_unsafe(surface_target_unsafe) } {
-                Ok(surface) => {
-                    log::debug!("Successfully created wgpu surface from Wayland handle");
-                    
-                    // Do an extra roundtrip to ensure the compositor has registered the surface
-                    // This helps with adapter enumeration on Wayland
-                    log::debug!("Performing extra roundtrip to ensure compositor registers wgpu surface");
-                    let mut temp_state = WaylandState {
-                        size: (width, height),
-                        needs_redraw: false,
-                        should_close: false,
-                        configure_serial: None,
-                    };
-                    let _ = event_queue.roundtrip(&mut temp_state);
-                    
-                    // Query surface format from adapter if available
-                    // For now, we'll use a default format and update it when adapter is available
-                    // The format will be queried later via get_capabilities() when we have an adapter
-                    let format = TextureFormat::Bgra8Unorm;
-                    (Some(surface), format)
-                }
-                Err(e) => {
-                    eprintln!("[NPTK] Warning: Failed to create wgpu surface from Wayland handle: {:?}", e);
-                    eprintln!("[NPTK] Falling back to None - rendering will not work until this is fixed");
-                    (None, TextureFormat::Bgra8Unorm)
-                }
-            }
-        };
-        
-        // Use the size from state (may have been updated by configure event)
-        let actual_size = state.size;
-        let state = Arc::new(Mutex::new(state));
-        
+        event_queue
+            .roundtrip(&mut state)
+            .map_err(|e| format!("Wayland roundtrip failed: {:?}", e))?;
+
+        let (wgpu_surface, format) =
+            Self::create_wgpu_surface(&connection, &wl_surface, gpu_context)?;
+
+        let acknowledged_first_configure = state.pending_configure.is_some();
+        let state_arc = Arc::new(Mutex::new(state));
+
         Ok(Self {
-            connection,
+            _connection: connection,
             event_queue,
-            window,
-            wl_surface: wl_surface_stored,
+            _globals: globals,
+            wl_surface,
+            xdg_surface: xdg_surface.into(),
+            xdg_toplevel: xdg_toplevel.into(),
+            _decoration: decoration.map(|d| d.into()),
             wgpu_surface,
             is_configured: false,
-            size: actual_size,
+            size: (width, height),
             needs_redraw: true,
             acknowledged_first_configure,
             format,
             pending_texture: None,
-            state,
+            state: state_arc,
             frame_callback: None,
         })
+    }
+
+    fn create_wgpu_surface(
+        connection: &Connection,
+        wl_surface: &wl_surface::WlSurface,
+        gpu_context: &crate::vgi::GpuContext,
+    ) -> Result<(Option<vello::wgpu::Surface<'static>>, TextureFormat), String> {
+        use std::ptr::NonNull;
+        let surface_ptr =
+            NonNull::new(wl_surface.id().as_ptr() as *mut std::ffi::c_void)
+                .ok_or_else(|| "Invalid Wayland surface pointer".to_string())?;
+        let display_ptr =
+            NonNull::new(connection.display().id().as_ptr() as *mut std::ffi::c_void)
+                .ok_or_else(|| "Invalid Wayland display pointer".to_string())?;
+
+        let raw_window = WaylandWindowHandle::new(surface_ptr);
+        let raw_display = WaylandDisplayHandle::new(display_ptr);
+
+        let target = vello::wgpu::SurfaceTargetUnsafe::RawHandle {
+            raw_display_handle: RawDisplayHandle::Wayland(raw_display),
+            raw_window_handle: RawWindowHandle::Wayland(raw_window),
+        };
+
+        match unsafe { gpu_context.instance().create_surface_unsafe(target) } {
+            Ok(surface) => Ok((Some(surface), TextureFormat::Bgra8Unorm)),
+            Err(e) => Err(format!("Failed to create Wayland wgpu surface: {:?}", e)),
+        }
+    }
+
+    fn request_frame_callback(&mut self) {
+        let qh = self.event_queue.handle();
+        let _ = self.frame_callback.take();
+        let callback = self.wl_surface.frame(&qh, ());
+        self.frame_callback = Some(callback.into());
+    }
+
+    fn handle_pending_configure(&mut self, pending: PendingConfigure) {
+        if let Some((w, h)) = pending.new_size {
+            self.size = (w.max(1), h.max(1));
+            self.xdg_surface
+                .set_window_geometry(0, 0, self.size.0 as i32, self.size.1 as i32);
+        }
+        self.xdg_surface.ack_configure(pending.serial);
+
+        if let Ok(mut state) = self.state.lock() {
+            state.current_size = self.size;
+        }
+
+        if !self.acknowledged_first_configure {
+            self.acknowledged_first_configure = true;
+            self.request_frame_callback();
+        }
+
+        self.needs_redraw = true;
     }
 
     /// Configure the wgpu surface for rendering.
@@ -455,27 +457,6 @@ impl WaylandSurface {
         self.is_configured
     }
 
-    /// Create the wgpu surface using GpuContext's Instance.
-    /// This method is no longer needed since we create the surface in new(),
-    /// but kept for backward compatibility.
-    #[deprecated(note = "wgpu surface is now created in new() using GpuContext")]
-    pub(crate) fn create_wgpu_surface_from_device(
-        &mut self,
-        _device: &vello::wgpu::Device,
-    ) -> Result<(), String> {
-        // Surface should already be created in new()
-        if self.wgpu_surface.is_some() {
-            Ok(())
-        } else {
-            Err("wgpu surface not created - this should not happen".to_string())
-        }
-    }
-    
-    /// Get a reference to the Wayland window.
-    pub fn window(&self) -> &smithay_client_toolkit::shell::xdg::window::Window {
-        &self.window
-    }
-    
     /// Check if the window should close.
     pub fn should_close(&self) -> bool {
         self.state.lock()
@@ -539,30 +520,29 @@ impl SurfaceTrait for WaylandSurface {
         log::debug!("Committing Wayland surface after rendering (buffer should be attached by wgpu)");
         self.wl_surface.commit();
         
+        self.needs_redraw = false;
         Ok(())
     }
 
     fn resize(&mut self, width: u32, height: u32) -> Result<(), String> {
         self.size = (width, height);
-        
-        // Update shared state
-        let mut state_guard = self.state.lock()
-            .map_err(|e| format!("Failed to lock state: {:?}", e))?;
-        state_guard.size = (width, height);
-        state_guard.needs_redraw = true;
-        
-        // Resize the Wayland window
-        self.window.set_min_size(Some((width, height)));
-        self.window.set_max_size(Some((width, height)));
-        
-        // If surface is configured, we need to reconfigure it with new size
-        // Note: This requires a device, which we don't have here
-        // The caller should reconfigure after resize if needed
+        if let Ok(mut state_guard) = self.state.lock() {
+            state_guard.current_size = self.size;
+            state_guard.pending_size = Some(self.size);
+            state_guard.needs_redraw = true;
+        }
+
+        self.xdg_surface
+            .set_window_geometry(0, 0, width as i32, height as i32);
+        self.xdg_toplevel.set_min_size(width as i32, height as i32);
+        self.xdg_toplevel.set_max_size(width as i32, height as i32);
+
         if self.is_configured {
             self.is_configured = false;
             log::debug!("Surface resized to {}x{}, needs reconfiguration", width, height);
         }
-        
+
+        self.needs_redraw = true;
         Ok(())
     }
 
@@ -579,67 +559,36 @@ impl SurfaceTrait for WaylandSurface {
     }
 
     fn dispatch_events(&mut self) -> Result<bool, String> {
-        // Dispatch pending events from the event queue
-        // Update state from shared state
-        let mut state_guard = self.state.lock()
-            .map_err(|e| format!("Failed to lock state: {:?}", e))?;
-        
-        // Dispatch events (non-blocking)
-        match self.event_queue.dispatch_pending(&mut *state_guard) {
-            Ok(_) => {},
-            Err(e) => {
-                return Err(format!("Failed to dispatch events: {:?}", e));
-            }
+        let mut state_guard = self
+            .state
+            .lock()
+            .map_err(|e| format!("Failed to lock Wayland state: {:?}", e))?;
+
+        self.event_queue
+            .dispatch_pending(&mut *state_guard)
+            .map_err(|e| format!("Failed to dispatch Wayland events: {:?}", e))?;
+
+        let pending = state_guard.take_pending_configure();
+        let should_close = state_guard.should_close;
+        let needs_redraw_flag = state_guard.needs_redraw;
+        let current_size = state_guard.current_size;
+        state_guard.needs_redraw = false;
+        drop(state_guard);
+
+        if let Some(pending) = pending {
+            self.handle_pending_configure(pending);
+        } else {
+            self.size = current_size;
         }
-        
-        // Check if window should close
-        if state_guard.should_close {
-            // Note: Close request is detected, but we can't directly exit the event loop here
-            // The application handler should check should_close() and handle it
+
+        if should_close {
             log::debug!("Wayland window close requested");
         }
-        
-        // Handle configure events - acknowledge them and request frame callback on first configure
-        // This matches GPUI's behavior (lines 564, 581-585 in window.rs)
-        if let Some(serial) = state_guard.configure_serial.take() {
-            // Note: SCTK's Window handles ack_configure internally via WindowHandler
-            // We track the serial to know when configure events occur, but SCTK acknowledges them
-            // GPUI explicitly calls ack_configure, but SCTK's Window abstraction doesn't expose xdg_surface
-            // so we rely on SCTK's internal handling.
-            
-            // Set window geometry after configure (like GPUI does, lines 574-579)
-            // SCTK's Window doesn't expose set_window_geometry directly, but SCTK handles geometry internally.
-            // The window size is already set via set_min_size/set_max_size above.
-            
-            // Request frame callback on first configure (like GPUI does)
-            if !self.acknowledged_first_configure {
-                self.acknowledged_first_configure = true;
-                log::debug!("First configure event acknowledged, requesting frame callback for initial render");
-                
-                // Request frame callback to trigger initial render
-                let qh = self.event_queue.handle();
-                // Drop old callback if it exists
-                let _ = self.frame_callback.take();
-                // Request new frame callback
-                let callback = self.wl_surface.frame(&qh, ());
-                self.frame_callback = Some(callback);
-                
-                // CRITICAL: Set needs_redraw to true so dispatch_events() returns true
-                // This ensures update() is called and rendering happens
-                state_guard.needs_redraw = true;
-                
-                // Also commit the surface to ensure the frame callback is registered
-                // The compositor needs to see the commit to schedule the frame callback
-                self.wl_surface.commit();
-                log::debug!("Committed surface to register frame callback");
-            }
+
+        if needs_redraw_flag {
+            self.needs_redraw = true;
         }
-        
-        // Update local state from shared state
-        self.size = state_guard.size;
-        self.needs_redraw = state_guard.needs_redraw;
-        state_guard.needs_redraw = false;
-        
+
         Ok(self.needs_redraw)
     }
 }
