@@ -42,16 +42,18 @@ impl FontContext {
             source_cache: Arc::new(RwLock::new(SourceCache::new(Default::default()))),
         };
         
-        // Trigger font discovery immediately
-        {
-            let mut collection = context.collection.write().unwrap();
-            let mut source_cache = context.source_cache.write().unwrap();
-            let _ = collection.query(&mut source_cache); // This triggers font discovery
-            log::debug!("FontContext::new_with_system_fonts() loaded {} font families", collection.family_names().count());
-        }
-        
-        
+        context.discover_system_fonts();
         context
+    }
+
+    /// Discover and load system fonts into the collection.
+    ///
+    /// This triggers font discovery using fontique's fontconfig backend.
+    fn discover_system_fonts(&self) {
+        let mut collection = self.collection.write().unwrap();
+        let mut source_cache = self.source_cache.write().unwrap();
+        let _ = collection.query(&mut source_cache);
+        log::debug!("FontContext discovered {} font families", collection.family_names().count());
     }
 
 
@@ -70,56 +72,58 @@ impl FontContext {
 
     /// Load a font into the collection.
     pub fn load(&mut self, name: impl ToString, font: Font) {
-        let name = name.to_string();
+        let font_name = name.to_string();
         let mut collection = self.collection.write().unwrap();
         
         let (data, _) = font.data.into_raw_parts();
         let result = collection.register_fonts(Blob::new(data), None);
-        log::debug!("Loaded font '{}' with {} families", name, result.len());
+        log::debug!("Loaded font '{}' with {} families", font_name, result.len());
     }
 
     /// Get the default font.
     pub fn default_font(&self) -> Option<QueryFont> {
-        let mut collection = self.collection.write().unwrap();
-        let mut source_cache = self.source_cache.write().unwrap();
-        
-        let mut query = collection.query(&mut source_cache);
-        query.set_families([QueryFamily::Generic(fontique::GenericFamily::SansSerif)]);
-        
-        let mut result = None;
-        query.matches_with(|font| {
-            result = Some(font.clone());
-            fontique::QueryStatus::Stop
-        });
-        
-        if result.is_some() {
-            result
-        } else {
-            log::warn!("Default font not available");
-            None
-        }
+        self.query_with_families(
+            [QueryFamily::Generic(fontique::GenericFamily::SansSerif)],
+            "Default font"
+        )
     }
 
     /// Get a font by name.
-    pub fn get(&mut self, name: &str) -> Option<QueryFont> {
+    pub fn get(&self, name: &str) -> Option<QueryFont> {
+        self.query_with_families(
+            [QueryFamily::Named(name)],
+            &format!("Font '{}'", name)
+        )
+    }
+
+    /// Create a query with the given families and execute it.
+    ///
+    /// This extracts the common pattern of locking, creating a query, and executing it.
+    fn query_with_families(&self, families: [QueryFamily; 1], description: &str) -> Option<QueryFont> {
         let mut collection = self.collection.write().unwrap();
         let mut source_cache = self.source_cache.write().unwrap();
         
         let mut query = collection.query(&mut source_cache);
-        query.set_families([QueryFamily::Named(name)]);
+        query.set_families(families);
         
+        self.execute_query(query, description)
+    }
+
+    /// Execute a font query and return the first match.
+    ///
+    /// This extracts the common query execution pattern used by both `default_font()` and `get()`.
+    fn execute_query(&self, mut query: fontique::Query<'_>, description: &str) -> Option<QueryFont> {
         let mut result = None;
         query.matches_with(|font| {
             result = Some(font.clone());
             fontique::QueryStatus::Stop
         });
         
-        if result.is_some() {
-            result
-        } else {
-            log::warn!("Font '{}' not found", name);
-            None
+        if result.is_none() {
+            log::warn!("{} not available", description);
         }
+        
+        result
     }
 
     
