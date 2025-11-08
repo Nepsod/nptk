@@ -24,11 +24,17 @@ pub mod scene;
 pub mod renderer;
 pub mod backend;
 pub mod options;
+pub mod surface;
+#[cfg(target_os = "linux")]
+pub mod wayland_surface;
+pub mod platform;
 
 pub use scene::{Scene, SceneTrait};
 pub use renderer::{Renderer, RendererTrait};
 pub use backend::Backend;
 pub use options::RendererOptions;
+pub use surface::{Surface, SurfaceTrait};
+pub use platform::Platform;
 
 /// A trait for rendering vector graphics.
 ///

@@ -7,9 +7,9 @@ use taffy::{
     AvailableSpace, Dimension, NodeId, PrintTree, Size, Style, TaffyResult, TaffyTree,
     TraversePartialTree,
 };
-use vello::util::{RenderContext, RenderSurface};
+use vello::util::RenderContext;
 use vello::{AaConfig, AaSupport, RenderParams};
-use crate::vgi::{Renderer, Scene, RendererOptions};
+use crate::vgi::{Renderer, Scene, RendererOptions, Surface, Platform, SurfaceTrait};
 use crate::vgi::graphics_from_scene;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
@@ -27,7 +27,7 @@ use crate::widget::Widget;
 use nptk_theme::theme::Theme;
 
 /// The core application handler. You should use [MayApp](crate::app::MayApp) instead for running applications.
-pub struct AppHandler<'a, T, W, S, F>
+pub struct AppHandler<T, W, S, F>
 where
     T: Theme,
     W: Widget,
@@ -38,7 +38,7 @@ where
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
     scene: Scene,
-    surface: Option<RenderSurface<'a>>,
+    surface: Option<Surface>,
     taffy: TaffyTree,
     window_node: NodeId,
     builder: F,
@@ -53,7 +53,7 @@ where
     async_init_complete: Arc<AtomicBool>,
 }
 
-impl<T, W, S, F> AppHandler<'_, T, W, S, F>
+impl<T, W, S, F> AppHandler<T, W, S, F>
 where
     T: Theme,
     W: Widget,
@@ -342,7 +342,7 @@ where
     ) -> Option<RenderTimes> {
         let renderer = self.renderer.as_mut()?;
         let render_ctx = self.render_ctx.as_ref()?;
-        let surface = self.surface.as_ref()?;
+        let surface = self.surface.as_mut()?;
         let window = self.window.as_ref()?;
 
         let device_handle = render_ctx.devices.first()?;
@@ -352,9 +352,17 @@ where
             return None;
         }
 
+        // Dispatch Wayland events if needed
+        if surface.needs_event_dispatch() {
+            if let Ok(needs_redraw) = surface.dispatch_events() {
+                if needs_redraw {
+                    self.update.insert(Update::DRAW);
+                }
+            }
+        }
+
         let surface_get_start = Instant::now();
         let surface_texture = surface
-            .surface
             .get_current_texture()
             .expect("Failed to get surface texture");
         let surface_get_time = surface_get_start.elapsed();
@@ -379,7 +387,7 @@ where
         let gpu_render_time = gpu_render_start.elapsed();
 
         let present_start = Instant::now();
-        surface_texture.present();
+        surface.present().expect("Failed to present surface");
         let present_time = present_start.elapsed();
 
         Some(RenderTimes {
@@ -453,7 +461,7 @@ struct RenderTimes {
     total_time: Duration,
 }
 
-impl<T, W, S, F> AppHandler<'_, T, W, S, F>
+impl<T, W, S, F> AppHandler<T, W, S, F>
 where
     T: Theme,
     W: Widget,
@@ -486,7 +494,7 @@ where
     /// Create the rendering surface.
     fn create_surface(&mut self, render_ctx: &mut RenderContext) {
         let window = match &self.window {
-            Some(w) => w,
+            Some(w) => w.clone(),
             None => {
                 log::error!("Window not available during surface creation");
                 return;
@@ -494,20 +502,23 @@ where
         };
 
         log::debug!("Creating surface...");
+        
+        // Detect platform
+        let platform = Platform::detect();
+        log::info!("Detected platform: {:?}", platform);
+        
+        let window_size = window.inner_size();
+        let title = self.config.window.title.clone();
+        
         self.surface = Some(
-            crate::tasks::block_on(async {
-                log::debug!("Starting surface creation...");
-                let result = render_ctx
-                    .create_surface(
-                        window.clone(),
-                        window.inner_size().width,
-                        window.inner_size().height,
-                        self.config.render.present_mode,
-                    )
-                    .await;
-                log::debug!("Surface creation completed");
-                result
-            })
+            crate::vgi::platform::create_surface_blocking(
+                platform,
+                Some(window),
+                window_size.width,
+                window_size.height,
+                &title,
+                Some(render_ctx),
+            )
             .expect("Failed to create surface"),
         );
         log::debug!("Surface created successfully");
@@ -535,11 +546,16 @@ where
         // Note: Hybrid backend is disabled due to wgpu version conflict,
         // so scene recreation is not needed (Hybrid falls back to Vello)
         
+        // Get surface format for renderer options
+        let surface_format = self.surface.as_ref()
+            .map(|s| s.format())
+            .unwrap_or(vello::wgpu::TextureFormat::Bgra8Unorm);
+        
         self.renderer = Some(
             Renderer::new(
                 &device_handle.device,
                 self.config.render.backend.clone(),
-                Self::build_renderer_options(&self.config, &self.surface.as_ref().unwrap().format),
+                Self::build_renderer_options(&self.config, &surface_format),
                 width,
                 height,
             )
@@ -647,9 +663,10 @@ where
 
         log::info!("Window resized to {}x{}", new_size.width, new_size.height);
 
-        if let Some(ctx) = &self.render_ctx {
-            if let Some(surface) = &mut self.surface {
-                ctx.resize_surface(surface, new_size.width, new_size.height);
+        if let Some(surface) = &mut self.surface {
+            // Resize the surface using the SurfaceTrait
+            if let Err(e) = surface.resize(new_size.width, new_size.height) {
+                log::error!("Failed to resize surface: {}", e);
             }
         }
 
@@ -808,7 +825,7 @@ where
     }
 }
 
-impl<T, W, S, F> ApplicationHandler for AppHandler<'_, T, W, S, F>
+impl<T, W, S, F> ApplicationHandler for AppHandler<T, W, S, F>
 where
     T: Theme,
     W: Widget,
