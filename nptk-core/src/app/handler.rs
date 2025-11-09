@@ -203,6 +203,18 @@ where
                         }
                     }
                 }
+                // Fallback: if the Wayland surface has been configured, force a first draw so we attach a buffer.
+                #[cfg(target_os = "linux")]
+                {
+                    if let crate::vgi::Surface::Wayland(ref wayland_surface) = surface {
+                        if wayland_surface.is_configured() {
+                            // Ensure we attempt to render at least once after configure.
+                            log::debug!("Wayland configured; forcing initial DRAW");
+                            eprintln!("[NPTK] Forcing initial DRAW after Wayland configure");
+                            self.update.insert(Update::FORCE | Update::DRAW);
+                        }
+                    }
+                }
             }
         }
         
@@ -448,6 +460,7 @@ where
         // Don't render until async initialization is complete
         if !self.async_init_complete.load(Ordering::Relaxed) {
             log::warn!("Async initialization not complete. Skipping render.");
+            eprintln!("[NPTK] Skipping render: async initialization not complete");
             return None;
         }
         
@@ -455,6 +468,7 @@ where
             Some(r) => r,
             None => {
                 log::warn!("Renderer not initialized. Skipping render.");
+                eprintln!("[NPTK] Skipping render: renderer not initialized");
                 return None;
             }
         };
@@ -463,6 +477,7 @@ where
             Some(ctx) => ctx,
             None => {
                 log::warn!("GPU context not initialized. Skipping render.");
+                eprintln!("[NPTK] Skipping render: GPU context not initialized");
                 return None;
             }
         };
@@ -470,6 +485,7 @@ where
         let devices = gpu_context.enumerate_devices();
         if devices.is_empty() {
             log::warn!("No devices found. Skipping render.");
+            eprintln!("[NPTK] Skipping render: no devices found");
             return None;
         }
         
@@ -480,6 +496,7 @@ where
             Some(s) => s,
             None => {
                 log::warn!("Surface not initialized. Skipping render.");
+                eprintln!("[NPTK] Skipping render: surface not initialized");
                 return None;
             }
         };
@@ -496,18 +513,22 @@ where
                     wgpu_types::PresentMode::FifoRelaxed => vello::wgpu::PresentMode::Fifo,
                     wgpu_types::PresentMode::Mailbox => vello::wgpu::PresentMode::Mailbox,
                 };
+                eprintln!("[NPTK] Wayland reconfigure requested...");
                 if let Err(e) = wayland_surface.configure_surface(
                     &device_handle.device,
                     wayland_surface.format(),
                     present_mode,
                 ) {
                     log::warn!("Wayland reconfigure failed: {}", e);
+                    eprintln!("[NPTK] Wayland reconfigure failed: {}", e);
                 } else {
                     log::debug!("Wayland surface reconfigured to {}x{}", wayland_surface.size().0, wayland_surface.size().1);
+                    eprintln!("[NPTK] Wayland surface reconfigured to {}x{}", wayland_surface.size().0, wayland_surface.size().1);
                 }
             }
             if !wayland_surface.is_configured() {
                 log::warn!("Wayland surface not yet configured. Skipping render.");
+                eprintln!("[NPTK] Skipping render: Wayland surface not yet configured");
                 return None;
             }
         }
@@ -533,21 +554,54 @@ where
         
         if width == 0 || height == 0 {
             log::warn!("Surface invalid ({}x{}). Skipping render.", width, height);
+            eprintln!("[NPTK] Skipping render: invalid surface size {}x{}", width, height);
             return None;
         }
         log::debug!("Surface size: {}x{}", width, height);
+        eprintln!("[NPTK] Surface size: {}x{}", width, height);
 
-        if surface.needs_event_dispatch() {
-            match surface.dispatch_events() {
-                Ok(needs_redraw) => {
-                    if needs_redraw {
-                        self.update.insert(Update::DRAW);
+        // Avoid doing event dispatch here for Wayland to prevent blocking before first frame.
+        // Let the outer update() drive Wayland dispatch cadence.
+        #[cfg(not(target_os = "linux"))]
+        {
+            if surface.needs_event_dispatch() {
+                match surface.dispatch_events() {
+                    Ok(needs_redraw) => {
+                        if needs_redraw {
+                            self.update.insert(Update::DRAW);
+                        }
+                    }
+                    Err(err) => {
+                        log::info!("Surface dispatch reported close: {}", err);
+                        self.handle_close_request(event_loop);
+                        return None;
                     }
                 }
-                Err(err) => {
-                    log::info!("Wayland surface dispatch reported close: {}", err);
-                    self.handle_close_request(event_loop);
-                    return None;
+            }
+        }
+
+        // Ensure Wayland surface is configured before acquiring texture
+        #[cfg(target_os = "linux")]
+        if let crate::vgi::Surface::Wayland(ref mut wayland_surface) = &mut *surface {
+            // Proactively configure once after first configure to guarantee swapchain is ready.
+            if wayland_surface.is_configured() && wayland_surface.requires_reconfigure() {
+                let present_mode = match self.config.render.present_mode {
+                    wgpu_types::PresentMode::AutoVsync => vello::wgpu::PresentMode::AutoVsync,
+                    wgpu_types::PresentMode::AutoNoVsync => vello::wgpu::PresentMode::AutoNoVsync,
+                    wgpu_types::PresentMode::Immediate => vello::wgpu::PresentMode::Immediate,
+                    wgpu_types::PresentMode::Fifo => vello::wgpu::PresentMode::Fifo,
+                    wgpu_types::PresentMode::FifoRelaxed => vello::wgpu::PresentMode::Fifo,
+                    wgpu_types::PresentMode::Mailbox => vello::wgpu::PresentMode::Mailbox,
+                };
+                eprintln!("[NPTK] Wayland proactive configure before get_current_texture...");
+                if let Err(e) = wayland_surface.configure_surface(
+                    &device_handle.device,
+                    wayland_surface.format(),
+                    present_mode,
+                ) {
+                    eprintln!("[NPTK] Proactive configure failed: {}", e);
+                } else {
+                    eprintln!("[NPTK] Proactive configure OK ({}x{})", wayland_surface.size().0, wayland_surface.size().1);
                 }
             }
         }
@@ -557,10 +611,12 @@ where
         let mut surface_texture = match surface.get_current_texture() {
             Ok(texture) => {
                 log::debug!("Successfully got surface texture");
+                eprintln!("[NPTK] Got current surface texture");
                 texture
             }
             Err(e) => {
                 log::warn!("Failed to get surface texture: {}, skipping render", e);
+                eprintln!("[NPTK] Failed to get surface texture: {}", e);
                 return None;
             }
         };
@@ -586,12 +642,15 @@ where
             },
         ) {
             log::warn!("Failed to render to surface: {}, skipping present", e);
+            eprintln!("[NPTK] Failed to render to surface: {}", e);
             return None;
         }
         log::debug!("Successfully rendered scene to surface");
+        eprintln!("[NPTK] Rendered scene to surface");
         let gpu_render_time = gpu_render_start.elapsed();
 
         log::debug!("Presenting surface ({}x{})...", width, height);
+        eprintln!("[NPTK] Presenting surface ({}x{})...", width, height);
         let present_start = Instant::now();
         
         // For Winit surfaces, we need to present the SurfaceTexture directly
@@ -607,12 +666,14 @@ where
                 surface_texture.present();
                 if let Err(e) = surface.present() {
                     log::error!("Failed to present Wayland surface: {}", e);
+                    eprintln!("[NPTK] Failed to present Wayland surface: {}", e);
                     return None;
                 }
             }
         }
         
         log::debug!("Successfully presented surface");
+        eprintln!("[NPTK] Successfully presented surface");
         let present_time = present_start.elapsed();
 
         Some(RenderTimes {
@@ -1227,6 +1288,33 @@ where
 {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         // Drive app updates even if no winit window exists (Wayland-native path)
+        #[cfg(target_os = "linux")]
+        {
+            // If running Wayland and we have a configured surface but haven't drawn yet,
+            // force a draw to ensure a buffer is attached and the window maps.
+            if crate::vgi::Platform::detect() == crate::vgi::Platform::Wayland {
+                if let Some(ref surface) = self.surface {
+                    if let crate::vgi::Surface::Wayland(ref wl) = surface {
+                        if wl.is_configured() {
+                            eprintln!("[NPTK] about_to_wait: forcing DRAW (Wayland configured)");
+                            self.update.insert(Update::FORCE | Update::DRAW);
+                            // If initialization is complete, attempt an immediate render to attach a buffer.
+                            if self.async_init_complete.load(std::sync::atomic::Ordering::Relaxed) {
+                                if self.renderer.is_some() && self.gpu_context.is_some() {
+                                    let layout_node = self.ensure_layout_initialized();
+                                    self.update_internal(event_loop); // drive normal path once
+                                    // If still pending, make one direct render attempt
+                                    if self.update.get().intersects(Update::FORCE | Update::DRAW) {
+                                        eprintln!("[NPTK] about_to_wait: direct render attempt");
+                                        self.render_frame(&layout_node, event_loop);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         self.update(event_loop);
     }
 

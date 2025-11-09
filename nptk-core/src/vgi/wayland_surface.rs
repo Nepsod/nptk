@@ -99,6 +99,15 @@ impl WaylandSurfaceInner {
         state.size = (width, height);
         state.configured = true;
         state.needs_redraw = true;
+        log::debug!(
+            "Wayland configure applied: size={}x{}, set configured=true, needs_redraw=true",
+            width,
+            height
+        );
+        eprintln!(
+            "[NPTK/Wayland] configured: size={}x{}, configured=true, needs_redraw=true",
+            width, height
+        );
 
         self.ensure_frame_callback_locked(&mut state);
     }
@@ -121,7 +130,16 @@ impl WaylandSurfaceInner {
         self.ensure_frame_callback_locked(&mut state);
     }
 
-    fn ensure_frame_callback_locked(&self, _state: &mut SurfaceState) {}
+    fn ensure_frame_callback_locked(&self, state: &mut SurfaceState) {
+        if state.frame_callback.is_none() {
+            let callback = self
+                .wl_surface
+                .frame(&self.queue_handle, self.surface_key);
+            state.frame_callback = Some(callback);
+            let _ = WaylandClient::instance().flush();
+            log::trace!("Registered wl_surface.frame callback");
+        }
+    }
 
     fn take_status(&self) -> SurfaceStatus {
         let mut state = self.state.lock().unwrap();
@@ -212,7 +230,13 @@ impl WaylandSurface {
         // Flush immediately so the compositor sees the commit
         client.flush()?;
         
-        // Process pending events to pick up the initial configure as early as possible, non-blocking
+        // Request an initial frame; compositor will trigger redraw via callback
+        {
+            let mut s = inner.state.lock().unwrap();
+            s.needs_redraw = true;
+            inner.ensure_frame_callback_locked(&mut s);
+        }
+        // Process pending events to pick up the initial configure as early as possible
         let _ = client.dispatch_pending();
 
         let connection = client.connection();
@@ -282,6 +306,7 @@ impl SurfaceTrait for WaylandSurface {
     }
 
     fn present(&mut self) -> Result<(), String> {
+        log::debug!("Wayland present(): committing wl_surface");
         self.inner.after_present();
         self.inner.wl_surface().commit();
         self.needs_redraw = false;
@@ -314,13 +339,28 @@ impl SurfaceTrait for WaylandSurface {
         self.client.dispatch_pending()?;
 
         let status = self.inner.take_status();
+        if self.size != status.size {
+            log::debug!("Wayland dispatch: size changed to {}x{}", status.size.0, status.size.1);
+        }
         self.size = status.size;
         if status.configured {
             self.is_configured = true;
             self.pending_reconfigure = true;
+            log::debug!("Wayland dispatch: configured=true, pending_reconfigure=true");
+            eprintln!("[NPTK/Wayland] dispatch: configured=true, pending_reconfigure=true");
         }
         if status.needs_redraw {
             self.needs_redraw = true;
+            log::trace!("Wayland dispatch: needs_redraw=true from status");
+            eprintln!("[NPTK/Wayland] dispatch: needs_redraw=true");
+        }
+
+        // If we just got configured and require reconfiguration, request a redraw immediately
+        // so the higher layers render once and present a buffer to get mapped.
+        if self.is_configured && self.pending_reconfigure {
+            self.needs_redraw = true;
+            log::debug!("Wayland dispatch: forcing redraw after configure");
+            eprintln!("[NPTK/Wayland] dispatch: forcing redraw after configure");
         }
 
         if status.should_close {

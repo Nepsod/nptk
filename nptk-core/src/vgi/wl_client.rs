@@ -381,10 +381,14 @@ impl Dispatch<xdg_surface::XdgSurface, u32> for WaylandClientState {
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
     ) {
-        if let xdg_surface::Event::Configure { serial } = event {
-            if let Some(surface) = state.shared.get_surface(*surface_key) {
-                surface.handle_configure(serial);
+        match event {
+            xdg_surface::Event::Configure { serial } => {
+                log::debug!("Wayland: XdgSurface({}) Configure serial={}", surface_key, serial);
+                if let Some(surface) = state.shared.get_surface(*surface_key) {
+                    surface.handle_configure(serial);
+                }
             }
+            _ => {}
         }
     }
 }
@@ -401,9 +405,11 @@ impl Dispatch<xdg_toplevel::XdgToplevel, u32> for WaylandClientState {
         if let Some(surface) = state.shared.get_surface(*surface_key) {
             match event {
                 xdg_toplevel::Event::Configure { width, height, .. } => {
+                    log::debug!("Wayland: XdgToplevel({}) Configure {}x{}", surface_key, width, height);
                     surface.handle_toplevel_configure(width, height);
                 }
                 xdg_toplevel::Event::Close => {
+                    log::debug!("Wayland: XdgToplevel({}) Close", surface_key);
                     surface.mark_closed();
                 }
                 _ => {}
@@ -412,16 +418,21 @@ impl Dispatch<xdg_toplevel::XdgToplevel, u32> for WaylandClientState {
     }
 }
 
-impl Dispatch<wl_callback::WlCallback, ()> for WaylandClientState {
+impl Dispatch<wl_callback::WlCallback, u32> for WaylandClientState {
     fn event(
-        _state: &mut Self,
+        state: &mut Self,
         _callback: &wl_callback::WlCallback,
         event: wl_callback::Event,
-        _data: &(),
+        surface_key: &u32,
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
     ) {
-        let _ = event;
+        if let wl_callback::Event::Done { .. } = event {
+            log::trace!("Wayland: Frame done for surface {}", surface_key);
+            if let Some(surface) = state.shared.get_surface(*surface_key) {
+                surface.handle_frame_done();
+            }
+        }
     }
 }
 
