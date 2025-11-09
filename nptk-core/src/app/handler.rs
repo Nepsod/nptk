@@ -15,6 +15,7 @@ use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowAttributes, WindowId};
+use winit::event_loop::ControlFlow;
 
 use crate::app::context::AppContext;
 use crate::app::font_ctx::FontContext;
@@ -1295,6 +1296,8 @@ where
                 if let Some(ref surface) = self.surface {
                     if let crate::vgi::Surface::Wayland(ref wl) = surface {
                         if wl.is_configured() && !wl.first_frame_seen() {
+
+                            event_loop.set_control_flow(ControlFlow::Poll);
                             eprintln!("[NPTK] about_to_wait: forcing DRAW (Wayland configured)");
                             self.update.insert(Update::FORCE | Update::DRAW);
                             // If initialization is complete, attempt an immediate render to attach a buffer.

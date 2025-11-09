@@ -1,8 +1,10 @@
 #![cfg(target_os = "linux")]
 
 use std::collections::HashMap;
+use std::io::ErrorKind;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 
+use wayland_client::backend::WaylandError;
 use wayland_client::globals::{registry_queue_init, GlobalList};
 use wayland_client::Proxy;
 use wayland_client::protocol::{wl_callback, wl_compositor, wl_registry, wl_surface, wl_seat, wl_shm, wl_keyboard, wl_pointer};
@@ -83,19 +85,40 @@ impl WaylandClient {
         let mut data = self.loop_data.lock().unwrap();
         let (event_queue, state) = &mut *data;
 
-        if let Some(guard) = event_queue.prepare_read() {
-            guard
-                .read()
-                .map_err(|e| format!("Failed to read Wayland events: {:?}", e))?;
-        }
-
+        // First process anything that might already be queued.
         event_queue
             .dispatch_pending(state)
             .map_err(|e| format!("Failed to dispatch Wayland events: {:?}", e))?;
 
-        event_queue
-            .flush()
-            .map_err(|e| format!("Failed to flush Wayland queue: {:?}", e))?;
+        // Attempt to pull in fresh events without blocking the UI thread on the socket.
+        loop {
+            match event_queue.prepare_read() {
+                Some(guard) => {
+                    event_queue
+                        .flush()
+                        .map_err(|e| format!("Failed to flush Wayland queue: {:?}", e))?;
+                    match guard.read() {
+                        Ok(_) => {}
+                        Err(WaylandError::Io(ref err)) if err.kind() == ErrorKind::WouldBlock => {
+                            break;
+                        }
+                        Err(err) => {
+                            return Err(format!("Failed to read Wayland events: {:?}", err));
+                        }
+                    }
+                    event_queue
+                        .dispatch_pending(state)
+                        .map_err(|e| format!("Failed to dispatch Wayland events: {:?}", e))?;
+                    break;
+                }
+                None => {
+                    event_queue
+                        .dispatch_pending(state)
+                        .map_err(|e| format!("Failed to dispatch Wayland events: {:?}", e))?;
+                    continue;
+                }
+            }
+        }
 
         Ok(())
     }
