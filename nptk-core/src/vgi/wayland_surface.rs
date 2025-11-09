@@ -12,9 +12,7 @@ use wayland_client::protocol::wl_surface;
 use wayland_client::{Connection, Proxy};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel};
 use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1;
-use wayland_protocols_plasma::server_decoration::client::{
-    org_kde_kwin_server_decoration, org_kde_kwin_server_decoration_manager,
-};
+use wayland_protocols_plasma::server_decoration::client::org_kde_kwin_server_decoration;
 
 use super::surface::SurfaceTrait;
 use crate::vgi::wl_client::{WaylandClient, WaylandQueueHandle};
@@ -27,6 +25,7 @@ struct SurfaceState {
     configured: bool,
     should_close: bool,
     frame_callback: Option<wayland_client::protocol::wl_callback::WlCallback>,
+    first_frame_seen: bool,
 }
 
 pub(crate) struct WaylandSurfaceInner {
@@ -38,6 +37,8 @@ pub(crate) struct WaylandSurfaceInner {
     xdg_toplevel: xdg_toplevel::XdgToplevel,
     #[allow(dead_code)]
     _decoration: Option<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1>,
+    #[allow(dead_code)]
+    _kde_decoration: Option<org_kde_kwin_server_decoration::OrgKdeKwinServerDecoration>,
     queue_handle: WaylandQueueHandle,
     state: Mutex<SurfaceState>,
 }
@@ -60,6 +61,7 @@ impl WaylandSurfaceInner {
             xdg_surface,
             xdg_toplevel,
             _decoration: None,
+            _kde_decoration: None,
             queue_handle,
             state: Mutex::new(state),
         })
@@ -117,6 +119,7 @@ impl WaylandSurfaceInner {
         let mut state = self.state.lock().unwrap();
         state.frame_callback = None;
         state.needs_redraw = true;
+        state.first_frame_seen = true;
     }
 
     pub(crate) fn mark_closed(&self) {
@@ -139,6 +142,12 @@ impl WaylandSurfaceInner {
             let _ = WaylandClient::instance().flush();
             log::trace!("Registered wl_surface.frame callback");
         }
+    }
+
+    pub(crate) fn request_redraw(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.needs_redraw = true;
+        self.ensure_frame_callback_locked(&mut state);
     }
 
     fn take_status(&self) -> SurfaceStatus {
@@ -209,12 +218,15 @@ impl WaylandSurface {
         );
         // Request server-side decorations if available
         // Prefer KDE server decorations on KWin if available (create decoration over wl_surface)
-        if let Some(_kde_dm) = client.globals().kde_server_decoration_manager {
-            // The KDE decoration protocol API differs; skip forcing mode here to avoid incompatibility.
-            // We still proceed to xdg-decoration fallback below.
+        if let Some(kde_dm) = client.globals().kde_server_decoration_manager.clone() {
+            // Create a KDE server decoration object tied to this wl_surface
+            let kde_deco = kde_dm.create(&wl_surface, &queue_handle, ());
+            if let Some(inner_mut) = Arc::get_mut(&mut inner) {
+                inner_mut._kde_decoration = Some(kde_deco);
+            }
         }
         if let Some(dm) = client.globals().decoration_manager {
-            let deco = dm.get_toplevel_decoration(&inner.xdg_toplevel, &queue_handle, ());
+            let deco = dm.get_toplevel_decoration(&inner.xdg_toplevel, &queue_handle, surface_key);
             deco.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
             // store to keep alive
             let inner_mut = Arc::get_mut(&mut inner).expect("WaylandSurfaceInner not shared yet");
@@ -312,6 +324,10 @@ impl SurfaceTrait for WaylandSurface {
         self.needs_redraw = false;
         // Flush immediately after commit so the compositor sees the new buffer
         self.client.flush()?;
+        // Nudge delivery of the first frame callback to avoid startup stalls.
+        if !self.first_frame_seen() {
+            let _ = self.client.roundtrip();
+        }
         Ok(())
     }
 
@@ -336,6 +352,7 @@ impl SurfaceTrait for WaylandSurface {
     }
 
     fn dispatch_events(&mut self) -> Result<bool, String> {
+        // Drive Wayland event processing on the owning thread.
         self.client.dispatch_pending()?;
 
         let status = self.inner.take_status();
@@ -411,6 +428,11 @@ impl WaylandSurface {
 
     pub fn is_configured(&self) -> bool {
         self.is_configured
+    }
+
+    pub fn first_frame_seen(&self) -> bool {
+        let state = self.inner.state.lock().unwrap();
+        state.first_frame_seen
     }
 
     pub fn should_close(&self) -> bool {

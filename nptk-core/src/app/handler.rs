@@ -207,10 +207,9 @@ where
                 #[cfg(target_os = "linux")]
                 {
                     if let crate::vgi::Surface::Wayland(ref wayland_surface) = surface {
-                        if wayland_surface.is_configured() {
-                            // Ensure we attempt to render at least once after configure.
-                            log::debug!("Wayland configured; forcing initial DRAW");
-                            eprintln!("[NPTK] Forcing initial DRAW after Wayland configure");
+                        // Keep scheduling redraws until the first frame callback is observed.
+                        if wayland_surface.is_configured() && !wayland_surface.first_frame_seen() {
+                            log::debug!("Wayland: first frame not seen yet; scheduling redraw fallback");
                             self.update.insert(Update::FORCE | Update::DRAW);
                         }
                     }
@@ -1295,7 +1294,7 @@ where
             if crate::vgi::Platform::detect() == crate::vgi::Platform::Wayland {
                 if let Some(ref surface) = self.surface {
                     if let crate::vgi::Surface::Wayland(ref wl) = surface {
-                        if wl.is_configured() {
+                        if wl.is_configured() && !wl.first_frame_seen() {
                             eprintln!("[NPTK] about_to_wait: forcing DRAW (Wayland configured)");
                             self.update.insert(Update::FORCE | Update::DRAW);
                             // If initialization is complete, attempt an immediate render to attach a buffer.

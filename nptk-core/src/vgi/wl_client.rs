@@ -127,8 +127,6 @@ impl WaylandClient {
                 .map_err(|e| format!("Failed to init Wayland registry: {:?}", e))?;
         let queue_handle = event_queue.handle();
 
-        let globals = WaylandGlobals::bind_all(&global_list, &queue_handle)?;
-
         let shared = Arc::new(SharedState {
             surfaces: Mutex::new(HashMap::new()),
             focused_surface_key: Mutex::new(None),
@@ -142,6 +140,8 @@ impl WaylandClient {
         event_queue
             .roundtrip(&mut state)
             .map_err(|e| format!("Initial Wayland roundtrip failed: {:?}", e))?;
+
+        let globals = WaylandGlobals::bind_all(&global_list, &queue_handle)?;
 
         Ok(WaylandClient {
             connection,
@@ -450,15 +450,24 @@ impl Dispatch<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1, ()> for Wayla
     }
 }
 
-impl Dispatch<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1, ()> for WaylandClientState {
+impl Dispatch<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1, u32> for WaylandClientState {
     fn event(
-        _state: &mut Self,
+        state: &mut Self,
         _proxy: &zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
-        _event: zxdg_toplevel_decoration_v1::Event,
-        _data: &(),
+        event: zxdg_toplevel_decoration_v1::Event,
+        surface_key: &u32,
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
     ) {
+        if let Some(surface) = state.shared.get_surface(*surface_key) {
+            match event {
+                zxdg_toplevel_decoration_v1::Event::Configure { .. } => {
+                    // Decoration mode/config changed; request a redraw so chrome can update.
+                    surface.request_redraw();
+                }
+                _ => {}
+            }
+        }
     }
 }
 
