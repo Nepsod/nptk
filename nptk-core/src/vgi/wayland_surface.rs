@@ -9,8 +9,12 @@ use raw_window_handle::{RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle,
 use vello::wgpu::{self, SurfaceTexture};
 
 use wayland_client::protocol::wl_surface;
-use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel};
 use wayland_client::{Connection, Proxy};
+use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel};
+use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1;
+use wayland_protocols_plasma::server_decoration::client::{
+    org_kde_kwin_server_decoration, org_kde_kwin_server_decoration_manager,
+};
 
 use super::surface::SurfaceTrait;
 use crate::vgi::wl_client::{WaylandClient, WaylandQueueHandle};
@@ -28,8 +32,12 @@ struct SurfaceState {
 pub(crate) struct WaylandSurfaceInner {
     surface_key: u32,
     wl_surface: wl_surface::WlSurface,
+    #[allow(dead_code)]
     xdg_surface: xdg_surface::XdgSurface,
+    #[allow(dead_code)]
     xdg_toplevel: xdg_toplevel::XdgToplevel,
+    #[allow(dead_code)]
+    _decoration: Option<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1>,
     queue_handle: WaylandQueueHandle,
     state: Mutex<SurfaceState>,
 }
@@ -51,6 +59,7 @@ impl WaylandSurfaceInner {
             wl_surface,
             xdg_surface,
             xdg_toplevel,
+            _decoration: None,
             queue_handle,
             state: Mutex::new(state),
         })
@@ -61,6 +70,7 @@ impl WaylandSurfaceInner {
     }
 
     pub(crate) fn handle_toplevel_configure(&self, width: i32, height: i32) {
+        log::debug!("Wayland toplevel configure: {}x{}", width, height);
         if width <= 0 || height <= 0 {
             return;
         }
@@ -69,6 +79,7 @@ impl WaylandSurfaceInner {
     }
 
     pub(crate) fn handle_configure(&self, serial: u32) {
+        log::debug!("Wayland xdg_surface configure: serial={}", serial);
         let mut state = self.state.lock().unwrap();
 
         let size = state
@@ -82,6 +93,8 @@ impl WaylandSurfaceInner {
         self.xdg_surface
             .set_window_geometry(0, 0, width as i32, height as i32);
         self.xdg_surface.ack_configure(serial);
+        // Ensure the compositor sees the ACK immediately
+        let _ = WaylandClient::instance().flush();
 
         state.size = (width, height);
         state.configured = true;
@@ -91,6 +104,7 @@ impl WaylandSurfaceInner {
     }
 
     pub(crate) fn handle_frame_done(&self) {
+        log::trace!("Wayland frame callback done");
         let mut state = self.state.lock().unwrap();
         state.frame_callback = None;
         state.needs_redraw = true;
@@ -107,14 +121,7 @@ impl WaylandSurfaceInner {
         self.ensure_frame_callback_locked(&mut state);
     }
 
-    fn ensure_frame_callback_locked(&self, state: &mut SurfaceState) {
-        if state.frame_callback.is_none() {
-            let callback = self
-                .wl_surface
-                .frame(&self.queue_handle, self.surface_key);
-            state.frame_callback = Some(callback);
-        }
-    }
+    fn ensure_frame_callback_locked(&self, _state: &mut SurfaceState) {}
 
     fn take_status(&self) -> SurfaceStatus {
         let mut state = self.state.lock().unwrap();
@@ -125,6 +132,7 @@ impl WaylandSurfaceInner {
             should_close: state.should_close,
         };
         state.needs_redraw = false;
+        state.configured = false;
         status
     }
 
@@ -149,6 +157,7 @@ pub struct WaylandSurface {
     size: (u32, u32),
     is_configured: bool,
     needs_redraw: bool,
+    pending_reconfigure: bool,
 }
 
 impl WaylandSurface {
@@ -171,17 +180,40 @@ impl WaylandSurface {
             xdg_surface.get_toplevel(&queue_handle, surface_key);
 
         xdg_toplevel.set_title(title.to_owned());
+        xdg_toplevel.set_app_id("nptk".to_owned());
 
-        wl_surface.commit();
-
-        let inner = WaylandSurfaceInner::new(
+        let mut inner = WaylandSurfaceInner::new(
             wl_surface.clone(),
             xdg_surface.clone(),
             xdg_toplevel.clone(),
             queue_handle.clone(),
             (width.max(1), height.max(1)),
         );
+        // Request server-side decorations if available
+        // Prefer KDE server decorations on KWin if available (create decoration over wl_surface)
+        if let Some(_kde_dm) = client.globals().kde_server_decoration_manager {
+            // The KDE decoration protocol API differs; skip forcing mode here to avoid incompatibility.
+            // We still proceed to xdg-decoration fallback below.
+        }
+        if let Some(dm) = client.globals().decoration_manager {
+            let deco = dm.get_toplevel_decoration(&inner.xdg_toplevel, &queue_handle, ());
+            deco.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
+            // store to keep alive
+            let inner_mut = Arc::get_mut(&mut inner).expect("WaylandSurfaceInner not shared yet");
+            inner_mut._decoration = Some(deco);
+            // Commit decoration state so compositor sends updated configure
+            wl_surface.commit();
+            let _ = client.flush();
+        }
         client.register_surface(&inner);
+        
+        // Commit the surface after registering so we can handle configure events
+        wl_surface.commit();
+        // Flush immediately so the compositor sees the commit
+        client.flush()?;
+        
+        // Process pending events to pick up the initial configure as early as possible, non-blocking
+        let _ = client.dispatch_pending();
 
         let connection = client.connection();
         let (wgpu_surface, format) =
@@ -195,6 +227,7 @@ impl WaylandSurface {
             size: (width.max(1), height.max(1)),
             is_configured: false,
             needs_redraw: false,
+            pending_reconfigure: true,
         })
     }
 
@@ -252,6 +285,8 @@ impl SurfaceTrait for WaylandSurface {
         self.inner.after_present();
         self.inner.wl_surface().commit();
         self.needs_redraw = false;
+        // Flush immediately after commit so the compositor sees the new buffer
+        self.client.flush()?;
         Ok(())
     }
 
@@ -276,10 +311,17 @@ impl SurfaceTrait for WaylandSurface {
     }
 
     fn dispatch_events(&mut self) -> Result<bool, String> {
+        self.client.dispatch_pending()?;
+
         let status = self.inner.take_status();
         self.size = status.size;
-        self.is_configured = status.configured;
-        self.needs_redraw = status.needs_redraw;
+        if status.configured {
+            self.is_configured = true;
+            self.pending_reconfigure = true;
+        }
+        if status.needs_redraw {
+            self.needs_redraw = true;
+        }
 
         if status.should_close {
             self.needs_redraw = false;
@@ -302,11 +344,16 @@ impl WaylandSurface {
             .as_ref()
             .ok_or_else(|| "wgpu surface not initialised".to_string())?;
 
+        // Use the size from the inner state, which should be updated after the configure event
+        let state = self.inner.state.lock().unwrap();
+        let size = state.size;
+        drop(state);
+
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
-            width: self.size.0,
-            height: self.size.1,
+            width: size.0,
+            height: size.1,
             present_mode,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             view_formats: vec![],
@@ -315,6 +362,10 @@ impl WaylandSurface {
 
         wgpu_surface.configure(device, &config);
         self.format = format;
+        self.size = size;
+        self.is_configured = true;
+        self.needs_redraw = true;
+        self.pending_reconfigure = false;
         Ok(())
     }
 
@@ -325,6 +376,10 @@ impl WaylandSurface {
     pub fn should_close(&self) -> bool {
         let state = self.inner.state.lock().unwrap();
         state.should_close
+    }
+
+    pub fn requires_reconfigure(&self) -> bool {
+        self.pending_reconfigure
     }
 }
 

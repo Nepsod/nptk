@@ -133,15 +133,23 @@ where
     fn compute_layout(&mut self) -> TaffyResult<()> {
         log::debug!("Computing root layout.");
 
+        // Determine current size from Wayland surface if present, otherwise from window,
+        // otherwise fall back to configured size.
+        let (width, height) = if let Some(surface) = &self.surface {
+            surface.size()
+        } else if let Some(window) = self.window.as_ref() {
+            let s = window.inner_size();
+            (s.width, s.height)
+        } else {
+            let s = self.config.window.size;
+            (s.x as u32, s.y as u32)
+        };
+
         self.taffy.compute_layout(
             self.window_node,
             Size::<AvailableSpace> {
-                width: AvailableSpace::Definite(
-                    self.window.as_ref().unwrap().inner_size().width as f32,
-                ),
-                height: AvailableSpace::Definite(
-                    self.window.as_ref().unwrap().inner_size().height as f32,
-                ),
+                width: AvailableSpace::Definite(width as f32),
+                height: AvailableSpace::Definite(height as f32),
             },
         )?;
         Ok(())
@@ -182,10 +190,16 @@ where
         if platform == Platform::Wayland {
             if let Some(ref mut surface) = self.surface {
                 if surface.needs_event_dispatch() {
-                    if let Ok(needs_redraw) = surface.dispatch_events() {
-                        if needs_redraw {
-                            log::debug!("Wayland events triggered redraw");
-                            self.update.insert(Update::DRAW);
+                    match surface.dispatch_events() {
+                        Ok(needs_redraw) => {
+                            if needs_redraw {
+                                log::debug!("Wayland events triggered redraw");
+                                self.update.insert(Update::DRAW);
+                            }
+                        }
+                        Err(err) => {
+                            log::info!("Wayland surface dispatch reported close: {}", err);
+                            self.update.insert(Update::EXIT);
                         }
                     }
                 }
@@ -470,8 +484,28 @@ where
             }
         };
 
-        // Check if Wayland surface is configured (must be configured before rendering)
-        if let crate::vgi::Surface::Wayland(ref wayland_surface) = &*surface {
+        // On Wayland, reconfigure the surface if compositor requested it
+        #[cfg(target_os = "linux")]
+        if let crate::vgi::Surface::Wayland(ref mut wayland_surface) = &mut *surface {
+            if wayland_surface.requires_reconfigure() {
+                let present_mode = match self.config.render.present_mode {
+                    wgpu_types::PresentMode::AutoVsync => vello::wgpu::PresentMode::AutoVsync,
+                    wgpu_types::PresentMode::AutoNoVsync => vello::wgpu::PresentMode::AutoNoVsync,
+                    wgpu_types::PresentMode::Immediate => vello::wgpu::PresentMode::Immediate,
+                    wgpu_types::PresentMode::Fifo => vello::wgpu::PresentMode::Fifo,
+                    wgpu_types::PresentMode::FifoRelaxed => vello::wgpu::PresentMode::Fifo,
+                    wgpu_types::PresentMode::Mailbox => vello::wgpu::PresentMode::Mailbox,
+                };
+                if let Err(e) = wayland_surface.configure_surface(
+                    &device_handle.device,
+                    wayland_surface.format(),
+                    present_mode,
+                ) {
+                    log::warn!("Wayland reconfigure failed: {}", e);
+                } else {
+                    log::debug!("Wayland surface reconfigured to {}x{}", wayland_surface.size().0, wayland_surface.size().1);
+                }
+            }
             if !wayland_surface.is_configured() {
                 log::warn!("Wayland surface not yet configured. Skipping render.");
                 return None;
@@ -503,28 +537,19 @@ where
         }
         log::debug!("Surface size: {}x{}", width, height);
 
-        // Dispatch Wayland events if needed and check for close request
-        let should_close = if surface.needs_event_dispatch() {
-            if let Ok(needs_redraw) = surface.dispatch_events() {
-                if needs_redraw {
-                    self.update.insert(Update::DRAW);
+        if surface.needs_event_dispatch() {
+            match surface.dispatch_events() {
+                Ok(needs_redraw) => {
+                    if needs_redraw {
+                        self.update.insert(Update::DRAW);
+                    }
+                }
+                Err(err) => {
+                    log::info!("Wayland surface dispatch reported close: {}", err);
+                    self.handle_close_request(event_loop);
+                    return None;
                 }
             }
-            
-            // Check if Wayland window requested close (before mutable borrow)
-            if let crate::vgi::Surface::Wayland(wayland_surface) = &*surface {
-                wayland_surface.should_close()
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-        
-        // Handle close request if needed
-        if should_close {
-            self.handle_close_request(event_loop);
-            return None; // Don't render if closing
         }
 
         let surface_get_start = Instant::now();
@@ -1200,6 +1225,11 @@ where
     W: Widget,
     F: Fn(AppContext, S) -> W,
 {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // Drive app updates even if no winit window exists (Wayland-native path)
+        self.update(event_loop);
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         log::info!("Resuming/Starting app execution...");
 
