@@ -914,6 +914,11 @@ where
         // On Wayland, reconfigure the surface if compositor requested it
         #[cfg(target_os = "linux")]
         if let crate::vgi::Surface::Wayland(ref mut wayland_surface) = &mut *surface {
+            if !wayland_surface.has_received_configure() {
+                log::debug!("Wayland surface has not received configure yet. Skipping render.");
+                eprintln!("[NPTK] Skipping render: awaiting first configure");
+                return None;
+            }
             if wayland_surface.requires_reconfigure() {
                 let present_mode = match self.config.render.present_mode {
                     wgpu_types::PresentMode::AutoVsync => vello::wgpu::PresentMode::AutoVsync,
@@ -1073,6 +1078,9 @@ where
             #[cfg(target_os = "linux")]
             crate::vgi::Surface::Wayland(_) => {
                 // Wayland also needs the texture to be presented before committing the surface.
+                if let crate::vgi::Surface::Wayland(ref wayland_surface) = surface {
+                    wayland_surface.prepare_frame();
+                }
                 surface_texture.present();
                 if let Err(e) = surface.present() {
                     log::error!("Failed to present Wayland surface: {}", e);
@@ -1710,21 +1718,9 @@ where
                 // the compositor receives our first buffer and maps the window.
                 if let Some(ref surface) = self.surface {
                     if let crate::vgi::Surface::Wayland(ref wl) = surface {
-                        if wl.is_configured() && !wl.first_frame_seen() {
+                        if wl.has_received_configure() && wl.is_configured() && !wl.first_frame_seen() {
                             eprintln!("[NPTK] about_to_wait: forcing DRAW (Wayland configured)");
                             self.update.insert(Update::FORCE | Update::DRAW);
-                            // If initialization is complete, attempt an immediate render to attach a buffer.
-                            if self.async_init_complete.load(std::sync::atomic::Ordering::Relaxed) {
-                                if self.renderer.is_some() && self.gpu_context.is_some() {
-                                    let layout_node = self.ensure_layout_initialized();
-                                    self.update_internal(event_loop); // drive normal path once
-                                    // If still pending, make one direct render attempt
-                                    if self.update.get().intersects(Update::FORCE | Update::DRAW) {
-                                        eprintln!("[NPTK] about_to_wait: direct render attempt");
-                                        self.render_frame(&layout_node, event_loop);
-                                    }
-                                }
-                            }
                         }
                     }
                 }

@@ -187,6 +187,11 @@ impl WaylandSurfaceInner {
         state.first_frame_seen = true;
     }
 
+    fn prepare_frame_callback(&self) {
+        let mut state = self.state.lock().unwrap();
+        self.ensure_frame_callback_locked(&mut state);
+    }
+
     pub(crate) fn mark_closed(&self) {
         let mut state = self.state.lock().unwrap();
         state.should_close = true;
@@ -247,6 +252,7 @@ pub struct WaylandSurface {
     is_configured: bool,
     needs_redraw: bool,
     pending_reconfigure: bool,
+    first_configure_seen: bool,
     pending_input_events: Vec<InputEvent>,
 }
 
@@ -319,6 +325,7 @@ impl WaylandSurface {
             is_configured: false,
             needs_redraw: false,
             pending_reconfigure: false,
+            first_configure_seen: false,
             pending_input_events: Vec::new(),
         })
     }
@@ -417,6 +424,7 @@ impl SurfaceTrait for WaylandSurface {
         self.size = status.size;
         if status.configured {
             self.pending_reconfigure = true;
+            self.first_configure_seen = true;
             self.is_configured = false;
             log::debug!("Wayland dispatch: configured event received; pending_reconfigure=true");
             eprintln!("[NPTK/Wayland] dispatch: configured event received; pending_reconfigure=true");
@@ -490,6 +498,10 @@ impl WaylandSurface {
         self.is_configured
     }
 
+    pub fn has_received_configure(&self) -> bool {
+        self.first_configure_seen
+    }
+
     pub fn first_frame_seen(&self) -> bool {
         let state = self.inner.state.lock().unwrap();
         state.first_frame_seen
@@ -510,6 +522,13 @@ impl WaylandSurface {
         } else {
             self.pending_input_events.drain(..).collect()
         }
+    }
+
+    pub fn prepare_frame(&self) {
+        if !self.is_configured {
+            return;
+        }
+        self.inner.prepare_frame_callback();
     }
 }
 
