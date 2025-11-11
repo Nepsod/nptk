@@ -17,7 +17,7 @@ use wayland_protocols_plasma::server_decoration::client::{
     org_kde_kwin_server_decoration, org_kde_kwin_server_decoration_manager,
 };
 
-use super::wayland_surface::{InputEvent, PointerEvent, WaylandSurfaceInner};
+use super::wayland_surface::{InputEvent, PointerEvent, KeyboardEvent, WaylandSurfaceInner};
 
 /// Singleton Wayland client used by all native Wayland surfaces.
 pub(crate) struct WaylandClient {
@@ -475,6 +475,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientState {
                 let key = surface.id().protocol_id();
                 *state.shared.focused_surface_key.lock().unwrap() = Some(key);
                 if let Some(surface) = state.shared.get_surface(key) {
+                    surface.push_input_event(InputEvent::Keyboard(KeyboardEvent::Enter));
                     surface.handle_frame_done();
                 }
             }
@@ -482,34 +483,51 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientState {
                 let mut focused = state.shared.focused_surface_key.lock().unwrap();
                 if let Some(key) = *focused {
                     if let Some(surface) = state.shared.get_surface(key) {
+                        surface.push_input_event(InputEvent::Keyboard(KeyboardEvent::Leave));
                         surface.handle_frame_done();
                     }
                 }
                 *focused = None;
             }
-            wl_keyboard::Event::Key { serial: _, time: _, key: _, state: _ } => {
+            wl_keyboard::Event::Key { serial: _, time: _, key, state: key_state } => {
                 if let Some(key_surface) = *state.shared.focused_surface_key.lock().unwrap() {
                     if let Some(surface) = state.shared.get_surface(key_surface) {
-                        surface.handle_frame_done();
+                        if let Ok(actual_state) = key_state.into_result() {
+                            surface.push_input_event(InputEvent::Keyboard(KeyboardEvent::Key {
+                                keycode: key,
+                                state: actual_state,
+                            }));
+                            surface.handle_frame_done();
+                        }
                     }
                 }
             }
             wl_keyboard::Event::Modifiers {
                 serial: _,
-                mods_depressed: _,
-                mods_latched: _,
-                mods_locked: _,
-                group: _,
+                mods_depressed,
+                mods_latched,
+                mods_locked,
+                group,
             } => {
                 if let Some(key_surface) = *state.shared.focused_surface_key.lock().unwrap() {
                     if let Some(surface) = state.shared.get_surface(key_surface) {
+                        surface.push_input_event(InputEvent::Keyboard(KeyboardEvent::Modifiers {
+                            mods_depressed,
+                            mods_latched,
+                            mods_locked,
+                            group,
+                        }));
                         surface.handle_frame_done();
                     }
                 }
             }
-            wl_keyboard::Event::RepeatInfo { rate: _, delay: _ } => {
+            wl_keyboard::Event::RepeatInfo { rate, delay } => {
                 if let Some(key_surface) = *state.shared.focused_surface_key.lock().unwrap() {
                     if let Some(surface) = state.shared.get_surface(key_surface) {
+                        surface.push_input_event(InputEvent::Keyboard(KeyboardEvent::RepeatInfo {
+                            rate,
+                            delay,
+                        }));
                         surface.handle_frame_done();
                     }
                 }

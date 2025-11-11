@@ -1,5 +1,5 @@
 use std::ops::Range;
-use winit::event::KeyEvent;
+use crate::app::info::AppKeyEvent;
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 /// Represents a text cursor position and selection.
@@ -278,7 +278,7 @@ pub struct TextInputProcessor;
 
 impl TextInputProcessor {
     /// Process a keyboard event and return text editing operations.
-    pub fn process_key_event(event: &KeyEvent, buffer: &TextBuffer) -> Vec<TextEditOp> {
+    pub fn process_key_event(event: &AppKeyEvent, buffer: &TextBuffer) -> Vec<TextEditOp> {
         let mut ops = Vec::new();
 
         if event.state != winit::event::ElementState::Pressed {
@@ -351,7 +351,7 @@ impl TextInputProcessor {
                 // Handle character input
                 if let Some(text) = &event.text {
                     if !text.chars().any(|c| c.is_control()) {
-                        ops.push(TextEditOp::Insert(text.to_string()));
+                        ops.push(TextEditOp::Insert(text.clone()));
                     }
                 }
             }

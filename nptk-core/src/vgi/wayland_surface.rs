@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle};
 use vello::wgpu::{self, SurfaceTexture};
 
-use wayland_client::protocol::{wl_pointer, wl_surface};
+use wayland_client::protocol::{wl_keyboard, wl_pointer, wl_surface};
 use wayland_client::{Connection, Proxy};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel};
 use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1;
@@ -33,6 +33,7 @@ struct SurfaceState {
 #[derive(Debug, Clone)]
 pub(crate) enum InputEvent {
     Pointer(PointerEvent),
+    Keyboard(KeyboardEvent),
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +50,21 @@ pub(crate) enum PointerEvent {
     AxisDiscrete { axis: wl_pointer::Axis, discrete: i32 },
     AxisValue120 { axis: wl_pointer::Axis, value120: i32 },
     Frame,
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub(crate) enum KeyboardEvent {
+    Enter,
+    Leave,
+    Key { keycode: u32, state: wl_keyboard::KeyState },
+    Modifiers {
+        mods_depressed: u32,
+        mods_latched: u32,
+        mods_locked: u32,
+        group: u32,
+    },
+    RepeatInfo { rate: i32, delay: i32 },
 }
 
 pub(crate) struct WaylandSurfaceInner {

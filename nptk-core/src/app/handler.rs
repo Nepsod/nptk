@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(target_os = "linux")]
+use std::collections::HashSet;
 
 use nalgebra::Vector2;
 use taffy::{
@@ -19,7 +21,7 @@ use winit::event_loop::ControlFlow;
 
 use crate::app::context::AppContext;
 use crate::app::font_ctx::FontContext;
-use crate::app::info::AppInfo;
+use crate::app::info::{AppInfo, AppKeyEvent};
 use crate::app::update::{Update, UpdateManager};
 use crate::config::MayConfig;
 use crate::layout::{LayoutNode, StyleNode};
@@ -27,7 +29,11 @@ use crate::plugin::PluginManager;
 use crate::widget::Widget;
 use nptk_theme::theme::Theme;
 #[cfg(target_os = "linux")]
-use crate::vgi::wayland_surface::{InputEvent, PointerEvent};
+use winit::keyboard::{Key, KeyCode, ModifiersState, NativeKey, NativeKeyCode, PhysicalKey};
+#[cfg(target_os = "linux")]
+use crate::vgi::wayland_surface::{InputEvent, PointerEvent, KeyboardEvent};
+#[cfg(target_os = "linux")]
+use winit::event::DeviceId;
 
 /// The core application handler. You should use [MayApp](crate::app::MayApp) instead for running applications.
 pub struct AppHandler<T, W, S, F>
@@ -54,6 +60,8 @@ where
     plugins: PluginManager<T>,
     /// Tracks whether async initialization is complete
     async_init_complete: Arc<AtomicBool>,
+    #[cfg(target_os = "linux")]
+    wayland_pressed_keys: HashSet<u32>,
 }
 
 impl<T, W, S, F> AppHandler<T, W, S, F>
@@ -104,14 +112,16 @@ where
             last_update: Instant::now(),
             plugins,
             async_init_complete: Arc::new(AtomicBool::new(false)),
+            #[cfg(target_os = "linux")]
+            wayland_pressed_keys: HashSet::new(),
         }
     }
 
     #[cfg(target_os = "linux")]
     fn process_wayland_input_events(&mut self) {
         use crate::vgi::Platform;
-        use wayland_client::protocol::wl_pointer;
-        use winit::event::{DeviceId, ElementState};
+        use wayland_client::protocol::{wl_pointer, wl_keyboard};
+        use winit::event::ElementState;
         use winit::event::MouseButton;
 
         if Platform::detect() != Platform::Wayland {
@@ -205,6 +215,70 @@ where
                         self.flush_wayland_scroll(&mut pending_scroll, &mut scroll_is_line, &mut axis_source);
                     }
                 },
+                InputEvent::Keyboard(key_event) => {
+                    match key_event {
+                        KeyboardEvent::Enter => {
+                            self.wayland_pressed_keys.clear();
+                            self.info.modifiers = ModifiersState::empty();
+                        }
+                        KeyboardEvent::Leave => {
+                            self.wayland_pressed_keys.clear();
+                            self.info.modifiers = ModifiersState::empty();
+                        }
+                        KeyboardEvent::Key { keycode, state } => {
+                            let evdev = Self::normalize_wayland_keycode(keycode);
+                            let element_state = match state {
+                                wl_keyboard::KeyState::Pressed => ElementState::Pressed,
+                                wl_keyboard::KeyState::Released => ElementState::Released,
+                                _ => continue,
+                            };
+
+                            let repeat = match element_state {
+                                ElementState::Pressed => {
+                                    !self.wayland_pressed_keys.insert(evdev)
+                                }
+                                ElementState::Released => {
+                                    self.wayland_pressed_keys.remove(&evdev);
+                                    false
+                                }
+                            };
+
+                            self.update_wayland_modifiers_state();
+
+                            let physical_key = Self::map_wayland_physical_key(evdev, keycode);
+                            let text = if element_state == ElementState::Pressed {
+                                Self::map_wayland_text(
+                                    evdev,
+                                    self.info.modifiers.shift_key(),
+                                )
+                            } else {
+                                None
+                            };
+                            let logical_key = text
+                                .as_ref()
+                                .map(|value| Key::Character(value.clone().into()))
+                                .unwrap_or_else(|| Key::Unidentified(NativeKey::Unidentified));
+
+                            let app_event = AppKeyEvent {
+                                physical_key,
+                                logical_key,
+                                text,
+                                state: element_state,
+                                repeat,
+                            };
+
+                            let keyboard_device = DeviceId::dummy();
+                            self.info.keys.push((keyboard_device, app_event));
+                            self.request_redraw();
+                        }
+                        KeyboardEvent::Modifiers { .. } => {
+                            // Currently handled via key state tracking.
+                        }
+                        KeyboardEvent::RepeatInfo { .. } => {
+                            // Unsupported repeat customization.
+                        }
+                    }
+                }
             }
         }
 
@@ -246,6 +320,195 @@ where
         }
         *scroll_is_line = false;
         *axis_source = None;
+    }
+
+    #[cfg(target_os = "linux")]
+    fn normalize_wayland_keycode(keycode: u32) -> u32 {
+        if keycode >= 8 { keycode - 8 } else { keycode }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn map_wayland_physical_key(evdev: u32, raw: u32) -> PhysicalKey {
+        match evdev {
+            1 => PhysicalKey::Code(KeyCode::Escape),
+            2 => PhysicalKey::Code(KeyCode::Digit1),
+            3 => PhysicalKey::Code(KeyCode::Digit2),
+            4 => PhysicalKey::Code(KeyCode::Digit3),
+            5 => PhysicalKey::Code(KeyCode::Digit4),
+            6 => PhysicalKey::Code(KeyCode::Digit5),
+            7 => PhysicalKey::Code(KeyCode::Digit6),
+            8 => PhysicalKey::Code(KeyCode::Digit7),
+            9 => PhysicalKey::Code(KeyCode::Digit8),
+            10 => PhysicalKey::Code(KeyCode::Digit9),
+            11 => PhysicalKey::Code(KeyCode::Digit0),
+            12 => PhysicalKey::Code(KeyCode::Minus),
+            13 => PhysicalKey::Code(KeyCode::Equal),
+            14 => PhysicalKey::Code(KeyCode::Backspace),
+            15 => PhysicalKey::Code(KeyCode::Tab),
+            16 => PhysicalKey::Code(KeyCode::KeyQ),
+            17 => PhysicalKey::Code(KeyCode::KeyW),
+            18 => PhysicalKey::Code(KeyCode::KeyE),
+            19 => PhysicalKey::Code(KeyCode::KeyR),
+            20 => PhysicalKey::Code(KeyCode::KeyT),
+            21 => PhysicalKey::Code(KeyCode::KeyY),
+            22 => PhysicalKey::Code(KeyCode::KeyU),
+            23 => PhysicalKey::Code(KeyCode::KeyI),
+            24 => PhysicalKey::Code(KeyCode::KeyO),
+            25 => PhysicalKey::Code(KeyCode::KeyP),
+            26 => PhysicalKey::Code(KeyCode::BracketLeft),
+            27 => PhysicalKey::Code(KeyCode::BracketRight),
+            28 => PhysicalKey::Code(KeyCode::Enter),
+            29 => PhysicalKey::Code(KeyCode::ControlLeft),
+            30 => PhysicalKey::Code(KeyCode::KeyA),
+            31 => PhysicalKey::Code(KeyCode::KeyS),
+            32 => PhysicalKey::Code(KeyCode::KeyD),
+            33 => PhysicalKey::Code(KeyCode::KeyF),
+            34 => PhysicalKey::Code(KeyCode::KeyG),
+            35 => PhysicalKey::Code(KeyCode::KeyH),
+            36 => PhysicalKey::Code(KeyCode::KeyJ),
+            37 => PhysicalKey::Code(KeyCode::KeyK),
+            38 => PhysicalKey::Code(KeyCode::KeyL),
+            39 => PhysicalKey::Code(KeyCode::Semicolon),
+            40 => PhysicalKey::Code(KeyCode::Quote),
+            41 => PhysicalKey::Code(KeyCode::Backquote),
+            42 => PhysicalKey::Code(KeyCode::ShiftLeft),
+            43 => PhysicalKey::Code(KeyCode::Backslash),
+            44 => PhysicalKey::Code(KeyCode::KeyZ),
+            45 => PhysicalKey::Code(KeyCode::KeyX),
+            46 => PhysicalKey::Code(KeyCode::KeyC),
+            47 => PhysicalKey::Code(KeyCode::KeyV),
+            48 => PhysicalKey::Code(KeyCode::KeyB),
+            49 => PhysicalKey::Code(KeyCode::KeyN),
+            50 => PhysicalKey::Code(KeyCode::KeyM),
+            51 => PhysicalKey::Code(KeyCode::Comma),
+            52 => PhysicalKey::Code(KeyCode::Period),
+            53 => PhysicalKey::Code(KeyCode::Slash),
+            54 => PhysicalKey::Code(KeyCode::ShiftRight),
+            56 => PhysicalKey::Code(KeyCode::AltLeft),
+            57 => PhysicalKey::Code(KeyCode::Space),
+            58 => PhysicalKey::Code(KeyCode::CapsLock),
+            59 => PhysicalKey::Code(KeyCode::F1),
+            60 => PhysicalKey::Code(KeyCode::F2),
+            61 => PhysicalKey::Code(KeyCode::F3),
+            62 => PhysicalKey::Code(KeyCode::F4),
+            63 => PhysicalKey::Code(KeyCode::F5),
+            64 => PhysicalKey::Code(KeyCode::AltRight),
+            65 => PhysicalKey::Code(KeyCode::Space),
+            66 => PhysicalKey::Code(KeyCode::CapsLock),
+            67 => PhysicalKey::Code(KeyCode::F1),
+            68 => PhysicalKey::Code(KeyCode::F2),
+            69 => PhysicalKey::Code(KeyCode::F3),
+            70 => PhysicalKey::Code(KeyCode::F4),
+            71 => PhysicalKey::Code(KeyCode::F5),
+            72 => PhysicalKey::Code(KeyCode::F6),
+            73 => PhysicalKey::Code(KeyCode::F7),
+            74 => PhysicalKey::Code(KeyCode::F8),
+            75 => PhysicalKey::Code(KeyCode::F9),
+            76 => PhysicalKey::Code(KeyCode::F10),
+            79 => PhysicalKey::Code(KeyCode::Numpad7),
+            80 => PhysicalKey::Code(KeyCode::Numpad8),
+            81 => PhysicalKey::Code(KeyCode::Numpad9),
+            83 => PhysicalKey::Code(KeyCode::Numpad4),
+            84 => PhysicalKey::Code(KeyCode::Numpad5),
+            85 => PhysicalKey::Code(KeyCode::Numpad6),
+            86 => PhysicalKey::Code(KeyCode::NumpadAdd),
+            87 => PhysicalKey::Code(KeyCode::Numpad1),
+            88 => PhysicalKey::Code(KeyCode::Numpad2),
+            89 => PhysicalKey::Code(KeyCode::Numpad3),
+            90 => PhysicalKey::Code(KeyCode::Numpad0),
+            91 => PhysicalKey::Code(KeyCode::NumpadDecimal),
+            102 => PhysicalKey::Code(KeyCode::Home),
+            103 => PhysicalKey::Code(KeyCode::ArrowUp),
+            104 => PhysicalKey::Code(KeyCode::PageUp),
+            105 => PhysicalKey::Code(KeyCode::ArrowLeft),
+            106 => PhysicalKey::Code(KeyCode::ArrowRight),
+            107 => PhysicalKey::Code(KeyCode::End),
+            108 => PhysicalKey::Code(KeyCode::ArrowDown),
+            109 => PhysicalKey::Code(KeyCode::PageDown),
+            110 => PhysicalKey::Code(KeyCode::Insert),
+            111 => PhysicalKey::Code(KeyCode::Delete),
+            125 => PhysicalKey::Code(KeyCode::SuperLeft),
+            126 => PhysicalKey::Code(KeyCode::SuperRight),
+            127 => PhysicalKey::Code(KeyCode::ContextMenu),
+            _ => PhysicalKey::Unidentified(NativeKeyCode::Xkb(raw)),
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn map_wayland_text(evdev: u32, shift: bool) -> Option<String> {
+        let ch = match evdev {
+            2 => Some('1'),
+            3 => Some('2'),
+            4 => Some('3'),
+            5 => Some('4'),
+            6 => Some('5'),
+            7 => Some('6'),
+            8 => Some('7'),
+            9 => Some('8'),
+            10 => Some('9'),
+            11 => Some('0'),
+            16 => Some('q'),
+            17 => Some('w'),
+            18 => Some('e'),
+            19 => Some('r'),
+            20 => Some('t'),
+            21 => Some('y'),
+            22 => Some('u'),
+            23 => Some('i'),
+            24 => Some('o'),
+            25 => Some('p'),
+            30 => Some('a'),
+            31 => Some('s'),
+            32 => Some('d'),
+            33 => Some('f'),
+            34 => Some('g'),
+            35 => Some('h'),
+            36 => Some('j'),
+            37 => Some('k'),
+            38 => Some('l'),
+            44 => Some('z'),
+            45 => Some('x'),
+            46 => Some('c'),
+            47 => Some('v'),
+            48 => Some('b'),
+            49 => Some('n'),
+            50 => Some('m'),
+            57 => Some(' '),
+            _ => None,
+        }?;
+
+        let rendered = if shift { ch.to_ascii_uppercase() } else { ch };
+        Some(rendered.to_string())
+    }
+
+    #[cfg(target_os = "linux")]
+    fn update_wayland_modifiers_state(&mut self) {
+        const LEFT_SHIFT: u32 = 42;
+        const RIGHT_SHIFT: u32 = 54;
+        const LEFT_CTRL: u32 = 29;
+        const RIGHT_CTRL: u32 = 97;
+        const LEFT_ALT: u32 = 56;
+        const RIGHT_ALT: u32 = 100;
+        const LEFT_SUPER: u32 = 125;
+        const RIGHT_SUPER: u32 = 126;
+
+        let mut mods = ModifiersState::empty();
+        let pressed = &self.wayland_pressed_keys;
+
+        if pressed.contains(&LEFT_SHIFT) || pressed.contains(&RIGHT_SHIFT) {
+            mods.set(ModifiersState::SHIFT, true);
+        }
+        if pressed.contains(&LEFT_CTRL) || pressed.contains(&RIGHT_CTRL) {
+            mods.set(ModifiersState::CONTROL, true);
+        }
+        if pressed.contains(&LEFT_ALT) || pressed.contains(&RIGHT_ALT) {
+            mods.set(ModifiersState::ALT, true);
+        }
+        if pressed.contains(&LEFT_SUPER) || pressed.contains(&RIGHT_SUPER) {
+            mods.set(ModifiersState::SUPER, true);
+        }
+
+        self.info.modifiers = mods;
     }
 
     /// Get the application context.
@@ -1318,7 +1581,8 @@ where
             }
         }
 
-        self.info.keys.push((device_id, event));
+        let app_event = AppKeyEvent::from_winit(&event);
+        self.info.keys.push((device_id, app_event));
         self.request_redraw();
     }
 

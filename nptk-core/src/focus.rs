@@ -1,4 +1,5 @@
 use crate::app::focus::{FocusId, FocusProperties, FocusState};
+use crate::app::info::AppKeyEvent;
 use crate::layout::LayoutNode;
 
 /// Trait for widgets that can receive focus.
@@ -19,7 +20,7 @@ pub trait Focusable {
     fn on_focus_lost(&mut self) {}
     
     /// Called when this widget receives keyboard input (only when focused).
-    fn on_key_input(&mut self, _event: &winit::event::KeyEvent) -> bool {
+    fn on_key_input(&mut self, _event: &AppKeyEvent) -> bool {
         // Default implementation does nothing
         false
     }
