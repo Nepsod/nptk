@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex, OnceLock, Weak};
 use wayland_client::backend::WaylandError;
 use wayland_client::globals::{registry_queue_init, GlobalList};
 use wayland_client::Proxy;
-use wayland_client::protocol::{wl_callback, wl_compositor, wl_registry, wl_surface, wl_seat, wl_shm, wl_keyboard, wl_pointer};
+use wayland_client::protocol::{wl_callback, wl_compositor, wl_registry, wl_surface, wl_seat, wl_shm, wl_keyboard, wl_pointer, wl_region};
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 use wayland_protocols::xdg::decoration::zv1::client::{
@@ -305,6 +305,19 @@ impl Dispatch<wl_surface::WlSurface, ()> for WaylandClientState {
         _qh: &QueueHandle<Self>,
     ) {
         // We do not currently react to wl_surface events.
+    }
+}
+
+impl Dispatch<wl_region::WlRegion, ()> for WaylandClientState {
+    fn event(
+        _state: &mut Self,
+        _region: &wl_region::WlRegion,
+        _event: wl_region::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        // wl_region has no events to handle.
     }
 }
 

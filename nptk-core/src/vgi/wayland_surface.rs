@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle};
 use vello::wgpu::{self, SurfaceTexture};
 
-use wayland_client::protocol::{wl_keyboard, wl_pointer, wl_surface};
+use wayland_client::protocol::{wl_compositor, wl_keyboard, wl_pointer, wl_surface};
 use wayland_client::{Connection, Proxy};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel};
 use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1;
@@ -80,6 +80,7 @@ pub(crate) struct WaylandSurfaceInner {
     _kde_decoration: Option<org_kde_kwin_server_decoration::OrgKdeKwinServerDecoration>,
     queue_handle: WaylandQueueHandle,
     state: Mutex<SurfaceState>,
+    compositor: wl_compositor::WlCompositor,
 }
 
 impl WaylandSurfaceInner {
@@ -89,6 +90,7 @@ impl WaylandSurfaceInner {
         xdg_toplevel: xdg_toplevel::XdgToplevel,
         queue_handle: WaylandQueueHandle,
         initial_size: (u32, u32),
+        compositor: wl_compositor::WlCompositor,
     ) -> Arc<Self> {
         let surface_key = wl_surface.id().protocol_id();
         let mut state = SurfaceState::default();
@@ -103,6 +105,7 @@ impl WaylandSurfaceInner {
             _kde_decoration: None,
             queue_handle,
             state: Mutex::new(state),
+            compositor,
         })
     }
 
@@ -152,6 +155,13 @@ impl WaylandSurfaceInner {
         self.xdg_surface.ack_configure(serial);
         // Ensure the compositor sees the ACK immediately
         let _ = WaylandClient::instance().flush();
+
+        // Update opaque region to match the new buffer size so compositors can treat it as opaque.
+        let region = self
+            .compositor
+            .create_region(&self.queue_handle, ());
+        region.add(0, 0, width as i32, height as i32);
+        self.wl_surface.set_opaque_region(Some(&region));
 
         state.size = (width, height);
         state.configured = true;
@@ -271,6 +281,7 @@ impl WaylandSurface {
             xdg_toplevel.clone(),
             queue_handle.clone(),
             (width.max(1), height.max(1)),
+            globals.compositor.clone(),
         );
         // Request server-side decorations if available
         // Prefer KDE server decorations on KWin if available (create decoration over wl_surface)
@@ -300,12 +311,12 @@ impl WaylandSurface {
         
         // Request an initial frame; compositor will trigger redraw via callback
         {
-            let mut s = inner.state.lock().unwrap();
-            s.needs_redraw = true;
-            inner.ensure_frame_callback_locked(&mut s);
+            {
+                let mut s = inner.state.lock().unwrap();
+                s.needs_redraw = true;
+                inner.ensure_frame_callback_locked(&mut s);
+            }
         }
-        // Process pending events to pick up the initial configure as early as possible
-        let _ = client.dispatch_pending();
 
         let connection = client.connection();
         let (wgpu_surface, format) =
@@ -375,11 +386,10 @@ impl SurfaceTrait for WaylandSurface {
     }
 
     fn present(&mut self) -> Result<(), String> {
-        log::debug!("Wayland present(): committing wl_surface");
+        log::debug!("Wayland present(): post-present maintenance");
         self.inner.after_present();
-        self.inner.wl_surface().commit();
         self.needs_redraw = false;
-        // Flush immediately after commit so the compositor sees the new buffer
+        // Flush immediately so the compositor sees the new buffer
         self.client.flush()?;
         // Nudge delivery of the first frame callback to avoid startup stalls.
         if !self.first_frame_seen() {
