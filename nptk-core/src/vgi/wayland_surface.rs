@@ -138,9 +138,11 @@ impl WaylandSurfaceInner {
         state.pending_size = Some((width as u32, height as u32));
     }
 
-    pub(crate) fn handle_configure(&self, serial: u32) {
-        log::debug!("Wayland xdg_surface configure: serial={}", serial);
-        eprintln!("[NPTK/Wayland] CONFIGURE: serial={}", serial);
+    pub(crate) fn handle_configure_after_ack(&self, serial: u32) {
+        let xdg_id = self.xdg_surface.id().protocol_id();
+        let wl_id = self.wl_surface.id().protocol_id();
+        log::debug!("Wayland xdg_surface post-ack: serial={} on xdg_surface#{}", serial, xdg_id);
+        eprintln!("[NPTK/Wayland] CONFIGURE(post-ack): serial={} on xdg_surface#{} wl_surface#{}", serial, xdg_id, wl_id);
         let mut state = self.state.lock().unwrap();
 
         let mut size = state
@@ -159,11 +161,6 @@ impl WaylandSurfaceInner {
         eprintln!("[NPTK/Wayland] GEOMETRY {}", format!("{}x{}", width, height));
         self.xdg_surface
             .set_window_geometry(0, 0, width as i32, height as i32);
-        eprintln!("[NPTK/Wayland] ACK {}", serial);
-        self.xdg_surface.ack_configure(serial);
-        // Ensure the compositor sees the ACK immediately
-        eprintln!("[NPTK/Wayland] FLUSH (after ACK)");
-        let _ = WaylandClient::instance().flush();
 
         // Update opaque region to match the new buffer size so compositors can treat it as opaque.
         let region = self

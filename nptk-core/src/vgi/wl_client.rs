@@ -595,7 +595,7 @@ impl Dispatch<xdg_wm_base::XdgWmBase, ()> for WaylandClientState {
 impl Dispatch<xdg_surface::XdgSurface, u32> for WaylandClientState {
     fn event(
         state: &mut Self,
-        _xdg_surface: &xdg_surface::XdgSurface,
+        xdg_surf: &xdg_surface::XdgSurface,
         event: xdg_surface::Event,
         surface_key: &u32,
         _conn: &Connection,
@@ -603,9 +603,15 @@ impl Dispatch<xdg_surface::XdgSurface, u32> for WaylandClientState {
     ) {
         match event {
             xdg_surface::Event::Configure { serial } => {
-                log::debug!("Wayland: XdgSurface({}) Configure serial={}", surface_key, serial);
+                let sid = xdg_surf.id().protocol_id();
+                log::debug!("Wayland: XdgSurface({}) Configure serial={} on xdg_surface#{}", surface_key, serial, sid);
+                eprintln!("[NPTK/Wayland] ACK SEND serial={} on xdg_surface#{}", serial, sid);
+                // Ack immediately on the SAME object instance that emitted the event
+                xdg_surf.ack_configure(serial);
+                eprintln!("[NPTK/Wayland] FLUSH (after ACK) for xdg_surface#{}", sid);
+                let _ = WaylandClient::instance().flush();
                 if let Some(surface) = state.shared.get_surface(*surface_key) {
-                    surface.handle_configure(serial);
+                    surface.handle_configure_after_ack(serial);
                 }
             }
             _ => {}
