@@ -1,9 +1,12 @@
+#![allow(unused_variables)]
 //! Platform-agnostic surface abstraction for rendering.
 //!
 //! This module provides a unified surface interface that can work with different
 //! platform backends (Winit, native Wayland, and potentially others).
 
 use vello::wgpu::{SurfaceTexture, TextureFormat};
+#[cfg(target_os = "linux")]
+use crate::vgi::wayland_surface::InputEvent;
 
 /// A trait for platform-agnostic surface implementations.
 ///
@@ -130,9 +133,10 @@ impl SurfaceTrait for Surface {
         }
     }
 
+    #[allow(unused_variables)]
     fn size(&self) -> (u32, u32) {
         match self {
-            Surface::Winit(surface) => {
+            Surface::Winit(_) => {
                 // Winit surface size must be obtained from the window
                 // This is a limitation - we need access to the window to get size
                 // For now, return 0x0 and let the caller handle it
@@ -158,6 +162,16 @@ impl SurfaceTrait for Surface {
             #[cfg(target_os = "linux")]
             Surface::Wayland(wayland_surface) => wayland_surface.dispatch_events(),
         }
+    }
+}
+
+impl Surface {
+    #[cfg(target_os = "linux")]
+    pub(crate) fn take_wayland_input_events(&mut self) -> Vec<InputEvent> {
+        if let Surface::Wayland(surface) = self {
+            return surface.take_pending_input_events();
+        }
+        Vec::new()
     }
 }
 

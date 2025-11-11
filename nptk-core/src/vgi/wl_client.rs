@@ -17,7 +17,7 @@ use wayland_protocols_plasma::server_decoration::client::{
     org_kde_kwin_server_decoration, org_kde_kwin_server_decoration_manager,
 };
 
-use super::wayland_surface::WaylandSurfaceInner;
+use super::wayland_surface::{InputEvent, PointerEvent, WaylandSurfaceInner};
 
 /// Singleton Wayland client used by all native Wayland surfaces.
 pub(crate) struct WaylandClient {
@@ -29,6 +29,7 @@ pub(crate) struct WaylandClient {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub(crate) struct WaylandGlobals {
     pub compositor: wl_compositor::WlCompositor,
     pub wm_base: xdg_wm_base::XdgWmBase,
@@ -330,19 +331,127 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
         _qh: &QueueHandle<Self>,
     ) {
         match event {
-            wl_pointer::Event::Enter { surface, .. } => {
+            wl_pointer::Event::Enter { surface, serial: _, surface_x, surface_y, .. } => {
                 let key = surface.id().protocol_id();
                 *state.shared.focused_surface_key.lock().unwrap() = Some(key);
+                if let Some(surface) = state.shared.get_surface(key) {
+                    surface.push_input_event(InputEvent::Pointer(PointerEvent::Enter {
+                        surface_x,
+                        surface_y,
+                    }));
+                    surface.handle_frame_done();
+                }
             }
             wl_pointer::Event::Leave { .. } => {
-                *state.shared.focused_surface_key.lock().unwrap() = None;
+                let mut focused = state.shared.focused_surface_key.lock().unwrap();
+                if let Some(key) = *focused {
+                    if let Some(surface) = state.shared.get_surface(key) {
+                        surface.push_input_event(InputEvent::Pointer(PointerEvent::Leave));
+                        surface.handle_frame_done();
+                    }
+                }
+                *focused = None;
             }
-            wl_pointer::Event::Button { .. }
-            | wl_pointer::Event::Motion { .. }
-            | wl_pointer::Event::Axis { .. }
-            | wl_pointer::Event::AxisDiscrete { .. } => {
+            wl_pointer::Event::Motion { time: _, surface_x, surface_y } => {
                 if let Some(key) = *state.shared.focused_surface_key.lock().unwrap() {
                     if let Some(surface) = state.shared.get_surface(key) {
+                        surface.push_input_event(InputEvent::Pointer(PointerEvent::Motion {
+                            surface_x,
+                            surface_y,
+                        }));
+                        surface.handle_frame_done();
+                    }
+                }
+            }
+            wl_pointer::Event::Button { serial: _, time: _, button, state: button_state } => {
+                if let Some(key) = *state.shared.focused_surface_key.lock().unwrap() {
+                    if let Some(surface) = state.shared.get_surface(key) {
+                        if let Ok(button_state) = button_state.into_result() {
+                            surface.push_input_event(InputEvent::Pointer(PointerEvent::Button {
+                                button,
+                                state: button_state,
+                            }));
+                            surface.handle_frame_done();
+                        }
+                    }
+                }
+            }
+            wl_pointer::Event::Axis { time: _, axis, value } => {
+                if let Some(key) = *state.shared.focused_surface_key.lock().unwrap() {
+                    if let Some(surface) = state.shared.get_surface(key) {
+                        if let Ok(axis_kind) = axis.into_result() {
+                            let event = match axis_kind {
+                                wl_pointer::Axis::VerticalScroll => PointerEvent::Axis {
+                                    horizontal: None,
+                                    vertical: Some(value),
+                                },
+                                wl_pointer::Axis::HorizontalScroll => PointerEvent::Axis {
+                                    horizontal: Some(value),
+                                    vertical: None,
+                                },
+                                _ => PointerEvent::Axis {
+                                    horizontal: None,
+                                    vertical: None,
+                                },
+                            };
+                            surface.push_input_event(InputEvent::Pointer(event));
+                            surface.handle_frame_done();
+                        }
+                    }
+                }
+            }
+            wl_pointer::Event::AxisSource { axis_source } => {
+                if let Some(key) = *state.shared.focused_surface_key.lock().unwrap() {
+                    if let Some(surface) = state.shared.get_surface(key) {
+                        if let Ok(source) = axis_source.into_result() {
+                            surface.push_input_event(InputEvent::Pointer(PointerEvent::AxisSource {
+                                source,
+                            }));
+                            surface.handle_frame_done();
+                        }
+                    }
+                }
+            }
+            wl_pointer::Event::AxisStop { time: _, axis } => {
+                if let Some(key) = *state.shared.focused_surface_key.lock().unwrap() {
+                    if let Some(surface) = state.shared.get_surface(key) {
+                        if axis.into_result().is_ok() {
+                            surface.push_input_event(InputEvent::Pointer(PointerEvent::AxisStop));
+                            surface.handle_frame_done();
+                        }
+                    }
+                }
+            }
+            wl_pointer::Event::AxisDiscrete { axis, discrete } => {
+                if let Some(key) = *state.shared.focused_surface_key.lock().unwrap() {
+                    if let Some(surface) = state.shared.get_surface(key) {
+                        if let Ok(axis_kind) = axis.into_result() {
+                            surface.push_input_event(InputEvent::Pointer(PointerEvent::AxisDiscrete {
+                                axis: axis_kind,
+                                discrete,
+                            }));
+                            surface.handle_frame_done();
+                        }
+                    }
+                }
+            }
+            wl_pointer::Event::AxisValue120 { axis, value120 } => {
+                if let Some(key) = *state.shared.focused_surface_key.lock().unwrap() {
+                    if let Some(surface) = state.shared.get_surface(key) {
+                        if let Ok(axis_kind) = axis.into_result() {
+                            surface.push_input_event(InputEvent::Pointer(PointerEvent::AxisValue120 {
+                                axis: axis_kind,
+                                value120,
+                            }));
+                            surface.handle_frame_done();
+                        }
+                    }
+                }
+            }
+            wl_pointer::Event::Frame => {
+                if let Some(key) = *state.shared.focused_surface_key.lock().unwrap() {
+                    if let Some(surface) = state.shared.get_surface(key) {
+                        surface.push_input_event(InputEvent::Pointer(PointerEvent::Frame));
                         surface.handle_frame_done();
                     }
                 }
@@ -362,16 +471,45 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientState {
         _qh: &QueueHandle<Self>,
     ) {
         match event {
-            wl_keyboard::Event::Enter { surface, .. } => {
+            wl_keyboard::Event::Enter { surface, serial: _, keys: _ } => {
                 let key = surface.id().protocol_id();
                 *state.shared.focused_surface_key.lock().unwrap() = Some(key);
+                if let Some(surface) = state.shared.get_surface(key) {
+                    surface.handle_frame_done();
+                }
             }
-            wl_keyboard::Event::Leave { .. } => {
-                *state.shared.focused_surface_key.lock().unwrap() = None;
-            }
-            wl_keyboard::Event::Key { .. } | wl_keyboard::Event::Modifiers { .. } => {
-                if let Some(key) = *state.shared.focused_surface_key.lock().unwrap() {
+            wl_keyboard::Event::Leave { serial: _, .. } => {
+                let mut focused = state.shared.focused_surface_key.lock().unwrap();
+                if let Some(key) = *focused {
                     if let Some(surface) = state.shared.get_surface(key) {
+                        surface.handle_frame_done();
+                    }
+                }
+                *focused = None;
+            }
+            wl_keyboard::Event::Key { serial: _, time: _, key: _, state: _ } => {
+                if let Some(key_surface) = *state.shared.focused_surface_key.lock().unwrap() {
+                    if let Some(surface) = state.shared.get_surface(key_surface) {
+                        surface.handle_frame_done();
+                    }
+                }
+            }
+            wl_keyboard::Event::Modifiers {
+                serial: _,
+                mods_depressed: _,
+                mods_latched: _,
+                mods_locked: _,
+                group: _,
+            } => {
+                if let Some(key_surface) = *state.shared.focused_surface_key.lock().unwrap() {
+                    if let Some(surface) = state.shared.get_surface(key_surface) {
+                        surface.handle_frame_done();
+                    }
+                }
+            }
+            wl_keyboard::Event::RepeatInfo { rate: _, delay: _ } => {
+                if let Some(key_surface) = *state.shared.focused_surface_key.lock().unwrap() {
+                    if let Some(surface) = state.shared.get_surface(key_surface) {
                         surface.handle_frame_done();
                     }
                 }

@@ -1,4 +1,5 @@
 #![cfg(target_os = "linux")]
+#![allow(missing_docs)]
 
 //! Native Wayland surface implementation backed by a shared event loop.
 
@@ -8,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle};
 use vello::wgpu::{self, SurfaceTexture};
 
-use wayland_client::protocol::wl_surface;
+use wayland_client::protocol::{wl_pointer, wl_surface};
 use wayland_client::{Connection, Proxy};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel};
 use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1;
@@ -26,6 +27,28 @@ struct SurfaceState {
     should_close: bool,
     frame_callback: Option<wayland_client::protocol::wl_callback::WlCallback>,
     first_frame_seen: bool,
+    input_events: Vec<InputEvent>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum InputEvent {
+    Pointer(PointerEvent),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum PointerEvent {
+    Enter { surface_x: f64, surface_y: f64 },
+    Leave,
+    Motion { surface_x: f64, surface_y: f64 },
+    Button { button: u32, state: wl_pointer::ButtonState },
+    Axis { horizontal: Option<f64>, vertical: Option<f64> },
+    AxisSource {
+        source: wl_pointer::AxisSource,
+    },
+    AxisStop,
+    AxisDiscrete { axis: wl_pointer::Axis, discrete: i32 },
+    AxisValue120 { axis: wl_pointer::Axis, value120: i32 },
+    Frame,
 }
 
 pub(crate) struct WaylandSurfaceInner {
@@ -65,6 +88,22 @@ impl WaylandSurfaceInner {
             queue_handle,
             state: Mutex::new(state),
         })
+    }
+
+    pub(crate) fn push_input_event(&self, event: InputEvent) {
+        let mut state = self.state.lock().unwrap();
+        state.input_events.push(event);
+    }
+
+    fn take_input_events(&self) -> Vec<InputEvent> {
+        let mut state = self.state.lock().unwrap();
+        if state.input_events.is_empty() {
+            Vec::new()
+        } else {
+            let mut events = Vec::with_capacity(state.input_events.len());
+            events.append(&mut state.input_events);
+            events
+        }
     }
 
     pub(crate) fn surface_key(&self) -> u32 {
@@ -185,6 +224,7 @@ pub struct WaylandSurface {
     is_configured: bool,
     needs_redraw: bool,
     pending_reconfigure: bool,
+    pending_input_events: Vec<InputEvent>,
 }
 
 impl WaylandSurface {
@@ -264,6 +304,7 @@ impl WaylandSurface {
             is_configured: false,
             needs_redraw: false,
             pending_reconfigure: true,
+            pending_input_events: Vec::new(),
         })
     }
 
@@ -385,6 +426,11 @@ impl SurfaceTrait for WaylandSurface {
             return Err("Wayland surface requested close".to_string());
         }
 
+        let mut new_events = self.inner.take_input_events();
+        if !new_events.is_empty() {
+            self.pending_input_events.append(&mut new_events);
+        }
+
         Ok(self.needs_redraw)
     }
 }
@@ -442,6 +488,14 @@ impl WaylandSurface {
 
     pub fn requires_reconfigure(&self) -> bool {
         self.pending_reconfigure
+    }
+
+    pub(crate) fn take_pending_input_events(&mut self) -> Vec<InputEvent> {
+        if self.pending_input_events.is_empty() {
+            Vec::new()
+        } else {
+            self.pending_input_events.drain(..).collect()
+        }
     }
 }
 

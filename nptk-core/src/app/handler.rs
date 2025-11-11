@@ -26,6 +26,8 @@ use crate::layout::{LayoutNode, StyleNode};
 use crate::plugin::PluginManager;
 use crate::widget::Widget;
 use nptk_theme::theme::Theme;
+#[cfg(target_os = "linux")]
+use crate::vgi::wayland_surface::{InputEvent, PointerEvent};
 
 /// The core application handler. You should use [MayApp](crate::app::MayApp) instead for running applications.
 pub struct AppHandler<T, W, S, F>
@@ -103,6 +105,147 @@ where
             plugins,
             async_init_complete: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn process_wayland_input_events(&mut self) {
+        use crate::vgi::Platform;
+        use wayland_client::protocol::wl_pointer;
+        use winit::event::{DeviceId, ElementState};
+        use winit::event::MouseButton;
+
+        if Platform::detect() != Platform::Wayland {
+            return;
+        }
+
+        let events = {
+            let Some(surface) = self.surface.as_mut() else { return; };
+            surface.take_wayland_input_events()
+        };
+        if events.is_empty() {
+            return;
+        }
+
+        let pointer_device = DeviceId::dummy();
+        let mut pending_scroll: Option<(f64, f64)> = None;
+        let mut scroll_is_line = false;
+        let mut axis_source: Option<wl_pointer::AxisSource> = None;
+
+        let map_pointer_button = |button: u32| -> MouseButton {
+            match button {
+                0x110 => MouseButton::Left,
+                0x111 => MouseButton::Right,
+                0x112 => MouseButton::Middle,
+                other => MouseButton::Other((other & 0xFFFF) as u16),
+            }
+        };
+
+        for event in events {
+            match event {
+                InputEvent::Pointer(pointer_event) => match pointer_event {
+                    PointerEvent::Enter { surface_x, surface_y, .. } => {
+                        self.info.cursor_pos = Some(Vector2::new(surface_x, surface_y));
+                        self.request_redraw();
+                    }
+                    PointerEvent::Leave { .. } => {
+                        self.info.cursor_pos = None;
+                        self.request_redraw();
+                    }
+                    PointerEvent::Motion { surface_x, surface_y, .. } => {
+                        self.info.cursor_pos = Some(Vector2::new(surface_x, surface_y));
+                        self.request_redraw();
+                    }
+                    PointerEvent::Button { button, state, .. } => {
+                        let element_state = match state {
+                            wl_pointer::ButtonState::Pressed => ElementState::Pressed,
+                            wl_pointer::ButtonState::Released => ElementState::Released,
+                            _ => continue,
+                        };
+                        let mapped_button = map_pointer_button(button);
+                        self.handle_mouse_input(pointer_device, mapped_button, element_state);
+                    }
+                    PointerEvent::Axis { horizontal, vertical } => {
+                        let (mut h, mut v) = pending_scroll.unwrap_or((0.0, 0.0));
+                        if let Some(value) = horizontal {
+                            h += value;
+                        }
+                        if let Some(value) = vertical {
+                            v += value;
+                        }
+                        pending_scroll = Some((h, v));
+                    }
+                    PointerEvent::AxisSource { source } => {
+                        axis_source = Some(source);
+                    }
+                    PointerEvent::AxisStop => {
+                        self.flush_wayland_scroll(&mut pending_scroll, &mut scroll_is_line, &mut axis_source);
+                    }
+                    PointerEvent::AxisDiscrete { axis, discrete } => {
+                        let (mut h, mut v) = pending_scroll.unwrap_or((0.0, 0.0));
+                        match axis {
+                            wl_pointer::Axis::HorizontalScroll => h += discrete as f64,
+                            wl_pointer::Axis::VerticalScroll => v += discrete as f64,
+                            _ => {}
+                        }
+                        pending_scroll = Some((h, v));
+                        scroll_is_line = true;
+                    }
+                    PointerEvent::AxisValue120 { axis, value120 } => {
+                        let (mut h, mut v) = pending_scroll.unwrap_or((0.0, 0.0));
+                        let value = (value120 as f64) / 120.0;
+                        match axis {
+                            wl_pointer::Axis::HorizontalScroll => h += value,
+                            wl_pointer::Axis::VerticalScroll => v += value,
+                            _ => {}
+                        }
+                        pending_scroll = Some((h, v));
+                        scroll_is_line = true;
+                    }
+                    PointerEvent::Frame => {
+                        self.flush_wayland_scroll(&mut pending_scroll, &mut scroll_is_line, &mut axis_source);
+                    }
+                },
+            }
+        }
+
+        self.flush_wayland_scroll(&mut pending_scroll, &mut scroll_is_line, &mut axis_source);
+    }
+
+    #[cfg(target_os = "linux")]
+    fn flush_wayland_scroll(
+        &mut self,
+        pending: &mut Option<(f64, f64)>,
+        scroll_is_line: &mut bool,
+        axis_source: &mut Option<wayland_client::protocol::wl_pointer::AxisSource>,
+    ) {
+        use wayland_client::protocol::wl_pointer::AxisSource;
+        use winit::dpi::PhysicalPosition;
+        use winit::event::MouseScrollDelta;
+
+        if let Some((horizontal, vertical)) = pending.take() {
+            if horizontal != 0.0 || vertical != 0.0 {
+                let delta = match axis_source {
+                    Some(AxisSource::Finger) => {
+                        MouseScrollDelta::PixelDelta(PhysicalPosition::new(horizontal, vertical))
+                    }
+                    Some(AxisSource::Wheel)
+                    | Some(AxisSource::WheelTilt)
+                    | Some(AxisSource::Continuous)
+                    | None => {
+                        if *scroll_is_line {
+                            MouseScrollDelta::LineDelta(horizontal as f32, vertical as f32)
+                        } else {
+                            MouseScrollDelta::PixelDelta(PhysicalPosition::new(horizontal, vertical))
+                        }
+                    }
+                    _ => MouseScrollDelta::PixelDelta(PhysicalPosition::new(horizontal, vertical)),
+                };
+                self.info.mouse_scroll_delta = Some(delta);
+                self.request_redraw();
+            }
+        }
+        *scroll_is_line = false;
+        *axis_source = None;
     }
 
     /// Get the application context.
@@ -215,6 +358,10 @@ where
                         }
                     }
                 }
+            }
+            #[cfg(target_os = "linux")]
+            {
+                self.process_wayland_input_events();
             }
         }
         
@@ -453,7 +600,7 @@ where
         scene_reset_time: Duration,
         widget_render_time: Duration,
         postfix_render_time: Duration,
-        event_loop: &ActiveEventLoop,
+        _event_loop: &ActiveEventLoop,
     ) -> Option<RenderTimes> {
         log::debug!("render_to_surface() called");
         
@@ -608,7 +755,7 @@ where
 
         let surface_get_start = Instant::now();
         log::debug!("Getting surface texture...");
-        let mut surface_texture = match surface.get_current_texture() {
+        let surface_texture = match surface.get_current_texture() {
             Ok(texture) => {
                 log::debug!("Successfully got surface texture");
                 eprintln!("[NPTK] Got current surface texture");
@@ -1290,14 +1437,16 @@ where
         // Drive app updates even if no winit window exists (Wayland-native path)
         #[cfg(target_os = "linux")]
         {
-            // If running Wayland and we have a configured surface but haven't drawn yet,
-            // force a draw to ensure a buffer is attached and the window maps.
             if crate::vgi::Platform::detect() == crate::vgi::Platform::Wayland {
+                // Always poll when running native Wayland so we can pump the custom
+                // event queue even when winit has no Wayland windows to watch.
+                event_loop.set_control_flow(ControlFlow::Poll);
+
+                // If we have a configured surface but haven't drawn yet, force a draw so
+                // the compositor receives our first buffer and maps the window.
                 if let Some(ref surface) = self.surface {
                     if let crate::vgi::Surface::Wayland(ref wl) = surface {
                         if wl.is_configured() && !wl.first_frame_seen() {
-
-                            event_loop.set_control_flow(ControlFlow::Poll);
                             eprintln!("[NPTK] about_to_wait: forcing DRAW (Wayland configured)");
                             self.update.insert(Update::FORCE | Update::DRAW);
                             // If initialization is complete, attempt an immediate render to attach a buffer.
