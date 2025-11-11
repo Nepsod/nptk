@@ -228,9 +228,6 @@ impl WaylandSurfaceInner {
         status
     }
 
-    fn wl_surface(&self) -> wl_surface::WlSurface {
-        self.wl_surface.clone()
-    }
 }
 
 struct SurfaceStatus {
@@ -309,15 +306,6 @@ impl WaylandSurface {
         // Flush immediately so the compositor sees the commit
         client.flush()?;
         
-        // Request an initial frame; compositor will trigger redraw via callback
-        {
-            {
-                let mut s = inner.state.lock().unwrap();
-                s.needs_redraw = true;
-                inner.ensure_frame_callback_locked(&mut s);
-            }
-        }
-
         let connection = client.connection();
         let (wgpu_surface, format) =
             Self::create_wgpu_surface(&connection, &wl_surface, gpu_context)?;
@@ -330,7 +318,7 @@ impl WaylandSurface {
             size: (width.max(1), height.max(1)),
             is_configured: false,
             needs_redraw: false,
-            pending_reconfigure: true,
+            pending_reconfigure: false,
             pending_input_events: Vec::new(),
         })
     }
@@ -428,10 +416,10 @@ impl SurfaceTrait for WaylandSurface {
         }
         self.size = status.size;
         if status.configured {
-            self.is_configured = true;
             self.pending_reconfigure = true;
-            log::debug!("Wayland dispatch: configured=true, pending_reconfigure=true");
-            eprintln!("[NPTK/Wayland] dispatch: configured=true, pending_reconfigure=true");
+            self.is_configured = false;
+            log::debug!("Wayland dispatch: configured event received; pending_reconfigure=true");
+            eprintln!("[NPTK/Wayland] dispatch: configured event received; pending_reconfigure=true");
         }
         if status.needs_redraw {
             self.needs_redraw = true;
