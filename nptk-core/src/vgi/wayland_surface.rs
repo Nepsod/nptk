@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle};
 use vello::wgpu::{self, SurfaceTexture};
 
-use wayland_client::protocol::{wl_compositor, wl_keyboard, wl_pointer, wl_surface};
+use wayland_client::protocol::{wl_compositor, wl_keyboard, wl_pointer, wl_surface, wl_shm};
 use wayland_client::{Connection, Proxy};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel};
 use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1;
@@ -140,20 +140,29 @@ impl WaylandSurfaceInner {
 
     pub(crate) fn handle_configure(&self, serial: u32) {
         log::debug!("Wayland xdg_surface configure: serial={}", serial);
+        eprintln!("[NPTK/Wayland] CONFIGURE: serial={}", serial);
         let mut state = self.state.lock().unwrap();
 
-        let size = state
+        let mut size = state
             .pending_size
             .take()
             .unwrap_or_else(|| state.size);
 
+        // Fallback if compositor reports 0x0 - choose a default to ensure mapping
+        if size.0 == 0 || size.1 == 0 {
+            size = (800, 600);
+            eprintln!("[NPTK/Wayland] CONFIGURE: got 0x0; using fallback {}x{}", size.0, size.1);
+        }
         let width = size.0.max(1);
         let height = size.1.max(1);
 
+        eprintln!("[NPTK/Wayland] GEOMETRY {}", format!("{}x{}", width, height));
         self.xdg_surface
             .set_window_geometry(0, 0, width as i32, height as i32);
+        eprintln!("[NPTK/Wayland] ACK {}", serial);
         self.xdg_surface.ack_configure(serial);
         // Ensure the compositor sees the ACK immediately
+        eprintln!("[NPTK/Wayland] FLUSH (after ACK)");
         let _ = WaylandClient::instance().flush();
 
         // Update opaque region to match the new buffer size so compositors can treat it as opaque.
@@ -163,6 +172,25 @@ impl WaylandSurfaceInner {
         region.add(0, 0, width as i32, height as i32);
         self.wl_surface.set_opaque_region(Some(&region));
 
+        // Immediately present a first buffer to guarantee mapping:
+        // - Create a small ARGB8888 SHM buffer with exact (width,height)
+        // - Attach, damage_buffer(0,0,width,height), request frame, commit
+        drop(state);
+        if let Some(ref shm) = WaylandClient::instance().globals().shm {
+            if let Err(err) = Self::attach_first_shm_buffer(
+                &self.wl_surface,
+                shm,
+                &self.queue_handle,
+                self.surface_key,
+                width,
+                height,
+            ) {
+                log::warn!("Failed to attach first SHM buffer on configure: {}", err);
+                eprintln!("[NPTK/Wayland] FIRST_PRESENT_FAILED {}", err);
+            }
+        }
+
+        let mut state = self.state.lock().unwrap();
         state.size = (width, height);
         state.configured = true;
         state.needs_redraw = true;
@@ -190,6 +218,60 @@ impl WaylandSurfaceInner {
     fn prepare_frame_callback(&self) {
         let mut state = self.state.lock().unwrap();
         self.ensure_frame_callback_locked(&mut state);
+    }
+
+    fn attach_first_shm_buffer(
+        wl_surface: &wl_surface::WlSurface,
+        shm: &wl_shm::WlShm,
+        queue_handle: &WaylandQueueHandle,
+        surface_key: u32,
+        width: u32,
+        height: u32,
+    ) -> Result<(), String> {
+        use std::io::Write;
+        use std::os::fd::AsFd;
+        let stride = (width * 4) as i32;
+        let size_bytes = (stride as u32) * height;
+        eprintln!("[NPTK/Wayland] ATTACH: creating SHM buffer {}x{} stride {}", width, height, stride);
+        let mut file =
+            tempfile::tempfile().map_err(|e| format!("tempfile failed: {:?}", e))?;
+        file.set_len(size_bytes as u64)
+            .map_err(|e| format!("ftruncate failed: {:?}", e))?;
+
+        // Fill with opaque gray
+        let mut pixels = vec![0u8; size_bytes as usize];
+        for px in pixels.chunks_exact_mut(4) {
+            px[0] = 0x80; // B
+            px[1] = 0x80; // G
+            px[2] = 0x80; // R
+            px[3] = 0xFF; // A
+        }
+        file.write_all(&pixels)
+            .map_err(|e| format!("write failed: {:?}", e))?;
+
+        let pool = shm.create_pool(file.as_fd(), size_bytes as i32, queue_handle, ());
+        let buffer = pool.create_buffer(
+            0,
+            width as i32,
+            height as i32,
+            stride,
+            wl_shm::Format::Argb8888,
+            queue_handle,
+            (),
+        );
+
+        eprintln!("[NPTK/Wayland] ATTACH buffer");
+        wl_surface.attach(Some(&buffer), 0, 0);
+        eprintln!("[NPTK/Wayland] DAMAGE {}x{}", width, height);
+        wl_surface.damage_buffer(0, 0, width as i32, height as i32);
+        // Frame BEFORE commit so we get paced correctly
+        eprintln!("[NPTK/Wayland] FRAME request");
+        let _ = wl_surface.frame(queue_handle, surface_key);
+        eprintln!("[NPTK/Wayland] COMMIT");
+        wl_surface.commit();
+        eprintln!("[NPTK/Wayland] FLUSH (after COMMIT)");
+        let _ = WaylandClient::instance().flush();
+        Ok(())
     }
 
     pub(crate) fn mark_closed(&self) {

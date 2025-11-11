@@ -8,6 +8,8 @@ use wayland_client::backend::WaylandError;
 use wayland_client::globals::{registry_queue_init, GlobalList};
 use wayland_client::Proxy;
 use wayland_client::protocol::{wl_callback, wl_compositor, wl_registry, wl_surface, wl_seat, wl_shm, wl_keyboard, wl_pointer, wl_region};
+use wayland_client::protocol::wl_shm_pool::WlShmPool;
+use wayland_client::protocol::wl_buffer::WlBuffer;
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 use wayland_protocols::xdg::decoration::zv1::client::{
@@ -318,6 +320,32 @@ impl Dispatch<wl_region::WlRegion, ()> for WaylandClientState {
         _qh: &QueueHandle<Self>,
     ) {
         // wl_region has no events to handle.
+    }
+}
+
+impl Dispatch<WlShmPool, ()> for WaylandClientState {
+    fn event(
+        _state: &mut Self,
+        _pool: &WlShmPool,
+        _event: wayland_client::protocol::wl_shm_pool::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        // No events used.
+    }
+}
+
+impl Dispatch<WlBuffer, ()> for WaylandClientState {
+    fn event(
+        _state: &mut Self,
+        _buffer: &WlBuffer,
+        _event: wayland_client::protocol::wl_buffer::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        // No events used.
     }
 }
 

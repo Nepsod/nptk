@@ -40,6 +40,7 @@ wayland-client = "0.31"
 wayland-protocols = { version = "0.31", features = ["client"] }
 wayland-protocols-plasma = { version = "0.2", features = ["client"] }
 raw-window-handle = "0.6"
+tempfile = "3.10.1"
 
 [features]
 default = []
