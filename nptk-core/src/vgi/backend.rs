@@ -43,15 +43,12 @@ impl Backend {
                 let val_lower = val.to_lowercase();
                 match val_lower.as_str() {
                     "hybrid" => {
-                        eprintln!("[NPTK] NPTK_RENDERER=hybrid detected");
-                        eprintln!("[NPTK] Using Vello Hybrid renderer (CPU/GPU hybrid)");
-                        log::info!("Using Vello Hybrid renderer");
+                        log::info!("NPTK_RENDERER=hybrid detected; using Vello Hybrid renderer");
                         Backend::Hybrid
                     },
                     "wayland" => {
                         // wayland is handled by Platform::detect() for windowing
                         // For rendering backend, default to Vello
-                        eprintln!("[NPTK] NPTK_RENDERER=wayland detected (windowing platform), using Vello renderer");
                         log::info!(
                             "NPTK_RENDERER=wayland sets windowing platform, using Vello renderer"
                         );
@@ -59,14 +56,11 @@ impl Backend {
                     },
                     "vello" | "" => Backend::Vello,
                     custom => {
-                        eprintln!(
-                            "[NPTK] Unknown renderer: {}, using Vello (standard)",
+                        log::warn!(
+                            "Unknown renderer '{}'; falling back to Vello (standard)",
                             custom
                         );
-                        eprintln!(
-                            "[NPTK] For custom backends, use Backend::Custom(\"{}\")",
-                            custom
-                        );
+                        log::debug!("Use Backend::Custom(\"{}\") for custom backends", custom);
                         Backend::Vello
                     },
                 }

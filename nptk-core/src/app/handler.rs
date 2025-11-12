@@ -972,16 +972,10 @@ where
                         wayland_surface.size().0,
                         wayland_surface.size().1
                     );
-                    eprintln!(
-                        "[NPTK] Wayland surface reconfigured to {}x{}",
-                        wayland_surface.size().0,
-                        wayland_surface.size().1
-                    );
                 }
             }
             if !wayland_surface.is_configured() {
                 log::warn!("Wayland surface not yet configured. Skipping render.");
-                eprintln!("[NPTK] Skipping render: Wayland surface not yet configured");
                 return None;
             }
         }
@@ -1005,14 +999,9 @@ where
 
         if width == 0 || height == 0 {
             log::warn!("Surface invalid ({}x{}). Skipping render.", width, height);
-            eprintln!(
-                "[NPTK] Skipping render: invalid surface size {}x{}",
-                width, height
-            );
             return None;
         }
         log::debug!("Surface size: {}x{}", width, height);
-        eprintln!("[NPTK] Surface size: {}x{}", width, height);
 
         // Avoid doing event dispatch here for Wayland to prevent blocking before first frame.
         // Let the outer update() drive Wayland dispatch cadence.
@@ -1047,16 +1036,16 @@ where
                     wgpu_types::PresentMode::FifoRelaxed => vello::wgpu::PresentMode::Fifo,
                     wgpu_types::PresentMode::Mailbox => vello::wgpu::PresentMode::Mailbox,
                 };
-                eprintln!("[NPTK] Wayland proactive configure before get_current_texture...");
+                log::debug!("Wayland proactive configure before get_current_texture...");
                 if let Err(e) = wayland_surface.configure_surface(
                     &device_handle.device,
                     wayland_surface.format(),
                     present_mode,
                 ) {
-                    eprintln!("[NPTK] Proactive configure failed: {}", e);
+                    log::warn!("Wayland proactive configure failed: {}", e);
                 } else {
-                    eprintln!(
-                        "[NPTK] Proactive configure OK ({}x{})",
+                    log::debug!(
+                        "Wayland proactive configure OK ({}x{})",
                         wayland_surface.size().0,
                         wayland_surface.size().1
                     );
@@ -1069,12 +1058,10 @@ where
         let surface_texture = match surface.get_current_texture() {
             Ok(texture) => {
                 log::debug!("Successfully got surface texture");
-                eprintln!("[NPTK] Got current surface texture");
                 texture
             },
             Err(e) => {
                 log::warn!("Failed to get surface texture: {}, skipping render", e);
-                eprintln!("[NPTK] Failed to get surface texture: {}", e);
                 return None;
             },
         };
@@ -1100,15 +1087,12 @@ where
             },
         ) {
             log::warn!("Failed to render to surface: {}, skipping present", e);
-            eprintln!("[NPTK] Failed to render to surface: {}", e);
             return None;
         }
         log::debug!("Successfully rendered scene to surface");
-        eprintln!("[NPTK] Rendered scene to surface");
         let gpu_render_time = gpu_render_start.elapsed();
 
         log::debug!("Presenting surface ({}x{})...", width, height);
-        eprintln!("[NPTK] Presenting surface ({}x{})...", width, height);
         let present_start = Instant::now();
 
         // For Winit surfaces, we need to present the SurfaceTexture directly
@@ -1127,14 +1111,12 @@ where
                 surface_texture.present();
                 if let Err(e) = surface.present() {
                     log::error!("Failed to present Wayland surface: {}", e);
-                    eprintln!("[NPTK] Failed to present Wayland surface: {}", e);
                     return None;
                 }
             },
         }
 
         log::debug!("Successfully presented surface");
-        eprintln!("[NPTK] Successfully presented surface");
         let present_time = present_start.elapsed();
 
         Some(RenderTimes {
@@ -1787,7 +1769,7 @@ where
                             && wl.is_configured()
                             && !wl.first_frame_seen()
                         {
-                            eprintln!("[NPTK] about_to_wait: forcing DRAW (Wayland configured)");
+                            log::debug!("about_to_wait: forcing DRAW (Wayland configured)");
                             self.update.insert(Update::FORCE | Update::DRAW);
                         }
                     }

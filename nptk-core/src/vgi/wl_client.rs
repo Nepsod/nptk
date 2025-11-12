@@ -81,7 +81,7 @@ impl WaylandClient {
     pub fn register_surface(&self, surface: &Arc<WaylandSurfaceInner>) {
         let mut map = self.shared.surfaces.lock().unwrap();
         let key = surface.surface_key();
-        eprintln!("[NPTK/Wayland] register_surface: key={}", key);
+        log::trace!("Wayland register_surface key={}", key);
         map.insert(key, Arc::downgrade(surface));
     }
 
@@ -129,10 +129,7 @@ impl WaylandClient {
     pub fn dispatch_pending(&self) -> Result<(), String> {
         let mut data = self.loop_data.lock().unwrap();
         let (event_queue, state) = &mut *data;
-        eprintln!(
-            "[NPTK/Wayland] dispatch_pending: queue_ptr={:p}",
-            event_queue
-        );
+        log::trace!("Wayland dispatch_pending queue_ptr={:p}", event_queue);
 
         // First process anything that might already be queued.
         event_queue
@@ -199,10 +196,7 @@ impl WaylandClient {
         };
 
         // Perform an initial roundtrip so the compositor processes any pending requests.
-        eprintln!(
-            "[NPTK/Wayland] initialize: event_queue_ptr={:p}",
-            &event_queue
-        );
+        log::debug!("Wayland initialize: event_queue_ptr={:p}", &event_queue);
         event_queue
             .roundtrip(&mut state)
             .map_err(|e| format!("Initial Wayland roundtrip failed: {:?}", e))?;
@@ -306,10 +300,10 @@ impl SharedState {
         let mut map = self.surfaces.lock().unwrap();
         let surface = map.get(&key)?.upgrade();
         if surface.is_none() {
-            eprintln!("[NPTK/Wayland] get_surface: key={} weak ref expired", key);
+            log::trace!("Wayland get_surface: key={} weak ref expired", key);
             map.remove(&key);
         } else {
-            eprintln!("[NPTK/Wayland] get_surface: key={} found", key);
+            log::trace!("Wayland get_surface: key={} found", key);
         }
         surface
     }
@@ -680,37 +674,29 @@ impl Dispatch<xdg_surface::XdgSurface, u32> for WaylandClientState {
     ) {
         match event {
             xdg_surface::Event::Configure { serial } => {
-                eprintln!(
-                    "[NPTK/Wayland] xdg_surface configure serial={} (surface_key={})",
-                    serial, surface_key
-                );
-                eprintln!(
-                    "[NPTK/Wayland] ack_configure on xdg_surface#{}",
-                    xdg_surf.id().protocol_id()
-                );
                 log::trace!(
-                    "Wayland: xdg_surface Configure serial={} (surface_key={})",
+                    "Wayland xdg_surface configure serial={} (surface_key={})",
                     serial,
                     surface_key
                 );
                 xdg_surf.ack_configure(serial);
                 match conn.flush() {
                     Ok(()) => {
-                        eprintln!("[NPTK/Wayland] connection.flush() succeeded after ack");
+                        log::trace!("Wayland connection.flush() succeeded after ack");
                     },
                     Err(err) => {
-                        eprintln!("[NPTK/Wayland] ERROR flushing conn after ACK: {:?}", err);
+                        log::warn!("Wayland flush error after ACK: {:?}", err);
                     },
                 }
                 if let Some(surface) = state.shared.get_surface(*surface_key) {
-                    eprintln!(
-                        "[NPTK/Wayland] POST-ACK: invoking present for surface_key={}",
+                    log::trace!(
+                        "Wayland post-ack invoking present for surface_key={}",
                         surface_key
                     );
                     surface.handle_configure_after_ack(serial);
                 } else {
-                    eprintln!(
-                        "[NPTK/Wayland] ERROR: surface not found for key={} in XdgSurface Configure",
+                    log::warn!(
+                        "Wayland surface not found for key={} in xdg_surface::Configure",
                         surface_key
                     );
                 }
@@ -732,12 +718,8 @@ impl Dispatch<xdg_toplevel::XdgToplevel, u32> for WaylandClientState {
         if let Some(surface) = state.shared.get_surface(*surface_key) {
             match event {
                 xdg_toplevel::Event::Configure { width, height, .. } => {
-                    eprintln!(
-                        "[NPTK/Wayland] xdg_toplevel configure width={} height={} (surface_key={})",
-                        width, height, surface_key
-                    );
                     log::debug!(
-                        "Wayland: XdgToplevel({}) Configure {}x{}",
+                        "Wayland XdgToplevel({}) configure {}x{}",
                         surface_key,
                         width,
                         height
@@ -745,11 +727,7 @@ impl Dispatch<xdg_toplevel::XdgToplevel, u32> for WaylandClientState {
                     surface.handle_toplevel_configure(width, height);
                 },
                 xdg_toplevel::Event::Close => {
-                    eprintln!(
-                        "[NPTK/Wayland] xdg_toplevel close (surface_key={})",
-                        surface_key
-                    );
-                    log::debug!("Wayland: XdgToplevel({}) Close", surface_key);
+                    log::debug!("Wayland XdgToplevel({}) close", surface_key);
                     surface.mark_closed();
                 },
                 _ => {},

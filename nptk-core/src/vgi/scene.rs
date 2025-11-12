@@ -58,8 +58,6 @@ impl Scene {
                 // CRITICAL: vello_hybrid uses wgpu 26.0.1, while vello uses wgpu 23.0.1.
                 // These are incompatible versions. Since Renderer::new() falls back to Vello,
                 // we must also fall back to Vello scene to avoid renderer/scene mismatch.
-                eprintln!("[NPTK] WARNING: Hybrid scene requested but unavailable due to wgpu version conflict");
-                eprintln!("[NPTK] Falling back to Vello scene");
                 log::warn!("Hybrid scene requested but unavailable, falling back to Vello scene");
                 Scene::Vello(VelloScene::new())
             },

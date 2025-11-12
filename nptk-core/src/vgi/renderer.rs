@@ -85,11 +85,6 @@ impl Renderer {
                 // CRITICAL: vello_hybrid uses wgpu 26.0.1, while vello uses wgpu 23.0.1.
                 // These are incompatible versions and cannot be safely converted.
                 // For now, Hybrid backend is disabled until we can resolve the version conflict.
-                eprintln!(
-                    "[NPTK] ERROR: Hybrid renderer is not available due to wgpu version conflict"
-                );
-                eprintln!("[NPTK] vello uses wgpu 23.0.1, while vello_hybrid uses wgpu 26.0.1");
-                eprintln!("[NPTK] Falling back to Vello renderer");
                 log::error!("Hybrid renderer requested but unavailable due to wgpu version conflict (vello=23.0.1, vello_hybrid=26.0.1)");
                 log::warn!("Falling back to Vello renderer");
 
@@ -101,7 +96,7 @@ impl Renderer {
             Backend::Custom(_) => {
                 // For now, custom backends fall back to Vello
                 // In the future, this can be extended with a registry or factory
-                eprintln!("[NPTK] Custom backend not yet implemented, using Vello renderer");
+                log::info!("Custom backend not yet implemented; using Vello renderer");
                 Ok(Renderer::Vello(
                     vello::Renderer::new(device, options.vello_options())
                         .map_err(|e| format!("Failed to create renderer: {:?}", e))?,

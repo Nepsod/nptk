@@ -176,9 +176,11 @@ impl WaylandSurfaceInner {
             serial,
             xdg_id
         );
-        eprintln!(
-            "[NPTK/Wayland] CONFIGURE(post-ack): serial={} on xdg_surface#{} wl_surface#{}",
-            serial, xdg_id, wl_id
+        log::trace!(
+            "Wayland configure post-ack serial={} xdg_surface#{} wl_surface#{}",
+            serial,
+            xdg_id,
+            wl_id
         );
         let mut state = self.state.lock().unwrap();
         let mut size = state.pending_size.take().unwrap_or_else(|| state.size);
@@ -186,18 +188,16 @@ impl WaylandSurfaceInner {
         // Fallback if compositor reports 0x0 - choose a default to ensure mapping
         if size.0 == 0 || size.1 == 0 {
             size = (800, 600);
-            eprintln!(
-                "[NPTK/Wayland] CONFIGURE: got 0x0; using fallback {}x{}",
-                size.0, size.1
+            log::debug!(
+                "Wayland configure reported 0x0; using fallback size {}x{}",
+                size.0,
+                size.1
             );
         }
         let width = size.0.max(1);
         let height = size.1.max(1);
 
-        eprintln!(
-            "[NPTK/Wayland] GEOMETRY {}",
-            format!("{}x{}", width, height)
-        );
+        log::trace!("Wayland geometry set to {}x{}", width, height);
         self.xdg_surface
             .set_window_geometry(0, 0, width as i32, height as i32);
 
@@ -224,7 +224,7 @@ impl WaylandSurfaceInner {
                     height,
                 ) {
                     log::warn!("Failed to attach first SHM buffer on configure: {}", err);
-                    eprintln!("[NPTK/Wayland] FIRST_PRESENT_FAILED {}", err);
+                    log::warn!("Wayland first-present fallback failed: {}", err);
                 }
             }
         }
@@ -239,9 +239,10 @@ impl WaylandSurfaceInner {
             width,
             height
         );
-        eprintln!(
-            "[NPTK/Wayland] configured: size={}x{}, configured=true, needs_redraw=true",
-            width, height
+        log::debug!(
+            "Wayland configured: size={}x{}, configured=true, needs_redraw=true",
+            width,
+            height
         );
 
         self.ensure_frame_callback_locked(&mut state);
@@ -272,9 +273,11 @@ impl WaylandSurfaceInner {
         use std::os::fd::AsFd;
         let stride = (width * 4) as i32;
         let size_bytes = (stride as u32) * height;
-        eprintln!(
-            "[NPTK/Wayland] ATTACH: creating SHM buffer {}x{} stride {}",
-            width, height, stride
+        log::trace!(
+            "Wayland fallback SHM buffer {}x{} stride {}",
+            width,
+            height,
+            stride
         );
         let mut file = tempfile::tempfile().map_err(|e| format!("tempfile failed: {:?}", e))?;
         file.set_len(size_bytes as u64)
@@ -302,16 +305,16 @@ impl WaylandSurfaceInner {
             (),
         );
 
-        eprintln!("[NPTK/Wayland] ATTACH buffer");
+        log::trace!("Wayland fallback attach buffer");
         wl_surface.attach(Some(&buffer), 0, 0);
-        eprintln!("[NPTK/Wayland] DAMAGE {}x{}", width, height);
+        log::trace!("Wayland fallback damage {}x{}", width, height);
         wl_surface.damage_buffer(0, 0, width as i32, height as i32);
         // Frame BEFORE commit so we get paced correctly
-        eprintln!("[NPTK/Wayland] FRAME request");
+        log::trace!("Wayland fallback frame request");
         let _ = wl_surface.frame(queue_handle, surface_key);
-        eprintln!("[NPTK/Wayland] COMMIT");
+        log::trace!("Wayland fallback commit");
         wl_surface.commit();
-        eprintln!("[NPTK/Wayland] FLUSH(conn) (after COMMIT)");
+        log::trace!("Wayland fallback flush after commit");
         let _ = WaylandClient::instance().connection().flush();
         Ok(())
     }
@@ -397,30 +400,30 @@ impl WaylandSurface {
         let client = WaylandClient::instance();
         let globals = client.globals();
         let queue_handle = client.queue_handle();
-        eprintln!(
-            "[NPTK/Wayland] WaylandSurface::new queue_handle_ptr={:p}",
+        log::debug!(
+            "WaylandSurface::new queue_handle_ptr={:p}",
             &queue_handle
         );
 
         let wl_surface: wl_surface::WlSurface =
             globals.compositor.create_surface(&queue_handle, ());
         let surface_key = wl_surface.id().protocol_id();
-        eprintln!(
-            "[NPTK/Wayland] CREATE wl_surface#{} (surface_key={})",
+        log::debug!(
+            "Wayland create wl_surface#{} (surface_key={})",
             wl_surface.id().protocol_id(),
             surface_key
         );
         let xdg_surface = globals
             .wm_base
             .get_xdg_surface(&wl_surface, &queue_handle, surface_key);
-        eprintln!(
-            "[NPTK/Wayland] CREATE xdg_surface#{} (for wl_surface#{})",
+        log::debug!(
+            "Wayland create xdg_surface#{} (for wl_surface#{})",
             xdg_surface.id().protocol_id(),
             wl_surface.id().protocol_id()
         );
         let xdg_toplevel = xdg_surface.get_toplevel(&queue_handle, surface_key);
-        eprintln!(
-            "[NPTK/Wayland] CREATE xdg_toplevel#{} (for xdg_surface#{})",
+        log::debug!(
+            "Wayland create xdg_toplevel#{} (for xdg_surface#{})",
             xdg_toplevel.id().protocol_id(),
             xdg_surface.id().protocol_id()
         );
@@ -461,8 +464,8 @@ impl WaylandSurface {
         wl_surface.commit();
         // Flush the Connection (not the event queue) so compositor sees the commit
         let _ = client.connection().flush();
-        eprintln!(
-            "[NPTK/Wayland] INITIAL COMMIT (no buffer) on wl_surface#{}",
+        log::trace!(
+            "Wayland initial commit (no buffer) on wl_surface#{}",
             wl_surface.id().protocol_id()
         );
 
@@ -538,10 +541,7 @@ impl SurfaceTrait for WaylandSurface {
         self.inner.after_present();
         self.needs_redraw = false;
         if let Err(err) = self.client.connection().flush() {
-            eprintln!(
-                "[NPTK/Wayland] ERROR flushing conn after present: {:?}",
-                err
-            );
+            log::warn!("Wayland flush error after present: {:?}", err);
         }
         Ok(())
     }
@@ -567,8 +567,8 @@ impl SurfaceTrait for WaylandSurface {
     }
 
     fn dispatch_events(&mut self) -> Result<bool, String> {
-        eprintln!(
-            "[NPTK/Wayland] WaylandSurface::dispatch_events called (surface_key={})",
+        log::trace!(
+            "WaylandSurface::dispatch_events called (surface_key={})",
             self.inner.surface_key()
         );
         // Drive Wayland event processing on the owning thread.
@@ -588,14 +588,10 @@ impl SurfaceTrait for WaylandSurface {
             self.first_configure_seen = true;
             self.is_configured = false;
             log::debug!("Wayland dispatch: configured event received; pending_reconfigure=true");
-            eprintln!(
-                "[NPTK/Wayland] dispatch: configured event received; pending_reconfigure=true"
-            );
         }
         if status.needs_redraw {
             self.needs_redraw = true;
-            log::trace!("Wayland dispatch: needs_redraw=true from status");
-            eprintln!("[NPTK/Wayland] dispatch: needs_redraw=true");
+            log::trace!("Wayland dispatch: needs_redraw=true");
         }
 
         // If we just got configured and require reconfiguration, request a redraw immediately
@@ -603,7 +599,6 @@ impl SurfaceTrait for WaylandSurface {
         if self.is_configured && self.pending_reconfigure {
             self.needs_redraw = true;
             log::debug!("Wayland dispatch: forcing redraw after configure");
-            eprintln!("[NPTK/Wayland] dispatch: forcing redraw after configure");
         }
 
         if status.should_close {

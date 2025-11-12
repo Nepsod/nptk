@@ -176,18 +176,12 @@ impl Default for RenderConfig {
                     || val_lower == "enable";
 
                 if enabled {
-                    // Print to stderr to ensure visibility even if logging isn't initialized
-                    eprintln!(
-                        "[NPTK] NPTK_USE_CPU={} detected - enabling CPU path processing",
-                        val
-                    );
-                    eprintln!("[NPTK] Note: GPU is still used for rasterization, only path processing uses CPU");
                     log::info!(
                         "NPTK_USE_CPU={} detected - enabling CPU path processing",
                         val
                     );
                     log::info!(
-                        "Note: GPU is still used for rasterization, only path processing uses CPU"
+                        "GPU is still used for rasterization; CPU handles path processing only"
                     );
                 } else {
                     log::debug!("NPTK_USE_CPU={} - CPU rendering disabled (expected: true, 1, yes, on, enable)", val);
@@ -204,16 +198,19 @@ impl Default for RenderConfig {
                 let val_lower = val.to_lowercase();
                 let aa = match val_lower.as_str() {
                     "msaa8" => {
-                        eprintln!("[NPTK] Using MSAA 8x antialiasing");
+                        log::info!("Using MSAA 8x antialiasing");
                         AaConfig::Msaa8
                     },
                     "msaa16" => {
-                        eprintln!("[NPTK] Using MSAA 16x antialiasing");
+                        log::info!("Using MSAA 16x antialiasing");
                         AaConfig::Msaa16
                     },
                     "area" | _ => {
                         if val_lower != "area" {
-                            eprintln!("[NPTK] Unknown antialiasing: {}, using Area (fastest)", val);
+                            log::warn!(
+                                "Unknown antialiasing '{}'; defaulting to Area (fastest)",
+                                val
+                            );
                         }
                         AaConfig::Area
                     },
@@ -230,26 +227,27 @@ impl Default for RenderConfig {
                 let val_lower = val.to_lowercase();
                 let mode = match val_lower.as_str() {
                     "auto_vsync" | "vsync" => {
-                        eprintln!("[NPTK] Using VSync present mode");
+                        log::info!("Using VSync present mode");
                         PresentMode::AutoVsync
                     },
                     "fifo" => {
-                        eprintln!("[NPTK] Using FIFO present mode");
+                        log::info!("Using FIFO present mode");
                         PresentMode::Fifo
                     },
                     "immediate" => {
-                        eprintln!(
-                            "[NPTK] Using Immediate present mode (no VSync, may cause tearing)"
-                        );
+                        log::info!("Using Immediate present mode (no VSync, may cause tearing)");
                         PresentMode::Immediate
                     },
                     "mailbox" => {
-                        eprintln!("[NPTK] Using Mailbox present mode");
+                        log::info!("Using Mailbox present mode");
                         PresentMode::Mailbox
                     },
                     "auto" | _ => {
                         if val_lower != "auto" {
-                            eprintln!("[NPTK] Unknown present mode: {}, using AutoNoVsync", val);
+                            log::warn!(
+                                "Unknown present mode '{}'; using AutoNoVsync",
+                                val
+                            );
                         }
                         PresentMode::AutoNoVsync
                     },
