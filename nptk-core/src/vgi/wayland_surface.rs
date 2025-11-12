@@ -31,6 +31,7 @@ struct SurfaceState {
     should_close: bool,
     frame_callback: Option<wayland_client::protocol::wl_callback::WlCallback>,
     first_frame_seen: bool,
+    fallback_committed: bool,
     input_events: Vec<InputEvent>,
     first_configure_acked: bool,
 }
@@ -180,7 +181,6 @@ impl WaylandSurfaceInner {
             serial, xdg_id, wl_id
         );
         let mut state = self.state.lock().unwrap();
-
         let mut size = state.pending_size.take().unwrap_or_else(|| state.size);
 
         // Fallback if compositor reports 0x0 - choose a default to ensure mapping
@@ -207,21 +207,25 @@ impl WaylandSurfaceInner {
         self.wl_surface.set_opaque_region(Some(&region));
         region.destroy();
 
-        // Immediately present a first buffer to guarantee mapping:
-        // - Create a small ARGB8888 SHM buffer with exact (width,height)
-        // - Attach, damage_buffer(0,0,width,height), request frame, commit
+        // Only use the fallback SHM buffer until the GPU has submitted a frame.
+        let should_attach_fallback = !state.first_frame_seen && !state.fallback_committed;
+        if should_attach_fallback {
+            state.fallback_committed = true;
+        }
         drop(state);
-        if let Some(ref shm) = WaylandClient::instance().globals().shm {
-            if let Err(err) = Self::attach_first_shm_buffer(
-                &self.wl_surface,
-                shm,
-                &self.queue_handle,
-                self.surface_key,
-                width,
-                height,
-            ) {
-                log::warn!("Failed to attach first SHM buffer on configure: {}", err);
-                eprintln!("[NPTK/Wayland] FIRST_PRESENT_FAILED {}", err);
+        if should_attach_fallback {
+            if let Some(ref shm) = WaylandClient::instance().globals().shm {
+                if let Err(err) = Self::attach_first_shm_buffer(
+                    &self.wl_surface,
+                    shm,
+                    &self.queue_handle,
+                    self.surface_key,
+                    width,
+                    height,
+                ) {
+                    log::warn!("Failed to attach first SHM buffer on configure: {}", err);
+                    eprintln!("[NPTK/Wayland] FIRST_PRESENT_FAILED {}", err);
+                }
             }
         }
 
