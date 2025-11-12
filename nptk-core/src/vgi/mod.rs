@@ -27,9 +27,9 @@ pub mod platform;
 pub mod renderer;
 pub mod scene;
 pub mod surface;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "wayland"))]
 pub mod wayland_surface;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "wayland"))]
 pub(crate) mod wl_client;
 
 pub use backend::Backend;

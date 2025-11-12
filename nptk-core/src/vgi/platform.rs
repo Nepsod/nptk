@@ -4,7 +4,7 @@
 //! and create appropriate surfaces based on the platform.
 
 use crate::vgi::surface::Surface;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "wayland"))]
 use crate::vgi::wayland_surface::WaylandSurface;
 use std::sync::Arc;
 
@@ -28,12 +28,15 @@ impl Platform {
     pub fn detect() -> Self {
         #[cfg(target_os = "linux")]
         {
-            // Check if native Wayland is explicitly requested via NPTK_RENDERER=wayland
-            if let Ok(val) = std::env::var("NPTK_RENDERER") {
-                let val_lower = val.to_lowercase();
-                if val_lower == "wayland" {
-                    log::info!("Native Wayland windowing requested via NPTK_RENDERER=wayland");
-                    return Platform::Wayland;
+            #[cfg(feature = "wayland")]
+            {
+                // Check if native Wayland is explicitly requested via NPTK_RENDERER=wayland
+                if let Ok(val) = std::env::var("NPTK_RENDERER") {
+                    let val_lower = val.to_lowercase();
+                    if val_lower == "wayland" {
+                        log::info!("Native Wayland windowing requested via NPTK_RENDERER=wayland");
+                        return Platform::Wayland;
+                    }
                 }
             }
 
@@ -86,10 +89,17 @@ pub async fn create_surface(
             Ok(Surface::Winit(surface))
         },
         Platform::Wayland => {
-            let gpu_context = gpu_context
-                .ok_or_else(|| "GpuContext required for Wayland platform".to_string())?;
-            let wayland_surface = WaylandSurface::new(width, height, title, gpu_context)?;
-            Ok(Surface::Wayland(wayland_surface))
+            #[cfg(feature = "wayland")]
+            {
+                let gpu_context = gpu_context
+                    .ok_or_else(|| "GpuContext required for Wayland platform".to_string())?;
+                let wayland_surface = WaylandSurface::new(width, height, title, gpu_context)?;
+                Ok(Surface::Wayland(wayland_surface))
+            }
+            #[cfg(not(feature = "wayland"))]
+            {
+                Err("Wayland feature is disabled".to_string())
+            }
         },
     }
 }

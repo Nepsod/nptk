@@ -4,8 +4,8 @@
 //! This module provides a unified surface interface that can work with different
 //! platform backends (Winit, native Wayland, and potentially others).
 
-#[cfg(target_os = "linux")]
-use crate::vgi::wayland_surface::InputEvent;
+#[cfg(all(target_os = "linux", feature = "wayland"))]
+use crate::vgi::wayland_surface::{InputEvent, WaylandSurface};
 use vello::wgpu::{SurfaceTexture, TextureFormat};
 
 /// A trait for platform-agnostic surface implementations.
@@ -79,8 +79,8 @@ pub enum Surface {
     /// Winit-based surface (works on X11/Wayland via winit abstraction)
     Winit(vello::wgpu::Surface<'static>),
     /// Native Wayland surface (direct Wayland protocol)
-    #[cfg(target_os = "linux")]
-    Wayland(crate::vgi::wayland_surface::WaylandSurface),
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    Wayland(WaylandSurface),
 }
 
 impl SurfaceTrait for Surface {
@@ -89,7 +89,7 @@ impl SurfaceTrait for Surface {
             Surface::Winit(surface) => surface
                 .get_current_texture()
                 .map_err(|e| format!("Failed to get surface texture: {:?}", e)),
-            #[cfg(target_os = "linux")]
+            #[cfg(all(target_os = "linux", feature = "wayland"))]
             Surface::Wayland(wayland_surface) => wayland_surface.get_current_texture(),
         }
     }
@@ -101,7 +101,7 @@ impl SurfaceTrait for Surface {
                 // This is a no-op here
                 Ok(())
             },
-            #[cfg(target_os = "linux")]
+            #[cfg(all(target_os = "linux", feature = "wayland"))]
             Surface::Wayland(wayland_surface) => wayland_surface.present(),
         }
     }
@@ -113,7 +113,7 @@ impl SurfaceTrait for Surface {
                 // This is handled externally
                 Ok(())
             },
-            #[cfg(target_os = "linux")]
+            #[cfg(all(target_os = "linux", feature = "wayland"))]
             Surface::Wayland(wayland_surface) => wayland_surface.resize(width, height),
         }
     }
@@ -126,7 +126,7 @@ impl SurfaceTrait for Surface {
                 // The format should be obtained from RenderSurface when it's created
                 TextureFormat::Bgra8Unorm
             },
-            #[cfg(target_os = "linux")]
+            #[cfg(all(target_os = "linux", feature = "wayland"))]
             Surface::Wayland(wayland_surface) => wayland_surface.format(),
         }
     }
@@ -141,7 +141,7 @@ impl SurfaceTrait for Surface {
                 // The caller should use window.inner_size() instead
                 (0, 0)
             },
-            #[cfg(target_os = "linux")]
+            #[cfg(all(target_os = "linux", feature = "wayland"))]
             Surface::Wayland(wayland_surface) => wayland_surface.size(),
         }
     }
@@ -149,7 +149,7 @@ impl SurfaceTrait for Surface {
     fn needs_event_dispatch(&self) -> bool {
         match self {
             Surface::Winit(_) => false,
-            #[cfg(target_os = "linux")]
+            #[cfg(all(target_os = "linux", feature = "wayland"))]
             Surface::Wayland(wayland_surface) => wayland_surface.needs_event_dispatch(),
         }
     }
@@ -157,14 +157,14 @@ impl SurfaceTrait for Surface {
     fn dispatch_events(&mut self) -> Result<bool, String> {
         match self {
             Surface::Winit(_) => Ok(false),
-            #[cfg(target_os = "linux")]
+            #[cfg(all(target_os = "linux", feature = "wayland"))]
             Surface::Wayland(wayland_surface) => wayland_surface.dispatch_events(),
         }
     }
 }
 
 impl Surface {
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
     pub(crate) fn take_wayland_input_events(&mut self) -> Vec<InputEvent> {
         if let Surface::Wayland(surface) = self {
             return surface.take_pending_input_events();
