@@ -682,6 +682,7 @@ where
         }
 
         self.handle_update_flags(event_loop);
+        self.info.reset();
         self.update_diagnostics();
     }
 
@@ -1196,7 +1197,6 @@ where
         // Only clear other flags that have been processed
         let flags_to_clear = self.update.get() & !(Update::DRAW | Update::FORCE);
         if flags_to_clear.bits() != 0 {
-            self.info.reset();
             // Preserve DRAW and FORCE flags - they're cleared in render_frame() after successful rendering
             self.update
                 .set(self.update.get() & (Update::DRAW | Update::FORCE));
