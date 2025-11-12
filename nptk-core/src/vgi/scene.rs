@@ -53,9 +53,7 @@ impl Scene {
     /// this will fall back to creating a Vello scene to match the renderer fallback behavior.
     pub fn new(backend: super::backend::Backend, _width: u32, _height: u32) -> Self {
         match backend {
-            super::backend::Backend::Vello => {
-                Scene::Vello(VelloScene::new())
-            }
+            super::backend::Backend::Vello => Scene::Vello(VelloScene::new()),
             super::backend::Backend::Hybrid => {
                 // CRITICAL: vello_hybrid uses wgpu 26.0.1, while vello uses wgpu 23.0.1.
                 // These are incompatible versions. Since Renderer::new() falls back to Vello,
@@ -64,12 +62,12 @@ impl Scene {
                 eprintln!("[NPTK] Falling back to Vello scene");
                 log::warn!("Hybrid scene requested but unavailable, falling back to Vello scene");
                 Scene::Vello(VelloScene::new())
-            }
+            },
             super::backend::Backend::Custom(_) => {
                 // For now, custom backends fall back to Vello
                 // In the future, this can be extended with a registry or factory
                 Scene::Vello(VelloScene::new())
-            }
+            },
         }
     }
 
@@ -141,4 +139,3 @@ impl SceneTrait for Scene {
         self
     }
 }
-

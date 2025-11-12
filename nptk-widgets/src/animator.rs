@@ -40,7 +40,8 @@ impl<W: Widget, A: Fn(&mut W, f32) -> Update> Widget for Animator<W, A> {
         info: &mut AppInfo,
         context: AppContext,
     ) {
-        self.widget.render(graphics, theme, layout_node, info, context);
+        self.widget
+            .render(graphics, theme, layout_node, info, context);
     }
 
     fn layout_style(&self) -> StyleNode {
@@ -65,4 +66,3 @@ impl<W: Widget, A: Fn(&mut W, f32) -> Update> Widget for Animator<W, A> {
         WidgetId::new("nptk-widgets", "Animator")
     }
 }
-

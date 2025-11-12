@@ -15,9 +15,12 @@ impl Application for ValueInputApp {
                     .with_value(42.0)
                     .with_placeholder("Enter integer...".to_string())
                     .with_layout_style(LayoutStyle {
-                        size: Vector2::<Dimension>::new(Dimension::length(200.0), Dimension::length(40.0)),
+                        size: Vector2::<Dimension>::new(
+                            Dimension::length(200.0),
+                            Dimension::length(40.0),
+                        ),
                         ..Default::default()
-                    })
+                    }),
             ),
             Box::new(Text::new("Decimal Input (2 places):".to_string())),
             Box::new(
@@ -27,9 +30,12 @@ impl Application for ValueInputApp {
                     .with_step(0.1)
                     .with_placeholder("Enter decimal...".to_string())
                     .with_layout_style(LayoutStyle {
-                        size: Vector2::<Dimension>::new(Dimension::length(200.0), Dimension::length(40.0)),
+                        size: Vector2::<Dimension>::new(
+                            Dimension::length(200.0),
+                            Dimension::length(40.0),
+                        ),
                         ..Default::default()
-                    })
+                    }),
             ),
             Box::new(Text::new("Range-constrained Input (0-100):".to_string())),
             Box::new(
@@ -40,9 +46,12 @@ impl Application for ValueInputApp {
                     .with_step(5.0)
                     .with_placeholder("Enter 0-100...".to_string())
                     .with_layout_style(LayoutStyle {
-                        size: Vector2::<Dimension>::new(Dimension::length(200.0), Dimension::length(40.0)),
+                        size: Vector2::<Dimension>::new(
+                            Dimension::length(200.0),
+                            Dimension::length(40.0),
+                        ),
                         ..Default::default()
-                    })
+                    }),
             ),
             Box::new(Text::new("Negative Values Allowed:".to_string())),
             Box::new(
@@ -51,11 +60,16 @@ impl Application for ValueInputApp {
                     .with_negative(true)
                     .with_placeholder("Enter any number...".to_string())
                     .with_layout_style(LayoutStyle {
-                        size: Vector2::<Dimension>::new(Dimension::length(200.0), Dimension::length(40.0)),
+                        size: Vector2::<Dimension>::new(
+                            Dimension::length(200.0),
+                            Dimension::length(40.0),
+                        ),
                         ..Default::default()
-                    })
+                    }),
             ),
-            Box::new(Text::new("Use Up/Down arrows to increment/decrement".to_string())),
+            Box::new(Text::new(
+                "Use Up/Down arrows to increment/decrement".to_string(),
+            )),
         ])
         .with_layout_style(LayoutStyle {
             size: Vector2::<Dimension>::new(Dimension::percent(1.0), Dimension::percent(1.0)),
@@ -68,7 +82,6 @@ impl Application for ValueInputApp {
             ..Default::default()
         })
     }
-
 }
 
 fn main() {

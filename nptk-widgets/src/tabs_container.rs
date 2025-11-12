@@ -1,8 +1,9 @@
+use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
-use nptk_core::signal::{MaybeSignal, Signal, state::StateSignal};
+use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::vg::kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
@@ -10,7 +11,6 @@ use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
-use nalgebra::Vector2;
 use std::sync::Arc;
 
 /// Position of tabs in the TabsContainer
@@ -42,7 +42,11 @@ pub struct TabItem {
 
 impl TabItem {
     /// Create a new tab item
-    pub fn new(id: impl Into<String>, label: impl Into<String>, content: impl Widget + 'static) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        label: impl Into<String>,
+        content: impl Widget + 'static,
+    ) -> Self {
         Self {
             id: id.into(),
             label: label.into(),
@@ -59,7 +63,10 @@ impl TabItem {
     }
 
     /// Add a close button with callback
-    pub fn with_close_callback(mut self, callback: impl Fn() -> Update + Send + Sync + 'static) -> Self {
+    pub fn with_close_callback(
+        mut self,
+        callback: impl Fn() -> Update + Send + Sync + 'static,
+    ) -> Self {
         self.on_close = Some(Arc::new(callback));
         self
     }
@@ -145,7 +152,7 @@ impl TabsContainer {
     fn get_tab_bounds(&self, layout: &LayoutNode, index: usize) -> Rect {
         let tab_bar_bounds = self.get_tab_bar_bounds(layout);
         let tab_count = self.tabs.len();
-        
+
         if tab_count == 0 || index >= tab_count {
             return Rect::ZERO;
         }
@@ -162,7 +169,7 @@ impl TabsContainer {
                     tab_x + tab_width,
                     tab_bar_bounds.y1,
                 )
-            }
+            },
             TabPosition::Left | TabPosition::Right => {
                 // Vertical tabs - distribute evenly across tab bar height
                 let tab_height = tab_bar_bounds.height() / tab_count as f64;
@@ -174,7 +181,7 @@ impl TabsContainer {
                     tab_bar_bounds.x1,
                     tab_y + tab_height,
                 )
-            }
+            },
         }
     }
 
@@ -256,7 +263,7 @@ impl TabsContainer {
     fn get_close_button_bounds(&self, tab_bounds: Rect) -> Rect {
         let close_size = 16.0;
         let padding = 4.0;
-        
+
         Rect::new(
             tab_bounds.x1 - close_size - padding,
             tab_bounds.y0 + (tab_bounds.height() - close_size) / 2.0,
@@ -265,13 +272,20 @@ impl TabsContainer {
         )
     }
 
-
     /// Render text on a tab
-    fn render_text(&self, _graphics: &mut dyn Graphics, _text: &str, _x: f64, _y: f64, _color: Color, _info: &AppInfo) {
+    fn render_text(
+        &self,
+        _graphics: &mut dyn Graphics,
+        _text: &str,
+        _x: f64,
+        _y: f64,
+        _color: Color,
+        _info: &AppInfo,
+    ) {
         let _font_size = 14.0;
         // Use approximate character width for text measurement
         // TODO: Implement proper text measurement when needed
-        
+
         // TODO: Fix the FileRef lifetime issue
         // let location = font_ref.axes().location::<&[VariationSetting; 0]>(&[]);
         // let glyph_metrics = font_ref.glyph_metrics(Size::new(font_size), &location);
@@ -299,7 +313,10 @@ impl Widget for TabsContainer {
             (layout.layout.location.y + layout.layout.size.height) as f64,
         );
 
-        if let Some(bg_color) = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackground) {
+        if let Some(bg_color) = theme.get_property(
+            self.widget_id(),
+            &nptk_theme::properties::ThemeProperty::ColorBackground,
+        ) {
             graphics.fill(
                 Fill::NonZero,
                 Affine::IDENTITY,
@@ -311,7 +328,11 @@ impl Widget for TabsContainer {
 
         // Draw tab bar background (slightly different color)
         let tab_bar_bounds = self.get_tab_bar_bounds(layout);
-        let tab_bar_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::TabBarBackground)
+        let tab_bar_color = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::TabBarBackground,
+            )
             .unwrap_or_else(|| Color::from_rgb8(255, 255, 255));
 
         graphics.fill(
@@ -323,9 +344,13 @@ impl Widget for TabsContainer {
         );
 
         // Draw tab bar border
-        let border_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorder)
+        let border_color = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::ColorBorder,
+            )
             .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)); // Default border color
-        
+
         graphics.stroke(
             &Stroke::new(1.0),
             Affine::IDENTITY,
@@ -343,37 +368,49 @@ impl Widget for TabsContainer {
 
             // Tab background with rounded corners
             let tab_color = if is_active {
-                theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::TabActive)
+                theme
+                    .get_property(
+                        self.widget_id(),
+                        &nptk_theme::properties::ThemeProperty::TabActive,
+                    )
                     .unwrap_or_else(|| Color::from_rgb8(255, 255, 255))
             } else if is_pressed {
-                theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::TabPressed)
+                theme
+                    .get_property(
+                        self.widget_id(),
+                        &nptk_theme::properties::ThemeProperty::TabPressed,
+                    )
                     .unwrap_or_else(|| Color::from_rgb8(100, 150, 255))
             } else if is_hovered {
-                theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::TabHovered)
+                theme
+                    .get_property(
+                        self.widget_id(),
+                        &nptk_theme::properties::ThemeProperty::TabHovered,
+                    )
                     .unwrap_or_else(|| Color::from_rgb8(180, 180, 180))
             } else {
-                theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::TabInactive)
+                theme
+                    .get_property(
+                        self.widget_id(),
+                        &nptk_theme::properties::ThemeProperty::TabInactive,
+                    )
                     .unwrap_or_else(|| Color::from_rgb8(255, 255, 255))
             };
 
             // Create rounded rectangle for tab (only round top corners for top tabs)
             let tab_rounded = match self.tab_position {
-                TabPosition::Top => RoundedRect::from_rect(
-                    tab_bounds, 
-                    RoundedRectRadii::new(6.0, 6.0, 0.0, 0.0)
-                ),
-                TabPosition::Bottom => RoundedRect::from_rect(
-                    tab_bounds, 
-                    RoundedRectRadii::new(0.0, 0.0, 6.0, 6.0)
-                ),
-                TabPosition::Left => RoundedRect::from_rect(
-                    tab_bounds, 
-                    RoundedRectRadii::new(6.0, 0.0, 0.0, 6.0)
-                ),
-                TabPosition::Right => RoundedRect::from_rect(
-                    tab_bounds, 
-                    RoundedRectRadii::new(0.0, 6.0, 6.0, 0.0)
-                ),
+                TabPosition::Top => {
+                    RoundedRect::from_rect(tab_bounds, RoundedRectRadii::new(6.0, 6.0, 0.0, 0.0))
+                },
+                TabPosition::Bottom => {
+                    RoundedRect::from_rect(tab_bounds, RoundedRectRadii::new(0.0, 0.0, 6.0, 6.0))
+                },
+                TabPosition::Left => {
+                    RoundedRect::from_rect(tab_bounds, RoundedRectRadii::new(6.0, 0.0, 0.0, 6.0))
+                },
+                TabPosition::Right => {
+                    RoundedRect::from_rect(tab_bounds, RoundedRectRadii::new(0.0, 6.0, 6.0, 0.0))
+                },
             };
 
             graphics.fill(
@@ -385,9 +422,13 @@ impl Widget for TabsContainer {
             );
 
             // Tab border with subtle styling
-            let border_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorder)
+            let border_color = theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorBorder,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)); // Default border color
-            
+
             graphics.stroke(
                 &Stroke::new(if is_active { 1.5 } else { 1.0 }),
                 Affine::IDENTITY,
@@ -398,24 +439,32 @@ impl Widget for TabsContainer {
 
             // Tab text with proper rendering and theme colors
             let text_color = if is_active {
-                theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::TabTextActive)
+                theme
+                    .get_property(
+                        self.widget_id(),
+                        &nptk_theme::properties::ThemeProperty::TabTextActive,
+                    )
                     .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
             } else {
-                theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::TabText)
+                theme
+                    .get_property(
+                        self.widget_id(),
+                        &nptk_theme::properties::ThemeProperty::TabText,
+                    )
                     .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
             };
 
             // Center text in tab
             let text_x = tab_bounds.x0 + 10.0; // Left padding
             let text_y = tab_bounds.y0 + (tab_bounds.height() - 14.0) / 2.0; // Center vertically
-            
+
             self.render_text(graphics, &tab.label, text_x, text_y, text_color, _info);
-            
+
             // Close button if available
             if tab.on_close.is_some() {
                 let close_bounds = self.get_close_button_bounds(tab_bounds);
                 let close_hovered = self.hovered_close == Some(index);
-                
+
                 let close_color = if close_hovered {
                     Color::from_rgb8(255, 100, 100) // Red for hovered close button
                 } else {
@@ -426,7 +475,7 @@ impl Widget for TabsContainer {
                 let close_center_x = close_bounds.center().x;
                 let close_center_y = close_bounds.center().y;
                 let close_size = 6.0;
-                
+
                 // Draw the X lines
                 graphics.stroke(
                     &Stroke::new(2.0),
@@ -438,7 +487,8 @@ impl Widget for TabsContainer {
                         close_center_y - close_size / 2.0,
                         close_center_x + close_size / 2.0,
                         close_center_y + close_size / 2.0,
-                    ).to_path(0.1),
+                    )
+                    .to_path(0.1),
                 );
             }
         }
@@ -447,10 +497,14 @@ impl Widget for TabsContainer {
         let active_tab_index = self.active_tab();
         let content_bounds = self.get_content_bounds(layout);
         let widget_id = self.widget_id();
-        
+
         if let Some(active_tab) = self.tabs.get_mut(active_tab_index) {
             // Draw content area background
-            let content_bg_color = theme.get_property(widget_id, &nptk_theme::properties::ThemeProperty::ContentBackground)
+            let content_bg_color = theme
+                .get_property(
+                    widget_id,
+                    &nptk_theme::properties::ThemeProperty::ContentBackground,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(255, 255, 255));
 
             graphics.fill(
@@ -473,10 +527,14 @@ impl Widget for TabsContainer {
             // Render content directly in the content area using child layout if available
             if !layout.children.is_empty() {
                 // Use the first child's layout (which should be positioned correctly)
-                active_tab.content.render(graphics, theme, &layout.children[0], _info, _context);
+                active_tab
+                    .content
+                    .render(graphics, theme, &layout.children[0], _info, _context);
             } else {
                 // Fallback: just render with original layout (content might overlap tabs)
-                active_tab.content.render(graphics, theme, layout, _info, _context);
+                active_tab
+                    .content
+                    .render(graphics, theme, layout, _info, _context);
             }
         }
     }
@@ -492,17 +550,19 @@ impl Widget for TabsContainer {
         // Check tab hover states
         self.hovered_tab = None;
         self.hovered_close = None;
-        
+
         for (index, tab) in self.tabs.iter().enumerate() {
             let tab_bounds = self.get_tab_bounds(layout, index);
-            
+
             if tab_bounds.contains(Point::new(self.mouse_pos.x as f64, self.mouse_pos.y as f64)) {
                 self.hovered_tab = Some(index);
-                
+
                 // Check close button hover if tab has close button
                 if tab.on_close.is_some() {
                     let close_bounds = self.get_close_button_bounds(tab_bounds);
-                    if close_bounds.contains(Point::new(self.mouse_pos.x as f64, self.mouse_pos.y as f64)) {
+                    if close_bounds
+                        .contains(Point::new(self.mouse_pos.x as f64, self.mouse_pos.y as f64))
+                    {
                         self.hovered_close = Some(index);
                     }
                 }
@@ -517,7 +577,7 @@ impl Widget for TabsContainer {
                     ElementState::Pressed => {
                         if let Some(hovered_tab) = self.hovered_tab {
                             self.pressed_tab = Some(hovered_tab);
-                            
+
                             // Check if clicking close button
                             if self.hovered_close == Some(hovered_tab) {
                                 if let Some(ref callback) = self.tabs[hovered_tab].on_close {
@@ -529,10 +589,10 @@ impl Widget for TabsContainer {
                                 update |= Update::DRAW;
                             }
                         }
-                    }
+                    },
                     ElementState::Released => {
                         self.pressed_tab = None;
-                    }
+                    },
                 }
             }
         }
@@ -541,7 +601,6 @@ impl Widget for TabsContainer {
         let active_tab_index = self.active_tab();
         let _content_bounds = self.get_content_bounds(layout);
         if let Some(active_tab) = self.tabs.get_mut(active_tab_index) {
-            
             // Use the parent layout for content rendering (simplified approach)
             let content_layout = layout;
 
@@ -557,25 +616,27 @@ impl Widget for TabsContainer {
             children: if let Some(active_tab) = self.tabs.get(self.active_tab()) {
                 // Include the active tab's content as a child with adjusted position
                 let mut child_style = active_tab.content.layout_style();
-                
+
                 // Adjust the child's position based on tab position
                 use nptk_core::layout::LengthPercentageAuto;
-                
+
                 match self.tab_position {
                     TabPosition::Top => {
                         child_style.style.margin.top = LengthPercentageAuto::length(self.tab_size);
                     },
                     TabPosition::Bottom => {
-                        child_style.style.margin.bottom = LengthPercentageAuto::length(self.tab_size);
+                        child_style.style.margin.bottom =
+                            LengthPercentageAuto::length(self.tab_size);
                     },
                     TabPosition::Left => {
                         child_style.style.margin.left = LengthPercentageAuto::length(self.tab_size);
                     },
                     TabPosition::Right => {
-                        child_style.style.margin.right = LengthPercentageAuto::length(self.tab_size);
+                        child_style.style.margin.right =
+                            LengthPercentageAuto::length(self.tab_size);
                     },
                 }
-                
+
                 vec![child_style]
             } else {
                 vec![]

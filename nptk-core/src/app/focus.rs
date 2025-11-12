@@ -194,7 +194,7 @@ impl FocusManager {
     /// Find the next widget ID in tab order.
     fn find_next_in_tab_order(&mut self) -> Option<FocusId> {
         self.update_tab_order();
-        
+
         if self.tab_order.is_empty() {
             return None;
         }
@@ -207,7 +207,7 @@ impl FocusManager {
     /// Find the previous widget ID in tab order.
     fn find_previous_in_tab_order(&mut self) -> Option<FocusId> {
         self.update_tab_order();
-        
+
         if self.tab_order.is_empty() {
             return None;
         }
@@ -254,14 +254,15 @@ impl FocusManager {
         }
 
         self.tab_order.clear();
-        
-        let mut tab_widgets: Vec<_> = self.widgets
+
+        let mut tab_widgets: Vec<_> = self
+            .widgets
             .values()
             .filter(|w| w.properties.tab_focusable)
             .collect();
 
         tab_widgets.sort_by_key(|w| (w.properties.tab_index, w.id.0));
-        
+
         self.tab_order.extend(tab_widgets.iter().map(|w| w.id));
         self.tab_order_dirty = false;
     }

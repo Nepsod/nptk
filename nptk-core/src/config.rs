@@ -1,6 +1,6 @@
+use crate::vgi::DeviceHandle;
 use nalgebra::{Point2, Vector2};
 use std::num::NonZeroUsize;
-use crate::vgi::DeviceHandle;
 pub use vello::AaConfig;
 pub use wgpu_types::PresentMode;
 pub use winit::window::{
@@ -169,28 +169,34 @@ impl Default for RenderConfig {
             Ok(val) => {
                 let val_lower = val.to_lowercase();
                 // Support: true, 1, yes, on, enable
-                let enabled = val_lower == "true" 
-                    || val_lower == "1" 
-                    || val_lower == "yes" 
+                let enabled = val_lower == "true"
+                    || val_lower == "1"
+                    || val_lower == "yes"
                     || val_lower == "on"
                     || val_lower == "enable";
-                
+
                 if enabled {
                     // Print to stderr to ensure visibility even if logging isn't initialized
-                    eprintln!("[NPTK] NPTK_USE_CPU={} detected - enabling CPU path processing", val);
+                    eprintln!(
+                        "[NPTK] NPTK_USE_CPU={} detected - enabling CPU path processing",
+                        val
+                    );
                     eprintln!("[NPTK] Note: GPU is still used for rasterization, only path processing uses CPU");
-                    log::info!("NPTK_USE_CPU={} detected - enabling CPU path processing", val);
-                    log::info!("Note: GPU is still used for rasterization, only path processing uses CPU");
+                    log::info!(
+                        "NPTK_USE_CPU={} detected - enabling CPU path processing",
+                        val
+                    );
+                    log::info!(
+                        "Note: GPU is still used for rasterization, only path processing uses CPU"
+                    );
                 } else {
                     log::debug!("NPTK_USE_CPU={} - CPU rendering disabled (expected: true, 1, yes, on, enable)", val);
                 }
                 enabled
-            }
-            Err(_) => {
-                false
-            }
+            },
+            Err(_) => false,
         };
-        
+
         // Check environment variable for antialiasing
         // Options: area (default, fastest), msaa8, msaa16
         let antialiasing = match std::env::var("NPTK_ANTIALIASING") {
@@ -200,23 +206,23 @@ impl Default for RenderConfig {
                     "msaa8" => {
                         eprintln!("[NPTK] Using MSAA 8x antialiasing");
                         AaConfig::Msaa8
-                    }
+                    },
                     "msaa16" => {
                         eprintln!("[NPTK] Using MSAA 16x antialiasing");
                         AaConfig::Msaa16
-                    }
+                    },
                     "area" | _ => {
                         if val_lower != "area" {
                             eprintln!("[NPTK] Unknown antialiasing: {}, using Area (fastest)", val);
                         }
                         AaConfig::Area
-                    }
+                    },
                 };
                 aa
-            }
+            },
             Err(_) => AaConfig::Area,
         };
-        
+
         // Check environment variable for present mode
         // Options: auto, auto_vsync, fifo, immediate, mailbox
         let present_mode = match std::env::var("NPTK_PRESENT_MODE") {
@@ -226,34 +232,36 @@ impl Default for RenderConfig {
                     "auto_vsync" | "vsync" => {
                         eprintln!("[NPTK] Using VSync present mode");
                         PresentMode::AutoVsync
-                    }
+                    },
                     "fifo" => {
                         eprintln!("[NPTK] Using FIFO present mode");
                         PresentMode::Fifo
-                    }
+                    },
                     "immediate" => {
-                        eprintln!("[NPTK] Using Immediate present mode (no VSync, may cause tearing)");
+                        eprintln!(
+                            "[NPTK] Using Immediate present mode (no VSync, may cause tearing)"
+                        );
                         PresentMode::Immediate
-                    }
+                    },
                     "mailbox" => {
                         eprintln!("[NPTK] Using Mailbox present mode");
                         PresentMode::Mailbox
-                    }
+                    },
                     "auto" | _ => {
                         if val_lower != "auto" {
                             eprintln!("[NPTK] Unknown present mode: {}, using AutoNoVsync", val);
                         }
                         PresentMode::AutoNoVsync
-                    }
+                    },
                 };
                 mode
-            }
+            },
             Err(_) => PresentMode::AutoNoVsync,
         };
-        
+
         // Check environment variable for renderer backend
         let backend = crate::vgi::Backend::from_env();
-        
+
         Self {
             backend,
             antialiasing,

@@ -6,12 +6,11 @@ impl Application for ProgressApp {
     type Theme = SystemTheme;
     type State = ();
 
-
     fn build(context: AppContext, _config: Self::State) -> impl Widget {
         // Create signals for progress values
         let progress_value = context.use_signal(StateSignal::new(0.0_f32));
         let indeterminate = context.use_signal(StateSignal::new(false));
-        
+
         // Create buttons to control progress
         let increment_button = {
             let progress_value = progress_value.clone();

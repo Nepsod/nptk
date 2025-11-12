@@ -1,5 +1,5 @@
-use std::ops::Range;
 use crate::app::info::AppKeyEvent;
+use std::ops::Range;
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 /// Represents a text cursor position and selection.
@@ -140,12 +140,19 @@ impl TextBuffer {
             }
         } else {
             // Insert at cursor position
-            if let Some(byte_pos) = self.text.char_indices().nth(self.cursor.position).map(|(i, _)| i) {
+            if let Some(byte_pos) = self
+                .text
+                .char_indices()
+                .nth(self.cursor.position)
+                .map(|(i, _)| i)
+            {
                 self.text.insert_str(byte_pos, text);
-                self.cursor.move_to(self.cursor.position + text.chars().count());
+                self.cursor
+                    .move_to(self.cursor.position + text.chars().count());
             } else if self.cursor.position == self.text.chars().count() {
                 self.text.push_str(text);
-                self.cursor.move_to(self.cursor.position + text.chars().count());
+                self.cursor
+                    .move_to(self.cursor.position + text.chars().count());
             }
         }
     }
@@ -185,7 +192,9 @@ impl TextBuffer {
             let char_count = self.text.chars().count();
             if self.cursor.position < char_count {
                 let current_pos = self.cursor.position;
-                if let Some(byte_range) = self.char_range_to_byte_range(&(current_pos..current_pos + 1)) {
+                if let Some(byte_range) =
+                    self.char_range_to_byte_range(&(current_pos..current_pos + 1))
+                {
                     self.text.replace_range(byte_range, "");
                     // Cursor position stays the same
                 }
@@ -262,7 +271,9 @@ impl TextBuffer {
     fn char_range_to_byte_range(&self, range: &Range<usize>) -> Option<Range<usize>> {
         let mut char_indices = self.text.char_indices().map(|(i, _)| i);
         let start_byte = char_indices.nth(range.start)?;
-        let end_byte = char_indices.nth(range.end - range.start).unwrap_or(self.text.len());
+        let end_byte = char_indices
+            .nth(range.end - range.start)
+            .unwrap_or(self.text.len());
         Some(start_byte..end_byte)
     }
 }
@@ -287,42 +298,36 @@ impl TextInputProcessor {
 
         match event.physical_key {
             PhysicalKey::Code(KeyCode::Backspace) => {
-                ops.push(TextEditOp::Delete(
-                    if buffer.cursor().has_selection() {
-                        buffer.cursor().selection().unwrap()
-                    } else if buffer.cursor().position > 0 {
-                        (buffer.cursor().position - 1)..buffer.cursor().position
+                ops.push(TextEditOp::Delete(if buffer.cursor().has_selection() {
+                    buffer.cursor().selection().unwrap()
+                } else if buffer.cursor().position > 0 {
+                    (buffer.cursor().position - 1)..buffer.cursor().position
+                } else {
+                    return ops; // Nothing to delete
+                }));
+            },
+
+            PhysicalKey::Code(KeyCode::Delete) => {
+                ops.push(TextEditOp::Delete(if buffer.cursor().has_selection() {
+                    buffer.cursor().selection().unwrap()
+                } else {
+                    let char_count = buffer.text().chars().count();
+                    if buffer.cursor().position < char_count {
+                        buffer.cursor().position..(buffer.cursor().position + 1)
                     } else {
                         return ops; // Nothing to delete
                     }
-                ));
-            }
-            
-            PhysicalKey::Code(KeyCode::Delete) => {
-                ops.push(TextEditOp::Delete(
-                    if buffer.cursor().has_selection() {
-                        buffer.cursor().selection().unwrap()
-                    } else {
-                        let char_count = buffer.text().chars().count();
-                        if buffer.cursor().position < char_count {
-                            buffer.cursor().position..(buffer.cursor().position + 1)
-                        } else {
-                            return ops; // Nothing to delete
-                        }
-                    }
-                ));
-            }
+                }));
+            },
 
             PhysicalKey::Code(KeyCode::ArrowLeft) => {
                 // TODO: Handle Shift modifier for selection
-                ops.push(TextEditOp::MoveCursor(
-                    if buffer.cursor().position > 0 {
-                        buffer.cursor().position - 1
-                    } else {
-                        0
-                    }
-                ));
-            }
+                ops.push(TextEditOp::MoveCursor(if buffer.cursor().position > 0 {
+                    buffer.cursor().position - 1
+                } else {
+                    0
+                }));
+            },
 
             PhysicalKey::Code(KeyCode::ArrowRight) => {
                 // TODO: Handle Shift modifier for selection
@@ -332,20 +337,20 @@ impl TextInputProcessor {
                         buffer.cursor().position + 1
                     } else {
                         char_count
-                    }
+                    },
                 ));
-            }
+            },
 
             PhysicalKey::Code(KeyCode::Home) => {
                 // TODO: Handle Shift modifier for selection
                 ops.push(TextEditOp::MoveCursor(0));
-            }
+            },
 
             PhysicalKey::Code(KeyCode::End) => {
                 // TODO: Handle Shift modifier for selection
                 let char_count = buffer.text().chars().count();
                 ops.push(TextEditOp::MoveCursor(char_count));
-            }
+            },
 
             _ => {
                 // Handle character input
@@ -354,7 +359,7 @@ impl TextInputProcessor {
                         ops.push(TextEditOp::Insert(text.clone()));
                     }
                 }
-            }
+            },
         }
 
         ops

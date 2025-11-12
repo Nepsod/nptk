@@ -5,8 +5,8 @@
 //! with the same Instance that enumerates adapters, solving Instance mismatch issues
 //! on Wayland.
 
-use vello::wgpu;
 use pollster;
+use vello::wgpu;
 
 /// Handle to a GPU device and its associated queue.
 ///
@@ -34,28 +34,28 @@ impl GpuContext {
     /// Devices are not created yet - they must be created via `create_device_from_adapter()`.
     pub fn new() -> Result<Self, String> {
         log::debug!("Creating GPU context...");
-        
+
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
             dx12_shader_compiler: Default::default(),
             flags: wgpu::InstanceFlags::default(),
             gles_minor_version: Default::default(),
         });
-        
+
         log::debug!("GPU context created successfully");
         Ok(Self {
             instance,
             devices: Vec::new(),
         })
     }
-    
+
     /// Get a reference to the wgpu Instance.
     ///
     /// This allows surfaces to be created with the same Instance that enumerates adapters.
     pub fn instance(&self) -> &wgpu::Instance {
         &self.instance
     }
-    
+
     /// Request an adapter with a compatible surface.
     ///
     /// On Wayland, this is the recommended way to get an adapter that's compatible
@@ -72,22 +72,23 @@ impl GpuContext {
         surface: &wgpu::Surface<'static>,
     ) -> Option<wgpu::Adapter> {
         log::debug!("Requesting adapter with surface...");
-        
-        let adapter = pollster::block_on(self.instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
-            compatible_surface: Some(surface),
-            force_fallback_adapter: false,
-        }));
-        
+
+        let adapter =
+            pollster::block_on(self.instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::default(),
+                compatible_surface: Some(surface),
+                force_fallback_adapter: false,
+            }));
+
         if adapter.is_some() {
             log::debug!("Successfully requested adapter with surface");
         } else {
             log::warn!("No adapter found with surface");
         }
-        
+
         adapter
     }
-    
+
     /// Enumerate all available adapters.
     ///
     /// This can be used to find adapters without a surface, but on Wayland
@@ -95,7 +96,7 @@ impl GpuContext {
     pub fn enumerate_adapters(&self, backends: wgpu::Backends) -> Vec<wgpu::Adapter> {
         self.instance.enumerate_adapters(backends)
     }
-    
+
     /// Create a device and queue from an adapter.
     ///
     /// This creates a DeviceHandle that can be used for rendering.
@@ -113,10 +114,14 @@ impl GpuContext {
         adapter: &wgpu::Adapter,
     ) -> Result<DeviceHandle, String> {
         log::debug!("Creating device from adapter...");
-        
+
         let adapter_info = adapter.get_info();
-        log::debug!("Adapter: {} ({:?})", adapter_info.name, adapter_info.backend);
-        
+        log::debug!(
+            "Adapter: {} ({:?})",
+            adapter_info.name,
+            adapter_info.backend
+        );
+
         let (device, queue) = pollster::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
                 label: Some("nptk-gpu-device"),
@@ -127,17 +132,17 @@ impl GpuContext {
             None, // trace_path
         ))
         .map_err(|e| format!("Failed to create device: {:?}", e))?;
-        
+
         let device_handle = DeviceHandle {
             device,
             queue,
             adapter_info,
         };
-        
+
         log::debug!("Device created successfully");
         Ok(device_handle)
     }
-    
+
     /// Add a device handle to the internal list.
     ///
     /// This allows the device to be retrieved later via `enumerate_devices()`.
@@ -147,7 +152,7 @@ impl GpuContext {
     pub fn add_device(&mut self, device_handle: DeviceHandle) {
         self.devices.push(device_handle);
     }
-    
+
     /// Enumerate all available devices.
     ///
     /// Returns a slice of all DeviceHandles that have been added via `add_device()`.
@@ -155,7 +160,7 @@ impl GpuContext {
     pub fn enumerate_devices(&self) -> &[DeviceHandle] {
         &self.devices
     }
-    
+
     /// Create a device from the first available adapter.
     ///
     /// This is a convenience method that enumerates adapters and creates
@@ -169,13 +174,12 @@ impl GpuContext {
         backends: wgpu::Backends,
     ) -> Result<DeviceHandle, String> {
         let adapters = self.enumerate_adapters(backends);
-        
+
         if adapters.is_empty() {
             return Err("No adapters found".to_string());
         }
-        
+
         let adapter = adapters.first().unwrap();
         self.create_device_from_adapter(adapter)
     }
 }
-

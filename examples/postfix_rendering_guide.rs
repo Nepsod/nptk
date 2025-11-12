@@ -21,8 +21,7 @@ use nptk::core::app::update::Update;
 use nptk::core::app::Application;
 use nptk::core::config::MayConfig;
 use nptk::core::layout::{
-    AlignItems, Dimension, FlexDirection, LayoutNode, LayoutStyle, LengthPercentage,
-    StyleNode,
+    AlignItems, Dimension, FlexDirection, LayoutNode, LayoutStyle, LengthPercentage, StyleNode,
 };
 use nptk::core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii};
 use nptk::core::vg::peniko::{Brush, Color, Fill};
@@ -117,7 +116,8 @@ impl Widget for TooltipWidget {
             let tooltip_height = 30.0;
 
             let tooltip_x = layout.layout.location.x as f64 + (widget_width - tooltip_width) / 2.0;
-            let tooltip_y = layout.layout.location.y as f64 + layout.layout.size.height as f64 + 5.0;
+            let tooltip_y =
+                layout.layout.location.y as f64 + layout.layout.size.height as f64 + 5.0;
 
             // Draw tooltip background
             let tooltip_rect = RoundedRect::new(
@@ -324,12 +324,8 @@ impl Widget for SimpleDropdown {
 
             // Highlight if selected
             if i == self.selected_index {
-                let highlight_rect = Rect::new(
-                    list_x,
-                    item_y,
-                    list_x + list_width,
-                    item_y + item_height,
-                );
+                let highlight_rect =
+                    Rect::new(list_x, item_y, list_x + list_width, item_y + item_height);
                 scene.fill(
                     Fill::NonZero,
                     Affine::IDENTITY,
@@ -435,11 +431,12 @@ impl Application for PostfixGuideApp {
             // Example 1: Tooltip
             Box::new(
                 TooltipWidget::new(
-                    Button::new(Text::new("Hover Me!".to_string()))
-                        .with_layout_style(LayoutStyle {
+                    Button::new(Text::new("Hover Me!".to_string())).with_layout_style(
+                        LayoutStyle {
                             size: Vector2::new(Dimension::length(120.0), Dimension::length(40.0)),
                             ..Default::default()
-                        }),
+                        },
+                    ),
                     "This is a tooltip rendered in postfix!",
                 )
                 .with_layout_style(LayoutStyle {
@@ -494,4 +491,3 @@ impl Application for PostfixGuideApp {
 fn main() {
     PostfixGuideApp.run(());
 }
-

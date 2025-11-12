@@ -1,18 +1,20 @@
+use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentageAuto, StyleNode};
 use nptk_core::signal::MaybeSignal;
-use nptk_core::vg::kurbo::{Affine, Line, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
-use nptk_core::vg::peniko::{Brush, Fill, Color};
+use nptk_core::vg::kurbo::{
+    Affine, Line, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke,
+};
+use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
+use nptk_theme::helpers::ThemeHelper;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
-use nptk_theme::helpers::ThemeHelper;
-use nalgebra::Vector2;
 
 /// The state of a checkbox widget.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,14 +117,16 @@ impl Checkbox {
     /// The value should be a signal, so it's mutable.
     pub fn new_bool(value: impl Into<MaybeSignal<bool>>) -> Self {
         let bool_signal = value.into();
-        Self::new(bool_signal.map(|b| nptk_core::reference::Ref::Owned(CheckboxState::from_bool(*b))))
+        Self::new(
+            bool_signal.map(|b| nptk_core::reference::Ref::Owned(CheckboxState::from_bool(*b))),
+        )
     }
 
     /// Enable the indeterminate state for this checkbox.
-    /// 
+    ///
     /// This allows the checkbox to cycle through all three states:
     /// Unchecked -> Checked -> Indeterminate -> Unchecked
-    /// 
+    ///
     /// Use this for master checkboxes that control multiple sub-items.
     pub fn with_indeterminate_state(mut self) -> Self {
         self.allow_indeterminate = true;
@@ -142,42 +146,45 @@ impl Checkbox {
     }
 
     /// Lock specific states to prevent cycling from them.
-    /// 
+    ///
     /// When a state is locked, clicking the checkbox will not change its state.
-    /// 
+    ///
     /// # Arguments
     /// * `states` - A vector of states to lock
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// // Lock only the checked state
     /// checkbox.with_locked_states(vec![CheckboxState::Checked]);
-    /// 
+    ///
     /// // Lock multiple states
     /// checkbox.with_locked_states(vec![CheckboxState::Checked, CheckboxState::Indeterminate]);
-    /// 
+    ///
     /// // Lock all states (checkbox becomes completely unclickable)
     /// checkbox.with_locked_states(vec![
-    ///     CheckboxState::Unchecked, 
-    ///     CheckboxState::Checked, 
+    ///     CheckboxState::Unchecked,
+    ///     CheckboxState::Checked,
     ///     CheckboxState::Indeterminate
     /// ]);
     /// ```
-    pub fn with_locked_states(mut self, states: impl Into<MaybeSignal<Vec<CheckboxState>>>) -> Self {
+    pub fn with_locked_states(
+        mut self,
+        states: impl Into<MaybeSignal<Vec<CheckboxState>>>,
+    ) -> Self {
         self.locked_states = states.into();
         self
     }
 
     /// Lock a single state to prevent cycling from it.
-    /// 
+    ///
     /// This is a convenience method for locking just one state.
-    /// 
+    ///
     /// # Arguments
     /// * `state` - The state to lock
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// // Lock the checked state
     /// checkbox.with_locked_state(CheckboxState::Checked);
@@ -189,7 +196,7 @@ impl Checkbox {
     }
 
     /// Check if the current state is locked.
-    /// 
+    ///
     /// Returns `true` if the current state is in the locked states list.
     pub fn is_current_state_locked(&self) -> bool {
         let current_state = *self.value.get();
@@ -198,7 +205,7 @@ impl Checkbox {
     }
 
     /// Check if a specific state is locked.
-    /// 
+    ///
     /// Returns `true` if the given state is in the locked states list.
     pub fn is_state_locked(&self, state: CheckboxState) -> bool {
         let locked_states = self.locked_states.get();
@@ -206,7 +213,7 @@ impl Checkbox {
     }
 
     /// Add a state to the locked states list.
-    /// 
+    ///
     /// This method allows dynamic addition of locked states at runtime.
     /// Note: This only works if `locked_states` is a signal.
     pub fn lock_state(&mut self, state: CheckboxState) {
@@ -220,7 +227,7 @@ impl Checkbox {
     }
 
     /// Remove a state from the locked states list.
-    /// 
+    ///
     /// This method allows dynamic removal of locked states at runtime.
     /// Note: This only works if `locked_states` is a signal.
     pub fn unlock_state(&mut self, state: CheckboxState) {
@@ -232,7 +239,7 @@ impl Checkbox {
     }
 
     /// Clear all locked states.
-    /// 
+    ///
     /// This method removes all states from the locked states list.
     /// Note: This only works if `locked_states` is a signal.
     pub fn unlock_all_states(&mut self) {
@@ -258,35 +265,43 @@ impl Widget for Checkbox {
         _: AppContext,
     ) {
         let state = *self.value.get();
-        
+
         // Check if current state is locked for graying out
         let is_locked = self.is_current_state_locked();
-        
+
         // Get colors based on state using theme helper
         let theme_checkbox_state = match state {
             CheckboxState::Unchecked => nptk_theme::helpers::CheckboxState::Unchecked,
             CheckboxState::Checked => nptk_theme::helpers::CheckboxState::Checked,
             CheckboxState::Indeterminate => nptk_theme::helpers::CheckboxState::Indeterminate,
         };
-        let base_border_color = ThemeHelper::get_checkbox_color_three_state(&*theme, self.widget_id(), theme_checkbox_state);
-        
+        let base_border_color = ThemeHelper::get_checkbox_color_three_state(
+            &*theme,
+            self.widget_id(),
+            theme_checkbox_state,
+        );
+
         // Get symbol color from theme
-        let base_symbol_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::CheckboxSymbol)
+        let base_symbol_color = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::CheckboxSymbol,
+            )
             .unwrap_or(Color::from_rgb8(255, 255, 255));
-        
+
         // Gray out colors if locked (like Windows disabled state)
         let border_color = if is_locked {
             Color::from_rgb8(150, 150, 150) // Light gray for locked/disabled appearance
         } else {
             base_border_color
         };
-        
+
         let symbol_color = if is_locked {
             Color::from_rgb8(220, 220, 220) // Light gray for locked symbols
         } else {
             base_symbol_color
         };
-        
+
         let fill_color = match state {
             CheckboxState::Unchecked => None,
             CheckboxState::Checked => Some(border_color),
@@ -300,11 +315,12 @@ impl Widget for Checkbox {
             (layout_node.layout.location.y + layout_node.layout.size.height) as f64,
         );
 
-        let rounded_rect = RoundedRect::from_rect(checkbox_rect, RoundedRectRadii::from_single_radius(3.0));
+        let rounded_rect =
+            RoundedRect::from_rect(checkbox_rect, RoundedRectRadii::from_single_radius(3.0));
 
         // Draw border with normal style (colors already grayed out if locked)
         let border_width = 2.0;
-        
+
         graphics.stroke(
             &Stroke::new(border_width),
             Affine::default(),
@@ -323,28 +339,47 @@ impl Widget for Checkbox {
                     checkbox_rect.x1 - 2.0,
                     checkbox_rect.y1 - 2.0,
                 );
-                let inner_rounded = RoundedRect::from_rect(inner_rect, RoundedRectRadii::from_single_radius(2.0));
-                graphics.fill(Fill::NonZero, Affine::default(), &Brush::Solid(fill_color.unwrap()), None, &inner_rounded.to_path(0.1));
-                
+                let inner_rounded =
+                    RoundedRect::from_rect(inner_rect, RoundedRectRadii::from_single_radius(2.0));
+                graphics.fill(
+                    Fill::NonZero,
+                    Affine::default(),
+                    &Brush::Solid(fill_color.unwrap()),
+                    None,
+                    &inner_rounded.to_path(0.1),
+                );
+
                 // Draw checkmark
                 let center_x = (checkbox_rect.x0 + checkbox_rect.x1) / 2.0;
                 let center_y = (checkbox_rect.y0 + checkbox_rect.y1) / 2.0;
                 let size = checkbox_rect.width().min(checkbox_rect.height()) * 0.45;
-                
+
                 // Simple checkmark: two lines forming a V
                 let line1 = Line::new(
                     Point::new(center_x - size * 0.5, center_y),
                     Point::new(center_x - size * 0.1, center_y + size * 0.4),
                 );
-                
+
                 let line2 = Line::new(
                     Point::new(center_x - size * 0.1, center_y + size * 0.4),
                     Point::new(center_x + size * 0.6, center_y - size * 0.4),
                 );
-                
-                graphics.stroke(&Stroke::new(2.5), Affine::default(), &Brush::Solid(symbol_color), None, &line1.to_path(0.1));
-                graphics.stroke(&Stroke::new(2.5), Affine::default(), &Brush::Solid(symbol_color), None, &line2.to_path(0.1));
-            }
+
+                graphics.stroke(
+                    &Stroke::new(2.5),
+                    Affine::default(),
+                    &Brush::Solid(symbol_color),
+                    None,
+                    &line1.to_path(0.1),
+                );
+                graphics.stroke(
+                    &Stroke::new(2.5),
+                    Affine::default(),
+                    &Brush::Solid(symbol_color),
+                    None,
+                    &line2.to_path(0.1),
+                );
+            },
             CheckboxState::Indeterminate => {
                 // Draw filled background
                 let inner_rect = Rect::new(
@@ -353,24 +388,37 @@ impl Widget for Checkbox {
                     checkbox_rect.x1 - 2.0,
                     checkbox_rect.y1 - 2.0,
                 );
-                let inner_rounded = RoundedRect::from_rect(inner_rect, RoundedRectRadii::from_single_radius(2.0));
-                graphics.fill(Fill::NonZero, Affine::default(), &Brush::Solid(fill_color.unwrap()), None, &inner_rounded.to_path(0.1));
-                
+                let inner_rounded =
+                    RoundedRect::from_rect(inner_rect, RoundedRectRadii::from_single_radius(2.0));
+                graphics.fill(
+                    Fill::NonZero,
+                    Affine::default(),
+                    &Brush::Solid(fill_color.unwrap()),
+                    None,
+                    &inner_rounded.to_path(0.1),
+                );
+
                 // Draw horizontal line (minus sign) - only for indeterminate state
                 let center_x = (checkbox_rect.x0 + checkbox_rect.x1) / 2.0;
                 let center_y = (checkbox_rect.y0 + checkbox_rect.y1) / 2.0;
                 let line_width = checkbox_rect.width() * 0.5;
-                
+
                 let line = Line::new(
                     Point::new(center_x - line_width / 2.0, center_y),
                     Point::new(center_x + line_width / 2.0, center_y),
                 );
-                
-                graphics.stroke(&Stroke::new(2.5), Affine::default(), &Brush::Solid(symbol_color), None, &line.to_path(0.1));
-            }
+
+                graphics.stroke(
+                    &Stroke::new(2.5),
+                    Affine::default(),
+                    &Brush::Solid(symbol_color),
+                    None,
+                    &line.to_path(0.1),
+                );
+            },
             CheckboxState::Unchecked => {
                 // No fill, no symbols for unchecked state - just the border
-            }
+            },
         }
     }
 
@@ -403,7 +451,8 @@ impl Widget for Checkbox {
 
                         if let Some(sig) = self.value.as_signal() {
                             let current_state = *sig.get();
-                            let new_state = current_state.cycle_next_with_indeterminate(self.allow_indeterminate);
+                            let new_state = current_state
+                                .cycle_next_with_indeterminate(self.allow_indeterminate);
                             sig.set(new_state);
                         }
                     }

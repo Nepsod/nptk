@@ -1,15 +1,15 @@
+use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::MaybeSignal;
+use nptk_core::text_render::TextRenderContext;
 use nptk_core::vg::peniko::{Brush, Color};
 use nptk_core::vgi::Graphics;
-use nptk_core::text_render::TextRenderContext;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
-use nalgebra::Vector2;
 use std::ops::Deref;
 
 /// Displays the given text with optional font, size and hinting.
@@ -94,22 +94,35 @@ impl Widget for Text {
         let text = self.text.get();
 
         let color = if theme.globals().invert_text_color {
-            theme.get_property(Self::widget_id(self), &nptk_theme::properties::ThemeProperty::ColorInvert)
+            theme
+                .get_property(
+                    Self::widget_id(self),
+                    &nptk_theme::properties::ThemeProperty::ColorInvert,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
         } else {
-            theme.get_property(Self::widget_id(self), &nptk_theme::properties::ThemeProperty::Color)
+            theme
+                .get_property(
+                    Self::widget_id(self),
+                    &nptk_theme::properties::ThemeProperty::Color,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
         };
-        
-        log::debug!("Text widget rendering: '{}' with color: {:?} at position: ({}, {})", 
-                   *text, color, layout_node.layout.location.x, layout_node.layout.location.y);
+
+        log::debug!(
+            "Text widget rendering: '{}' with color: {:?} at position: ({}, {})",
+            *text,
+            color,
+            layout_node.layout.location.x,
+            layout_node.layout.location.y
+        );
 
         // Use TextRenderContext for proper text rendering
         let transform = nptk_core::vg::kurbo::Affine::translate((
             layout_node.layout.location.x as f64,
             layout_node.layout.location.y as f64,
         ));
-        
+
         self.text_render_context.render_text(
             &mut info.font_context,
             graphics,
@@ -120,7 +133,6 @@ impl Widget for Text {
             transform,
             hinting,
         );
-        
     }
 
     fn layout_style(&self) -> StyleNode {

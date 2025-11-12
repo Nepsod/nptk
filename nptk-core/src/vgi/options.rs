@@ -3,9 +3,9 @@
 //! This module provides configuration structures for creating renderers
 //! with different backends.
 
-use vello::AaSupport;
-use vello::wgpu::TextureFormat;
 use std::num::NonZeroUsize;
+use vello::wgpu::TextureFormat;
+use vello::AaSupport;
 use wgpu::TextureFormat as WgpuTextureFormat;
 
 /// Options for creating a renderer.
@@ -41,11 +41,15 @@ impl RendererOptions {
     ///
     /// This method is used when creating a Hybrid renderer.
     /// Returns None if surface_format is not available.
-    /// 
+    ///
     /// Note: This requires converting vello::wgpu::TextureFormat to wgpu::TextureFormat.
     /// Since they're different types but represent the same enum, we use unsafe conversion
     /// as a workaround. This is safe because both types have the same memory layout.
-    pub fn hybrid_render_target_config(&self, width: u32, height: u32) -> Option<vello_hybrid::RenderTargetConfig> {
+    pub fn hybrid_render_target_config(
+        &self,
+        width: u32,
+        height: u32,
+    ) -> Option<vello_hybrid::RenderTargetConfig> {
         self.surface_format.map(|format| {
             // Convert vello::wgpu::TextureFormat to wgpu::TextureFormat
             // Both are enums with identical memory layout, so we can use unsafe conversion
@@ -53,7 +57,7 @@ impl RendererOptions {
             let wgpu_format = unsafe {
                 std::mem::transmute::<vello::wgpu::TextureFormat, WgpuTextureFormat>(format)
             };
-            
+
             vello_hybrid::RenderTargetConfig {
                 format: wgpu_format,
                 width,
@@ -65,4 +69,3 @@ impl RendererOptions {
     // Future: Add methods for other backends like:
     // pub fn tiny_skia_options(self) -> tiny_skia::RendererOptions { ... }
 }
-

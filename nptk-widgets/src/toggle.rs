@@ -1,3 +1,4 @@
+use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
@@ -12,13 +13,12 @@ use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
 use nptk_theme::properties::ThemeProperty;
 use nptk_theme::theme::Theme;
-use nalgebra::Vector2;
 
 /// A toggle/switch button widget with Win8 Metro style.
-/// 
+///
 /// The toggle has two states: on (true) and off (false).
 /// When toggled, the thumb slides between the left (off) and right (on) positions.
-/// 
+///
 /// ### Theming
 /// Uses similar colors to the slider:
 /// - ON state: primary-dark track, accent thumb
@@ -36,7 +36,7 @@ pub struct Toggle {
 
 impl Toggle {
     /// Create a new toggle switch.
-    /// 
+    ///
     /// # Arguments
     /// * `state` - A signal containing the boolean state (true = on, false = off)
     pub fn new(state: impl Into<MaybeSignal<bool>>) -> Self {
@@ -77,7 +77,7 @@ impl Toggle {
             if let Some(sig) = self.state.as_signal() {
                 sig.set(new_state);
             }
-            
+
             if let Some(callback) = &self.on_toggle {
                 callback(new_state);
             }
@@ -106,7 +106,7 @@ impl Widget for Toggle {
         _: AppContext,
     ) {
         let is_on = *self.state.get();
-        
+
         let track_width = layout_node.layout.size.width;
         let track_height = layout_node.layout.size.height;
         let track_x = layout_node.layout.location.x as f64;
@@ -122,7 +122,8 @@ impl Widget for Toggle {
         let widget_id = self.widget_id();
         let (track_color, track_border_color, thumb_color, thumb_border_color) = if self.disabled {
             // Disabled: use theme disabled color
-            let disabled_color = theme.get_property(widget_id.clone(), &ThemeProperty::ColorToggleDisabled)
+            let disabled_color = theme
+                .get_property(widget_id.clone(), &ThemeProperty::ColorToggleDisabled)
                 .unwrap_or_else(|| Color::from_rgb8(200, 200, 200));
             (
                 disabled_color,
@@ -133,27 +134,35 @@ impl Widget for Toggle {
         } else if is_on {
             // ON state: get colors from theme
             (
-                theme.get_property(widget_id.clone(), &ThemeProperty::ColorToggleTrackOn)
+                theme
+                    .get_property(widget_id.clone(), &ThemeProperty::ColorToggleTrackOn)
                     .unwrap_or_else(|| Color::from_rgb8(157, 51, 213)),
                 // theme.get_property(widget_id.clone(), &ThemeProperty::ColorToggleTrackOn)
                 //     .unwrap_or_else(|| Color::from_rgb8(157, 51, 213)), // same as track (no visible border)
-                theme.get_property(widget_id.clone(), &ThemeProperty::ColorToggleThumbBorder)
+                theme
+                    .get_property(widget_id.clone(), &ThemeProperty::ColorToggleThumbBorder)
                     .unwrap_or_else(|| Color::from_rgb8(180, 180, 180)),
-                theme.get_property(widget_id.clone(), &ThemeProperty::ColorToggleThumb)
+                theme
+                    .get_property(widget_id.clone(), &ThemeProperty::ColorToggleThumb)
                     .unwrap_or_else(|| Color::from_rgb8(255, 255, 255)),
-                theme.get_property(widget_id.clone(), &ThemeProperty::ColorToggleThumbBorder)
+                theme
+                    .get_property(widget_id.clone(), &ThemeProperty::ColorToggleThumbBorder)
                     .unwrap_or_else(|| Color::from_rgb8(180, 180, 180)),
             )
         } else {
             // OFF state: get colors from theme
             (
-                theme.get_property(widget_id.clone(), &ThemeProperty::ColorToggleTrackOff)
+                theme
+                    .get_property(widget_id.clone(), &ThemeProperty::ColorToggleTrackOff)
                     .unwrap_or_else(|| Color::from_rgb8(240, 240, 240)),
-                theme.get_property(widget_id.clone(), &ThemeProperty::ColorToggleTrackBorder)
+                theme
+                    .get_property(widget_id.clone(), &ThemeProperty::ColorToggleTrackBorder)
                     .unwrap_or_else(|| Color::from_rgb8(180, 180, 180)),
-                theme.get_property(widget_id.clone(), &ThemeProperty::ColorToggleThumb)
+                theme
+                    .get_property(widget_id.clone(), &ThemeProperty::ColorToggleThumb)
                     .unwrap_or_else(|| Color::from_rgb8(255, 255, 255)),
-                theme.get_property(widget_id.clone(), &ThemeProperty::ColorToggleThumbBorder)
+                theme
+                    .get_property(widget_id.clone(), &ThemeProperty::ColorToggleThumbBorder)
                     .unwrap_or_else(|| Color::from_rgb8(180, 180, 180)),
             )
         };
@@ -166,7 +175,7 @@ impl Widget for Toggle {
             None,
             &track_rect.to_path(0.1),
         );
-        
+
         // Draw track border
         graphics.stroke(
             &Stroke::new(2.0),
@@ -181,7 +190,7 @@ impl Widget for Toggle {
         let thumb_width = thumb_height * 0.5; // Thin rectangle - much taller than wide (vertical thin rectangle)
         let thumb_vertical_margin = (track_height as f64 - thumb_height) / 2.0;
         let edge_offset = 1.0; // Small offset from edge for Metro style
-        
+
         // Calculate thumb position: left when off, right when on (close to edges)
         let thumb_x = if is_on {
             track_x + track_width as f64 - thumb_width - thumb_vertical_margin - edge_offset
@@ -189,14 +198,14 @@ impl Widget for Toggle {
             track_x + thumb_vertical_margin + edge_offset
         };
         let thumb_y = track_y + thumb_vertical_margin;
-        
+
         let thumb_rect = Rect::new(
             thumb_x,
             thumb_y,
             thumb_x + thumb_width,
             thumb_y + thumb_height,
         );
-        
+
         // Draw thumb fill (rectangular/square)
         graphics.fill(
             Fill::NonZero,
@@ -205,7 +214,7 @@ impl Widget for Toggle {
             None,
             &thumb_rect.to_path(0.1),
         );
-        
+
         // Draw subtle gray border on thumb (the "smaller bar" effect)
         graphics.stroke(
             &Stroke::new(2.0),

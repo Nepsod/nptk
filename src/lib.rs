@@ -21,18 +21,23 @@ pub use nptk_macros as macros;
 /// use nptk::prelude::*;
 /// ```
 pub mod prelude {
-    pub use crate::core::app::{context::AppContext, Application, update::Update};
-    pub use crate::core::widget::{Widget, WidgetLayoutExt};
-    pub use crate::core::signal::{*, fixed::FixedSignal, eval::EvalSignal, state::StateSignal, map::MapSignal, rw::RwSignal, actor::ActorSignal};
+    pub use crate::core::app::{context::AppContext, update::Update, Application};
     pub use crate::core::layout::*;
-    pub use crate::core::reference::{Ref, MutRef};
+    pub use crate::core::reference::{MutRef, Ref};
+    pub use crate::core::signal::{
+        actor::ActorSignal, eval::EvalSignal, fixed::FixedSignal, map::MapSignal, rw::RwSignal,
+        state::StateSignal, *,
+    };
+    pub use crate::core::widget::{Widget, WidgetLayoutExt};
 
     // Theme
-    pub use crate::theme::theme::{system::SystemTheme, dark::DarkTheme, celeste::CelesteTheme, sweet::SweetTheme};
     pub use crate::theme::config::{ThemeConfig, ThemeSource};
-    pub use crate::theme::id::WidgetId;
     pub use crate::theme::globals::Globals;
+    pub use crate::theme::id::WidgetId;
     pub use crate::theme::properties::ThemeProperty;
+    pub use crate::theme::theme::{
+        celeste::CelesteTheme, dark::DarkTheme, sweet::SweetTheme, system::SystemTheme,
+    };
     // Math
     pub use nalgebra::Vector2;
 
@@ -58,10 +63,9 @@ pub mod prelude {
     pub use crate::widgets::scroll_container::ScrollContainer;
     pub use crate::widgets::secret_input::SecretInput;
     pub use crate::widgets::slider::Slider;
-    pub use crate::widgets::toggle::Toggle;
     pub use crate::widgets::tabs_container::TabsContainer;
-    pub use crate::widgets::text_input::TextInput;
     pub use crate::widgets::text::Text;
+    pub use crate::widgets::text_input::TextInput;
+    pub use crate::widgets::toggle::Toggle;
     pub use crate::widgets::value_input::ValueInput;
-
 }

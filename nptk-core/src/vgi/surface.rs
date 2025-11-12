@@ -4,9 +4,9 @@
 //! This module provides a unified surface interface that can work with different
 //! platform backends (Winit, native Wayland, and potentially others).
 
-use vello::wgpu::{SurfaceTexture, TextureFormat};
 #[cfg(target_os = "linux")]
 use crate::vgi::wayland_surface::InputEvent;
+use vello::wgpu::{SurfaceTexture, TextureFormat};
 
 /// A trait for platform-agnostic surface implementations.
 ///
@@ -86,11 +86,9 @@ pub enum Surface {
 impl SurfaceTrait for Surface {
     fn get_current_texture(&mut self) -> Result<SurfaceTexture, String> {
         match self {
-            Surface::Winit(surface) => {
-                surface
-                    .get_current_texture()
-                    .map_err(|e| format!("Failed to get surface texture: {:?}", e))
-            }
+            Surface::Winit(surface) => surface
+                .get_current_texture()
+                .map_err(|e| format!("Failed to get surface texture: {:?}", e)),
             #[cfg(target_os = "linux")]
             Surface::Wayland(wayland_surface) => wayland_surface.get_current_texture(),
         }
@@ -102,7 +100,7 @@ impl SurfaceTrait for Surface {
                 // For winit surfaces, present is handled by SurfaceTexture::present()
                 // This is a no-op here
                 Ok(())
-            }
+            },
             #[cfg(target_os = "linux")]
             Surface::Wayland(wayland_surface) => wayland_surface.present(),
         }
@@ -114,7 +112,7 @@ impl SurfaceTrait for Surface {
                 // Winit surfaces are resized via RenderContext::resize_surface()
                 // This is handled externally
                 Ok(())
-            }
+            },
             #[cfg(target_os = "linux")]
             Surface::Wayland(wayland_surface) => wayland_surface.resize(width, height),
         }
@@ -127,7 +125,7 @@ impl SurfaceTrait for Surface {
                 // For now, return default format
                 // The format should be obtained from RenderSurface when it's created
                 TextureFormat::Bgra8Unorm
-            }
+            },
             #[cfg(target_os = "linux")]
             Surface::Wayland(wayland_surface) => wayland_surface.format(),
         }
@@ -142,7 +140,7 @@ impl SurfaceTrait for Surface {
                 // For now, return 0x0 and let the caller handle it
                 // The caller should use window.inner_size() instead
                 (0, 0)
-            }
+            },
             #[cfg(target_os = "linux")]
             Surface::Wayland(wayland_surface) => wayland_surface.size(),
         }
@@ -174,4 +172,3 @@ impl Surface {
         Vec::new()
     }
 }
-

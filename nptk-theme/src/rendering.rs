@@ -51,10 +51,10 @@
 //! }
 //! ```
 
-use peniko::Color;
 use crate::id::WidgetId;
 use crate::properties::ThemeProperty;
 use crate::theme::Theme;
+use peniko::Color;
 
 /// The unified state of a widget for rendering purposes.
 /// This combines interaction state, focus state, and widget-specific states for comprehensive rendering.
@@ -91,34 +91,54 @@ pub enum WidgetState {
 impl WidgetState {
     /// Check if the widget is in a focused state
     pub fn is_focused(&self) -> bool {
-        matches!(self, WidgetState::Focused | WidgetState::FocusedHovered | WidgetState::FocusedPressed | WidgetState::FocusedReleased)
+        matches!(
+            self,
+            WidgetState::Focused
+                | WidgetState::FocusedHovered
+                | WidgetState::FocusedPressed
+                | WidgetState::FocusedReleased
+        )
     }
 
     /// Check if the widget is in a hovered state
     pub fn is_hovered(&self) -> bool {
-        matches!(self, WidgetState::Hovered | WidgetState::FocusedHovered | WidgetState::SelectedHovered)
+        matches!(
+            self,
+            WidgetState::Hovered | WidgetState::FocusedHovered | WidgetState::SelectedHovered
+        )
     }
 
     /// Check if the widget is in a pressed state
     pub fn is_pressed(&self) -> bool {
-        matches!(self, WidgetState::Pressed | WidgetState::FocusedPressed | WidgetState::SelectedPressed)
+        matches!(
+            self,
+            WidgetState::Pressed | WidgetState::FocusedPressed | WidgetState::SelectedPressed
+        )
     }
 
     /// Check if the widget is in a released state
     pub fn is_released(&self) -> bool {
-        matches!(self, WidgetState::Released | WidgetState::FocusedReleased | WidgetState::SelectedReleased)
+        matches!(
+            self,
+            WidgetState::Released | WidgetState::FocusedReleased | WidgetState::SelectedReleased
+        )
     }
 
     /// Check if the widget is in a selected state
     pub fn is_selected(&self) -> bool {
-        matches!(self, WidgetState::Selected | WidgetState::SelectedHovered | WidgetState::SelectedPressed | WidgetState::SelectedReleased)
+        matches!(
+            self,
+            WidgetState::Selected
+                | WidgetState::SelectedHovered
+                | WidgetState::SelectedPressed
+                | WidgetState::SelectedReleased
+        )
     }
 
     /// Check if the widget is disabled
     pub fn is_disabled(&self) -> bool {
         matches!(self, WidgetState::Disabled)
     }
-
 }
 
 /// The interaction state of a widget (simplified from current button states)
@@ -152,7 +172,12 @@ pub trait ThemeRenderer {
     fn get_button_color(&self, id: WidgetId, state: WidgetState) -> Color;
 
     /// Get checkbox color for the given state and checkbox state
-    fn get_checkbox_color(&self, id: WidgetId, state: WidgetState, checkbox_state: CheckboxState) -> Color;
+    fn get_checkbox_color(
+        &self,
+        id: WidgetId,
+        state: WidgetState,
+        checkbox_state: CheckboxState,
+    ) -> Color;
 
     /// Get checkbox border color
     fn get_checkbox_border_color(&self, id: WidgetId, state: WidgetState) -> Color;
@@ -183,27 +208,64 @@ where
 {
     fn get_button_color(&self, id: WidgetId, state: WidgetState) -> Color {
         match state {
-            WidgetState::Normal => self.get_property(id, &ThemeProperty::ColorIdle).unwrap_or(Color::from_rgb8(200, 200, 200)),
-            WidgetState::Hovered => self.get_property(id, &ThemeProperty::ColorHovered).unwrap_or(Color::from_rgb8(180, 180, 180)),
-            WidgetState::Pressed => self.get_property(id, &ThemeProperty::ColorPressed).unwrap_or(Color::from_rgb8(160, 160, 160)),
-            WidgetState::Released => self.get_property(id, &ThemeProperty::ColorHovered).unwrap_or(Color::from_rgb8(180, 180, 180)),
-            WidgetState::Focused => self.get_property(id, &ThemeProperty::ColorFocused).unwrap_or(Color::from_rgb8(100, 150, 255)),
-            WidgetState::FocusedHovered => self.get_property(id, &ThemeProperty::ColorFocused).unwrap_or(Color::from_rgb8(100, 150, 255)),
-            WidgetState::FocusedPressed => self.get_property(id, &ThemeProperty::ColorPressed).unwrap_or(Color::from_rgb8(80, 130, 235)),
-            WidgetState::FocusedReleased => self.get_property(id, &ThemeProperty::ColorFocused).unwrap_or(Color::from_rgb8(100, 150, 255)),
-            WidgetState::Selected => self.get_property(id, &ThemeProperty::ColorSelection).unwrap_or(Color::from_rgb8(100, 150, 255)),
-            WidgetState::SelectedHovered => self.get_property(id, &ThemeProperty::ColorSelection).unwrap_or(Color::from_rgb8(100, 150, 255)),
-            WidgetState::SelectedPressed => self.get_property(id, &ThemeProperty::ColorPressed).unwrap_or(Color::from_rgb8(80, 130, 235)),
-            WidgetState::SelectedReleased => self.get_property(id, &ThemeProperty::ColorSelection).unwrap_or(Color::from_rgb8(100, 150, 255)),
-            WidgetState::Disabled => self.get_property(id, &ThemeProperty::ColorDisabled).unwrap_or(Color::from_rgb8(150, 150, 150)),
+            WidgetState::Normal => self
+                .get_property(id, &ThemeProperty::ColorIdle)
+                .unwrap_or(Color::from_rgb8(200, 200, 200)),
+            WidgetState::Hovered => self
+                .get_property(id, &ThemeProperty::ColorHovered)
+                .unwrap_or(Color::from_rgb8(180, 180, 180)),
+            WidgetState::Pressed => self
+                .get_property(id, &ThemeProperty::ColorPressed)
+                .unwrap_or(Color::from_rgb8(160, 160, 160)),
+            WidgetState::Released => self
+                .get_property(id, &ThemeProperty::ColorHovered)
+                .unwrap_or(Color::from_rgb8(180, 180, 180)),
+            WidgetState::Focused => self
+                .get_property(id, &ThemeProperty::ColorFocused)
+                .unwrap_or(Color::from_rgb8(100, 150, 255)),
+            WidgetState::FocusedHovered => self
+                .get_property(id, &ThemeProperty::ColorFocused)
+                .unwrap_or(Color::from_rgb8(100, 150, 255)),
+            WidgetState::FocusedPressed => self
+                .get_property(id, &ThemeProperty::ColorPressed)
+                .unwrap_or(Color::from_rgb8(80, 130, 235)),
+            WidgetState::FocusedReleased => self
+                .get_property(id, &ThemeProperty::ColorFocused)
+                .unwrap_or(Color::from_rgb8(100, 150, 255)),
+            WidgetState::Selected => self
+                .get_property(id, &ThemeProperty::ColorSelection)
+                .unwrap_or(Color::from_rgb8(100, 150, 255)),
+            WidgetState::SelectedHovered => self
+                .get_property(id, &ThemeProperty::ColorSelection)
+                .unwrap_or(Color::from_rgb8(100, 150, 255)),
+            WidgetState::SelectedPressed => self
+                .get_property(id, &ThemeProperty::ColorPressed)
+                .unwrap_or(Color::from_rgb8(80, 130, 235)),
+            WidgetState::SelectedReleased => self
+                .get_property(id, &ThemeProperty::ColorSelection)
+                .unwrap_or(Color::from_rgb8(100, 150, 255)),
+            WidgetState::Disabled => self
+                .get_property(id, &ThemeProperty::ColorDisabled)
+                .unwrap_or(Color::from_rgb8(150, 150, 150)),
         }
     }
 
-    fn get_checkbox_color(&self, id: WidgetId, _state: WidgetState, checkbox_state: CheckboxState) -> Color {
+    fn get_checkbox_color(
+        &self,
+        id: WidgetId,
+        _state: WidgetState,
+        checkbox_state: CheckboxState,
+    ) -> Color {
         match checkbox_state {
-            CheckboxState::Unchecked => self.get_property(id, &ThemeProperty::ColorUnchecked).unwrap_or(Color::from_rgb8(255, 255, 255)),
-            CheckboxState::Checked => self.get_property(id, &ThemeProperty::ColorChecked).unwrap_or(Color::from_rgb8(100, 150, 255)),
-            CheckboxState::Indeterminate => self.get_property(id, &ThemeProperty::ColorIndeterminate).unwrap_or(Color::from_rgb8(150, 150, 150)),
+            CheckboxState::Unchecked => self
+                .get_property(id, &ThemeProperty::ColorUnchecked)
+                .unwrap_or(Color::from_rgb8(255, 255, 255)),
+            CheckboxState::Checked => self
+                .get_property(id, &ThemeProperty::ColorChecked)
+                .unwrap_or(Color::from_rgb8(100, 150, 255)),
+            CheckboxState::Indeterminate => self
+                .get_property(id, &ThemeProperty::ColorIndeterminate)
+                .unwrap_or(Color::from_rgb8(150, 150, 150)),
         }
     }
 
@@ -260,4 +322,3 @@ where
         }
     }
 }
-

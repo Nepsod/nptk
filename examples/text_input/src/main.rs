@@ -9,23 +9,18 @@ impl Application for TextInputApp {
     fn build(_context: AppContext, _: Self::State) -> impl Widget {
         Container::new(vec![
             Box::new(Text::new("Text Input Demo".to_string())),
-            Box::new(Text::new("Click on the input fields and start typing".to_string())),
+            Box::new(Text::new(
+                "Click on the input fields and start typing".to_string(),
+            )),
             Box::new(Text::new("Regular Text Input:".to_string())),
-            Box::new(
-                TextInput::new()
-                    .with_placeholder("Enter some text here...".to_string())
-            ),
+            Box::new(TextInput::new().with_placeholder("Enter some text here...".to_string())),
             Box::new(Text::new("Password Input:".to_string())),
-            Box::new(
-                SecretInput::new()
-                    .with_placeholder("Enter your password...".to_string())
-            ),
+            Box::new(SecretInput::new().with_placeholder("Enter your password...".to_string())),
             Box::new(Text::new("Another Text Input:".to_string())),
-            Box::new(
-                TextInput::new()
-                    .with_placeholder("More text input...".to_string())
-            ),
-            Box::new(Text::new("Use Tab to navigate, CTRL+A/C/X/V for shortcuts".to_string())),
+            Box::new(TextInput::new().with_placeholder("More text input...".to_string())),
+            Box::new(Text::new(
+                "Use Tab to navigate, CTRL+A/C/X/V for shortcuts".to_string(),
+            )),
         ])
         .with_layout_style(LayoutStyle {
             size: Vector2::<Dimension>::new(Dimension::percent(1.0), Dimension::percent(1.0)),
@@ -38,7 +33,6 @@ impl Application for TextInputApp {
             ..Default::default()
         })
     }
-
 }
 
 fn main() {

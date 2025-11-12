@@ -1,3 +1,4 @@
+use nalgebra::Vector2;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
@@ -6,7 +7,6 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
-use nalgebra::Vector2;
 use vello_svg::usvg;
 
 use crate::icon::svg::SvgIcon;
@@ -90,4 +90,3 @@ impl WidgetLayoutExt for Icon {
         self.layout_style = layout_style.into();
     }
 }
-

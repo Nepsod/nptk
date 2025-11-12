@@ -2,18 +2,18 @@ use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{Layout, LayoutNode, LayoutStyle, StyleNode};
-use nptk_core::signal::{MaybeSignal, state::StateSignal, Signal};
-use nptk_core::vgi::vello_vg::VelloGraphics;
-use std::sync::Arc;
+use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::vg::kurbo::{Affine, Rect, Vec2};
+use nptk_core::vgi::vello_vg::VelloGraphics;
 use nptk_core::vgi::Graphics;
-use nptk_core::widget::{Widget, WidgetLayoutExt, WidgetChildExt};
+use nptk_core::widget::{Widget, WidgetChildExt, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use std::sync::Arc;
 
-pub use crate::menu_popup::{MenuBarItem, MenuPopup};
 use crate::button::Button;
+pub use crate::menu_popup::{MenuBarItem, MenuPopup};
 use crate::text::Text;
 
 /// Represents a menu item in a popup menu
@@ -48,7 +48,7 @@ impl MenuItem {
     }
 
     /// Set the callback for when this item is activated
-    pub fn with_on_activate<F>(self, _callback: F) -> Self 
+    pub fn with_on_activate<F>(self, _callback: F) -> Self
     where
         F: Fn() -> Update + Send + Sync + 'static,
     {
@@ -98,9 +98,9 @@ impl MenuButton {
     /// Create a new menu button with the given label
     pub fn new(label: impl Into<String>) -> Self {
         use nptk_core::layout::{Dimension, LengthPercentage};
-        
+
         let label_string = label.into();
-        
+
         // Calculate button width based on text length (similar to MenuPopup)
         let font_size = 16.0;
         // Use chars().count() instead of len() to handle Unicode correctly
@@ -109,14 +109,14 @@ impl MenuButton {
         let estimated_text_width = char_count * 7.5;
         let horizontal_padding = font_size; // Left + right padding
         let button_width = estimated_text_width + horizontal_padding;
-        
+
         // Text widget has bottom-heavy layout:
         // - Layout height = font_size + line_gap (16 + 7.5 = 23.5px)
         // - Baseline renders at y + font_size (16px from top)
         // - Only line_gap (7.5px) space below baseline
         // To center visually, we need more bottom padding than top
         let bottom_padding = font_size + 2.0; // Compensate for baseline offset
-        
+
         let text = Text::new(label_string)
             .with_font_size(font_size)
             .with_layout_style(LayoutStyle {
@@ -126,21 +126,20 @@ impl MenuButton {
                 ),
                 ..Default::default()
             });
-        
-        let button = Button::new(text)
-            .with_layout_style(LayoutStyle {
-                size: nalgebra::Vector2::new(
-                    Dimension::length(button_width),
-                    Dimension::length(bottom_padding + 4.0),
-                ),
-                padding: nptk_core::layout::Rect::<LengthPercentage> {
-                    left: LengthPercentage::length(font_size / 2.0),
-                    right: LengthPercentage::length(font_size / 2.0),
-                    top: LengthPercentage::length(0.0),
-                    bottom: LengthPercentage::length(bottom_padding),
-                },
-                ..Default::default()
-            });
+
+        let button = Button::new(text).with_layout_style(LayoutStyle {
+            size: nalgebra::Vector2::new(
+                Dimension::length(button_width),
+                Dimension::length(bottom_padding + 4.0),
+            ),
+            padding: nptk_core::layout::Rect::<LengthPercentage> {
+                left: LengthPercentage::length(font_size / 2.0),
+                right: LengthPercentage::length(font_size / 2.0),
+                top: LengthPercentage::length(0.0),
+                bottom: LengthPercentage::length(bottom_padding),
+            },
+            ..Default::default()
+        });
         Self {
             widget_id: WidgetId::new("nptk_widgets", "MenuButton"),
             child: Box::new(button),
@@ -151,7 +150,7 @@ impl MenuButton {
             layout_style: MaybeSignal::value(LayoutStyle::default()),
         }
     }
-    
+
     /// Create a new menu button with a custom child widget
     pub fn with_child(child: impl Widget + 'static) -> Self {
         Self {
@@ -178,7 +177,7 @@ impl MenuButton {
     }
 
     /// Set the callback for when an item is selected from the popup menu
-    pub fn with_on_item_selected<F>(mut self, callback: F) -> Self 
+    pub fn with_on_item_selected<F>(mut self, callback: F) -> Self
     where
         F: Fn(String) + Send + Sync + 'static,
     {
@@ -214,9 +213,11 @@ impl MenuButton {
                 .menu_items
                 .iter()
                 .filter_map(|item| match item {
-                    MenuItem::Item(label, shortcut) => Some(MenuBarItem::new(label.clone(), label.clone())
-                        .with_shortcut(shortcut.clone().unwrap_or_default())
-                        .with_enabled(true)),
+                    MenuItem::Item(label, shortcut) => Some(
+                        MenuBarItem::new(label.clone(), label.clone())
+                            .with_shortcut(shortcut.clone().unwrap_or_default())
+                            .with_enabled(true),
+                    ),
                     MenuItem::Separator => None, // Skip separators for now
                 })
                 .collect();
@@ -236,7 +237,7 @@ impl MenuButton {
                 // Return FORCE to signal that an item was selected and menu should close
                 Update::FORCE
             }));
-            
+
             // Add a callback to close the menu when an item is selected or closed
             // Note: We'll handle closing in the update method instead of using a callback
             // to avoid Send/Sync issues with StateSignal
@@ -244,7 +245,6 @@ impl MenuButton {
             self.popup_data = Some(menu_popup);
         }
     }
-
 }
 
 impl WidgetChildExt for MenuButton {
@@ -272,7 +272,13 @@ impl Widget for MenuButton {
         if !layout.children.is_empty() {
             let mut child_scene = nptk_core::vg::Scene::new();
             let mut child_graphics = VelloGraphics::new(&mut child_scene);
-            self.child.render(&mut child_graphics, theme, &layout.children[0], info, context.clone());
+            self.child.render(
+                &mut child_graphics,
+                theme,
+                &layout.children[0],
+                info,
+                context.clone(),
+            );
             graphics.append(
                 &child_scene,
                 Some(Affine::translate(Vec2::new(
@@ -346,7 +352,9 @@ impl Widget for MenuButton {
         }
 
         // Then propagate update to child
-        update |= self.child.update(&layout.children[0], context.clone(), info);
+        update |= self
+            .child
+            .update(&layout.children[0], context.clone(), info);
 
         if *self.is_menu_open.get() {
             if let Some(ref mut popup) = self.popup_data {
@@ -366,13 +374,13 @@ impl Widget for MenuButton {
 
                 let popup_update = popup.update(&popup_layout, context.clone(), info);
                 update |= popup_update;
-                
+
                 // If the popup returned FORCE, it means an item was selected - close the menu
                 if popup_update.contains(Update::FORCE) {
                     self.close_menu();
                 }
             }
-            
+
             // Handle click-outside-to-close
             let mut click_outside = false;
             if let Some(pos) = cursor_pos {
@@ -382,7 +390,9 @@ impl Widget for MenuButton {
                         layout.layout.location.x as f64,
                         layout.layout.location.y as f64 + layout.layout.size.height as f64,
                         layout.layout.location.x as f64 + popup_width,
-                        layout.layout.location.y as f64 + layout.layout.size.height as f64 + popup_height,
+                        layout.layout.location.y as f64
+                            + layout.layout.size.height as f64
+                            + popup_height,
                     );
                     let button_rect = Rect::new(
                         layout.layout.location.x as f64,
@@ -391,9 +401,11 @@ impl Widget for MenuButton {
                         layout.layout.location.y as f64 + layout.layout.size.height as f64,
                     );
 
-            for (_, button, state) in &info.buttons {
-                if *button == MouseButton::Left && *state == ElementState::Pressed {
-                            if !popup_rect.contains((pos.x, pos.y)) && !button_rect.contains((pos.x, pos.y)) {
+                    for (_, button, state) in &info.buttons {
+                        if *button == MouseButton::Left && *state == ElementState::Pressed {
+                            if !popup_rect.contains((pos.x, pos.y))
+                                && !button_rect.contains((pos.x, pos.y))
+                            {
                                 click_outside = true;
                             }
                         }
@@ -405,7 +417,6 @@ impl Widget for MenuButton {
                 self.close_menu();
                 update |= Update::DRAW;
             }
-
         } else if was_button_clicked {
             self.is_menu_open.set(true);
             self.show_menu_popup(layout, info);
@@ -419,4 +430,3 @@ impl Widget for MenuButton {
         self.widget_id.clone()
     }
 }
-

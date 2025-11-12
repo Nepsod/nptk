@@ -1,3 +1,5 @@
+use crate::theme_rendering::render_progress_with_theme;
+use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
@@ -8,8 +10,6 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
-use crate::theme_rendering::render_progress_with_theme;
-use nalgebra::Vector2;
 
 /// A progress bar widget to display progress from `0.0` to `1.0`.
 ///
@@ -33,7 +33,7 @@ pub struct Progress {
 
 impl Progress {
     /// Create a new Progress widget with a value signal.
-    /// 
+    ///
     /// # Arguments
     /// * `value` - Progress value between 0.0 and 1.0
     pub fn new(value: impl Into<MaybeSignal<f32>>) -> Self {
@@ -95,7 +95,12 @@ impl Widget for Progress {
         );
     }
 
-    fn update(&mut self, _layout: &LayoutNode, _context: AppContext, _info: &mut AppInfo) -> Update {
+    fn update(
+        &mut self,
+        _layout: &LayoutNode,
+        _context: AppContext,
+        _info: &mut AppInfo,
+    ) -> Update {
         let mut update = Update::empty();
 
         // Update animation time for indeterminate progress

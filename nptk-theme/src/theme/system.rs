@@ -124,4 +124,3 @@ impl Theme for SystemTheme {
         self
     }
 }
-

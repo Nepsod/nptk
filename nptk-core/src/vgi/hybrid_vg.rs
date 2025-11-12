@@ -1,9 +1,11 @@
+use crate::vgi::Graphics;
 use vello::kurbo::{Affine, BezPath, Stroke};
 use vello::peniko::{Brush, Fill};
-use crate::vgi::Graphics;
+use vello_common::kurbo::{
+    Affine as VelloCommonAffine, BezPath as VelloCommonBezPath, Stroke as VelloCommonStroke,
+};
 use vello_common::paint::PaintType;
 use vello_common::peniko::{BlendMode, Compose};
-use vello_common::kurbo::{Affine as VelloCommonAffine, BezPath as VelloCommonBezPath, Stroke as VelloCommonStroke};
 use vello_common::peniko::{Fill as VelloCommonFill, Mix as VelloCommonMix};
 
 /// A Vello Hybrid-based implementation of the [Graphics] trait.
@@ -122,9 +124,9 @@ impl<'a> HybridGraphics<'a> {
     /// Convert vello::kurbo::BezPath to vello_common::kurbo::BezPath.
     fn convert_bezpath(&self, path: &BezPath) -> VelloCommonBezPath {
         // BezPath can be converted by iterating elements and converting PathEl
-        use vello_common::kurbo::{PathEl as VelloCommonPathEl, Point};
         use vello::kurbo::PathEl;
-        
+        use vello_common::kurbo::{PathEl as VelloCommonPathEl, Point};
+
         let mut result = VelloCommonBezPath::new();
         for el in path.elements() {
             // Convert PathEl from vello::kurbo to vello_common::kurbo
@@ -132,10 +134,9 @@ impl<'a> HybridGraphics<'a> {
             let converted_el = match el {
                 PathEl::MoveTo(p) => VelloCommonPathEl::MoveTo(Point::new(p.x, p.y)),
                 PathEl::LineTo(p) => VelloCommonPathEl::LineTo(Point::new(p.x, p.y)),
-                PathEl::QuadTo(p1, p2) => VelloCommonPathEl::QuadTo(
-                    Point::new(p1.x, p1.y),
-                    Point::new(p2.x, p2.y),
-                ),
+                PathEl::QuadTo(p1, p2) => {
+                    VelloCommonPathEl::QuadTo(Point::new(p1.x, p1.y), Point::new(p2.x, p2.y))
+                },
                 PathEl::CurveTo(p1, p2, p3) => VelloCommonPathEl::CurveTo(
                     Point::new(p1.x, p1.y),
                     Point::new(p2.x, p2.y),
@@ -159,7 +160,7 @@ impl<'a> HybridGraphics<'a> {
                 // Color is AlphaColor<Srgb> and implements Into<PaintType>
                 let components = color.components;
                 use vello_common::peniko::Color;
-                
+
                 // Convert f32 components [0.0-1.0] to u8 [0-255] for from_rgba8
                 let vello_color = Color::from_rgba8(
                     (components[0] * 255.0) as u8,
@@ -168,12 +169,14 @@ impl<'a> HybridGraphics<'a> {
                     (components[3] * 255.0) as u8,
                 );
                 vello_color.into()
-            }
+            },
             Brush::Gradient(gradient) => {
                 // Gradient conversion is more complex and may not be fully supported
                 // For now, fall back to a solid color
                 log::warn!("Gradient brushes in HybridGraphics are not yet fully supported, using solid color fallback");
-                let components = gradient.stops.first()
+                let components = gradient
+                    .stops
+                    .first()
                     .map(|s| s.color.components)
                     .unwrap_or([0.0, 0.0, 0.0, 1.0]);
                 use vello_common::peniko::Color;
@@ -184,19 +187,24 @@ impl<'a> HybridGraphics<'a> {
                     (components[3] * 255.0) as u8,
                 );
                 vello_color.into()
-            }
+            },
             Brush::Image(_) => {
                 // Image brushes are not yet supported
-                log::warn!("Image brushes in HybridGraphics are not yet supported, using black fallback");
+                log::warn!(
+                    "Image brushes in HybridGraphics are not yet supported, using black fallback"
+                );
                 use vello_common::peniko::color::palette::css::BLACK;
                 BLACK.into()
-            }
+            },
         }
     }
 
     /// Get the current transform from the stack.
     fn current_transform(&self) -> Affine {
-        self.transform_stack.last().copied().unwrap_or(Affine::IDENTITY)
+        self.transform_stack
+            .last()
+            .copied()
+            .unwrap_or(Affine::IDENTITY)
     }
 }
 
@@ -211,24 +219,25 @@ impl<'a> Graphics for HybridGraphics<'a> {
     ) {
         // Combine the provided transform with the current transform stack
         let combined_transform = self.current_transform() * transform;
-        
+
         // Set the paint (brush)
         let paint_type = self.brush_to_paint_type(brush);
         self.scene.set_paint(paint_type);
-        
+
         // Set paint transform if provided
         if let Some(bt) = brush_transform {
             self.scene.set_paint_transform(self.convert_affine(bt));
         } else {
             self.scene.reset_paint_transform();
         }
-        
+
         // Set fill rule
         self.scene.set_fill_rule(self.convert_fill(fill_rule));
-        
+
         // Set transform
-        self.scene.set_transform(self.convert_affine(combined_transform));
-        
+        self.scene
+            .set_transform(self.convert_affine(combined_transform));
+
         // Fill the path (convert BezPath)
         let converted_path = self.convert_bezpath(shape);
         self.scene.fill_path(&converted_path);
@@ -244,24 +253,25 @@ impl<'a> Graphics for HybridGraphics<'a> {
     ) {
         // Combine the provided transform with the current transform stack
         let combined_transform = self.current_transform() * transform;
-        
+
         // Set the paint (brush)
         let paint_type = self.brush_to_paint_type(brush);
         self.scene.set_paint(paint_type);
-        
+
         // Set paint transform if provided
         if let Some(bt) = brush_transform {
             self.scene.set_paint_transform(self.convert_affine(bt));
         } else {
             self.scene.reset_paint_transform();
         }
-        
+
         // Set stroke style
         self.scene.set_stroke(self.convert_stroke(style));
-        
+
         // Set transform
-        self.scene.set_transform(self.convert_affine(combined_transform));
-        
+        self.scene
+            .set_transform(self.convert_affine(combined_transform));
+
         // Stroke the path (convert BezPath)
         let converted_path = self.convert_bezpath(shape);
         self.scene.stroke_path(&converted_path);
@@ -270,24 +280,33 @@ impl<'a> Graphics for HybridGraphics<'a> {
     fn append(&mut self, _other: &vello::Scene, _transform: Option<Affine>) {
         // Hybrid scenes cannot directly append Vello scenes
         // This is a limitation when mixing backends
-        log::warn!("Attempting to append Vello scene to Hybrid scene - this operation is not supported");
+        log::warn!(
+            "Attempting to append Vello scene to Hybrid scene - this operation is not supported"
+        );
         // Note: In practice, widgets should use the unified Scene enum and not mix backends
     }
 
-    fn push_layer(&mut self, mix: vello::peniko::Mix, alpha: f32, transform: Affine, shape: &BezPath) {
+    fn push_layer(
+        &mut self,
+        mix: vello::peniko::Mix,
+        alpha: f32,
+        transform: Affine,
+        shape: &BezPath,
+    ) {
         // Push transform onto stack
         let new_transform = self.current_transform() * transform;
         self.transform_stack.push(new_transform);
-        
+
         // Convert Mix to BlendMode
         let blend_mode = BlendMode::new(
             self.convert_mix(mix),
             Compose::SrcOver, // Default compose mode
         );
-        
+
         // Push layer with clip path (convert BezPath)
         let converted_path = self.convert_bezpath(shape);
-        self.scene.push_layer(Some(&converted_path), Some(blend_mode), Some(alpha), None);
+        self.scene
+            .push_layer(Some(&converted_path), Some(blend_mode), Some(alpha), None);
     }
 
     fn pop_layer(&mut self) {
@@ -295,7 +314,7 @@ impl<'a> Graphics for HybridGraphics<'a> {
         if self.transform_stack.len() > 1 {
             self.transform_stack.pop();
         }
-        
+
         // Pop layer from scene
         self.scene.pop_layer();
     }
@@ -307,4 +326,3 @@ impl<'a> Graphics for HybridGraphics<'a> {
         None
     }
 }
-

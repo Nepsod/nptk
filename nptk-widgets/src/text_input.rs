@@ -1,21 +1,21 @@
+use log;
+use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
-use nptk_core::app::focus::{FocusId, FocusState, FocusableWidget, FocusProperties, FocusBounds};
+use nptk_core::app::focus::{FocusBounds, FocusId, FocusProperties, FocusState, FocusableWidget};
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::text_input::TextBuffer;
- use nptk_core::vg::kurbo::{Affine, Line, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
+use nptk_core::text_render::TextRenderContext;
+use nptk_core::vg::kurbo::{Affine, Line, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
-use nptk_core::text_render::TextRenderContext;
-use std::ops::Deref;
-use log;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, Ime, KeyCode, PhysicalKey};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
-use nalgebra::Vector2;
+use std::ops::Deref;
 use std::time::{Duration, Instant};
 
 /// A single-line text input widget.
@@ -104,27 +104,32 @@ impl TextInput {
         if text.is_empty() {
             return 0.0;
         }
-        
+
         // Use TextRenderContext to get accurate measurements from Parley
         // This handles all Unicode characters, emojis, and different scripts properly
-        self.text_render_context.measure_text_width(&mut info.font_context, text, font_size)
+        self.text_render_context
+            .measure_text_width(&mut info.font_context, text, font_size)
     }
 
     /// Calculate the X position of the cursor based on its character position.
-    fn cursor_x_position(&self, cursor_pos: usize, layout_node: &LayoutNode, info: &mut AppInfo) -> f32 {
+    fn cursor_x_position(
+        &self,
+        cursor_pos: usize,
+        layout_node: &LayoutNode,
+        info: &mut AppInfo,
+    ) -> f32 {
         let font_size = 16.0;
         let text_start_x = layout_node.layout.location.x + 8.0; // Padding
         let text = self.buffer.text();
-        
+
         if cursor_pos == 0 || text.is_empty() {
             return text_start_x;
         }
-        
+
         // Calculate actual width of text up to cursor position
         let text_up_to_cursor: String = text.chars().take(cursor_pos).collect();
         let actual_width = self.calculate_text_width(&text_up_to_cursor, font_size, info);
-        
-        
+
         text_start_x + actual_width
     }
 
@@ -146,12 +151,11 @@ impl TextInput {
         // Simple character-based positioning (approximate)
         let char_width = font_size * 0.6; // Approximate character width
         let char_pos = (relative_x / char_width) as usize;
-        
+
         // Clamp to text length
         let text_len = text.chars().count();
         char_pos.min(text_len)
     }
-
 
     /// Find word boundaries around a given position.
     fn find_word_boundaries(&self, pos: usize) -> (usize, usize) {
@@ -201,14 +205,14 @@ impl TextInput {
 
         if is_double_click && is_same_position {
             let text = self.buffer.text();
-            
+
             if text.is_empty() {
                 // Double-click on empty field - do nothing (no text to select)
                 return false;
             } else {
                 // Check if we're clicking on a word or in empty space
                 let (start, end) = self.find_word_boundaries(click_pos);
-                
+
                 if start == end {
                     // Clicked in empty space (between words) - select all text
                     let text_len = text.chars().count();
@@ -219,9 +223,8 @@ impl TextInput {
                     self.buffer.cursor.selection_start = Some(start);
                     self.buffer.cursor.position = end;
                 }
-                
             }
-            
+
             self.cursor_blink_timer = Instant::now();
             self.cursor_visible = true;
             return true;
@@ -246,7 +249,6 @@ impl Widget for TextInput {
         info: &mut AppInfo,
         context: AppContext,
     ) {
-        
         // Update focus state
         if let Ok(manager) = info.focus_manager.lock() {
             self.focus_state = manager.get_focus_state(self.focus_id);
@@ -266,18 +268,34 @@ impl Widget for TextInput {
         }
 
         // Get colors from theme with proper fallbacks
-        let bg_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackground)
+        let bg_color = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::ColorBackground,
+            )
             .unwrap_or_else(|| Color::from_rgb8(255, 255, 255));
 
         let border_color = if is_focused {
-            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorderFocused)
+            theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorBorderFocused,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(100, 150, 255))
         } else {
-            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorder)
+            theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorBorder,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)) // Light gray border
         };
 
-        let _text_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+        let _text_color = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::ColorText,
+            )
             .unwrap_or_else(|| Color::from_rgb8(0, 0, 0));
 
         let input_rect = RoundedRect::from_rect(
@@ -315,19 +333,22 @@ impl Widget for TextInput {
         } else {
             self.buffer.text()
         };
-        
 
         let font_size = 16.0f32;
-        
 
         // Render selection highlight first (behind text)
         if let Some(selection_range) = self.buffer.cursor().selection() {
             // Use theme selection color with proper fallback
-            let selection_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorSelection)
+            let selection_color = theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorSelection,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(100, 150, 255));
 
             // Calculate selection bounds using the same method as cursor positioning
-            let selection_start_x = self.cursor_x_position(selection_range.start, layout_node, info);
+            let selection_start_x =
+                self.cursor_x_position(selection_range.start, layout_node, info);
             let selection_end_x = self.cursor_x_position(selection_range.end, layout_node, info);
 
             // Only draw selection if there's actually a range (start != end)
@@ -342,8 +363,11 @@ impl Widget for TextInput {
                         selection_start_x as f64,
                         layout_node.layout.location.y as f64 + 4.0,
                         selection_end_x as f64,
-                        layout_node.layout.location.y as f64 + layout_node.layout.size.height as f64 - 4.0,
-                    ).to_path(0.1),
+                        layout_node.layout.location.y as f64
+                            + layout_node.layout.size.height as f64
+                            - 4.0,
+                    )
+                    .to_path(0.1),
                 );
             }
         }
@@ -360,8 +384,11 @@ impl Widget for TextInput {
                 layout_node.layout.location.x as f64 + 8.0, // Padding
                 layout_node.layout.location.y as f64 + 4.5, // Position text within the input field
             ));
-            
-        log::debug!("TextInput: About to call TextRenderContext.render_text for: '{}'", display_text);
+
+            log::debug!(
+                "TextInput: About to call TextRenderContext.render_text for: '{}'",
+                display_text
+            );
             self.text_render_context.render_text(
                 &mut info.font_context,
                 graphics,
@@ -372,14 +399,21 @@ impl Widget for TextInput {
                 transform,
                 true, // hinting
             );
-        log::debug!("TextInput: TextRenderContext.render_text call completed for: '{}'", display_text);
+            log::debug!(
+                "TextInput: TextRenderContext.render_text call completed for: '{}'",
+                display_text
+            );
         } else {
             log::debug!("Text is empty, skipping rendering");
         }
 
         // Render cursor when focused and visible (always show cursor when focused)
         if is_focused && self.cursor_visible {
-            let cursor_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorCursor)
+            let cursor_color = theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorCursor,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(0, 0, 0));
 
             // Calculate cursor position using the same method as mouse positioning
@@ -394,8 +428,14 @@ impl Widget for TextInput {
                 None,
                 &Line::new(
                     (cursor_x as f64, layout_node.layout.location.y as f64 + 4.0),
-                    (cursor_x as f64, layout_node.layout.location.y as f64 + layout_node.layout.size.height as f64 - 4.0),
-                ).to_path(0.1),
+                    (
+                        cursor_x as f64,
+                        layout_node.layout.location.y as f64
+                            + layout_node.layout.size.height as f64
+                            - 4.0,
+                    ),
+                )
+                .to_path(0.1),
             );
         }
     }
@@ -429,23 +469,25 @@ impl Widget for TextInput {
                 },
             };
             manager.register_widget(focusable_widget);
-            
+
             // Update focus state
             let new_focus_state = manager.get_focus_state(self.focus_id);
-            
-            if matches!(new_focus_state, FocusState::Gained) && !matches!(old_focus_state, FocusState::Focused) {
+
+            if matches!(new_focus_state, FocusState::Gained)
+                && !matches!(old_focus_state, FocusState::Focused)
+            {
                 self.focus_via_keyboard = manager.was_last_focus_via_keyboard();
             } else if matches!(new_focus_state, FocusState::Lost | FocusState::None) {
                 self.focus_via_keyboard = false;
             }
-            
+
             self.focus_state = new_focus_state;
         }
 
         // Process input when focused
         if matches!(self.focus_state, FocusState::Focused | FocusState::Gained) {
             let mut text_changed = false;
-            
+
             // Process IME events for text composition
             for ime_event in &info.ime_events {
                 match ime_event {
@@ -456,20 +498,20 @@ impl Widget for TextInput {
                         // Reset cursor blink and force immediate redraw
                         self.cursor_blink_timer = Instant::now();
                         self.cursor_visible = true;
-                    }
+                    },
                     Ime::Preedit(_, _) => {
                         // TODO: Handle text composition preview
                         // For now, we'll skip preedit handling
-                    }
+                    },
                     Ime::Enabled => {
                         // IME was enabled
-                    }
+                    },
                     Ime::Disabled => {
                         // IME was disabled
-                    }
+                    },
                 }
             }
-            
+
             // Process keyboard events for navigation and editing
             for (_, key_event) in &info.keys {
                 if key_event.state == ElementState::Pressed {
@@ -484,13 +526,13 @@ impl Widget for TextInput {
                                     self.buffer.cursor.position = text_len;
                                     update |= Update::DRAW;
                                 }
-                            }
+                            },
                             PhysicalKey::Code(KeyCode::KeyC) => {
                                 // Copy to clipboard
                                 if let Some(_selected_text) = self.buffer.selected_text() {
                                     // TODO: Implement clipboard copy
                                 }
-                            }
+                            },
                             PhysicalKey::Code(KeyCode::KeyX) => {
                                 // Cut to clipboard
                                 if let Some(_selected_text) = self.buffer.selected_text() {
@@ -498,12 +540,12 @@ impl Widget for TextInput {
                                     self.buffer.delete_backward(); // Delete selection
                                     text_changed = true;
                                 }
-                            }
+                            },
                             PhysicalKey::Code(KeyCode::KeyV) => {
                                 // Paste from clipboard
                                 // TODO: Implement clipboard paste
-                            }
-                            _ => {}
+                            },
+                            _ => {},
                         }
                     } else {
                         // Regular key handling
@@ -514,28 +556,28 @@ impl Widget for TextInput {
                                 // Reset cursor blink and force immediate redraw
                                 self.cursor_blink_timer = Instant::now();
                                 self.cursor_visible = true;
-                            }
+                            },
                             PhysicalKey::Code(KeyCode::Delete) => {
                                 self.buffer.delete_forward();
                                 text_changed = true;
                                 // Reset cursor blink and force immediate redraw
                                 self.cursor_blink_timer = Instant::now();
                                 self.cursor_visible = true;
-                            }
+                            },
                             PhysicalKey::Code(KeyCode::ArrowLeft) => {
                                 self.buffer.move_left(info.modifiers.shift_key());
                                 // Reset cursor blink and force redraw
                                 self.cursor_blink_timer = Instant::now();
                                 self.cursor_visible = true;
                                 update |= Update::DRAW;
-                            }
+                            },
                             PhysicalKey::Code(KeyCode::ArrowRight) => {
                                 self.buffer.move_right(info.modifiers.shift_key());
                                 // Reset cursor blink and force redraw
                                 self.cursor_blink_timer = Instant::now();
                                 self.cursor_visible = true;
                                 update |= Update::DRAW;
-                            }
+                            },
                             PhysicalKey::Code(KeyCode::ArrowUp) => {
                                 // Move cursor to beginning of text (like most toolkits)
                                 self.buffer.move_to_start(info.modifiers.shift_key());
@@ -543,7 +585,7 @@ impl Widget for TextInput {
                                 self.cursor_blink_timer = Instant::now();
                                 self.cursor_visible = true;
                                 update |= Update::DRAW;
-                            }
+                            },
                             PhysicalKey::Code(KeyCode::ArrowDown) => {
                                 // Move cursor to end of text (like most toolkits)
                                 self.buffer.move_to_end(info.modifiers.shift_key());
@@ -551,21 +593,21 @@ impl Widget for TextInput {
                                 self.cursor_blink_timer = Instant::now();
                                 self.cursor_visible = true;
                                 update |= Update::DRAW;
-                            }
+                            },
                             PhysicalKey::Code(KeyCode::Home) => {
                                 self.buffer.move_to_start(info.modifiers.shift_key());
                                 // Reset cursor blink and force redraw
                                 self.cursor_blink_timer = Instant::now();
                                 self.cursor_visible = true;
                                 update |= Update::DRAW;
-                            }
+                            },
                             PhysicalKey::Code(KeyCode::End) => {
                                 self.buffer.move_to_end(info.modifiers.shift_key());
                                 // Reset cursor blink and force redraw
                                 self.cursor_blink_timer = Instant::now();
                                 self.cursor_visible = true;
                                 update |= Update::DRAW;
-                            }
+                            },
                             _ => {
                                 // For simple character input, we can also use the text field from KeyEvent
                                 if let Some(text) = &key_event.text {
@@ -577,7 +619,7 @@ impl Widget for TextInput {
                                         self.cursor_visible = true;
                                     }
                                 }
-                            }
+                            },
                         }
                     }
                 }
@@ -593,102 +635,109 @@ impl Widget for TextInput {
         let cursor_pos = info.cursor_pos;
         let button_events: Vec<_> = info.buttons.iter().collect();
         let all_button_events: Vec<_> = info.buttons.iter().collect();
-        
+
         // Process mouse events in a separate scope to avoid borrowing conflicts
         {
             if let Some(cursor_pos) = cursor_pos {
-            let in_bounds = cursor_pos.x as f32 >= layout.layout.location.x
-                && cursor_pos.x as f32 <= layout.layout.location.x + layout.layout.size.width
-                && cursor_pos.y as f32 >= layout.layout.location.y
-                && cursor_pos.y as f32 <= layout.layout.location.y + layout.layout.size.height;
+                let in_bounds = cursor_pos.x as f32 >= layout.layout.location.x
+                    && cursor_pos.x as f32 <= layout.layout.location.x + layout.layout.size.width
+                    && cursor_pos.y as f32 >= layout.layout.location.y
+                    && cursor_pos.y as f32 <= layout.layout.location.y + layout.layout.size.height;
 
-            // Handle mouse button events
-            for (_, button, state) in button_events {
-                if *button == nptk_core::window::MouseButton::Left {
-                    match state {
-                        nptk_core::window::ElementState::Pressed => {
-                            if in_bounds {
-                                // Set focus first
-                                context.set_focus(Some(self.focus_id));
-                                
-                                // Handle mouse click in bounds
-                                let click_pos = self.cursor_position_from_mouse_simple(cursor_pos.x as f32, layout);
-                                
-                                // Check for double-click first
-                                if self.handle_double_click(click_pos, layout) {
-                                    // Double-click handled - selection already set, don't modify cursor position or drag
-                                    self.mouse_down = true;
-                                    // Don't set drag_start_pos for double-click to avoid interfering with selection
-                                    update |= Update::DRAW;
-                                } else {
-                                    // Single click - clear selection and set cursor position
-                                    self.buffer.cursor.selection_start = None;
-                                    self.buffer.cursor.position = click_pos;
-                                    self.mouse_down = true;
-                                    self.drag_start_pos = Some(click_pos);
-                                    
-                                    // Reset cursor blink
-                                    self.cursor_blink_timer = Instant::now();
-                                    self.cursor_visible = true;
-                                    update |= Update::DRAW;
+                // Handle mouse button events
+                for (_, button, state) in button_events {
+                    if *button == nptk_core::window::MouseButton::Left {
+                        match state {
+                            nptk_core::window::ElementState::Pressed => {
+                                if in_bounds {
+                                    // Set focus first
+                                    context.set_focus(Some(self.focus_id));
+
+                                    // Handle mouse click in bounds
+                                    let click_pos = self.cursor_position_from_mouse_simple(
+                                        cursor_pos.x as f32,
+                                        layout,
+                                    );
+
+                                    // Check for double-click first
+                                    if self.handle_double_click(click_pos, layout) {
+                                        // Double-click handled - selection already set, don't modify cursor position or drag
+                                        self.mouse_down = true;
+                                        // Don't set drag_start_pos for double-click to avoid interfering with selection
+                                        update |= Update::DRAW;
+                                    } else {
+                                        // Single click - clear selection and set cursor position
+                                        self.buffer.cursor.selection_start = None;
+                                        self.buffer.cursor.position = click_pos;
+                                        self.mouse_down = true;
+                                        self.drag_start_pos = Some(click_pos);
+
+                                        // Reset cursor blink
+                                        self.cursor_blink_timer = Instant::now();
+                                        self.cursor_visible = true;
+                                        update |= Update::DRAW;
+                                    }
                                 }
-                            }
-                        }
-                        nptk_core::window::ElementState::Released => {
-                            // Always handle mouse release
-                            self.mouse_down = false;
-                            self.drag_start_pos = None;
+                            },
+                            nptk_core::window::ElementState::Released => {
+                                // Always handle mouse release
+                                self.mouse_down = false;
+                                self.drag_start_pos = None;
+                            },
                         }
                     }
                 }
-            }
 
-            // Handle mouse drag for selection (works both in and out of bounds)
-            if self.mouse_down {
-                if let Some(start_pos) = self.drag_start_pos {
-                    let current_pos = if in_bounds {
-                        self.cursor_position_from_mouse_simple(cursor_pos.x as f32, layout)
-                    } else {
-                        // Mouse is outside bounds - extend selection to beginning or end
-                        let text_len = self.buffer.text().chars().count();
-                        let widget_left = layout.layout.location.x;
-                        let widget_right = layout.layout.location.x + layout.layout.size.width;
-                        
-                        if (cursor_pos.x as f32) < widget_left {
-                            0
-                        } else if (cursor_pos.x as f32) > widget_right {
-                            text_len
-                        } else {
-                            // This shouldn't happen if in_bounds is false, but just in case
+                // Handle mouse drag for selection (works both in and out of bounds)
+                if self.mouse_down {
+                    if let Some(start_pos) = self.drag_start_pos {
+                        let current_pos = if in_bounds {
                             self.cursor_position_from_mouse_simple(cursor_pos.x as f32, layout)
+                        } else {
+                            // Mouse is outside bounds - extend selection to beginning or end
+                            let text_len = self.buffer.text().chars().count();
+                            let widget_left = layout.layout.location.x;
+                            let widget_right = layout.layout.location.x + layout.layout.size.width;
+
+                            if (cursor_pos.x as f32) < widget_left {
+                                0
+                            } else if (cursor_pos.x as f32) > widget_right {
+                                text_len
+                            } else {
+                                // This shouldn't happen if in_bounds is false, but just in case
+                                self.cursor_position_from_mouse_simple(cursor_pos.x as f32, layout)
+                            }
+                        };
+
+                        if current_pos != self.buffer.cursor().position {
+                            // Update selection
+                            self.buffer.cursor.selection_start = Some(start_pos);
+                            self.buffer.cursor.position = current_pos;
+                            update |= Update::DRAW;
                         }
-                    };
-                    
-                    if current_pos != self.buffer.cursor().position {
-                        // Update selection
+                    }
+                }
+            } else if self.mouse_down
+                && matches!(self.focus_state, FocusState::Focused | FocusState::Gained)
+            {
+                // Mouse cursor left the window entirely but we're still dragging
+                // Continue selection to the end of text (most common behavior)
+                if let Some(start_pos) = self.drag_start_pos {
+                    let text_len = self.buffer.text().chars().count();
+                    if text_len != self.buffer.cursor().position {
                         self.buffer.cursor.selection_start = Some(start_pos);
-                        self.buffer.cursor.position = current_pos;
+                        self.buffer.cursor.position = text_len;
                         update |= Update::DRAW;
                     }
                 }
             }
-        } else if self.mouse_down && matches!(self.focus_state, FocusState::Focused | FocusState::Gained) {
-            // Mouse cursor left the window entirely but we're still dragging
-            // Continue selection to the end of text (most common behavior)
-            if let Some(start_pos) = self.drag_start_pos {
-                let text_len = self.buffer.text().chars().count();
-                if text_len != self.buffer.cursor().position {
-                    self.buffer.cursor.selection_start = Some(start_pos);
-                    self.buffer.cursor.position = text_len;
-                    update |= Update::DRAW;
-                }
-            }
-        }
         } // End of mouse handling scope
 
         // Also handle global mouse release events (in case mouse was released outside widget)
         for (_, button, state) in all_button_events {
-            if *button == nptk_core::window::MouseButton::Left && *state == nptk_core::window::ElementState::Released {
+            if *button == nptk_core::window::MouseButton::Left
+                && *state == nptk_core::window::ElementState::Released
+            {
                 self.mouse_down = false;
                 self.drag_start_pos = None;
             }
@@ -697,7 +746,7 @@ impl Widget for TextInput {
         // Update on focus state change
         if old_focus_state != self.focus_state {
             update |= Update::DRAW;
-            
+
             // Reset cursor blink when gaining focus
             if matches!(self.focus_state, FocusState::Gained) {
                 self.cursor_blink_timer = Instant::now();

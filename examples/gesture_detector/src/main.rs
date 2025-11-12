@@ -33,7 +33,6 @@ impl Application for MyApp {
                 .maybe(),
             )
     }
-
 }
 
 fn main() {

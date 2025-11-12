@@ -61,7 +61,7 @@
 use std::collections::HashMap;
 
 use crate::config::{ThemeConfig, ThemeSource};
-use crate::theme::{Theme, celeste::CelesteTheme, dark::DarkTheme, sweet::SweetTheme};
+use crate::theme::{celeste::CelesteTheme, dark::DarkTheme, sweet::SweetTheme, Theme};
 
 /// A self-contained theme resolver that can create themes without external imports.
 ///
@@ -105,10 +105,10 @@ impl SelfContainedThemeResolver {
         let mut resolver = Self {
             theme_registry: HashMap::new(),
         };
-        
+
         // Register built-in themes
         resolver.register_builtin_themes();
-        
+
         resolver
     }
 
@@ -126,7 +126,10 @@ impl SelfContainedThemeResolver {
     /// let resolver = SelfContainedThemeResolver::new();
     /// let theme = resolver.resolve_theme("dark").unwrap();
     /// ```
-    pub fn resolve_theme(&self, name: &str) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
+    pub fn resolve_theme(
+        &self,
+        name: &str,
+    ) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
         match name.to_lowercase().as_str() {
             "light" | "celeste" => Ok(Box::new(CelesteTheme::light())),
             "dark" => Ok(Box::new(DarkTheme::new())),
@@ -139,7 +142,7 @@ impl SelfContainedThemeResolver {
                 } else {
                     Err(format!("Theme '{}' not found", name).into())
                 }
-            }
+            },
         }
     }
 
@@ -158,7 +161,10 @@ impl SelfContainedThemeResolver {
     /// let resolver = SelfContainedThemeResolver::new();
     /// let theme = resolver.resolve_theme_source(&ThemeSource::Dark).unwrap();
     /// ```
-    pub fn resolve_theme_source(&self, source: &ThemeSource) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
+    pub fn resolve_theme_source(
+        &self,
+        source: &ThemeSource,
+    ) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
         match source {
             ThemeSource::Light => Ok(Box::new(CelesteTheme::light())),
             ThemeSource::Dark => Ok(Box::new(DarkTheme::new())),
@@ -167,7 +173,7 @@ impl SelfContainedThemeResolver {
                 // Load theme from file
                 let config = ThemeConfig::from_file(path)?;
                 self.resolve_from_config(&config)
-            }
+            },
             ThemeSource::Sweet => Ok(Box::new(SweetTheme::new())),
         }
     }
@@ -188,7 +194,10 @@ impl SelfContainedThemeResolver {
     /// let config = ThemeConfig::from_env_or_default();
     /// let theme = resolver.resolve_from_config(&config).unwrap();
     /// ```
-    pub fn resolve_from_config(&self, config: &ThemeConfig) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
+    pub fn resolve_from_config(
+        &self,
+        config: &ThemeConfig,
+    ) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
         // Try to resolve the default theme
         match self.resolve_theme_source(&config.default_theme) {
             Ok(theme) => Ok(theme),
@@ -202,7 +211,7 @@ impl SelfContainedThemeResolver {
                 } else {
                     Err("No fallback theme configured".into())
                 }
-            }
+            },
         }
     }
 
@@ -238,7 +247,11 @@ impl SelfContainedThemeResolver {
     /// let themes = resolver.available_themes();
     /// ```
     pub fn available_themes(&self) -> Vec<String> {
-        let mut themes = vec!["light".to_string(), "celeste".to_string(), "dark".to_string()];
+        let mut themes = vec![
+            "light".to_string(),
+            "celeste".to_string(),
+            "dark".to_string(),
+        ];
         themes.extend(self.theme_registry.keys().cloned());
         themes.sort();
         themes
@@ -287,7 +300,10 @@ impl SelfContainedThemeResolver {
     /// let resolver = SelfContainedThemeResolver::new();
     /// let theme = resolver.create_theme_by_name("dark").unwrap();
     /// ```
-    fn create_theme_by_name(&self, name: &str) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
+    fn create_theme_by_name(
+        &self,
+        name: &str,
+    ) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
         match name.to_lowercase().as_str() {
             "light" | "celeste" => Ok(Box::new(CelesteTheme::light())),
             "dark" => Ok(Box::new(DarkTheme::new())),
@@ -333,7 +349,9 @@ pub fn create_theme_resolver() -> SelfContainedThemeResolver {
 ///
 /// let theme = resolve_theme("dark").unwrap();
 /// ```
-pub fn resolve_theme(name: &str) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
+pub fn resolve_theme(
+    name: &str,
+) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
     let resolver = create_theme_resolver();
     resolver.resolve_theme(name)
 }
@@ -355,7 +373,9 @@ pub fn resolve_theme(name: &str) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn
 /// let config = ThemeConfig::from_env_or_default();
 /// let theme = resolve_theme_from_config(&config).unwrap();
 /// ```
-pub fn resolve_theme_from_config(config: &ThemeConfig) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
+pub fn resolve_theme_from_config(
+    config: &ThemeConfig,
+) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
     let resolver = create_theme_resolver();
     resolver.resolve_from_config(config)
 }

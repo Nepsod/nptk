@@ -1,24 +1,26 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 //! Menu popup widget for dropdown menus
-//! 
+//!
 //! This widget is designed to be used as overlay content for menu dropdowns.
 //! It provides a clean, themed popup menu that can be positioned anywhere on screen.
 
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{LayoutNode, LayoutStyle, LengthPercentage, Dimension, StyleNode};
-use std::sync::Arc;
+use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
 use nptk_core::signal::MaybeSignal;
-use nptk_core::vg::kurbo::{Affine, Line, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
-use nptk_core::vg::peniko::{Color, Fill, Brush};
-use nptk_core::vgi::Graphics;
 use nptk_core::text_render::TextRenderContext;
+use nptk_core::vg::kurbo::{
+    Affine, Line, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke,
+};
+use nptk_core::vg::peniko::{Brush, Color, Fill};
+use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use std::sync::Arc;
 
 /// A popup menu widget that displays a list of menu items
 pub struct MenuPopup {
@@ -85,7 +87,7 @@ impl MenuBarItem {
     }
 
     /// Set the callback for when this item is activated
-    pub fn with_on_activate<F>(mut self, callback: F) -> Self 
+    pub fn with_on_activate<F>(mut self, callback: F) -> Self
     where
         F: Fn() -> Update + Send + Sync + 'static,
     {
@@ -138,7 +140,7 @@ impl MenuPopup {
     }
 
     /// Set callback for when an item is selected
-    pub fn with_on_item_selected<F>(mut self, callback: F) -> Self 
+    pub fn with_on_item_selected<F>(mut self, callback: F) -> Self
     where
         F: Fn(usize) -> Update + Send + Sync + 'static,
     {
@@ -147,7 +149,7 @@ impl MenuPopup {
     }
 
     /// Set callback for when the popup should be closed
-    pub fn with_on_close<F>(mut self, callback: F) -> Self 
+    pub fn with_on_close<F>(mut self, callback: F) -> Self
     where
         F: Fn() -> Update + Send + Sync + 'static,
     {
@@ -162,24 +164,25 @@ impl MenuPopup {
         let min_width = 120.0;
         let max_width = 400.0; // Increased max width for longer text
         let text_padding = 16.0; // Left and right padding for text
-        
+
         // Calculate height based on number of items
         let height = (self.items.len() as f64 * item_height) + padding;
-        
+
         // Calculate width based on longest item text + shortcut
         let mut max_total_width: f64 = min_width;
         for item in &self.items {
-            if item.label != "---" { // Skip separators
+            if item.label != "---" {
+                // Skip separators
                 // Calculate text width (rough estimate: 8 pixels per character)
                 let text_width: f64 = item.label.len() as f64 * 8.0;
-                
+
                 // Calculate shortcut width if present
                 let shortcut_width: f64 = if let Some(ref shortcut) = item.shortcut {
                     shortcut.len() as f64 * 7.0 // Slightly smaller font for shortcuts
                 } else {
                     0.0
                 };
-                
+
                 // For right-aligned shortcuts, we need space for:
                 // - text width + left padding
                 // - minimum gap between text and shortcut (to avoid overlap)
@@ -189,22 +192,30 @@ impl MenuPopup {
                 max_total_width = max_total_width.max(total_width);
             }
         }
-        
+
         let width: f64 = max_total_width.min(max_width);
-        
+
         (width, height)
     }
 
     /// Render text helper
-    fn render_text(text_render_context: &mut TextRenderContext, font_cx: &mut nptk_core::app::font_ctx::FontContext, graphics: &mut dyn Graphics, text: &str, x: f64, y: f64, color: Color) {
+    fn render_text(
+        text_render_context: &mut TextRenderContext,
+        font_cx: &mut nptk_core::app::font_ctx::FontContext,
+        graphics: &mut dyn Graphics,
+        text: &str,
+        x: f64,
+        y: f64,
+        color: Color,
+    ) {
         let font_size = 14.0;
-        
+
         if text.is_empty() {
             return;
         }
 
         let transform = Affine::translate((x, y));
-        
+
         // Try to render text, but don't panic if font context is not available
         let _ = text_render_context.render_text(
             font_cx,
@@ -239,39 +250,66 @@ impl Widget for MenuPopup {
     fn layout_style(&self) -> StyleNode {
         let (width, height) = self.calculate_size();
         let mut style = self.layout_style.get().clone();
-        
+
         // Override size with calculated size
         style.size = nalgebra::Vector2::new(
             Dimension::length(width as f32),
             Dimension::length(height as f32),
         );
-        
+
         StyleNode {
             style,
             children: Vec::new(),
         }
     }
 
-    fn render(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme, layout: &LayoutNode, info: &mut AppInfo, _context: AppContext) {
+    fn render(
+        &mut self,
+        graphics: &mut dyn Graphics,
+        theme: &mut dyn Theme,
+        layout: &LayoutNode,
+        info: &mut AppInfo,
+        _context: AppContext,
+    ) {
         // Pre-calculate theme colors with proper fallbacks
-        let bg_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackground)
+        let bg_color = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::ColorBackground,
+            )
             .unwrap_or_else(|| Color::from_rgb8(255, 255, 255));
-        
-        let border_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorder)
+
+        let border_color = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::ColorBorder,
+            )
             .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)); // Light gray border
-        
-        let text_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+
+        let text_color = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::ColorText,
+            )
             .unwrap_or_else(|| Color::from_rgb8(0, 0, 0));
-        
-        let disabled_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorDisabled)
+
+        let disabled_color = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::ColorDisabled,
+            )
             .unwrap_or_else(|| Color::from_rgb8(150, 150, 150));
-        
-        let hovered_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorMenuHovered)
+
+        let hovered_color = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::ColorMenuHovered,
+            )
             .unwrap_or_else(|| Color::from_rgb8(180, 180, 180));
 
         // Calculate popup size
         let (popup_width, popup_height) = self.calculate_size();
-        
+
         // Draw popup background
         let popup_rect = Rect::new(
             layout.layout.location.x as f64,
@@ -287,22 +325,29 @@ impl Widget for MenuPopup {
             popup_rect.y1,
             RoundedRectRadii::new(4.0, 4.0, 4.0, 4.0),
         );
-        graphics.fill(Fill::NonZero, Affine::IDENTITY, &Brush::Solid(bg_color), None, &popup_rounded.to_path(0.1));
+        graphics.fill(
+            Fill::NonZero,
+            Affine::IDENTITY,
+            &Brush::Solid(bg_color),
+            None,
+            &popup_rounded.to_path(0.1),
+        );
 
         // Draw border
         let stroke = Stroke::new(1.0);
-        graphics.stroke(&stroke, Affine::IDENTITY, &Brush::Solid(border_color), None, &popup_rounded.to_path(0.1));
+        graphics.stroke(
+            &stroke,
+            Affine::IDENTITY,
+            &Brush::Solid(border_color),
+            None,
+            &popup_rounded.to_path(0.1),
+        );
 
         // Draw menu items
         let item_height = 24.0;
         for (i, item) in self.items.iter().enumerate() {
             let item_y = popup_rect.y0 + 4.0 + (i as f64 * item_height);
-            let item_rect = Rect::new(
-                popup_rect.x0,
-                item_y,
-                popup_rect.x1,
-                item_y + item_height,
-            );
+            let item_rect = Rect::new(popup_rect.x0, item_y, popup_rect.x1, item_y + item_height);
 
             // Determine item colors
             let (item_text_color, item_bg_color) = if !item.enabled {
@@ -322,26 +367,49 @@ impl Widget for MenuPopup {
                     item_rect.y1,
                     RoundedRectRadii::new(2.0, 2.0, 2.0, 2.0),
                 );
-                graphics.fill(Fill::NonZero, Affine::IDENTITY, &Brush::Solid(item_bg_color), None, &item_rounded.to_path(0.1));
+                graphics.fill(
+                    Fill::NonZero,
+                    Affine::IDENTITY,
+                    &Brush::Solid(item_bg_color),
+                    None,
+                    &item_rounded.to_path(0.1),
+                );
             }
 
             // Draw item content
-            if item.label != "---" { // Skip separators
+            if item.label != "---" {
+                // Skip separators
                 // Draw item text
                 let text_x = item_rect.x0 + 8.0;
                 let text_y = item_rect.y0 + 2.0;
-                Self::render_text(&mut self.text_render_context, &mut info.font_context, graphics, &item.label, text_x, text_y, item_text_color);
-                
+                Self::render_text(
+                    &mut self.text_render_context,
+                    &mut info.font_context,
+                    graphics,
+                    &item.label,
+                    text_x,
+                    text_y,
+                    item_text_color,
+                );
+
                 // Draw keyboard shortcut if present
                 if let Some(ref shortcut) = item.shortcut {
                     // Calculate shortcut width
                     let shortcut_width = shortcut.len() as f64 * 7.0; // Same estimate as in calculate_size
-                    
+
                     // Position shortcut at the right edge with padding
                     let shortcut_x = item_rect.x1 - 8.0 - shortcut_width;
-                    
+
                     let shortcut_color = Color::from_rgb8(120, 120, 120); // Dimmed color
-                    Self::render_text(&mut self.text_render_context, &mut info.font_context, graphics, shortcut, shortcut_x, text_y, shortcut_color);
+                    Self::render_text(
+                        &mut self.text_render_context,
+                        &mut info.font_context,
+                        graphics,
+                        shortcut,
+                        shortcut_x,
+                        text_y,
+                        shortcut_color,
+                    );
                 }
             } else {
                 // Draw separator line
@@ -355,7 +423,8 @@ impl Widget for MenuPopup {
                     &Line::new(
                         Point::new(item_rect.x0 + 8.0, sep_y),
                         Point::new(item_rect.x1 - 8.0, sep_y),
-                    ).to_path(0.1),
+                    )
+                    .to_path(0.1),
                 );
             }
         }
@@ -366,11 +435,11 @@ impl Widget for MenuPopup {
 
         // Get mouse position
         let cursor_pos = info.cursor_pos;
-        
+
         // Check hover state
         let old_hovered = self.hovered_index;
         self.hovered_index = None;
-        
+
         if let Some(pos) = cursor_pos {
             let (popup_width, popup_height) = self.calculate_size();
             let popup_rect = Rect::new(
@@ -379,7 +448,7 @@ impl Widget for MenuPopup {
                 layout.layout.location.x as f64 + popup_width,
                 layout.layout.location.y as f64 + popup_height,
             );
-            
+
             // Check if mouse is within popup bounds
             if pos.x as f32 >= popup_rect.x0 as f32
                 && pos.x as f32 <= popup_rect.x1 as f32
@@ -390,7 +459,7 @@ impl Widget for MenuPopup {
                 let item_height = 24.0;
                 let relative_y = pos.y as f32 - popup_rect.y0 as f32 - 4.0; // Account for padding
                 let item_index = (relative_y / item_height) as usize;
-                
+
                 if item_index < self.items.len() {
                     let item = &self.items[item_index];
                     if item.enabled && item.label != "---" {
@@ -409,18 +478,18 @@ impl Widget for MenuPopup {
             if *button == MouseButton::Left && *state == ElementState::Pressed {
                 if let Some(hovered) = self.hovered_index {
                     let item = &self.items[hovered];
-                    
+
                     if item.enabled && item.label != "---" {
                         // Execute item callback
                         if let Some(ref callback) = item.on_activate {
                             update |= callback();
                         }
-                        
+
                         // Notify parent of selection
                         if let Some(ref callback) = self.on_item_selected {
                             update |= callback(hovered);
                         }
-                        
+
                         // Close popup
                         if let Some(ref callback) = self.on_close {
                             update |= callback();

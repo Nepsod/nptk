@@ -27,17 +27,20 @@ impl Application for MenuButtonApp {
                     Update::empty()
                 }),
             MenuItem::new("separator", "---"),
-            MenuItem::new("exit", "Exit")
-                .with_on_activate(|| {
-                    println!("Exit clicked!");
-                    Update::empty()
-                }),
+            MenuItem::new("exit", "Exit").with_on_activate(|| {
+                println!("Exit clicked!");
+                Update::empty()
+            }),
         ];
 
         Container::new(vec![
             Box::new(Text::new("MenuButton Demo".to_string())),
-            Box::new(Text::new("Click the button below to see the popup menu:".to_string())),
-            Box::new(Text::new("Use Tab/Shift+Tab to navigate, Space/Enter to open menu".to_string())),
+            Box::new(Text::new(
+                "Click the button below to see the popup menu:".to_string(),
+            )),
+            Box::new(Text::new(
+                "Use Tab/Shift+Tab to navigate, Space/Enter to open menu".to_string(),
+            )),
             Box::new(
                 MenuButton::new("File")
                     .with_menu_items(menu_items)
@@ -49,7 +52,7 @@ impl Application for MenuButtonApp {
                             right: LengthPercentageAuto::length(0.0),
                         },
                         ..Default::default()
-                    })
+                    }),
             ),
         ])
         .with_layout_style(LayoutStyle {
@@ -73,25 +76,25 @@ fn main() {
     println!("  NPTK_THEME=light     # Use light theme");
     println!("  NPTK_THEME=dark      # Use dark theme");
     println!();
-    
+
     if let Ok(theme_env) = std::env::var("NPTK_THEME") {
         println!("Current NPTK_THEME: {}", theme_env);
     } else {
         println!("NPTK_THEME not set, using default theme");
     }
-    
+
     println!();
     println!("Starting application...");
-    
+
     // Demonstrate theme configuration
     let config = ThemeConfig::from_env_or_default();
     println!("Theme configuration loaded:");
     println!("  Default theme: {:?}", config.default_theme);
     println!("  Fallback theme: {:?}", config.fallback_theme);
-    
+
     println!();
     println!("Running GUI application...");
-    
+
     // Run the application
     let app = MenuButtonApp;
     app.run(());

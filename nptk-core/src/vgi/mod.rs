@@ -20,25 +20,25 @@ use vello::kurbo::{Affine, BezPath, Shape, Stroke};
 use vello::peniko::{Brush, Fill};
 
 // Re-export unified abstractions
-pub mod gpu_context;
-pub mod scene;
-pub mod renderer;
 pub mod backend;
+pub mod gpu_context;
 pub mod options;
+pub mod platform;
+pub mod renderer;
+pub mod scene;
 pub mod surface;
 #[cfg(target_os = "linux")]
 pub mod wayland_surface;
 #[cfg(target_os = "linux")]
 pub(crate) mod wl_client;
-pub mod platform;
 
-pub use scene::{Scene, SceneTrait};
-pub use renderer::{Renderer, RendererTrait};
 pub use backend::Backend;
+pub use gpu_context::{DeviceHandle, GpuContext};
 pub use options::RendererOptions;
-pub use gpu_context::{GpuContext, DeviceHandle};
-pub use surface::{Surface, SurfaceTrait};
 pub use platform::Platform;
+pub use renderer::{Renderer, RendererTrait};
+pub use scene::{Scene, SceneTrait};
+pub use surface::{Surface, SurfaceTrait};
 
 /// A trait for rendering vector graphics.
 ///
@@ -76,7 +76,13 @@ pub trait Graphics {
     fn append(&mut self, other: &vello::Scene, transform: Option<Affine>);
 
     /// Push a new layer with the given blend mode and transform.
-    fn push_layer(&mut self, mix: vello::peniko::Mix, alpha: f32, transform: Affine, shape: &BezPath);
+    fn push_layer(
+        &mut self,
+        mix: vello::peniko::Mix,
+        alpha: f32,
+        transform: Affine,
+        shape: &BezPath,
+    );
 
     /// Pop the most recent layer.
     fn pop_layer(&mut self);
@@ -101,12 +107,8 @@ pub fn shape_to_path(shape: &impl Shape) -> BezPath {
 /// * `None` if the scene backend doesn't have a Graphics implementation yet
 pub fn graphics_from_scene(scene: &mut Scene) -> Option<Box<dyn Graphics + '_>> {
     match scene {
-        Scene::Vello(vello_scene) => {
-            Some(Box::new(vello_vg::VelloGraphics::new(vello_scene)))
-        }
-        Scene::Hybrid(hybrid_scene) => {
-            Some(Box::new(hybrid_vg::HybridGraphics::new(hybrid_scene)))
-        }
+        Scene::Vello(vello_scene) => Some(Box::new(vello_vg::VelloGraphics::new(vello_scene))),
+        Scene::Hybrid(hybrid_scene) => Some(Box::new(hybrid_vg::HybridGraphics::new(hybrid_scene))),
     }
 }
 

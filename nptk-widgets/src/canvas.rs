@@ -2,8 +2,8 @@ use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
-use nptk_core::vgi::Graphics;
 use nptk_core::vgi::vello_vg::VelloGraphics;
+use nptk_core::vgi::Graphics;
 use nptk_core::widget::Widget;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
@@ -27,7 +27,10 @@ impl Canvas {
     }
 
     /// Set a painter function and return itself.
-    pub fn with_painter(mut self, painter: impl FnMut(&mut dyn Graphics, &AppInfo) + 'static) -> Self {
+    pub fn with_painter(
+        mut self,
+        painter: impl FnMut(&mut dyn Graphics, &AppInfo) + 'static,
+    ) -> Self {
         self.painter = Box::new(painter);
         self
     }
@@ -64,4 +67,3 @@ impl Widget for Canvas {
         WidgetId::new("nptk-widgets", "Canvas")
     }
 }
-

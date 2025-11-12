@@ -1,13 +1,13 @@
 use crate::app::info::AppInfo;
 use crate::app::update::UpdateManager;
 use crate::config::MayConfig;
+use crate::vgi::GpuContext;
+use crate::vgi::{Renderer, Scene, Surface};
 use indexmap::IndexMap;
 use nptk_theme::theme::Theme;
 use std::sync::Arc;
 use std::time::Instant;
 use taffy::{NodeId, TaffyTree};
-use crate::vgi::GpuContext;
-use crate::vgi::{Renderer, Scene, Surface};
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowAttributes};

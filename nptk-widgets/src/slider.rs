@@ -1,3 +1,4 @@
+use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
@@ -11,7 +12,6 @@ use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::MouseButton;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
-use nalgebra::Vector2;
 
 /// A slider widget to control a floating point value between `0.0` and `1.0`.
 ///
@@ -78,7 +78,11 @@ impl Widget for Slider {
         let value = *self.value.get();
 
         // Background track color (unfilled portion)
-        let track_brush = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::Color)
+        let track_brush = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::Color,
+            )
             .map(|color| Brush::Solid(color))
             .unwrap_or_else(|| Brush::Solid(Color::from_rgb8(200, 200, 200)));
 
@@ -87,12 +91,17 @@ impl Widget for Slider {
         // Ideally we'd have a ThemeProperty for filled track, but for now use primary-dark directly
         let filled_track_color = Color::from_rgb8(157, 51, 213); // primary-dark
 
-        let thumb_brush = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBall)
+        let thumb_brush = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::ColorBall,
+            )
             .map(|color| Brush::Solid(color))
             .unwrap_or_else(|| Brush::Solid(Color::from_rgb8(100, 150, 255)));
 
         let track_height = 3.0; // Thin track
-        let track_center_y = (layout_node.layout.location.y + layout_node.layout.size.height / 2.0) as f64;
+        let track_center_y =
+            (layout_node.layout.location.y + layout_node.layout.size.height / 2.0) as f64;
         let track_top = track_center_y - track_height / 2.0;
         let track_bottom = track_center_y + track_height / 2.0;
 
@@ -110,7 +119,8 @@ impl Widget for Slider {
                     track_bottom,
                 ),
                 RoundedRectRadii::from_single_radius(track_height / 2.0),
-            ).to_path(0.1),
+            )
+            .to_path(0.1),
         );
 
         // Draw filled track (up to thumb position) using primary-dark
@@ -129,14 +139,17 @@ impl Widget for Slider {
                         track_bottom,
                     ),
                     RoundedRectRadii::from_single_radius(track_height / 2.0),
-                ).to_path(0.1),
+                )
+                .to_path(0.1),
             )
         }
 
         // Draw rectangular thumb (old-style UI slider)
         let thumb_width = 12.0;
         let thumb_height = 16.0;
-        let thumb_x = layout_node.layout.location.x as f64 + (layout_node.layout.size.width * value) as f64 - thumb_width / 2.0;
+        let thumb_x = layout_node.layout.location.x as f64
+            + (layout_node.layout.size.width * value) as f64
+            - thumb_width / 2.0;
         let thumb_y = track_center_y - thumb_height / 2.0;
 
         graphics.fill(
@@ -152,7 +165,8 @@ impl Widget for Slider {
                     thumb_y + thumb_height,
                 ),
                 RoundedRectRadii::from_single_radius(2.0), // Slightly rounded corners
-            ).to_path(0.1),
+            )
+            .to_path(0.1),
         );
     }
 

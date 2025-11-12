@@ -97,7 +97,7 @@
 //! [theme]
 //! default = "dark"
 //! fallback = "light"
-//! 
+//!
 //! [theme.custom]
 //! name = "my-custom-theme"
 //! path = "./themes/my-theme.toml"
@@ -125,8 +125,8 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::theme::Theme;
 use crate::manager::ThemeManager;
+use crate::theme::Theme;
 use crate::theme_resolver::SelfContainedThemeResolver;
 
 /// A theme configuration that can be loaded from various sources.
@@ -167,7 +167,7 @@ use crate::theme_resolver::SelfContainedThemeResolver;
 /// [theme]
 /// default = "dark"
 /// fallback = "light"
-/// 
+///
 /// [theme.custom]
 /// name = "my-custom-theme"
 /// path = "./themes/my-theme.toml"
@@ -346,7 +346,6 @@ impl ThemeConfig {
         Ok(config)
     }
 
-
     /// Set the default theme source.
     ///
     /// # Arguments
@@ -424,7 +423,9 @@ impl ThemeConfig {
     /// let config = ThemeConfig::from_env_or_default();
     /// let theme = config.resolve_theme().unwrap();
     /// ```
-    pub fn resolve_theme(&self) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
+    pub fn resolve_theme(
+        &self,
+    ) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
         let resolver = SelfContainedThemeResolver::new();
         resolver.resolve_from_config(self)
     }
@@ -443,7 +444,10 @@ impl ThemeConfig {
     /// let config = ThemeConfig::new();
     /// let theme = config.resolve_theme_source(&ThemeSource::Dark).unwrap();
     /// ```
-    pub fn resolve_theme_source(&self, source: &ThemeSource) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
+    pub fn resolve_theme_source(
+        &self,
+        source: &ThemeSource,
+    ) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
         let resolver = SelfContainedThemeResolver::new();
         resolver.resolve_theme_source(source)
     }
@@ -488,15 +492,14 @@ impl ThemeConfig {
             s if s.starts_with("custom:") => {
                 let name = s.strip_prefix("custom:").unwrap().to_string();
                 ThemeSource::Custom(name)
-            }
+            },
             s if s.starts_with("file:") => {
                 let path = s.strip_prefix("file:").unwrap().to_string();
                 ThemeSource::File(path)
-            }
+            },
             _ => ThemeSource::Light, // Default fallback
         }
     }
-
 }
 
 impl Default for ThemeConfig {
@@ -594,7 +597,8 @@ pub fn create_theme_config() -> ThemeConfig {
 ///
 /// let theme = resolve_theme_from_env().unwrap();
 /// ```
-pub fn resolve_theme_from_env() -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
+pub fn resolve_theme_from_env() -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>>
+{
     let config = ThemeConfig::from_env_or_default();
     config.resolve_theme()
 }

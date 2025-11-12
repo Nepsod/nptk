@@ -8,8 +8,8 @@ use crate::signal::memoized::MemoizedSignal;
 use crate::signal::rw::RwSignal;
 use crate::signal::state::StateSignal;
 use crate::signal::Signal;
-use std::sync::Arc;
 use crate::vgi::GpuContext;
+use std::sync::Arc;
 
 /// The application context for managing the application lifecycle.
 #[derive(Clone)]
@@ -45,7 +45,7 @@ impl AppContext {
     pub fn gpu_context(&self) -> Arc<GpuContext> {
         self.gpu_context.clone()
     }
-    
+
     /// Get the [GpuContext] of the application (backward compatibility alias).
     #[deprecated(note = "Use gpu_context() instead")]
     pub fn render_ctx(&self) -> Arc<GpuContext> {
@@ -58,7 +58,6 @@ impl AppContext {
     }
 
     /// Make the application exit by setting [Update::EXIT].
-
 
     pub fn exit(&self) {
         self.update.insert(Update::EXIT);

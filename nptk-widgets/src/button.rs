@@ -1,17 +1,17 @@
+use crate::theme_rendering::render_button_with_theme;
 use nptk_core::app::context::AppContext;
-use nptk_core::app::focus::{FocusId, FocusState, FocusableWidget, FocusProperties, FocusBounds};
+use nptk_core::app::focus::{FocusBounds, FocusId, FocusProperties, FocusState, FocusableWidget};
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout;
 use nptk_core::layout::{LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vg::kurbo::{Affine, Vec2};
-use nptk_core::vgi::{Graphics, vello_vg::VelloGraphics};
+use nptk_core::vgi::{vello_vg::VelloGraphics, Graphics};
 use nptk_core::widget::{BoxedWidget, Widget, WidgetChildExt, WidgetLayoutExt};
-use nptk_core::window::{ElementState, MouseButton, KeyCode, PhysicalKey};
+use nptk_core::window::{ElementState, KeyCode, MouseButton, PhysicalKey};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
-use crate::theme_rendering::render_button_with_theme;
 
 /// An interactive area with a child widget that runs a closure when pressed.
 ///
@@ -96,7 +96,8 @@ impl Widget for Button {
         }
 
         // Use centralized theme rendering (all themes support it via supertrait)
-        let is_focused = matches!(self.focus_state, FocusState::Focused | FocusState::Gained) && self.focus_via_keyboard;
+        let is_focused = matches!(self.focus_state, FocusState::Focused | FocusState::Gained)
+            && self.focus_via_keyboard;
         render_button_with_theme(
             theme,
             &self.widget_id(),
@@ -107,7 +108,7 @@ impl Widget for Button {
             layout_node,
             graphics,
         );
-        
+
         // Render child widget
         {
             theme.globals_mut().invert_text_color = true;
@@ -165,12 +166,14 @@ impl Widget for Button {
                 },
             };
             manager.register_widget(focusable_widget);
-            
+
             // Update our focus state
             let new_focus_state = manager.get_focus_state(self.focus_id);
-            
+
             // Track if focus was gained via keyboard using global state
-            if matches!(new_focus_state, FocusState::Gained) && !matches!(old_focus_state, FocusState::Focused) {
+            if matches!(new_focus_state, FocusState::Gained)
+                && !matches!(old_focus_state, FocusState::Focused)
+            {
                 // Check if the focus manager indicates this was a keyboard focus change
                 self.focus_via_keyboard = manager.was_last_focus_via_keyboard();
             } else if matches!(new_focus_state, FocusState::Lost | FocusState::None) {
@@ -179,7 +182,7 @@ impl Widget for Button {
                 // Keep the existing keyboard focus state if we're staying focused
                 // This ensures the border stays visible while navigating with Tab
             }
-            
+
             self.focus_state = new_focus_state;
         }
 
@@ -189,25 +192,27 @@ impl Widget for Button {
                 match key_event.state {
                     ElementState::Pressed => {
                         match key_event.physical_key {
-                            PhysicalKey::Code(KeyCode::Space) | PhysicalKey::Code(KeyCode::Enter) => {
+                            PhysicalKey::Code(KeyCode::Space)
+                            | PhysicalKey::Code(KeyCode::Enter) => {
                                 // Trigger button press via keyboard
                                 update |= *self.on_pressed.get();
                                 self.state = ButtonState::Pressed;
-                            }
-                            _ => {}
+                            },
+                            _ => {},
                         }
-                    }
+                    },
                     ElementState::Released => {
                         match key_event.physical_key {
-                            PhysicalKey::Code(KeyCode::Space) | PhysicalKey::Code(KeyCode::Enter) => {
+                            PhysicalKey::Code(KeyCode::Space)
+                            | PhysicalKey::Code(KeyCode::Enter) => {
                                 // Reset button state after keyboard release
                                 if self.state == ButtonState::Pressed {
                                     self.state = ButtonState::Idle;
                                 }
-                            }
-                            _ => {}
+                            },
+                            _ => {},
                         }
-                    }
+                    },
                 }
             }
         }
@@ -266,7 +271,6 @@ impl Widget for Button {
         WidgetId::new("nptk-widgets", "Button")
     }
 }
-
 
 /// The internal state of the button.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]

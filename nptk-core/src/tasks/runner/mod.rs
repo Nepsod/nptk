@@ -1,7 +1,7 @@
 //! Task runner implementations.
-use std::future::Future;
 #[cfg(feature = "tokio-runner")]
 use self::tokio_runner::TokioRunner;
+use std::future::Future;
 
 /// An abstraction over a task runner.
 #[derive(Debug)]
@@ -25,7 +25,7 @@ impl TaskRunner {
             TaskRunner::None => {
                 // Since there is no runtime, we can just block on the future using pollster.
                 pollster::block_on(fut)
-            }
+            },
         }
     }
 
@@ -40,7 +40,7 @@ impl TaskRunner {
             TaskRunner::Tokio(runner) => runner.spawn(fut).await,
             TaskRunner::None => {
                 panic!("No task runner initialized! Please specify a tasks configuration in `MayConfig`.")
-            }
+            },
         }
     }
 
@@ -55,7 +55,7 @@ impl TaskRunner {
             TaskRunner::Tokio(runner) => runner.spawn_blocking(fut).await,
             TaskRunner::None => {
                 panic!("No task runner initialized! Please specify a tasks configuration in `MayConfig`.")
-            }
+            },
         }
     }
 }

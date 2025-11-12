@@ -20,7 +20,6 @@ impl Application for MyApp {
             ..Default::default()
         })
     }
-
 }
 
 fn main() {

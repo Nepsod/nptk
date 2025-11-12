@@ -6,13 +6,17 @@
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex};
 
-use raw_window_handle::{RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle};
+use raw_window_handle::{
+    RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle,
+};
 use vello::wgpu::{self, SurfaceTexture};
 
-use wayland_client::protocol::{wl_compositor, wl_keyboard, wl_pointer, wl_surface, wl_shm};
+use wayland_client::protocol::{
+    wl_compositor, wl_keyboard, wl_pointer, wl_region, wl_shm, wl_surface,
+};
 use wayland_client::{Connection, Proxy};
-use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel};
 use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1;
+use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel};
 use wayland_protocols_plasma::server_decoration::client::org_kde_kwin_server_decoration;
 
 use super::surface::SurfaceTrait;
@@ -28,6 +32,7 @@ struct SurfaceState {
     frame_callback: Option<wayland_client::protocol::wl_callback::WlCallback>,
     first_frame_seen: bool,
     input_events: Vec<InputEvent>,
+    first_configure_acked: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -38,17 +43,35 @@ pub(crate) enum InputEvent {
 
 #[derive(Debug, Clone)]
 pub(crate) enum PointerEvent {
-    Enter { surface_x: f64, surface_y: f64 },
+    Enter {
+        surface_x: f64,
+        surface_y: f64,
+    },
     Leave,
-    Motion { surface_x: f64, surface_y: f64 },
-    Button { button: u32, state: wl_pointer::ButtonState },
-    Axis { horizontal: Option<f64>, vertical: Option<f64> },
+    Motion {
+        surface_x: f64,
+        surface_y: f64,
+    },
+    Button {
+        button: u32,
+        state: wl_pointer::ButtonState,
+    },
+    Axis {
+        horizontal: Option<f64>,
+        vertical: Option<f64>,
+    },
     AxisSource {
         source: wl_pointer::AxisSource,
     },
     AxisStop,
-    AxisDiscrete { axis: wl_pointer::Axis, discrete: i32 },
-    AxisValue120 { axis: wl_pointer::Axis, value120: i32 },
+    AxisDiscrete {
+        axis: wl_pointer::Axis,
+        discrete: i32,
+    },
+    AxisValue120 {
+        axis: wl_pointer::Axis,
+        value120: i32,
+    },
     Frame,
 }
 
@@ -57,14 +80,20 @@ pub(crate) enum PointerEvent {
 pub(crate) enum KeyboardEvent {
     Enter,
     Leave,
-    Key { keycode: u32, state: wl_keyboard::KeyState },
+    Key {
+        keycode: u32,
+        state: wl_keyboard::KeyState,
+    },
     Modifiers {
         mods_depressed: u32,
         mods_latched: u32,
         mods_locked: u32,
         group: u32,
     },
-    RepeatInfo { rate: i32, delay: i32 },
+    RepeatInfo {
+        rate: i32,
+        delay: i32,
+    },
 }
 
 pub(crate) struct WaylandSurfaceInner {
@@ -141,33 +170,42 @@ impl WaylandSurfaceInner {
     pub(crate) fn handle_configure_after_ack(&self, serial: u32) {
         let xdg_id = self.xdg_surface.id().protocol_id();
         let wl_id = self.wl_surface.id().protocol_id();
-        log::debug!("Wayland xdg_surface post-ack: serial={} on xdg_surface#{}", serial, xdg_id);
-        eprintln!("[NPTK/Wayland] CONFIGURE(post-ack): serial={} on xdg_surface#{} wl_surface#{}", serial, xdg_id, wl_id);
+        log::debug!(
+            "Wayland xdg_surface post-ack: serial={} on xdg_surface#{}",
+            serial,
+            xdg_id
+        );
+        eprintln!(
+            "[NPTK/Wayland] CONFIGURE(post-ack): serial={} on xdg_surface#{} wl_surface#{}",
+            serial, xdg_id, wl_id
+        );
         let mut state = self.state.lock().unwrap();
 
-        let mut size = state
-            .pending_size
-            .take()
-            .unwrap_or_else(|| state.size);
+        let mut size = state.pending_size.take().unwrap_or_else(|| state.size);
 
         // Fallback if compositor reports 0x0 - choose a default to ensure mapping
         if size.0 == 0 || size.1 == 0 {
             size = (800, 600);
-            eprintln!("[NPTK/Wayland] CONFIGURE: got 0x0; using fallback {}x{}", size.0, size.1);
+            eprintln!(
+                "[NPTK/Wayland] CONFIGURE: got 0x0; using fallback {}x{}",
+                size.0, size.1
+            );
         }
         let width = size.0.max(1);
         let height = size.1.max(1);
 
-        eprintln!("[NPTK/Wayland] GEOMETRY {}", format!("{}x{}", width, height));
+        eprintln!(
+            "[NPTK/Wayland] GEOMETRY {}",
+            format!("{}x{}", width, height)
+        );
         self.xdg_surface
             .set_window_geometry(0, 0, width as i32, height as i32);
 
         // Update opaque region to match the new buffer size so compositors can treat it as opaque.
-        let region = self
-            .compositor
-            .create_region(&self.queue_handle, ());
+        let region: wl_region::WlRegion = self.compositor.create_region(&self.queue_handle, ());
         region.add(0, 0, width as i32, height as i32);
         self.wl_surface.set_opaque_region(Some(&region));
+        region.destroy();
 
         // Immediately present a first buffer to guarantee mapping:
         // - Create a small ARGB8888 SHM buffer with exact (width,height)
@@ -191,6 +229,7 @@ impl WaylandSurfaceInner {
         state.size = (width, height);
         state.configured = true;
         state.needs_redraw = true;
+        state.first_configure_acked = true;
         log::debug!(
             "Wayland configure applied: size={}x{}, set configured=true, needs_redraw=true",
             width,
@@ -229,9 +268,11 @@ impl WaylandSurfaceInner {
         use std::os::fd::AsFd;
         let stride = (width * 4) as i32;
         let size_bytes = (stride as u32) * height;
-        eprintln!("[NPTK/Wayland] ATTACH: creating SHM buffer {}x{} stride {}", width, height, stride);
-        let mut file =
-            tempfile::tempfile().map_err(|e| format!("tempfile failed: {:?}", e))?;
+        eprintln!(
+            "[NPTK/Wayland] ATTACH: creating SHM buffer {}x{} stride {}",
+            width, height, stride
+        );
+        let mut file = tempfile::tempfile().map_err(|e| format!("tempfile failed: {:?}", e))?;
         file.set_len(size_bytes as u64)
             .map_err(|e| format!("ftruncate failed: {:?}", e))?;
 
@@ -266,8 +307,8 @@ impl WaylandSurfaceInner {
         let _ = wl_surface.frame(queue_handle, surface_key);
         eprintln!("[NPTK/Wayland] COMMIT");
         wl_surface.commit();
-        eprintln!("[NPTK/Wayland] FLUSH (after COMMIT)");
-        let _ = WaylandClient::instance().flush();
+        eprintln!("[NPTK/Wayland] FLUSH(conn) (after COMMIT)");
+        let _ = WaylandClient::instance().connection().flush();
         Ok(())
     }
 
@@ -284,9 +325,7 @@ impl WaylandSurfaceInner {
 
     fn ensure_frame_callback_locked(&self, state: &mut SurfaceState) {
         if state.frame_callback.is_none() {
-            let callback = self
-                .wl_surface
-                .frame(&self.queue_handle, self.surface_key);
+            let callback = self.wl_surface.frame(&self.queue_handle, self.surface_key);
             state.frame_callback = Some(callback);
             let _ = WaylandClient::instance().flush();
             log::trace!("Registered wl_surface.frame callback");
@@ -312,6 +351,10 @@ impl WaylandSurfaceInner {
         status
     }
 
+    pub(crate) fn has_acknowledged_initial_configure(&self) -> bool {
+        let state = self.state.lock().unwrap();
+        state.first_configure_acked
+    }
 }
 
 struct SurfaceStatus {
@@ -345,14 +388,33 @@ impl WaylandSurface {
         let client = WaylandClient::instance();
         let globals = client.globals();
         let queue_handle = client.queue_handle();
+        eprintln!(
+            "[NPTK/Wayland] WaylandSurface::new queue_handle_ptr={:p}",
+            &queue_handle
+        );
 
-        let wl_surface: wl_surface::WlSurface = globals.compositor.create_surface(&queue_handle, ());
+        let wl_surface: wl_surface::WlSurface =
+            globals.compositor.create_surface(&queue_handle, ());
         let surface_key = wl_surface.id().protocol_id();
+        eprintln!(
+            "[NPTK/Wayland] CREATE wl_surface#{} (surface_key={})",
+            wl_surface.id().protocol_id(),
+            surface_key
+        );
         let xdg_surface = globals
             .wm_base
             .get_xdg_surface(&wl_surface, &queue_handle, surface_key);
-        let xdg_toplevel =
-            xdg_surface.get_toplevel(&queue_handle, surface_key);
+        eprintln!(
+            "[NPTK/Wayland] CREATE xdg_surface#{} (for wl_surface#{})",
+            xdg_surface.id().protocol_id(),
+            wl_surface.id().protocol_id()
+        );
+        let xdg_toplevel = xdg_surface.get_toplevel(&queue_handle, surface_key);
+        eprintln!(
+            "[NPTK/Wayland] CREATE xdg_toplevel#{} (for xdg_surface#{})",
+            xdg_toplevel.id().protocol_id(),
+            xdg_surface.id().protocol_id()
+        );
 
         xdg_toplevel.set_title(title.to_owned());
         xdg_toplevel.set_app_id("nptk".to_owned());
@@ -385,12 +447,18 @@ impl WaylandSurface {
             let _ = client.flush();
         }
         client.register_surface(&inner);
-        
+
         // Commit the surface after registering so we can handle configure events
         wl_surface.commit();
-        // Flush immediately so the compositor sees the commit
-        client.flush()?;
-        
+        // Flush the Connection (not the event queue) so compositor sees the commit
+        let _ = client.connection().flush();
+        eprintln!(
+            "[NPTK/Wayland] INITIAL COMMIT (no buffer) on wl_surface#{}",
+            wl_surface.id().protocol_id()
+        );
+
+        client.wait_for_initial_configure(surface_key)?;
+
         let connection = client.connection();
         let (wgpu_surface, format) =
             Self::create_wgpu_surface(&connection, &wl_surface, gpu_context)?;
@@ -414,12 +482,10 @@ impl WaylandSurface {
         wl_surface: &wl_surface::WlSurface,
         gpu_context: &crate::vgi::GpuContext,
     ) -> Result<(Option<wgpu::Surface<'static>>, wgpu::TextureFormat), String> {
-        let surface_ptr =
-            NonNull::new(wl_surface.id().as_ptr() as *mut std::ffi::c_void)
-                .ok_or_else(|| "Invalid Wayland surface pointer".to_string())?;
-        let display_ptr =
-            NonNull::new(connection.display().id().as_ptr() as *mut std::ffi::c_void)
-                .ok_or_else(|| "Invalid Wayland display pointer".to_string())?;
+        let surface_ptr = NonNull::new(wl_surface.id().as_ptr() as *mut std::ffi::c_void)
+            .ok_or_else(|| "Invalid Wayland surface pointer".to_string())?;
+        let display_ptr = NonNull::new(connection.display().id().as_ptr() as *mut std::ffi::c_void)
+            .ok_or_else(|| "Invalid Wayland display pointer".to_string())?;
 
         let raw_window = WaylandWindowHandle::new(surface_ptr);
         let raw_display = WaylandDisplayHandle::new(display_ptr);
@@ -438,8 +504,7 @@ impl WaylandSurface {
 
 impl Drop for WaylandSurface {
     fn drop(&mut self) {
-        self.client
-            .unregister_surface(self.inner.surface_key());
+        self.client.unregister_surface(self.inner.surface_key());
     }
 }
 
@@ -463,11 +528,11 @@ impl SurfaceTrait for WaylandSurface {
         log::debug!("Wayland present(): post-present maintenance");
         self.inner.after_present();
         self.needs_redraw = false;
-        // Flush immediately so the compositor sees the new buffer
-        self.client.flush()?;
-        // Nudge delivery of the first frame callback to avoid startup stalls.
-        if !self.first_frame_seen() {
-            let _ = self.client.roundtrip();
+        if let Err(err) = self.client.connection().flush() {
+            eprintln!(
+                "[NPTK/Wayland] ERROR flushing conn after present: {:?}",
+                err
+            );
         }
         Ok(())
     }
@@ -493,12 +558,20 @@ impl SurfaceTrait for WaylandSurface {
     }
 
     fn dispatch_events(&mut self) -> Result<bool, String> {
+        eprintln!(
+            "[NPTK/Wayland] WaylandSurface::dispatch_events called (surface_key={})",
+            self.inner.surface_key()
+        );
         // Drive Wayland event processing on the owning thread.
         self.client.dispatch_pending()?;
 
         let status = self.inner.take_status();
         if self.size != status.size {
-            log::debug!("Wayland dispatch: size changed to {}x{}", status.size.0, status.size.1);
+            log::debug!(
+                "Wayland dispatch: size changed to {}x{}",
+                status.size.0,
+                status.size.1
+            );
         }
         self.size = status.size;
         if status.configured {
@@ -506,7 +579,9 @@ impl SurfaceTrait for WaylandSurface {
             self.first_configure_seen = true;
             self.is_configured = false;
             log::debug!("Wayland dispatch: configured event received; pending_reconfigure=true");
-            eprintln!("[NPTK/Wayland] dispatch: configured event received; pending_reconfigure=true");
+            eprintln!(
+                "[NPTK/Wayland] dispatch: configured event received; pending_reconfigure=true"
+            );
         }
         if status.needs_redraw {
             self.needs_redraw = true;
@@ -610,4 +685,3 @@ impl WaylandSurface {
         self.inner.prepare_frame_callback();
     }
 }
-

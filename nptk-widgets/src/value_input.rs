@@ -1,22 +1,22 @@
 use std::time::Instant;
 
 use nptk_core::app::context::AppContext;
-use nptk_core::app::focus::{FocusId, FocusState, FocusProperties, FocusBounds, FocusableWidget};
-use nptk_core::app::{info::AppInfo, font_ctx::FontContext};
+use nptk_core::app::focus::{FocusBounds, FocusId, FocusProperties, FocusState, FocusableWidget};
 use nptk_core::app::update::Update;
+use nptk_core::app::{font_ctx::FontContext, info::AppInfo};
 use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
-use nptk_core::signal::{MaybeSignal, Signal, state::StateSignal};
+use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::text_input::TextBuffer;
 use nptk_core::text_render::TextRenderContext;
 use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vg::Scene;
 use nptk_core::vgi::Graphics;
-use std::ops::Deref;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
-use nptk_core::window::{ElementState, KeyCode, PhysicalKey, MouseButton, Ime};
+use nptk_core::window::{ElementState, Ime, KeyCode, MouseButton, PhysicalKey};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use std::ops::Deref;
 
 /// A numeric input widget with validation and constraints.
 ///
@@ -161,7 +161,7 @@ impl ValueInput {
     /// Parse and validate text input, update value if valid.
     fn validate_and_update(&mut self) -> bool {
         let text = self.buffer.text().trim();
-        
+
         if text.is_empty() {
             self.is_valid = true;
             return true;
@@ -190,11 +190,11 @@ impl ValueInput {
                 self.value.set(parsed_value);
                 self.is_valid = true;
                 true
-            }
+            },
             Err(_) => {
                 self.is_valid = false;
                 false
-            }
+            },
         }
     }
 
@@ -202,7 +202,7 @@ impl ValueInput {
     pub fn increment(&mut self) {
         let current = *self.value.get();
         let new_value = current + self.step;
-        
+
         let constrained_value = if let Some(max) = self.max_value {
             new_value.min(max)
         } else {
@@ -217,7 +217,7 @@ impl ValueInput {
     pub fn decrement(&mut self) {
         let current = *self.value.get();
         let new_value = current - self.step;
-        
+
         let constrained_value = if let Some(min) = self.min_value {
             new_value.max(min)
         } else if !self.allow_negative {
@@ -235,29 +235,34 @@ impl ValueInput {
         if text.is_empty() {
             return 0.0;
         }
-        
+
         // Use TextRenderContext to get accurate measurements from Parley
         // This handles all Unicode characters, emojis, and different scripts properly
-        self.text_render_context.measure_text_width(&mut info.font_context, text, font_size)
+        self.text_render_context
+            .measure_text_width(&mut info.font_context, text, font_size)
     }
 
     /// Calculate the X position of the cursor based on its character position.
-    fn cursor_x_position(&self, cursor_pos: usize, layout_node: &LayoutNode, info: &mut AppInfo) -> f32 {
+    fn cursor_x_position(
+        &self,
+        cursor_pos: usize,
+        layout_node: &LayoutNode,
+        info: &mut AppInfo,
+    ) -> f32 {
         let font_size = 16.0f32; // Match TextInput font size
         let text_start_x = layout_node.layout.location.x + 8.0; // Padding
         let text = self.buffer.text();
-        
+
         if cursor_pos == 0 || text.is_empty() {
             return text_start_x;
         }
-        
+
         // Calculate actual width of text up to cursor position
         let text_up_to_cursor: String = text.chars().take(cursor_pos).collect();
         let actual_width = self.calculate_text_width(&text_up_to_cursor, font_size, info);
-        
+
         text_start_x + actual_width
     }
-
 
     /// Check if this is a double-click and handle accordingly.
     fn handle_double_click(&mut self, click_pos: usize, _layout_node: &LayoutNode) -> bool {
@@ -271,7 +276,7 @@ impl ValueInput {
 
         if is_double_click && is_same_position {
             let text = self.buffer.text();
-            
+
             if text.is_empty() {
                 // Double-click on empty field - do nothing (no text to select)
                 return false;
@@ -282,7 +287,7 @@ impl ValueInput {
                 self.buffer.cursor.selection_start = Some(0);
                 self.buffer.cursor.position = text_len;
             }
-            
+
             self.cursor_blink_timer = Instant::now();
             self.cursor_visible = true;
             return true;
@@ -309,14 +314,19 @@ impl ValueInput {
         // Simple character-based positioning (approximate)
         let char_width = font_size * 0.6; // Approximate character width
         let char_pos = (relative_x / char_width) as usize;
-        
+
         // Clamp to text length
         let text_len = text.chars().count();
         char_pos.min(text_len)
     }
 
     /// Calculate cursor position from mouse coordinates.
-    fn cursor_position_from_mouse(&self, mouse_x: f64, widget_left: f64, _font_ctx: &FontContext) -> usize {
+    fn cursor_position_from_mouse(
+        &self,
+        mouse_x: f64,
+        widget_left: f64,
+        _font_ctx: &FontContext,
+    ) -> usize {
         let text = self.buffer.text();
         if text.is_empty() {
             return 0;
@@ -325,15 +335,15 @@ impl ValueInput {
         let _font_size = 16.0;
         // Use approximate character width for text measurement
         // TODO: Implement proper text measurement when needed
-        
+
         // For now, use a simple approximation based on character count
         // TODO: Implement proper glyph-based cursor positioning
         let relative_x = mouse_x - widget_left - 8.0; // Account for padding
-        
+
         // Improved approximation using character analysis
         let avg_char_width = 16.0 * 0.6; // Use fixed font size for approximation
         let mut current_x = 0.0;
-        
+
         for (i, c) in text.chars().enumerate() {
             let char_width = match c {
                 'i' | 'l' | 'I' | '1' | '|' => avg_char_width * 0.5,
@@ -343,13 +353,13 @@ impl ValueInput {
                 '0'..='9' => avg_char_width * 0.8, // Numbers are typically narrower
                 _ => avg_char_width,
             };
-            
+
             if relative_x <= current_x + char_width / 2.0 {
                 return i;
             }
             current_x += char_width;
         }
-        
+
         // If we get here, the cursor is at the end
         text.chars().count()
     }
@@ -382,28 +392,52 @@ impl Widget for ValueInput {
         }
 
         let is_focused = matches!(self.focus_state, FocusState::Focused | FocusState::Gained);
-        
+
         // Get colors from theme with proper fallbacks
         let background_color = if is_focused {
-            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackgroundFocused)
+            theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorBackgroundFocused,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(100, 150, 255))
         } else {
-            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackground)
+            theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorBackground,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(255, 255, 255))
         };
 
         let border_color = if !self.is_valid {
-            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorderError)
+            theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorBorderError,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(255, 0, 0)) // Red for error
         } else if is_focused {
-            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorderFocused)
+            theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorBorderFocused,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(100, 150, 255))
         } else {
-            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorder)
+            theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorBorder,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)) // Light gray border
         };
 
-        let text_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+        let text_color = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::ColorText,
+            )
             .unwrap_or_else(|| Color::from_rgb8(0, 0, 0));
 
         // Draw background and border
@@ -444,9 +478,9 @@ impl Widget for ValueInput {
         };
 
         let font_size = 16.0f32; // Match TextInput font size
-        // Use approximate character width for text measurement
-        // TODO: Implement proper text measurement when needed
-        
+                                 // Use approximate character width for text measurement
+                                 // TODO: Implement proper text measurement when needed
+
         // TODO: Fix the FileRef lifetime issue
         // let location = font_ref.axes().location::<&[VariationSetting; 0]>(&[]);
         // let glyph_metrics = font_ref.glyph_metrics(Size::new(font_size), &location);
@@ -455,11 +489,16 @@ impl Widget for ValueInput {
         // Render text selection highlight if focused and has selection (same as TextInput)
         if let Some(selection_range) = self.buffer.cursor().selection() {
             // Use a very visible selection color
-            let selection_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorSelection)
+            let selection_color = theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorSelection,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(255, 100, 100)); // Bright red for maximum visibility
 
             // Calculate selection bounds using the same method as cursor positioning
-            let selection_start_x = self.cursor_x_position(selection_range.start, layout_node, info);
+            let selection_start_x =
+                self.cursor_x_position(selection_range.start, layout_node, info);
             let selection_end_x = self.cursor_x_position(selection_range.end, layout_node, info);
 
             // Only draw selection if there's actually a range (start != end)
@@ -474,8 +513,11 @@ impl Widget for ValueInput {
                         selection_start_x as f64,
                         layout_node.layout.location.y as f64 + 4.0,
                         selection_end_x as f64,
-                        layout_node.layout.location.y as f64 + layout_node.layout.size.height as f64 - 4.0,
-                    ).to_path(0.1),
+                        layout_node.layout.location.y as f64
+                            + layout_node.layout.size.height as f64
+                            - 4.0,
+                    )
+                    .to_path(0.1),
                 );
             }
         }
@@ -483,7 +525,11 @@ impl Widget for ValueInput {
         if !display_text.is_empty() {
             // Use the TextRenderContext for proper text rendering
             let text_color = if self.buffer.text().is_empty() {
-                theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorPlaceholder)
+                theme
+                    .get_property(
+                        self.widget_id(),
+                        &nptk_theme::properties::ThemeProperty::ColorPlaceholder,
+                    )
                     .unwrap_or_else(|| Color::from_rgb8(150, 150, 150))
             } else {
                 text_color
@@ -494,12 +540,12 @@ impl Widget for ValueInput {
                 layout_node.layout.location.x as f64 + 8.0, // Left padding
                 layout_node.layout.location.y as f64 + 4.5, // Position text within the input field (same as TextInput)
             ));
-            
+
             self.text_render_context.render_text(
                 &mut info.font_context,
                 graphics,
                 &display_text,
-                None, // No specific font, use default
+                None,      // No specific font, use default
                 font_size, // Use the font_size variable
                 Brush::Solid(text_color),
                 transform,
@@ -518,13 +564,17 @@ impl Widget for ValueInput {
             }
 
             if self.cursor_visible {
-                let cursor_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorCursor)
+                let cursor_color = theme
+                    .get_property(
+                        self.widget_id(),
+                        &nptk_theme::properties::ThemeProperty::ColorCursor,
+                    )
                     .unwrap_or_else(|| Color::BLACK);
-                
+
                 // Calculate cursor position using the same method as TextInput
                 let cursor_pos = self.buffer.cursor().position;
                 let cursor_x = self.cursor_x_position(cursor_pos, layout_node, info);
-                
+
                 let cursor_y = layout_node.layout.location.y + 4.0;
                 let cursor_height = layout_node.layout.size.height - 8.0;
 
@@ -538,7 +588,8 @@ impl Widget for ValueInput {
                         cursor_y as f64,
                         cursor_x as f64,
                         (cursor_y + cursor_height) as f64,
-                    ).to_path(0.1),
+                    )
+                    .to_path(0.1),
                 );
             }
         }
@@ -570,13 +621,13 @@ impl Widget for ValueInput {
             let new_focus_state = manager.get_focus_state(self.focus_id);
             if new_focus_state != self.focus_state {
                 self.focus_state = new_focus_state;
-                
+
                 if matches!(self.focus_state, FocusState::Gained) {
                     self.focus_via_keyboard = manager.was_last_focus_via_keyboard();
                     self.cursor_blink_timer = Instant::now();
                     self.cursor_visible = true;
                 }
-                
+
                 update |= Update::DRAW;
             }
         }
@@ -590,8 +641,11 @@ impl Widget for ValueInput {
             for ime_event in &info.ime_events {
                 if let Ime::Commit(text) = ime_event {
                     // Filter input for numeric values
-                    let filtered_text: String = text.chars()
-                        .filter(|ch| ch.is_ascii_digit() || *ch == '.' || (self.allow_negative && *ch == '-'))
+                    let filtered_text: String = text
+                        .chars()
+                        .filter(|ch| {
+                            ch.is_ascii_digit() || *ch == '.' || (self.allow_negative && *ch == '-')
+                        })
                         .collect();
                     if !filtered_text.is_empty() {
                         self.buffer.insert(&filtered_text);
@@ -607,58 +661,58 @@ impl Widget for ValueInput {
                 if key_event.state == ElementState::Pressed {
                     let shift_pressed = info.modifiers.shift_key();
                     let ctrl_pressed = info.modifiers.control_key();
-                    
+
                     match key_event.physical_key {
                         PhysicalKey::Code(KeyCode::Backspace) => {
                             self.buffer.delete_backward();
                             text_changed = true;
                             self.cursor_blink_timer = Instant::now();
                             self.cursor_visible = true;
-                        }
+                        },
                         PhysicalKey::Code(KeyCode::Delete) => {
                             self.buffer.delete_forward();
                             text_changed = true;
                             self.cursor_blink_timer = Instant::now();
                             self.cursor_visible = true;
-                        }
+                        },
                         PhysicalKey::Code(KeyCode::ArrowLeft) => {
                             self.buffer.move_left(shift_pressed);
                             self.cursor_blink_timer = Instant::now();
                             self.cursor_visible = true;
                             update |= Update::DRAW;
-                        }
+                        },
                         PhysicalKey::Code(KeyCode::ArrowRight) => {
                             self.buffer.move_right(shift_pressed);
                             self.cursor_blink_timer = Instant::now();
                             self.cursor_visible = true;
                             update |= Update::DRAW;
-                        }
+                        },
                         PhysicalKey::Code(KeyCode::ArrowUp) => {
                             if !shift_pressed {
                                 self.increment();
                                 text_changed = true;
                                 update |= Update::DRAW;
                             }
-                        }
+                        },
                         PhysicalKey::Code(KeyCode::ArrowDown) => {
                             if !shift_pressed {
                                 self.decrement();
                                 text_changed = true;
                                 update |= Update::DRAW;
                             }
-                        }
+                        },
                         PhysicalKey::Code(KeyCode::Home) => {
                             self.buffer.move_to_start(shift_pressed);
                             self.cursor_blink_timer = Instant::now();
                             self.cursor_visible = true;
                             update |= Update::DRAW;
-                        }
+                        },
                         PhysicalKey::Code(KeyCode::End) => {
                             self.buffer.move_to_end(shift_pressed);
                             self.cursor_blink_timer = Instant::now();
                             self.cursor_visible = true;
                             update |= Update::DRAW;
-                        }
+                        },
                         PhysicalKey::Code(KeyCode::KeyA) if ctrl_pressed => {
                             // Select all text
                             let text_len = self.buffer.text().len();
@@ -667,17 +721,17 @@ impl Widget for ValueInput {
                             self.cursor_blink_timer = Instant::now();
                             self.cursor_visible = true;
                             update |= Update::DRAW;
-                        }
+                        },
                         PhysicalKey::Code(KeyCode::KeyC) if ctrl_pressed => {
                             // TODO: Copy to clipboard
                             if let Some(selected) = self.buffer.selected_text() {
                                 println!("Copy: {}", selected);
                             }
-                        }
+                        },
                         PhysicalKey::Code(KeyCode::KeyV) if ctrl_pressed => {
                             // TODO: Paste from clipboard
                             println!("Paste requested");
-                        }
+                        },
                         PhysicalKey::Code(KeyCode::KeyX) if ctrl_pressed => {
                             // TODO: Cut to clipboard
                             if let Some(selected) = self.buffer.selected_text() {
@@ -688,24 +742,25 @@ impl Widget for ValueInput {
                                     text_changed = true;
                                 }
                             }
-                        }
+                        },
                         PhysicalKey::Code(KeyCode::Enter) => {
                             // Validate and finalize input
                             self.validate_and_update();
                             self.sync_text_from_value();
                             update |= Update::DRAW;
-                        }
+                        },
                         _ => {
                             // Character input is handled via IME events above
                             if let Some(text) = &key_event.text {
-                                let clean_text: String = text.chars()
+                                let clean_text: String = text
+                                    .chars()
                                     .filter(|c| {
-                                        c.is_ascii_digit() || 
-                                        (*c == '.' && self.decimal_places > 0) ||
-                                        (*c == '-' && self.allow_negative)
+                                        c.is_ascii_digit()
+                                            || (*c == '.' && self.decimal_places > 0)
+                                            || (*c == '-' && self.allow_negative)
                                     })
                                     .collect();
-                                
+
                                 if !clean_text.is_empty() {
                                     self.buffer.insert(&clean_text);
                                     text_changed = true;
@@ -713,7 +768,7 @@ impl Widget for ValueInput {
                                     self.cursor_visible = true;
                                 }
                             }
-                        }
+                        },
                     }
                 }
             }
@@ -737,13 +792,19 @@ impl Widget for ValueInput {
                     if *button == MouseButton::Left {
                         match state {
                             ElementState::Pressed => {
-                                if matches!(self.focus_state, FocusState::Focused | FocusState::Gained) {
+                                if matches!(
+                                    self.focus_state,
+                                    FocusState::Focused | FocusState::Gained
+                                ) {
                                     // Set focus first
                                     context.set_focus(Some(self.focus_id));
-                                    
+
                                     // Handle mouse click in bounds
-                                    let click_pos = self.cursor_position_from_mouse_simple(cursor_pos.x as f32, layout);
-                                    
+                                    let click_pos = self.cursor_position_from_mouse_simple(
+                                        cursor_pos.x as f32,
+                                        layout,
+                                    );
+
                                     // Check for double-click first
                                     if self.handle_double_click(click_pos, layout) {
                                         // Double-click handled - selection already set, don't modify cursor position or drag
@@ -756,28 +817,31 @@ impl Widget for ValueInput {
                                         self.buffer.cursor.position = click_pos;
                                         self.mouse_down = true;
                                         self.drag_start_pos = Some(click_pos);
-                                        
+
                                         // Reset cursor blink
                                         self.cursor_blink_timer = Instant::now();
                                         self.cursor_visible = true;
                                         update |= Update::DRAW;
                                     }
                                 }
-                            }
+                            },
                             ElementState::Released => {
                                 // Always handle mouse release, regardless of bounds
                                 self.mouse_down = false;
                                 self.drag_start_pos = None;
-                            }
+                            },
                         }
                     }
                 }
 
                 // Handle mouse drag for selection (when in bounds and dragging)
-                if self.mouse_down && matches!(self.focus_state, FocusState::Focused | FocusState::Gained) {
+                if self.mouse_down
+                    && matches!(self.focus_state, FocusState::Focused | FocusState::Gained)
+                {
                     if let Some(start_pos) = self.drag_start_pos {
-                        let current_pos = self.cursor_position_from_mouse_simple(cursor_pos.x as f32, layout);
-                        
+                        let current_pos =
+                            self.cursor_position_from_mouse_simple(cursor_pos.x as f32, layout);
+
                         if current_pos != self.buffer.cursor.position {
                             // Update selection
                             self.buffer.cursor.selection_start = Some(start_pos);
@@ -786,13 +850,15 @@ impl Widget for ValueInput {
                         }
                     }
                 }
-            } else if self.mouse_down && matches!(self.focus_state, FocusState::Focused | FocusState::Gained) {
+            } else if self.mouse_down
+                && matches!(self.focus_state, FocusState::Focused | FocusState::Gained)
+            {
                 // Mouse is outside bounds but we're still dragging - extend selection
                 if let Some(start_pos) = self.drag_start_pos {
                     let text_len = self.buffer.text().chars().count();
                     let widget_left = layout.layout.location.x as f64;
                     let widget_right = widget_left + layout.layout.size.width as f64;
-                    
+
                     let current_pos = if cursor_pos.x < widget_left {
                         // Dragging to the left of widget - select to beginning
                         0
@@ -804,10 +870,10 @@ impl Widget for ValueInput {
                         self.cursor_position_from_mouse(
                             cursor_pos.x,
                             layout.layout.location.x as f64,
-                            &info.font_context
+                            &info.font_context,
                         )
                     };
-                    
+
                     if current_pos != self.buffer.cursor.position {
                         // Update selection
                         self.buffer.cursor.selection_start = Some(start_pos);
@@ -816,7 +882,9 @@ impl Widget for ValueInput {
                     }
                 }
             }
-        } else if self.mouse_down && matches!(self.focus_state, FocusState::Focused | FocusState::Gained) {
+        } else if self.mouse_down
+            && matches!(self.focus_state, FocusState::Focused | FocusState::Gained)
+        {
             // Mouse cursor left the window entirely but we're still dragging
             // Continue selection to the end of text (most common behavior)
             if let Some(start_pos) = self.drag_start_pos {

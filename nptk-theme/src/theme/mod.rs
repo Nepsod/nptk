@@ -192,28 +192,29 @@ use crate::rendering::ThemeRenderer;
 pub mod celeste;
 /// The Dark Theme.
 pub mod dark;
-/// The System Theme.
-pub mod system;
 /// The Sweet Theme.
 pub mod sweet;
+/// The System Theme.
+pub mod system;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::theme::{celeste::CelesteTheme, dark::DarkTheme};
-    
+
     #[test]
     fn test_theme_rendering_system() {
         // Test that built-in themes support rendering through supertrait
         let celeste_theme = CelesteTheme::light();
         let dark_theme = DarkTheme::new();
-        
+
         // Both themes should support rendering (now automatic via supertrait)
         // We can test this by calling ThemeRenderer methods directly
         let button_id = WidgetId::new("nptk-widgets", "Button");
-        let _color = celeste_theme.get_button_color(button_id.clone(), crate::rendering::WidgetState::Normal);
+        let _color = celeste_theme
+            .get_button_color(button_id.clone(), crate::rendering::WidgetState::Normal);
         let _color = dark_theme.get_button_color(button_id, crate::rendering::WidgetState::Normal);
-        
+
         // Test that themes can be used as ThemeRenderer directly
         let _: &dyn ThemeRenderer = &celeste_theme;
         let _: &dyn ThemeRenderer = &dark_theme;
@@ -299,7 +300,6 @@ mod tests {
 /// - **Memory Usage**: Be mindful of memory usage for large themes
 /// - **Thread Safety**: Ensure thread safety if used across threads
 pub trait Theme: ThemeRenderer {
-    
     /// Return the type-safe [ThemeStyle] of the given widget using its ID.
     /// Returns [None] if the theme does not have styles for the given widget.
     /// This is the preferred method for accessing theme properties.
@@ -307,7 +307,7 @@ pub trait Theme: ThemeRenderer {
         // Default implementation - themes should override this for better performance
         None
     }
-    
+
     /// Get a specific theme property for a widget with fallback to defaults.
     /// This is the recommended way to access theme properties.
     fn get_property(&self, id: WidgetId, property: &ThemeProperty) -> Option<Color> {
@@ -315,13 +315,17 @@ pub trait Theme: ThemeRenderer {
             .and_then(|style| style.get_color(property))
             .or_else(|| self.get_default_property(property))
     }
-    
+
     /// Get a default property value for when widget-specific styles are not available.
     fn get_default_property(&self, property: &ThemeProperty) -> Option<Color> {
         match property {
             ThemeProperty::Color | ThemeProperty::Text => Some(Color::from_rgb8(0, 0, 0)),
-            ThemeProperty::ColorBackground | ThemeProperty::Background => Some(Color::from_rgb8(255, 255, 255)),
-            ThemeProperty::Border | ThemeProperty::ColorBorder => Some(Color::from_rgb8(200, 200, 200)),
+            ThemeProperty::ColorBackground | ThemeProperty::Background => {
+                Some(Color::from_rgb8(255, 255, 255))
+            },
+            ThemeProperty::Border | ThemeProperty::ColorBorder => {
+                Some(Color::from_rgb8(200, 200, 200))
+            },
             ThemeProperty::ColorIdle => Some(Color::from_rgb8(200, 200, 200)),
             ThemeProperty::ColorHovered => Some(Color::from_rgb8(180, 180, 180)),
             ThemeProperty::ColorPressed => Some(Color::from_rgb8(160, 160, 160)),
@@ -333,48 +337,46 @@ pub trait Theme: ThemeRenderer {
             _ => None,
         }
     }
-    
-    
+
     /// Get the background color of the window.
     fn window_background(&self) -> Color;
-    
+
     /// Get global style values.
     fn globals(&self) -> &Globals;
-    
+
     /// Get mutable global style values.
     fn globals_mut(&mut self) -> &mut Globals;
-    
+
     /// Get theme variables for CSS-like variable support.
     fn variables(&self) -> ThemeVariables {
         // Default implementation returns empty variables
         // Note: This creates a new instance each time, themes should override this method
         ThemeVariables::new()
     }
-    
+
     /// Get mutable theme variables.
     fn variables_mut(&mut self) -> &mut ThemeVariables {
         // Default implementation - themes should override this if they support variables
         // Note: This creates a new instance each time, themes should override this method
         Box::leak(Box::new(ThemeVariables::new()))
     }
-    
+
     /// Check if this theme supports a specific widget.
     fn supports_widget(&self, id: WidgetId) -> bool {
         self.style(id).is_some()
     }
-    
+
     /// Get all supported widget IDs.
     fn supported_widgets(&self) -> Vec<WidgetId> {
         // Default implementation - themes should override this for better performance
         vec![]
     }
-    
+
     /// Get the widget ID for this theme (for identification purposes).
     fn widget_id(&self) -> WidgetId {
         WidgetId::new("nptk-theme", "UnknownTheme")
     }
-    
+
     /// Get a reference to this theme as Any for downcasting.
     fn as_any(&self) -> &dyn std::any::Any;
-    
 }

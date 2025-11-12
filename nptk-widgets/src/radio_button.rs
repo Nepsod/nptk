@@ -1,17 +1,17 @@
+use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
-use nptk_core::app::focus::{FocusId, FocusState, FocusProperties, FocusBounds, FocusableWidget};
+use nptk_core::app::focus::{FocusBounds, FocusId, FocusProperties, FocusState, FocusableWidget};
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode, Dimension};
-use nptk_core::signal::{MaybeSignal, Signal, state::StateSignal};
+use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
+use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::vg::kurbo::{Affine, Circle, Shape, Stroke};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
-use nptk_core::window::{ElementState, KeyCode, PhysicalKey, MouseButton};
+use nptk_core::window::{ElementState, KeyCode, MouseButton, PhysicalKey};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
-use nalgebra::Vector2;
 
 /// Represents the state of a radio button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,7 +25,7 @@ pub enum RadioButtonState {
 }
 
 /// A radio button widget for mutually exclusive selections.
-/// 
+///
 /// Radio buttons are typically used in groups where only one option can be selected at a time.
 /// Use the same `group_id` for buttons that should be mutually exclusive.
 pub struct RadioButton {
@@ -59,9 +59,9 @@ impl RadioButton {
             on_selected: None,
             state: RadioButtonState::Idle,
             layout_style: MaybeSignal::value(LayoutStyle {
-            size: Vector2::new(Dimension::length(24.0), Dimension::length(24.0)),
-            ..Default::default()
-        }),
+                size: Vector2::new(Dimension::length(24.0), Dimension::length(24.0)),
+                ..Default::default()
+            }),
             focus_id: FocusId::new(),
             focus_state: FocusState::None,
             focus_via_keyboard: false,
@@ -104,7 +104,7 @@ impl RadioButton {
     pub fn set_selected(&mut self, selected: bool) {
         let was_selected = *self.selected.get();
         self.selected.set(selected);
-        
+
         if selected && !was_selected {
             if let Some(callback) = &self.on_selected {
                 callback();
@@ -125,8 +125,14 @@ impl WidgetLayoutExt for RadioButton {
 }
 
 impl Widget for RadioButton {
-    fn render(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme, layout_node: &LayoutNode, info: &mut AppInfo, _context: AppContext) {
-        
+    fn render(
+        &mut self,
+        graphics: &mut dyn Graphics,
+        theme: &mut dyn Theme,
+        layout_node: &LayoutNode,
+        info: &mut AppInfo,
+        _context: AppContext,
+    ) {
         // Update focus state
         if let Ok(manager) = info.focus_manager.lock() {
             self.focus_state = manager.get_focus_state(self.focus_id);
@@ -134,7 +140,6 @@ impl Widget for RadioButton {
 
         let is_focused = matches!(self.focus_state, FocusState::Focused | FocusState::Gained);
         let is_selected = *self.selected.get();
-        
 
         // Get colors from theme
         let radio_size = 16.0;
@@ -143,40 +148,79 @@ impl Widget for RadioButton {
 
         // Radio button circle colors
         let bg_color = if self.disabled {
-            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackgroundDisabled)
+            theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorBackgroundDisabled,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(240, 240, 240))
         } else if is_selected {
-            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackgroundSelected)
+            theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorBackgroundSelected,
+                )
                 .unwrap_or_else(|| Color::WHITE)
         } else {
-            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackground)
+            theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorBackground,
+                )
                 .unwrap_or_else(|| Color::WHITE)
         };
 
         let border_color = if self.disabled {
-            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorderDisabled)
+            theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorBorderDisabled,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(200, 200, 200))
         } else if is_focused && self.focus_via_keyboard {
-            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorderFocused)
+            theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorBorderFocused,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(0, 120, 255))
         } else if matches!(self.state, RadioButtonState::Hovered) {
-            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorderHovered)
+            theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorBorderHovered,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(100, 100, 100))
         } else {
-            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorder)
+            theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorBorder,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(150, 150, 150))
         };
 
         let dot_color = if self.disabled {
-            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorDotDisabled)
+            theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorDotDisabled,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(180, 180, 180))
         } else {
-            theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorDot)
+            theme
+                .get_property(
+                    self.widget_id(),
+                    &nptk_theme::properties::ThemeProperty::ColorDot,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(0, 120, 255))
         };
 
         // Draw radio button circle background
-        let radio_circle = Circle::new((radio_center_x as f64, radio_center_y as f64), radio_size as f64 / 2.0);
+        let radio_circle = Circle::new(
+            (radio_center_x as f64, radio_center_y as f64),
+            radio_size as f64 / 2.0,
+        );
         graphics.fill(
             Fill::NonZero,
             Affine::default(),
@@ -186,7 +230,11 @@ impl Widget for RadioButton {
         );
 
         // Draw radio button border
-        let border_width = if is_focused && self.focus_via_keyboard { 2.0 } else { 1.0 };
+        let border_width = if is_focused && self.focus_via_keyboard {
+            2.0
+        } else {
+            1.0
+        };
         graphics.stroke(
             &Stroke::new(border_width),
             Affine::default(),
@@ -199,7 +247,10 @@ impl Widget for RadioButton {
         if is_selected {
             // Outer black circle (ring)
             let outer_dot_size = radio_size * 0.6;
-            let outer_dot_circle = Circle::new((radio_center_x as f64, radio_center_y as f64), outer_dot_size as f64 / 2.0);
+            let outer_dot_circle = Circle::new(
+                (radio_center_x as f64, radio_center_y as f64),
+                outer_dot_size as f64 / 2.0,
+            );
             graphics.stroke(
                 &Stroke::new(2.0),
                 Affine::default(),
@@ -207,10 +258,13 @@ impl Widget for RadioButton {
                 None,
                 &outer_dot_circle.to_path(0.1),
             );
-            
+
             // Inner colored dot using ColorBackgroundSelected
             let inner_dot_size = radio_size * 0.35;
-            let inner_dot_circle = Circle::new((radio_center_x as f64, radio_center_y as f64), inner_dot_size as f64 / 2.0);
+            let inner_dot_circle = Circle::new(
+                (radio_center_x as f64, radio_center_y as f64),
+                inner_dot_size as f64 / 2.0,
+            );
             graphics.fill(
                 Fill::NonZero,
                 Affine::default(),
@@ -224,10 +278,18 @@ impl Widget for RadioButton {
         let label_text = self.label.get();
         if !label_text.is_empty() {
             let _text_color = if self.disabled {
-                theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorTextDisabled)
+                theme
+                    .get_property(
+                        self.widget_id(),
+                        &nptk_theme::properties::ThemeProperty::ColorTextDisabled,
+                    )
                     .unwrap_or_else(|| Color::from_rgb8(150, 150, 150))
             } else {
-                theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+                theme
+                    .get_property(
+                        self.widget_id(),
+                        &nptk_theme::properties::ThemeProperty::ColorText,
+                    )
                     .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
             };
 
@@ -263,17 +325,17 @@ impl Widget for RadioButton {
             let new_focus_state = manager.get_focus_state(self.focus_id);
             if new_focus_state != self.focus_state {
                 self.focus_state = new_focus_state;
-                
+
                 if matches!(self.focus_state, FocusState::Gained) {
                     self.focus_via_keyboard = manager.was_last_focus_via_keyboard();
                 }
-                
+
                 update |= Update::DRAW;
             }
         }
 
         let is_focused = matches!(self.focus_state, FocusState::Focused | FocusState::Gained);
-        
+
         // Handle keyboard input when focused
         if is_focused && !self.disabled {
             for (_device_id, key_event) in &info.keys {
@@ -285,8 +347,8 @@ impl Widget for RadioButton {
                                 // TODO: Deselect other radio buttons in the same group
                                 update |= Update::DRAW;
                             }
-                        }
-                        _ => {}
+                        },
+                        _ => {},
                     }
                 }
             }
@@ -305,13 +367,13 @@ impl Widget for RadioButton {
                         RadioButtonState::Idle => {
                             self.state = RadioButtonState::Hovered;
                             update |= Update::DRAW;
-                        }
+                        },
                         RadioButtonState::Pressed => {
                             // Keep pressed state while mouse is down
-                        }
+                        },
                         RadioButtonState::Hovered => {
                             // Already hovered
-                        }
+                        },
                     }
                 } else {
                     if matches!(self.state, RadioButtonState::Hovered) {
@@ -336,45 +398,63 @@ impl Widget for RadioButton {
                         ElementState::Pressed => {
                             if let Some(cursor_pos) = info.cursor_pos {
                                 let in_bounds = cursor_pos.x >= layout.layout.location.x as f64
-                                    && cursor_pos.x <= (layout.layout.location.x + layout.layout.size.width) as f64
+                                    && cursor_pos.x
+                                        <= (layout.layout.location.x + layout.layout.size.width)
+                                            as f64
                                     && cursor_pos.y >= layout.layout.location.y as f64
-                                    && cursor_pos.y <= (layout.layout.location.y + layout.layout.size.height) as f64;
-                                
+                                    && cursor_pos.y
+                                        <= (layout.layout.location.y + layout.layout.size.height)
+                                            as f64;
+
                                 if in_bounds {
                                     context.set_focus(Some(self.focus_id));
                                     self.state = RadioButtonState::Pressed;
                                     update |= Update::DRAW;
                                 }
                             }
-                        }
+                        },
                         ElementState::Released => {
                             if matches!(self.state, RadioButtonState::Pressed) {
                                 if let Some(cursor_pos) = info.cursor_pos {
                                     let in_bounds = cursor_pos.x >= layout.layout.location.x as f64
-                                        && cursor_pos.x <= (layout.layout.location.x + layout.layout.size.width) as f64
+                                        && cursor_pos.x
+                                            <= (layout.layout.location.x + layout.layout.size.width)
+                                                as f64
                                         && cursor_pos.y >= layout.layout.location.y as f64
-                                        && cursor_pos.y <= (layout.layout.location.y + layout.layout.size.height) as f64;
-                                    
+                                        && cursor_pos.y
+                                            <= (layout.layout.location.y
+                                                + layout.layout.size.height)
+                                                as f64;
+
                                     if in_bounds && !*self.selected.get() {
                                         self.set_selected(true);
                                         // TODO: Deselect other radio buttons in the same group
                                         update |= Update::DRAW;
                                     }
                                 }
-                                
+
                                 // Reset state regardless of bounds
                                 if let Some(cursor_pos) = info.cursor_pos {
                                     let in_bounds = cursor_pos.x >= layout.layout.location.x as f64
-                                        && cursor_pos.x <= (layout.layout.location.x + layout.layout.size.width) as f64
+                                        && cursor_pos.x
+                                            <= (layout.layout.location.x + layout.layout.size.width)
+                                                as f64
                                         && cursor_pos.y >= layout.layout.location.y as f64
-                                        && cursor_pos.y <= (layout.layout.location.y + layout.layout.size.height) as f64;
-                                    self.state = if in_bounds { RadioButtonState::Hovered } else { RadioButtonState::Idle };
+                                        && cursor_pos.y
+                                            <= (layout.layout.location.y
+                                                + layout.layout.size.height)
+                                                as f64;
+                                    self.state = if in_bounds {
+                                        RadioButtonState::Hovered
+                                    } else {
+                                        RadioButtonState::Idle
+                                    };
                                 } else {
                                     self.state = RadioButtonState::Idle;
                                 }
                                 update |= Update::DRAW;
                             }
-                        }
+                        },
                     }
                 }
             }

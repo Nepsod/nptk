@@ -25,14 +25,14 @@ pub type BoxedWidget = Box<dyn Widget>;
 ///
 /// # Postfix Rendering Pattern
 ///
-/// The postfix rendering pattern  provides a simple way to implement overlays, popups, 
+/// The postfix rendering pattern  provides a simple way to implement overlays, popups,
 /// and other content that should appear "on top" of everything else.
 ///
 /// ## How It Works
 ///
 /// ```text
 /// Widget Tree:          Render Order:
-/// 
+///
 /// Container             1. Container.render()      (background)
 /// ├─ Text "Hello"       2. Text.render()           (text)
 /// └─ MenuButton         3. MenuButton.render()     (button)
@@ -242,11 +242,11 @@ pub trait Widget {
     );
 
     /// Render content that should appear after children (overlays, popups).
-    /// 
+    ///
     /// This method is called after the widget's main content and all its children
     /// have been rendered, allowing the widget to draw content that should appear
     /// "on top" of everything else (e.g., dropdown menus, tooltips, context menus).
-    /// 
+    ///
     /// The default implementation does nothing. Override this method if your widget
     /// needs to render overlays or popups.
     ///
@@ -259,7 +259,7 @@ pub trait Widget {
     ///
     /// This ensures overlays always appear on top of the widget's main content and
     /// all its children, but still allow children to have their own overlays.
-    /// 
+    ///
     /// # Important for Container Widgets
     ///
     /// If your widget has children, you **must** call `render_postfix()` on each child,
@@ -267,10 +267,10 @@ pub trait Widget {
     /// for examples.
     ///
     /// # Example
-    /// 
+    ///
     /// ```rust,ignore
-    /// fn render_postfix(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme, 
-    ///                    layout_node: &LayoutNode, info: &mut AppInfo, 
+    /// fn render_postfix(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme,
+    ///                    layout_node: &LayoutNode, info: &mut AppInfo,
     ///                    context: AppContext) {
     ///     if self.is_menu_open {
     ///         // Render popup menu on top of everything

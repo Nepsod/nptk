@@ -4,14 +4,14 @@ use nptk::core::app::Application;
 use nptk::core::config::MayConfig;
 use nptk::core::signal::fixed::FixedSignal;
 use nptk::core::signal::Signal;
-use nptk::core::widget::Widget;
-use nptk::theme::theme::Theme;
-use nptk::theme::theme::dark::DarkTheme;
-use nptk::theme::theme::celeste::CelesteTheme;
-use nptk::theme::config::{ThemeConfig, ThemeSource};
-use nptk::theme::id::WidgetId;
-use nptk::theme::globals::Globals;
 use nptk::core::vg::peniko::Color;
+use nptk::core::widget::Widget;
+use nptk::theme::config::{ThemeConfig, ThemeSource};
+use nptk::theme::globals::Globals;
+use nptk::theme::id::WidgetId;
+use nptk::theme::theme::celeste::CelesteTheme;
+use nptk::theme::theme::dark::DarkTheme;
+use nptk::theme::theme::Theme;
 use nptk::widgets::image::{Image, ImageData};
 
 const IMAGE_DATA: &[u8] = include_bytes!("../pelican.jpg");
@@ -24,7 +24,11 @@ pub enum ConfigurableTheme {
 }
 
 impl Theme for ConfigurableTheme {
-    fn get_property(&self, id: WidgetId, property: &nptk::theme::properties::ThemeProperty) -> Option<Color> {
+    fn get_property(
+        &self,
+        id: WidgetId,
+        property: &nptk::theme::properties::ThemeProperty,
+    ) -> Option<Color> {
         match self {
             ConfigurableTheme::Light(theme) => theme.get_property(id, property),
             ConfigurableTheme::Dark(theme) => theme.get_property(id, property),
@@ -99,7 +103,7 @@ impl Application for MyApp {
         // Load theme configuration and create the appropriate theme
         let config = ThemeConfig::from_env_or_default();
         let theme = ConfigurableTheme::from_config(&config);
-        
+
         MayConfig {
             theme,
             ..Default::default()

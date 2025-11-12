@@ -1,19 +1,21 @@
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 // Overlay system removed for now - using direct rendering instead
+use crate::menu_popup::{MenuBarItem as MenuBarItemImpl, MenuPopup};
 use nptk_core::app::update::Update;
 use nptk_core::layout;
-use nptk_core::layout::{LayoutNode, LayoutStyle, LengthPercentage, Dimension, StyleNode, Layout};
-use nptk_core::signal::{MaybeSignal, Signal, state::StateSignal};
-use nptk_core::vg::kurbo::{Affine, Line, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
-use nptk_core::vg::peniko::{Color, Fill, Brush};
-use nptk_core::vgi::Graphics;
+use nptk_core::layout::{Dimension, Layout, LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
+use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::text_render::TextRenderContext;
+use nptk_core::vg::kurbo::{
+    Affine, Line, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke,
+};
+use nptk_core::vg::peniko::{Brush, Color, Fill};
+use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
-use nptk_core::window::{ElementState, MouseButton, KeyCode, PhysicalKey};
+use nptk_core::window::{ElementState, KeyCode, MouseButton, PhysicalKey};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
-use crate::menu_popup::{MenuPopup, MenuBarItem as MenuBarItemImpl};
 
 // Re-export MenuBarItem for external use
 pub use crate::menu_popup::MenuBarItem;
@@ -40,16 +42,15 @@ pub struct MenuBar {
     items: Vec<MenuBarItemImpl>,
     layout_style: MaybeSignal<LayoutStyle>,
     visible: StateSignal<bool>,
-    
+
     // State
     hovered_index: Option<usize>,
     open_menu_index: Option<usize>,
     hovered_submenu_index: Option<usize>,
     text_render_context: TextRenderContext,
-    
+
     // Direct popup rendering (no overlay system)
     popup_data: Option<MenuPopup>,
-    
     // Global menu integration (disabled for now)
     // #[cfg(feature = "global-menu")]
     // global_menu_enabled: bool,
@@ -86,7 +87,6 @@ impl MenuBar {
             hovered_submenu_index: None,
             text_render_context: TextRenderContext::new(),
             popup_data: None,
-            
             // Global menu fields removed for now
             // #[cfg(feature = "global-menu")]
             // global_menu_enabled: false,
@@ -127,7 +127,7 @@ impl MenuBar {
     /// Show the menu bar
     pub fn show(&self) {
         self.visible.set(true);
-        
+
         // Global menu integration removed for now
         // #[cfg(feature = "global-menu")]
         // if let Some(sender) = &self.menu_sender {
@@ -138,7 +138,7 @@ impl MenuBar {
     /// Hide the menu bar
     pub fn hide(&self) {
         self.visible.set(false);
-        
+
         // Global menu integration removed for now
         // #[cfg(feature = "global-menu")]
         // if let Some(sender) = &self.menu_sender {
@@ -156,7 +156,7 @@ impl MenuBar {
                 self.popup_data = None;
                 self.open_menu_index = None;
                 self.hovered_submenu_index = None;
-                
+
                 // Create menu popup widget
                 let menu_popup = MenuPopup::new()
                     .with_items(item.submenu.clone())
@@ -168,7 +168,7 @@ impl MenuBar {
                         // Close the popup when an item is selected
                         Update::DRAW
                     });
-                
+
                 self.popup_data = Some(menu_popup);
                 self.open_menu_index = Some(menu_index);
             }
@@ -180,9 +180,9 @@ impl MenuBar {
         let font_size = 14.0;
         let horizontal_padding = 12.0; // Left + right padding per item
         let min_width = 40.0; // Minimum width for very short text
-        
+
         let mut current_x = layout.layout.location.x as f64 + 2.0; // Start with minimal left margin
-        
+
         // Calculate x position by summing widths of previous items
         for i in 0..item_index {
             if let Some(item) = self.items.get(i) {
@@ -192,7 +192,7 @@ impl MenuBar {
                 current_x += item_width;
             }
         }
-        
+
         // Calculate this item's width with precise text measurement
         let item_width = if let Some(item) = self.items.get(item_index) {
             let text_width = item.label.len() as f64 * (font_size * 0.6);
@@ -200,7 +200,7 @@ impl MenuBar {
         } else {
             min_width
         };
-        
+
         Rect::new(
             current_x,
             layout.layout.location.y as f64,
@@ -209,15 +209,23 @@ impl MenuBar {
         )
     }
 
-    fn render_text(text_render_context: &mut TextRenderContext, font_cx: &mut nptk_core::app::font_ctx::FontContext, graphics: &mut dyn Graphics, text: &str, x: f64, y: f64, color: Color) {
+    fn render_text(
+        text_render_context: &mut TextRenderContext,
+        font_cx: &mut nptk_core::app::font_ctx::FontContext,
+        graphics: &mut dyn Graphics,
+        text: &str,
+        x: f64,
+        y: f64,
+        color: Color,
+    ) {
         let font_size = 14.0;
-        
+
         if text.is_empty() {
             return;
         }
 
         let transform = Affine::translate((x, y));
-        
+
         text_render_context.render_text(
             font_cx,
             graphics,
@@ -242,31 +250,62 @@ impl Widget for MenuBar {
         WidgetId::new("nptk-widgets", "MenuBar")
     }
 
-    fn render(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme, layout: &LayoutNode, info: &mut AppInfo, _context: AppContext) -> () {
+    fn render(
+        &mut self,
+        graphics: &mut dyn Graphics,
+        theme: &mut dyn Theme,
+        layout: &LayoutNode,
+        info: &mut AppInfo,
+        _context: AppContext,
+    ) -> () {
         // Don't render if not visible
         if !self.is_visible() {
             return;
         }
 
         // Pre-calculate theme colors with proper fallbacks
-        let bg_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackground)
+        let bg_color = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::ColorBackground,
+            )
             .unwrap_or_else(|| Color::from_rgb8(240, 240, 240));
-        
-        let border_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBorder)
+
+        let border_color = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::ColorBorder,
+            )
             .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)); // Light gray border
-        
-        let text_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+
+        let text_color = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::ColorText,
+            )
             .unwrap_or_else(|| Color::from_rgb8(0, 0, 0));
-        
-        let disabled_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorDisabled)
+
+        let disabled_color = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::ColorDisabled,
+            )
             .unwrap_or_else(|| Color::from_rgb8(150, 150, 150));
-        
-        let selected_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorMenuSelected)
+
+        let selected_color = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::ColorMenuSelected,
+            )
             .unwrap_or_else(|| Color::from_rgb8(100, 150, 255));
-        
-        let hovered_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorMenuHovered)
+
+        let hovered_color = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::ColorMenuHovered,
+            )
             .unwrap_or_else(|| Color::from_rgb8(180, 180, 180));
-        
+
         // Draw menu bar background
         let menu_rect = Rect::new(
             layout.layout.location.x as f64,
@@ -275,16 +314,28 @@ impl Widget for MenuBar {
             (layout.layout.location.y + layout.layout.size.height) as f64,
         );
 
-        graphics.fill(Fill::NonZero, Affine::IDENTITY, &Brush::Solid(bg_color), None, &menu_rect.to_path(0.1));
+        graphics.fill(
+            Fill::NonZero,
+            Affine::IDENTITY,
+            &Brush::Solid(bg_color),
+            None,
+            &menu_rect.to_path(0.1),
+        );
 
         // Draw border
         let stroke = Stroke::new(1.0);
-        graphics.stroke(&stroke, Affine::IDENTITY, &Brush::Solid(border_color), None, &menu_rect.to_path(0.1));
+        graphics.stroke(
+            &stroke,
+            Affine::IDENTITY,
+            &Brush::Solid(border_color),
+            None,
+            &menu_rect.to_path(0.1),
+        );
 
         // Draw menu items
         for (i, item) in self.items.iter().enumerate() {
             let item_bounds = self.get_item_bounds(layout, i);
-            
+
             // Determine item colors using pre-calculated colors
             let (item_text_color, item_bg_color) = if !item.enabled {
                 (disabled_color, Color::TRANSPARENT)
@@ -305,23 +356,37 @@ impl Widget for MenuBar {
                     item_bounds.y1,
                     RoundedRectRadii::new(4.0, 4.0, 4.0, 4.0),
                 );
-                graphics.fill(Fill::NonZero, Affine::IDENTITY, &Brush::Solid(item_bg_color), None, &item_rounded.to_path(0.1));
+                graphics.fill(
+                    Fill::NonZero,
+                    Affine::IDENTITY,
+                    &Brush::Solid(item_bg_color),
+                    None,
+                    &item_rounded.to_path(0.1),
+                );
             }
 
             // Draw item text centered in the item bounds
             let text_x = item_bounds.x0 + 6.0; // Small left padding
             let text_y = item_bounds.y0 + 2.0; // Adjust for proper baseline
-            Self::render_text(&mut self.text_render_context, &mut info.font_context, graphics, &item.label, text_x, text_y, item_text_color);
+            Self::render_text(
+                &mut self.text_render_context,
+                &mut info.font_context,
+                graphics,
+                &item.label,
+                text_x,
+                text_y,
+                item_text_color,
+            );
 
             // Draw submenu indicator below the text if item has submenu
             if item.has_submenu() {
                 let arrow_x = item_bounds.x0 + (item_bounds.width() / 2.0); // Center horizontally
                 let arrow_y = item_bounds.y1 - 6.0; // Position at bottom with small margin
-                
+
                 // Draw small down arrow below text
                 let arrow_size = 2.0;
                 let arrow_stroke = Stroke::new(1.0);
-                
+
                 // Simple down arrow (V shape)
                 graphics.stroke(
                     &arrow_stroke,
@@ -331,7 +396,8 @@ impl Widget for MenuBar {
                     &Line::new(
                         Point::new(arrow_x - arrow_size, arrow_y - arrow_size),
                         Point::new(arrow_x, arrow_y),
-                    ).to_path(0.1),
+                    )
+                    .to_path(0.1),
                 );
                 graphics.stroke(
                     &arrow_stroke,
@@ -341,7 +407,8 @@ impl Widget for MenuBar {
                     &Line::new(
                         Point::new(arrow_x, arrow_y),
                         Point::new(arrow_x + arrow_size, arrow_y - arrow_size),
-                    ).to_path(0.1),
+                    )
+                    .to_path(0.1),
                 );
             }
         }
@@ -349,7 +416,14 @@ impl Widget for MenuBar {
         // Popup rendering moved to render_postfix for proper z-ordering
     }
 
-    fn render_postfix(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme, layout: &LayoutNode, info: &mut AppInfo, _context: AppContext) {
+    fn render_postfix(
+        &mut self,
+        graphics: &mut dyn Graphics,
+        theme: &mut dyn Theme,
+        layout: &LayoutNode,
+        info: &mut AppInfo,
+        _context: AppContext,
+    ) {
         // Don't render popup if menu bar not visible
         if !self.is_visible() {
             return;
@@ -361,13 +435,13 @@ impl Widget for MenuBar {
             let item_bounds = self.get_item_bounds(layout, open_index);
             let popup_x = item_bounds.x0;
             let popup_y = item_bounds.y1;
-            
+
             // Create layout node for the popup
             let mut popup_layout = LayoutNode {
                 layout: Layout::default(),
                 children: Vec::new(),
             };
-            
+
             // Set position and size based on popup's calculated size
             if let Some(ref mut popup) = self.popup_data {
                 let (popup_width, popup_height) = popup.calculate_size();
@@ -375,13 +449,12 @@ impl Widget for MenuBar {
                 popup_layout.layout.location.y = popup_y as f32;
                 popup_layout.layout.size.width = popup_width as f32;
                 popup_layout.layout.size.height = popup_height as f32;
-                
+
                 // Render the popup
                 popup.render(graphics, theme, &popup_layout, info, _context);
             }
         }
     }
-
 
     fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
@@ -395,13 +468,13 @@ impl Widget for MenuBar {
 
         // Get mouse position
         let cursor_pos = info.cursor_pos;
-        
+
         // Check hover state for main menu items
         let old_hovered = self.hovered_index;
         let old_submenu_hovered = self.hovered_submenu_index;
         self.hovered_index = None;
         self.hovered_submenu_index = None;
-        
+
         if let Some(pos) = cursor_pos {
             // Check main menu items
             for i in 0..self.items.len() {
@@ -412,7 +485,7 @@ impl Widget for MenuBar {
                     && pos.y as f64 <= item_bounds.y1
                 {
                     self.hovered_index = Some(i);
-                    
+
                     // If a menu is already open and we hover over a different menu item,
                     // switch to that menu (standard GUI behavior)
                     if self.open_menu_index.is_some() && self.open_menu_index != Some(i) {
@@ -422,7 +495,7 @@ impl Widget for MenuBar {
                             self.popup_data = None;
                             self.open_menu_index = None;
                             self.hovered_submenu_index = None;
-                            
+
                             // Show new popup
                             self.show_menu_popup(i);
                             update |= Update::DRAW;
@@ -442,7 +515,7 @@ impl Widget for MenuBar {
             if *button == MouseButton::Left && *state == ElementState::Pressed {
                 if let Some(hovered) = self.hovered_index {
                     let item = &self.items[hovered];
-                    
+
                     if item.enabled {
                         if item.has_submenu() {
                             // Toggle submenu
@@ -481,13 +554,13 @@ impl Widget for MenuBar {
             let item_bounds = self.get_item_bounds(layout, open_index);
             let popup_x = item_bounds.x0;
             let popup_y = item_bounds.y1;
-            
+
             // Create layout node for the popup
             let mut popup_layout = LayoutNode {
                 layout: Layout::default(),
                 children: Vec::new(),
             };
-            
+
             // Set position and size based on popup's calculated size
             if let Some(ref mut popup) = self.popup_data {
                 let (popup_width, popup_height) = popup.calculate_size();
@@ -495,11 +568,11 @@ impl Widget for MenuBar {
                 popup_layout.layout.location.y = popup_y as f32;
                 popup_layout.layout.size.width = popup_width as f32;
                 popup_layout.layout.size.height = popup_height as f32;
-                
+
                 // Now update the popup
                 let popup_update = popup.update(&popup_layout, _context, info);
                 update |= popup_update;
-                
+
                 // Check if popup wants to close itself
                 if popup_update.contains(Update::DRAW) {
                     // This is a simple way to detect if popup was closed
@@ -519,14 +592,14 @@ impl Widget for MenuBar {
                             self.hovered_submenu_index = None;
                             update |= Update::DRAW;
                         }
-                    }
+                    },
                     PhysicalKey::Code(KeyCode::F10) => {
                         // Toggle menu bar visibility
                         let visible = !self.is_visible();
                         self.visible.set(visible);
                         update |= Update::DRAW | Update::LAYOUT;
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
             }
         }

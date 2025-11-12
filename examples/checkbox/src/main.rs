@@ -13,38 +13,67 @@ impl Application for MyApp {
         let toggle_state = context.use_signal(StateSignal::new(false));
 
         Container::new(vec![
-            Box::new(Text::new("Three-State Checkbox with State Locking".to_string())),
-            
+            Box::new(Text::new(
+                "Three-State Checkbox with State Locking".to_string(),
+            )),
             // Simple checkbox - only checked/unchecked (default behavior)
-            Box::new(Text::new("Simple Checkbox (checked/unchecked only):".to_string())),
+            Box::new(Text::new(
+                "Simple Checkbox (checked/unchecked only):".to_string(),
+            )),
             Box::new(Checkbox::new(MaybeSignal::signal(checkbox1_state.clone()))),
-            Box::new(Text::new(checkbox1_state.map(|val| Ref::Owned(format!("State: {:?}", *val))))),
-            
+            Box::new(Text::new(
+                checkbox1_state.map(|val| Ref::Owned(format!("State: {:?}", *val))),
+            )),
             // Three-state checkbox - with indeterminate state enabled
-            Box::new(Text::new("Three-State Checkbox (with indeterminate):".to_string())),
-            Box::new(Checkbox::new(MaybeSignal::signal(checkbox2_state.clone())).with_indeterminate_state()),
-            Box::new(Text::new(checkbox2_state.map(|val| Ref::Owned(format!("State: {:?}", *val))))),
-            
+            Box::new(Text::new(
+                "Three-State Checkbox (with indeterminate):".to_string(),
+            )),
+            Box::new(
+                Checkbox::new(MaybeSignal::signal(checkbox2_state.clone()))
+                    .with_indeterminate_state(),
+            ),
+            Box::new(Text::new(
+                checkbox2_state.map(|val| Ref::Owned(format!("State: {:?}", *val))),
+            )),
             // Three-state checkbox with indeterminate state locked
-            Box::new(Text::new("Three-State Checkbox (indeterminate locked):".to_string())),
-            Box::new(Checkbox::new(MaybeSignal::signal(checkbox3_state.clone())).with_indeterminate_state().with_locked_state(CheckboxState::Indeterminate)),
-            Box::new(Text::new(checkbox3_state.map(|val| Ref::Owned(format!("State: {:?}", *val))))),
-            
+            Box::new(Text::new(
+                "Three-State Checkbox (indeterminate locked):".to_string(),
+            )),
+            Box::new(
+                Checkbox::new(MaybeSignal::signal(checkbox3_state.clone()))
+                    .with_indeterminate_state()
+                    .with_locked_state(CheckboxState::Indeterminate),
+            ),
+            Box::new(Text::new(
+                checkbox3_state.map(|val| Ref::Owned(format!("State: {:?}", *val))),
+            )),
             // Toggle button
             Box::new(Text::new("".to_string())), // Spacer
             Box::new(Text::new("Toggle Button:".to_string())),
-            Box::new(Toggle::new(MaybeSignal::signal(toggle_state.clone())).with_on_toggle(|is_on| {
-                println!("Toggle is now: {}", if is_on { "ON" } else { "OFF" });
-            })),
-            Box::new(Text::new(toggle_state.map(|val| Ref::Owned(format!("State: {}", if *val { "ON" } else { "OFF" }))))),
-            
+            Box::new(
+                Toggle::new(MaybeSignal::signal(toggle_state.clone())).with_on_toggle(|is_on| {
+                    println!("Toggle is now: {}", if is_on { "ON" } else { "OFF" });
+                }),
+            ),
+            Box::new(Text::new(toggle_state.map(|val| {
+                Ref::Owned(format!("State: {}", if *val { "ON" } else { "OFF" }))
+            }))),
             // Instructions
             Box::new(Text::new("".to_string())), // Spacer
             Box::new(Text::new("Instructions:".to_string())),
-            Box::new(Text::new("• Simple checkbox: Unchecked ↔ Checked".to_string())),
-            Box::new(Text::new("• Three-state checkbox: Unchecked → Checked → Indeterminate → Unchecked".to_string())),
-            Box::new(Text::new("• Locked checkboxes won't change when in locked state".to_string())),
-            Box::new(Text::new("• Use .with_indeterminate_state() for master checkboxes".to_string())),
+            Box::new(Text::new(
+                "• Simple checkbox: Unchecked ↔ Checked".to_string(),
+            )),
+            Box::new(Text::new(
+                "• Three-state checkbox: Unchecked → Checked → Indeterminate → Unchecked"
+                    .to_string(),
+            )),
+            Box::new(Text::new(
+                "• Locked checkboxes won't change when in locked state".to_string(),
+            )),
+            Box::new(Text::new(
+                "• Use .with_indeterminate_state() for master checkboxes".to_string(),
+            )),
         ])
         .with_layout_style(LayoutStyle {
             size: Vector2::<Dimension>::new(Dimension::percent(1.0), Dimension::percent(1.0)),

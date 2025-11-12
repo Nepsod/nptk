@@ -1,5 +1,5 @@
-use nptk::prelude::*;
 use nptk::core::app::update::Update;
+use nptk::prelude::*;
 use std::time::Duration;
 
 struct MyApp;

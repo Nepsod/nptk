@@ -1,5 +1,5 @@
 use nptk::prelude::*;
-use nptk::widgets::tabs_container::{TabItem, TabsContainer, TabPosition};
+use nptk::widgets::tabs_container::{TabItem, TabPosition, TabsContainer};
 
 struct TabsApp;
 
@@ -17,11 +17,10 @@ impl Application for TabsApp {
         // Create tabs
         let tab1 = TabItem::new("tab1", "Home", tab1_content);
         let tab2 = TabItem::new("tab2", "Settings", tab2_content);
-        let tab3 = TabItem::new("tab3", "Help", tab3_content)
-            .with_close_callback(|| {
-                println!("Help tab close button clicked!");
-                Update::empty()
-            });
+        let tab3 = TabItem::new("tab3", "Help", tab3_content).with_close_callback(|| {
+            println!("Help tab close button clicked!");
+            Update::empty()
+        });
         let tab4 = TabItem::new("tab4", "About", tab4_content);
 
         // Create tabs container - try different positions!

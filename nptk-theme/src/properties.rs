@@ -181,7 +181,7 @@ pub enum ThemeProperty {
     Border,
     /// Text color property for text content.
     Text,
-    
+
     // Button-specific properties
     /// Button color when in idle state.
     ColorIdle,
@@ -191,7 +191,7 @@ pub enum ThemeProperty {
     ColorHovered,
     /// Button color when focused (keyboard navigation).
     ColorFocused,
-    
+
     // Input-specific properties
     /// Input field background color.
     ColorBackground,
@@ -211,7 +211,7 @@ pub enum ThemeProperty {
     ColorSelection,
     /// Input field placeholder text color.
     ColorPlaceholder,
-    
+
     // Checkbox-specific properties
     /// Checkbox color when checked.
     ColorChecked,
@@ -221,11 +221,11 @@ pub enum ThemeProperty {
     ColorIndeterminate,
     /// Checkbox symbol (checkmark/minus) color.
     CheckboxSymbol,
-    
+
     // Slider-specific properties
     /// Slider thumb/ball color.
     ColorBall,
-    
+
     // Radio button-specific properties
     /// Radio button background color when selected.
     ColorBackgroundSelected,
@@ -241,7 +241,7 @@ pub enum ThemeProperty {
     ColorDotDisabled,
     /// Radio button text color when disabled.
     ColorTextDisabled,
-    
+
     // Toggle-specific properties
     /// Toggle track color when ON.
     ColorToggleTrackOn,
@@ -255,7 +255,7 @@ pub enum ThemeProperty {
     ColorToggleThumbBorder,
     /// Toggle colors when disabled.
     ColorToggleDisabled,
-    
+
     // Menu-specific properties
     /// Menu item color when hovered.
     ColorMenuHovered,
@@ -263,7 +263,7 @@ pub enum ThemeProperty {
     ColorMenuSelected,
     /// Menu item color when disabled.
     ColorMenuDisabled,
-    
+
     // Scroll container-specific properties
     /// Scrollbar track color.
     ColorScrollbar,
@@ -273,7 +273,7 @@ pub enum ThemeProperty {
     ColorScrollbarThumbHover,
     /// Scrollbar thumb color when active (being dragged).
     ColorScrollbarThumbActive,
-    
+
     // Tabs-specific properties
     /// Tab bar background color.
     TabBarBackground,
@@ -291,15 +291,15 @@ pub enum ThemeProperty {
     TabText,
     /// Active tab text color.
     TabTextActive,
-    
+
     // Progress-specific properties
     /// Progress bar fill color.
     ColorProgress,
-    
+
     // Common disabled state
     /// Common disabled state color.
     ColorDisabled,
-    
+
     // Custom properties (for extensibility)
     /// Custom property for specialized widgets.
     Custom(&'static str),
@@ -365,7 +365,7 @@ impl ThemeProperty {
             ThemeProperty::Custom(name) => name,
         }
     }
-    
+
     /// Create a custom property from a string.
     pub fn custom(name: &'static str) -> Self {
         Self::Custom(name)
@@ -476,7 +476,7 @@ impl ThemeValue {
             _ => None,
         }
     }
-    
+
     /// Get the float value, if this is a float.
     pub fn as_float(&self) -> Option<f32> {
         match self {
@@ -484,7 +484,7 @@ impl ThemeValue {
             _ => None,
         }
     }
-    
+
     /// Get the boolean value, if this is a boolean.
     pub fn as_bool(&self) -> Option<bool> {
         match self {
@@ -492,7 +492,7 @@ impl ThemeValue {
             _ => None,
         }
     }
-    
+
     /// Get the string value, if this is a string.
     pub fn as_string(&self) -> Option<&str> {
         match self {
@@ -631,74 +631,76 @@ impl ThemeStyle {
             properties: HashMap::new(),
         }
     }
-    
+
     /// Create a theme style from an iterator of property-value pairs.
-    pub fn from_properties(properties: impl IntoIterator<Item = (ThemeProperty, ThemeValue)>) -> Self {
+    pub fn from_properties(
+        properties: impl IntoIterator<Item = (ThemeProperty, ThemeValue)>,
+    ) -> Self {
         Self {
             properties: properties.into_iter().collect(),
         }
     }
-    
+
     /// Set a property value.
     pub fn set(&mut self, property: ThemeProperty, value: ThemeValue) {
         self.properties.insert(property, value);
     }
-    
+
     /// Set a color property.
     pub fn set_color(&mut self, property: ThemeProperty, color: Color) {
         self.set(property, ThemeValue::Color(color));
     }
-    
+
     /// Set a float property.
     pub fn set_float(&mut self, property: ThemeProperty, value: f32) {
         self.set(property, ThemeValue::Float(value));
     }
-    
+
     /// Set a boolean property.
     pub fn set_bool(&mut self, property: ThemeProperty, value: bool) {
         self.set(property, ThemeValue::Bool(value));
     }
-    
+
     /// Set a string property.
     pub fn set_string(&mut self, property: ThemeProperty, value: String) {
         self.set(property, ThemeValue::String(value));
     }
-    
+
     /// Get a property value.
     pub fn get(&self, property: &ThemeProperty) -> Option<&ThemeValue> {
         self.properties.get(property)
     }
-    
+
     /// Get a color property value.
     pub fn get_color(&self, property: &ThemeProperty) -> Option<Color> {
         self.get(property).and_then(|value| value.as_color())
     }
-    
+
     /// Get a float property value.
     pub fn get_float(&self, property: &ThemeProperty) -> Option<f32> {
         self.get(property).and_then(|value| value.as_float())
     }
-    
+
     /// Get a boolean property value.
     pub fn get_bool(&self, property: &ThemeProperty) -> Option<bool> {
         self.get(property).and_then(|value| value.as_bool())
     }
-    
+
     /// Get a string property value.
     pub fn get_string(&self, property: &ThemeProperty) -> Option<&str> {
         self.get(property).and_then(|value| value.as_string())
     }
-    
+
     /// Check if a property exists.
     pub fn has(&self, property: &ThemeProperty) -> bool {
         self.properties.contains_key(property)
     }
-    
+
     /// Get all properties.
     pub fn properties(&self) -> &HashMap<ThemeProperty, ThemeValue> {
         &self.properties
     }
-    
+
     /// Merge another theme style into this one.
     /// Properties from `other` will override properties in `self`.
     pub fn merge(&mut self, other: ThemeStyle) {
@@ -879,27 +881,27 @@ impl ThemeVariables {
             variables: HashMap::new(),
         }
     }
-    
+
     /// Set a variable value.
     pub fn set(&mut self, name: impl Into<String>, value: ThemeValue) {
         self.variables.insert(name.into(), value);
     }
-    
+
     /// Set a color variable.
     pub fn set_color(&mut self, name: impl Into<String>, color: Color) {
         self.set(name, ThemeValue::Color(color));
     }
-    
+
     /// Get a variable value.
     pub fn get(&self, name: &str) -> Option<&ThemeValue> {
         self.variables.get(name)
     }
-    
+
     /// Get a color variable.
     pub fn get_color(&self, name: &str) -> Option<Color> {
         self.get(name).and_then(|value| value.as_color())
     }
-    
+
     /// Get all variables.
     pub fn variables(&self) -> &HashMap<String, ThemeValue> {
         &self.variables

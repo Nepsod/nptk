@@ -6,16 +6,19 @@
 
 use nptk_core::app::focus::FocusState;
 use nptk_core::layout::LayoutNode;
-use nptk_core::vg::kurbo::{Affine, Line, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
-use nptk_core::vg::peniko::{Brush, Fill, Color};
+use nptk_core::vg::kurbo::{
+    Affine, Line, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke,
+};
+use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_theme::id::WidgetId;
+use nptk_theme::rendering::{CheckboxState as ThemeCheckboxState, InteractionState, WidgetState};
 use nptk_theme::theme::Theme;
-use nptk_theme::rendering::{WidgetState, InteractionState, CheckboxState as ThemeCheckboxState};
-
 
 /// Convert checkbox state to theme checkbox state
-pub fn checkbox_state_to_theme_state(checkbox_state: crate::checkbox::CheckboxState) -> ThemeCheckboxState {
+pub fn checkbox_state_to_theme_state(
+    checkbox_state: crate::checkbox::CheckboxState,
+) -> ThemeCheckboxState {
     match checkbox_state {
         crate::checkbox::CheckboxState::Unchecked => ThemeCheckboxState::Unchecked,
         crate::checkbox::CheckboxState::Checked => ThemeCheckboxState::Checked,
@@ -24,7 +27,12 @@ pub fn checkbox_state_to_theme_state(checkbox_state: crate::checkbox::CheckboxSt
 }
 
 /// Convert button state to unified widget state
-pub fn button_state_to_widget_state(button_state: crate::button::ButtonState, _focus_state: FocusState, is_focused: bool, disabled: bool) -> WidgetState {
+pub fn button_state_to_widget_state(
+    button_state: crate::button::ButtonState,
+    _focus_state: FocusState,
+    is_focused: bool,
+    disabled: bool,
+) -> WidgetState {
     // Handle disabled state first
     if disabled {
         return WidgetState::Disabled;
@@ -37,33 +45,39 @@ pub fn button_state_to_widget_state(button_state: crate::button::ButtonState, _f
             } else {
                 WidgetState::Normal
             }
-        }
+        },
         crate::button::ButtonState::Hovered => {
             if is_focused {
                 WidgetState::FocusedHovered
             } else {
                 WidgetState::Hovered
             }
-        }
+        },
         crate::button::ButtonState::Pressed => {
             if is_focused {
                 WidgetState::FocusedPressed
             } else {
                 WidgetState::Pressed
             }
-        }
+        },
         crate::button::ButtonState::Released => {
             if is_focused {
                 WidgetState::FocusedReleased
             } else {
                 WidgetState::Released
             }
-        }
+        },
     }
 }
 
 /// Convert radio button state to unified widget state
-pub fn radio_button_state_to_widget_state(radio_state: crate::radio_button::RadioButtonState, _focus_state: FocusState, is_focused: bool, is_selected: bool, disabled: bool) -> WidgetState {
+pub fn radio_button_state_to_widget_state(
+    radio_state: crate::radio_button::RadioButtonState,
+    _focus_state: FocusState,
+    is_focused: bool,
+    is_selected: bool,
+    disabled: bool,
+) -> WidgetState {
     // Handle disabled state first
     if disabled {
         return WidgetState::Disabled;
@@ -82,7 +96,7 @@ pub fn radio_button_state_to_widget_state(radio_state: crate::radio_button::Radi
             } else {
                 WidgetState::Normal
             }
-        }
+        },
         crate::radio_button::RadioButtonState::Hovered => {
             if is_selected {
                 if is_focused {
@@ -95,7 +109,7 @@ pub fn radio_button_state_to_widget_state(radio_state: crate::radio_button::Radi
             } else {
                 WidgetState::Hovered
             }
-        }
+        },
         crate::radio_button::RadioButtonState::Pressed => {
             if is_selected {
                 if is_focused {
@@ -108,7 +122,7 @@ pub fn radio_button_state_to_widget_state(radio_state: crate::radio_button::Radi
             } else {
                 WidgetState::Pressed
             }
-        }
+        },
     }
 }
 
@@ -130,13 +144,13 @@ pub fn render_button_with_theme(
         (layout.layout.location.x + layout.layout.size.width) as f64,
         (layout.layout.location.y + layout.layout.size.height) as f64,
     );
-    
+
     let rounded_rect = RoundedRect::from_rect(bounds, RoundedRectRadii::from_single_radius(10.0));
-    
+
     // Get button colors from theme
     let fill_color = theme.get_button_color(widget_id.clone(), theme_state);
     let brush = Brush::Solid(fill_color);
-    
+
     // Fill the button background
     graphics.fill(
         Fill::NonZero,
@@ -145,7 +159,7 @@ pub fn render_button_with_theme(
         None,
         &rounded_rect.to_path(0.1),
     );
-    
+
     // Draw focus indicator if focused
     if theme_state.is_focused() {
         let focus_color = theme.get_focus_color(widget_id.clone());
@@ -176,20 +190,20 @@ pub fn render_checkbox_with_theme(
     } else {
         WidgetState::Normal
     };
-    
+
     let bounds = Rect::new(
         layout.layout.location.x as f64,
         layout.layout.location.y as f64,
         (layout.layout.location.x + layout.layout.size.width) as f64,
         (layout.layout.location.y + layout.layout.size.height) as f64,
     );
-    
+
     let checkbox_rect = RoundedRect::from_rect(bounds, RoundedRectRadii::from_single_radius(4.0));
-    
+
     // Get checkbox colors from theme
     let fill_color = theme.get_checkbox_color(widget_id.clone(), theme_state, theme_checkbox_state);
     let border_color = theme.get_checkbox_border_color(widget_id.clone(), theme_state);
-    
+
     // Fill the checkbox background
     let fill_brush = Brush::Solid(fill_color);
     graphics.fill(
@@ -199,7 +213,7 @@ pub fn render_checkbox_with_theme(
         None,
         &checkbox_rect.to_path(0.1),
     );
-    
+
     // Draw the checkbox border
     let border_brush = Brush::Solid(border_color);
     let border_stroke = Stroke::new(1.0);
@@ -210,7 +224,7 @@ pub fn render_checkbox_with_theme(
         None,
         &checkbox_rect.to_path(0.1),
     );
-    
+
     // Draw the checkbox symbol (checkmark or indeterminate line)
     draw_checkbox_symbol_with_theme(theme, widget_id, theme_checkbox_state, bounds, graphics);
 }
@@ -224,7 +238,7 @@ fn draw_checkbox_symbol_with_theme(
     graphics: &mut dyn Graphics,
 ) {
     let symbol_color = theme.get_checkbox_symbol_color(widget_id.clone(), checkbox_state);
-    
+
     if symbol_color == Color::TRANSPARENT {
         return; // No symbol for unchecked state
     }
@@ -236,30 +250,51 @@ fn draw_checkbox_symbol_with_theme(
         ThemeCheckboxState::Checked => {
             // Draw checkmark
             let checkmark_points = [
-                Point::new(bounds.x0 + bounds.width() * 0.2, bounds.y0 + bounds.height() * 0.5),
-                Point::new(bounds.x0 + bounds.width() * 0.4, bounds.y0 + bounds.height() * 0.7),
-                Point::new(bounds.x0 + bounds.width() * 0.8, bounds.y0 + bounds.height() * 0.3),
+                Point::new(
+                    bounds.x0 + bounds.width() * 0.2,
+                    bounds.y0 + bounds.height() * 0.5,
+                ),
+                Point::new(
+                    bounds.x0 + bounds.width() * 0.4,
+                    bounds.y0 + bounds.height() * 0.7,
+                ),
+                Point::new(
+                    bounds.x0 + bounds.width() * 0.8,
+                    bounds.y0 + bounds.height() * 0.3,
+                ),
             ];
-            
+
             for i in 0..checkmark_points.len() - 1 {
                 let start = checkmark_points[i];
                 let end = checkmark_points[i + 1];
                 let line = Line::new(start, end);
-                graphics.stroke(&symbol_stroke, Affine::default(), &symbol_brush, None, &line.to_path(0.1));
+                graphics.stroke(
+                    &symbol_stroke,
+                    Affine::default(),
+                    &symbol_brush,
+                    None,
+                    &line.to_path(0.1),
+                );
             }
-        }
+        },
         ThemeCheckboxState::Indeterminate => {
             // Draw horizontal line
             let line_y = bounds.y0 + bounds.height() * 0.5;
             let line = Line::new(
                 Point::new(bounds.x0 + bounds.width() * 0.2, line_y),
-                Point::new(bounds.x0 + bounds.width() * 0.8, line_y)
+                Point::new(bounds.x0 + bounds.width() * 0.8, line_y),
             );
-            graphics.stroke(&symbol_stroke, Affine::default(), &symbol_brush, None, &line.to_path(0.1));
-        }
+            graphics.stroke(
+                &symbol_stroke,
+                Affine::default(),
+                &symbol_brush,
+                None,
+                &line.to_path(0.1),
+            );
+        },
         ThemeCheckboxState::Unchecked => {
             // No symbol
-        }
+        },
     }
 }
 
@@ -279,20 +314,20 @@ pub fn render_text_input_with_theme(
     } else {
         WidgetState::Normal
     };
-    
+
     let bounds = Rect::new(
         layout.layout.location.x as f64,
         layout.layout.location.y as f64,
         (layout.layout.location.x + layout.layout.size.width) as f64,
         (layout.layout.location.y + layout.layout.size.height) as f64,
     );
-    
+
     let input_rect = RoundedRect::from_rect(bounds, RoundedRectRadii::from_single_radius(4.0));
-    
+
     // Get input colors from theme
     let fill_color = theme.get_text_input_color(widget_id.clone(), theme_state);
     let border_color = theme.get_text_input_border_color(widget_id.clone(), theme_state);
-    
+
     // Fill the input background
     let fill_brush = Brush::Solid(fill_color);
     graphics.fill(
@@ -302,7 +337,7 @@ pub fn render_text_input_with_theme(
         None,
         &input_rect.to_path(0.1),
     );
-    
+
     // Draw the input border
     let border_brush = Brush::Solid(border_color);
     let border_stroke = Stroke::new(1.0);
@@ -313,7 +348,7 @@ pub fn render_text_input_with_theme(
         None,
         &input_rect.to_path(0.1),
     );
-    
+
     // Draw focus indicator if focused
     if theme_state.is_focused() {
         let focus_color = theme.get_focus_color(widget_id.clone());
@@ -345,11 +380,23 @@ pub fn render_progress_with_theme(
     let y = layout.layout.location.y as f64;
 
     // Get theme colors using ThemeRenderer - use proper progress bar colors
-    let background_color = theme.get_property(widget_id.clone(), &nptk_theme::properties::ThemeProperty::Color)
+    let background_color = theme
+        .get_property(
+            widget_id.clone(),
+            &nptk_theme::properties::ThemeProperty::Color,
+        )
         .unwrap_or_else(|| nptk_core::vg::peniko::Color::from_rgb8(220, 220, 220));
-    let progress_color = theme.get_property(widget_id.clone(), &nptk_theme::properties::ThemeProperty::ColorProgress)
+    let progress_color = theme
+        .get_property(
+            widget_id.clone(),
+            &nptk_theme::properties::ThemeProperty::ColorProgress,
+        )
         .unwrap_or_else(|| nptk_core::vg::peniko::Color::from_rgb8(100, 150, 255));
-    let border_color = theme.get_property(widget_id.clone(), &nptk_theme::properties::ThemeProperty::ColorBorder)
+    let border_color = theme
+        .get_property(
+            widget_id.clone(),
+            &nptk_theme::properties::ThemeProperty::ColorBorder,
+        )
         .unwrap_or_else(|| nptk_core::vg::peniko::Color::from_rgb8(180, 180, 180));
 
     // Draw background
@@ -383,16 +430,16 @@ pub fn render_progress_with_theme(
         // Indeterminate mode: ping-pong animated progress
         let progress_width = width * 0.3; // 30% of total width
         let available_width = width - progress_width;
-        
+
         // Create ping-pong animation: 0.0 -> 1.0 -> 0.0 -> 1.0...
         let ping_pong_time = if animation_time <= 0.5 {
             animation_time * 2.0 // 0.0 -> 1.0
         } else {
             2.0 - (animation_time * 2.0) // 1.0 -> 0.0
         };
-        
+
         let progress_x = x + (ping_pong_time as f64 * available_width);
-        
+
         let progress_rect = RoundedRect::new(
             progress_x,
             y + 1.0, // Small margin from border
@@ -411,7 +458,7 @@ pub fn render_progress_with_theme(
     } else {
         // Determinate progress
         let progress_width = width * value.clamp(0.0, 1.0) as f64;
-        
+
         if progress_width > 0.0 {
             let progress_rect = RoundedRect::new(
                 x + 1.0, // Small margin from border
@@ -449,14 +496,14 @@ pub fn render_slider_with_theme(
     } else {
         WidgetState::Normal
     };
-    
+
     let bounds = Rect::new(
         layout.layout.location.x as f64,
         layout.layout.location.y as f64,
         (layout.layout.location.x + layout.layout.size.width) as f64,
         (layout.layout.location.y + layout.layout.size.height) as f64,
     );
-    
+
     // Draw slider track
     let track_color = theme.get_slider_track_color(widget_id.clone(), theme_state);
     let track_brush = Brush::Solid(track_color);
@@ -468,14 +515,17 @@ pub fn render_slider_with_theme(
         None,
         &track_rect.to_path(0.1),
     );
-    
+
     // Draw slider thumb
     let thumb_size = 16.0;
     let thumb_x = bounds.x0 + (bounds.width() * value as f64) - (thumb_size / 2.0);
     let thumb_y = bounds.y0 + (bounds.height() - thumb_size) / 2.0;
     let thumb_rect = Rect::new(thumb_x, thumb_y, thumb_x + thumb_size, thumb_y + thumb_size);
-    let thumb_rounded = RoundedRect::from_rect(thumb_rect, RoundedRectRadii::from_single_radius(thumb_size / 2.0));
-    
+    let thumb_rounded = RoundedRect::from_rect(
+        thumb_rect,
+        RoundedRectRadii::from_single_radius(thumb_size / 2.0),
+    );
+
     let thumb_color = theme.get_slider_thumb_color(widget_id.clone(), theme_state);
     let thumb_brush = Brush::Solid(thumb_color);
     graphics.fill(
@@ -488,7 +538,11 @@ pub fn render_slider_with_theme(
 }
 
 /// Create a widget state from interaction state and focus state
-pub fn widget_state_from_states(interaction_state: InteractionState, _focus_state: FocusState, is_focused: bool) -> WidgetState {
+pub fn widget_state_from_states(
+    interaction_state: InteractionState,
+    _focus_state: FocusState,
+    is_focused: bool,
+) -> WidgetState {
     let base_state = match interaction_state {
         InteractionState::Idle => {
             if is_focused {
@@ -496,21 +550,21 @@ pub fn widget_state_from_states(interaction_state: InteractionState, _focus_stat
             } else {
                 WidgetState::Normal
             }
-        }
+        },
         InteractionState::Hovered => {
             if is_focused {
                 WidgetState::FocusedHovered
             } else {
                 WidgetState::Hovered
             }
-        }
+        },
         InteractionState::Pressed => {
             if is_focused {
                 WidgetState::FocusedPressed
             } else {
                 WidgetState::Pressed
             }
-        }
+        },
         InteractionState::Disabled => WidgetState::Disabled,
     };
 
@@ -525,9 +579,9 @@ pub struct ThemeTextRenderer;
 
 impl ThemeTextRenderer {
     /// Render text using theme colors and settings.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `theme` - The theme to use for colors and settings
     /// * `widget_id` - The widget ID for theme property lookup
     /// * `text` - The text to render
@@ -537,9 +591,9 @@ impl ThemeTextRenderer {
     /// * `font_size` - The font size to use
     /// * `hinting` - Whether to use font hinting
     /// * `invert_color` - Whether to invert the text color
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The color that was used for rendering the text.
     pub fn render_text(
         theme: &dyn Theme,
@@ -553,16 +607,24 @@ impl ThemeTextRenderer {
         invert_color: bool,
     ) -> Color {
         let color = if invert_color {
-            theme.get_property(widget_id.clone(), &nptk_theme::properties::ThemeProperty::ColorInvert)
+            theme
+                .get_property(
+                    widget_id.clone(),
+                    &nptk_theme::properties::ThemeProperty::ColorInvert,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
         } else {
-            theme.get_property(widget_id.clone(), &nptk_theme::properties::ThemeProperty::Color)
+            theme
+                .get_property(
+                    widget_id.clone(),
+                    &nptk_theme::properties::ThemeProperty::Color,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
         };
 
         // Create a temporary TextRenderContext for rendering
         let mut text_render_context = nptk_core::text_render::TextRenderContext::new();
-        
+
         text_render_context.render_text(
             font_context,
             graphics,
@@ -578,9 +640,9 @@ impl ThemeTextRenderer {
     }
 
     /// Render text with placeholder support (for input widgets).
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `theme` - The theme to use for colors and settings
     /// * `widget_id` - The widget ID for theme property lookup
     /// * `text` - The text to render
@@ -590,9 +652,9 @@ impl ThemeTextRenderer {
     /// * `transform` - The transform to apply
     /// * `font_size` - The font size to use
     /// * `hinting` - Whether to use font hinting
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The color that was used for rendering the text.
     pub fn render_text_with_placeholder(
         theme: &dyn Theme,
@@ -606,18 +668,26 @@ impl ThemeTextRenderer {
         hinting: bool,
     ) -> Color {
         let (display_text, color) = if text.is_empty() {
-            let placeholder_color = theme.get_property(widget_id.clone(), &nptk_theme::properties::ThemeProperty::ColorPlaceholder)
+            let placeholder_color = theme
+                .get_property(
+                    widget_id.clone(),
+                    &nptk_theme::properties::ThemeProperty::ColorPlaceholder,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(150, 150, 150));
             (placeholder, placeholder_color)
         } else {
-            let text_color = theme.get_property(widget_id.clone(), &nptk_theme::properties::ThemeProperty::Color)
+            let text_color = theme
+                .get_property(
+                    widget_id.clone(),
+                    &nptk_theme::properties::ThemeProperty::Color,
+                )
                 .unwrap_or_else(|| Color::from_rgb8(0, 0, 0));
             (text, text_color)
         };
 
         // Create a temporary TextRenderContext for rendering
         let mut text_render_context = nptk_core::text_render::TextRenderContext::new();
-        
+
         text_render_context.render_text(
             font_context,
             graphics,
@@ -632,4 +702,3 @@ impl ThemeTextRenderer {
         color
     }
 }
-

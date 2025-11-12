@@ -3,23 +3,27 @@
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
+use std::time::{Duration, Instant};
 
 use wayland_client::backend::WaylandError;
 use wayland_client::globals::{registry_queue_init, GlobalList};
-use wayland_client::Proxy;
-use wayland_client::protocol::{wl_callback, wl_compositor, wl_registry, wl_surface, wl_seat, wl_shm, wl_keyboard, wl_pointer, wl_region};
-use wayland_client::protocol::wl_shm_pool::WlShmPool;
 use wayland_client::protocol::wl_buffer::WlBuffer;
+use wayland_client::protocol::wl_shm_pool::WlShmPool;
+use wayland_client::protocol::{
+    wl_callback, wl_compositor, wl_keyboard, wl_pointer, wl_region, wl_registry, wl_seat, wl_shm,
+    wl_surface,
+};
+use wayland_client::Proxy;
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle};
-use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 use wayland_protocols::xdg::decoration::zv1::client::{
     zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1,
 };
+use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 use wayland_protocols_plasma::server_decoration::client::{
     org_kde_kwin_server_decoration, org_kde_kwin_server_decoration_manager,
 };
 
-use super::wayland_surface::{InputEvent, PointerEvent, KeyboardEvent, WaylandSurfaceInner};
+use super::wayland_surface::{InputEvent, KeyboardEvent, PointerEvent, WaylandSurfaceInner};
 
 /// Singleton Wayland client used by all native Wayland surfaces.
 pub(crate) struct WaylandClient {
@@ -76,7 +80,45 @@ impl WaylandClient {
 
     pub fn register_surface(&self, surface: &Arc<WaylandSurfaceInner>) {
         let mut map = self.shared.surfaces.lock().unwrap();
-        map.insert(surface.surface_key(), Arc::downgrade(surface));
+        let key = surface.surface_key();
+        eprintln!("[NPTK/Wayland] register_surface: key={}", key);
+        map.insert(key, Arc::downgrade(surface));
+    }
+
+    pub fn wait_for_initial_configure(&self, surface_key: u32) -> Result<(), String> {
+        const INITIAL_CONFIGURE_TIMEOUT: Duration = Duration::from_secs(2);
+        let start = Instant::now();
+
+        loop {
+            if let Some(surface) = self.shared.get_surface(surface_key) {
+                if surface.has_acknowledged_initial_configure() {
+                    return Ok(());
+                }
+            } else {
+                return Err(format!(
+                    "Wayland surface {} dropped before initial configure",
+                    surface_key
+                ));
+            }
+
+            {
+                let mut data = self.loop_data.lock().unwrap();
+                let (event_queue, state) = &mut *data;
+                event_queue.roundtrip(state).map_err(|e| {
+                    format!(
+                        "Wayland roundtrip failed while waiting for configure: {:?}",
+                        e
+                    )
+                })?;
+            }
+
+            if start.elapsed() >= INITIAL_CONFIGURE_TIMEOUT {
+                return Err(format!(
+                    "Timed out waiting for initial configure on surface {}",
+                    surface_key
+                ));
+            }
+        }
     }
 
     pub fn unregister_surface(&self, surface_key: u32) {
@@ -87,6 +129,10 @@ impl WaylandClient {
     pub fn dispatch_pending(&self) -> Result<(), String> {
         let mut data = self.loop_data.lock().unwrap();
         let (event_queue, state) = &mut *data;
+        eprintln!(
+            "[NPTK/Wayland] dispatch_pending: queue_ptr={:p}",
+            event_queue
+        );
 
         // First process anything that might already be queued.
         event_queue
@@ -101,25 +147,25 @@ impl WaylandClient {
                         .flush()
                         .map_err(|e| format!("Failed to flush Wayland queue: {:?}", e))?;
                     match guard.read() {
-                        Ok(_) => {}
+                        Ok(_) => {},
                         Err(WaylandError::Io(ref err)) if err.kind() == ErrorKind::WouldBlock => {
                             break;
-                        }
+                        },
                         Err(err) => {
                             return Err(format!("Failed to read Wayland events: {:?}", err));
-                        }
+                        },
                     }
                     event_queue
                         .dispatch_pending(state)
                         .map_err(|e| format!("Failed to dispatch Wayland events: {:?}", e))?;
                     break;
-                }
+                },
                 None => {
                     event_queue
                         .dispatch_pending(state)
                         .map_err(|e| format!("Failed to dispatch Wayland events: {:?}", e))?;
                     continue;
-                }
+                },
             }
         }
 
@@ -135,22 +181,12 @@ impl WaylandClient {
         Ok(())
     }
 
-    pub fn roundtrip(&self) -> Result<(), String> {
-        let mut data = self.loop_data.lock().unwrap();
-        let (event_queue, state) = &mut *data;
-        event_queue
-            .roundtrip(state)
-            .map_err(|e| format!("Wayland roundtrip failed: {:?}", e))?;
-        Ok(())
-    }
-
     fn initialize() -> Result<WaylandClient, String> {
         let connection =
             Connection::connect_to_env().map_err(|e| format!("Wayland connect error: {:?}", e))?;
 
-        let (global_list, mut event_queue) =
-            registry_queue_init::<WaylandClientState>(&connection)
-                .map_err(|e| format!("Failed to init Wayland registry: {:?}", e))?;
+        let (global_list, mut event_queue) = registry_queue_init::<WaylandClientState>(&connection)
+            .map_err(|e| format!("Failed to init Wayland registry: {:?}", e))?;
         let queue_handle = event_queue.handle();
 
         let shared = Arc::new(SharedState {
@@ -163,6 +199,10 @@ impl WaylandClient {
         };
 
         // Perform an initial roundtrip so the compositor processes any pending requests.
+        eprintln!(
+            "[NPTK/Wayland] initialize: event_queue_ptr={:p}",
+            &event_queue
+        );
         event_queue
             .roundtrip(&mut state)
             .map_err(|e| format!("Initial Wayland roundtrip failed: {:?}", e))?;
@@ -191,26 +231,28 @@ impl WaylandGlobals {
         globals: &GlobalList,
         qh: &QueueHandle<WaylandClientState>,
     ) -> Result<Self, String> {
-        let compositor: wl_compositor::WlCompositor =
-            globals
-                .bind(qh, 1..=COMPOSITOR_VERSION, ())
-                .map_err(|e| format!("Failed to bind wl_compositor: {:?}", e))?;
+        let compositor: wl_compositor::WlCompositor = globals
+            .bind(qh, 1..=COMPOSITOR_VERSION, ())
+            .map_err(|e| format!("Failed to bind wl_compositor: {:?}", e))?;
 
-        let wm_base: xdg_wm_base::XdgWmBase =
-            globals
-                .bind(qh, 1..=XDG_WM_BASE_VERSION, ())
-                .map_err(|e| format!("Failed to bind xdg_wm_base: {:?}", e))?;
+        let wm_base: xdg_wm_base::XdgWmBase = globals
+            .bind(qh, 1..=XDG_WM_BASE_VERSION, ())
+            .map_err(|e| format!("Failed to bind xdg_wm_base: {:?}", e))?;
 
-        let decoration_manager = match globals.bind::<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1, _, _>(
-            qh,
-            1..=ZXDG_DECORATION_VERSION,
-            (),
-        ) {
+        let decoration_manager = match globals
+            .bind::<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1, _, _>(
+                qh,
+                1..=ZXDG_DECORATION_VERSION,
+                (),
+            ) {
             Ok(mgr) => Some(mgr),
             Err(wayland_client::globals::BindError::NotPresent) => None,
             Err(err) => {
-                return Err(format!("Failed to bind zxdg_decoration_manager_v1: {:?}", err));
-            }
+                return Err(format!(
+                    "Failed to bind zxdg_decoration_manager_v1: {:?}",
+                    err
+                ));
+            },
         };
         let kde_server_decoration_manager = match globals.bind::<
             org_kde_kwin_server_decoration_manager::OrgKdeKwinServerDecorationManager,
@@ -264,7 +306,10 @@ impl SharedState {
         let mut map = self.surfaces.lock().unwrap();
         let surface = map.get(&key)?.upgrade();
         if surface.is_none() {
+            eprintln!("[NPTK/Wayland] get_surface: key={} weak ref expired", key);
             map.remove(&key);
+        } else {
+            eprintln!("[NPTK/Wayland] get_surface: key={} found", key);
         }
         surface
     }
@@ -372,7 +417,13 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
         _qh: &QueueHandle<Self>,
     ) {
         match event {
-            wl_pointer::Event::Enter { surface, serial: _, surface_x, surface_y, .. } => {
+            wl_pointer::Event::Enter {
+                surface,
+                serial: _,
+                surface_x,
+                surface_y,
+                ..
+            } => {
                 let key = surface.id().protocol_id();
                 *state.shared.focused_surface_key.lock().unwrap() = Some(key);
                 if let Some(surface) = state.shared.get_surface(key) {
@@ -382,7 +433,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
                     }));
                     surface.handle_frame_done();
                 }
-            }
+            },
             wl_pointer::Event::Leave { .. } => {
                 let mut focused = state.shared.focused_surface_key.lock().unwrap();
                 if let Some(key) = *focused {
@@ -392,8 +443,12 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
                     }
                 }
                 *focused = None;
-            }
-            wl_pointer::Event::Motion { time: _, surface_x, surface_y } => {
+            },
+            wl_pointer::Event::Motion {
+                time: _,
+                surface_x,
+                surface_y,
+            } => {
                 if let Some(key) = *state.shared.focused_surface_key.lock().unwrap() {
                     if let Some(surface) = state.shared.get_surface(key) {
                         surface.push_input_event(InputEvent::Pointer(PointerEvent::Motion {
@@ -403,8 +458,13 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
                         surface.handle_frame_done();
                     }
                 }
-            }
-            wl_pointer::Event::Button { serial: _, time: _, button, state: button_state } => {
+            },
+            wl_pointer::Event::Button {
+                serial: _,
+                time: _,
+                button,
+                state: button_state,
+            } => {
                 if let Some(key) = *state.shared.focused_surface_key.lock().unwrap() {
                     if let Some(surface) = state.shared.get_surface(key) {
                         if let Ok(button_state) = button_state.into_result() {
@@ -416,8 +476,12 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
                         }
                     }
                 }
-            }
-            wl_pointer::Event::Axis { time: _, axis, value } => {
+            },
+            wl_pointer::Event::Axis {
+                time: _,
+                axis,
+                value,
+            } => {
                 if let Some(key) = *state.shared.focused_surface_key.lock().unwrap() {
                     if let Some(surface) = state.shared.get_surface(key) {
                         if let Ok(axis_kind) = axis.into_result() {
@@ -440,19 +504,19 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
                         }
                     }
                 }
-            }
+            },
             wl_pointer::Event::AxisSource { axis_source } => {
                 if let Some(key) = *state.shared.focused_surface_key.lock().unwrap() {
                     if let Some(surface) = state.shared.get_surface(key) {
                         if let Ok(source) = axis_source.into_result() {
-                            surface.push_input_event(InputEvent::Pointer(PointerEvent::AxisSource {
-                                source,
-                            }));
+                            surface.push_input_event(InputEvent::Pointer(
+                                PointerEvent::AxisSource { source },
+                            ));
                             surface.handle_frame_done();
                         }
                     }
                 }
-            }
+            },
             wl_pointer::Event::AxisStop { time: _, axis } => {
                 if let Some(key) = *state.shared.focused_surface_key.lock().unwrap() {
                     if let Some(surface) = state.shared.get_surface(key) {
@@ -462,33 +526,37 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
                         }
                     }
                 }
-            }
+            },
             wl_pointer::Event::AxisDiscrete { axis, discrete } => {
                 if let Some(key) = *state.shared.focused_surface_key.lock().unwrap() {
                     if let Some(surface) = state.shared.get_surface(key) {
                         if let Ok(axis_kind) = axis.into_result() {
-                            surface.push_input_event(InputEvent::Pointer(PointerEvent::AxisDiscrete {
-                                axis: axis_kind,
-                                discrete,
-                            }));
+                            surface.push_input_event(InputEvent::Pointer(
+                                PointerEvent::AxisDiscrete {
+                                    axis: axis_kind,
+                                    discrete,
+                                },
+                            ));
                             surface.handle_frame_done();
                         }
                     }
                 }
-            }
+            },
             wl_pointer::Event::AxisValue120 { axis, value120 } => {
                 if let Some(key) = *state.shared.focused_surface_key.lock().unwrap() {
                     if let Some(surface) = state.shared.get_surface(key) {
                         if let Ok(axis_kind) = axis.into_result() {
-                            surface.push_input_event(InputEvent::Pointer(PointerEvent::AxisValue120 {
-                                axis: axis_kind,
-                                value120,
-                            }));
+                            surface.push_input_event(InputEvent::Pointer(
+                                PointerEvent::AxisValue120 {
+                                    axis: axis_kind,
+                                    value120,
+                                },
+                            ));
                             surface.handle_frame_done();
                         }
                     }
                 }
-            }
+            },
             wl_pointer::Event::Frame => {
                 if let Some(key) = *state.shared.focused_surface_key.lock().unwrap() {
                     if let Some(surface) = state.shared.get_surface(key) {
@@ -496,8 +564,8 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
                         surface.handle_frame_done();
                     }
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 }
@@ -512,14 +580,18 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientState {
         _qh: &QueueHandle<Self>,
     ) {
         match event {
-            wl_keyboard::Event::Enter { surface, serial: _, keys: _ } => {
+            wl_keyboard::Event::Enter {
+                surface,
+                serial: _,
+                keys: _,
+            } => {
                 let key = surface.id().protocol_id();
                 *state.shared.focused_surface_key.lock().unwrap() = Some(key);
                 if let Some(surface) = state.shared.get_surface(key) {
                     surface.push_input_event(InputEvent::Keyboard(KeyboardEvent::Enter));
                     surface.handle_frame_done();
                 }
-            }
+            },
             wl_keyboard::Event::Leave { serial: _, .. } => {
                 let mut focused = state.shared.focused_surface_key.lock().unwrap();
                 if let Some(key) = *focused {
@@ -529,8 +601,13 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientState {
                     }
                 }
                 *focused = None;
-            }
-            wl_keyboard::Event::Key { serial: _, time: _, key, state: key_state } => {
+            },
+            wl_keyboard::Event::Key {
+                serial: _,
+                time: _,
+                key,
+                state: key_state,
+            } => {
                 if let Some(key_surface) = *state.shared.focused_surface_key.lock().unwrap() {
                     if let Some(surface) = state.shared.get_surface(key_surface) {
                         if let Ok(actual_state) = key_state.into_result() {
@@ -542,7 +619,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientState {
                         }
                     }
                 }
-            }
+            },
             wl_keyboard::Event::Modifiers {
                 serial: _,
                 mods_depressed,
@@ -561,7 +638,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientState {
                         surface.handle_frame_done();
                     }
                 }
-            }
+            },
             wl_keyboard::Event::RepeatInfo { rate, delay } => {
                 if let Some(key_surface) = *state.shared.focused_surface_key.lock().unwrap() {
                     if let Some(surface) = state.shared.get_surface(key_surface) {
@@ -572,8 +649,8 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientState {
                         surface.handle_frame_done();
                     }
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 }
@@ -598,23 +675,47 @@ impl Dispatch<xdg_surface::XdgSurface, u32> for WaylandClientState {
         xdg_surf: &xdg_surface::XdgSurface,
         event: xdg_surface::Event,
         surface_key: &u32,
-        _conn: &Connection,
+        conn: &Connection,
         _qh: &QueueHandle<Self>,
     ) {
         match event {
             xdg_surface::Event::Configure { serial } => {
-                let sid = xdg_surf.id().protocol_id();
-                log::debug!("Wayland: XdgSurface({}) Configure serial={} on xdg_surface#{}", surface_key, serial, sid);
-                eprintln!("[NPTK/Wayland] ACK SEND serial={} on xdg_surface#{}", serial, sid);
-                // Ack immediately on the SAME object instance that emitted the event
+                eprintln!(
+                    "[NPTK/Wayland] xdg_surface configure serial={} (surface_key={})",
+                    serial, surface_key
+                );
+                eprintln!(
+                    "[NPTK/Wayland] ack_configure on xdg_surface#{}",
+                    xdg_surf.id().protocol_id()
+                );
+                log::trace!(
+                    "Wayland: xdg_surface Configure serial={} (surface_key={})",
+                    serial,
+                    surface_key
+                );
                 xdg_surf.ack_configure(serial);
-                eprintln!("[NPTK/Wayland] FLUSH (after ACK) for xdg_surface#{}", sid);
-                let _ = WaylandClient::instance().flush();
-                if let Some(surface) = state.shared.get_surface(*surface_key) {
-                    surface.handle_configure_after_ack(serial);
+                match conn.flush() {
+                    Ok(()) => {
+                        eprintln!("[NPTK/Wayland] connection.flush() succeeded after ack");
+                    },
+                    Err(err) => {
+                        eprintln!("[NPTK/Wayland] ERROR flushing conn after ACK: {:?}", err);
+                    },
                 }
-            }
-            _ => {}
+                if let Some(surface) = state.shared.get_surface(*surface_key) {
+                    eprintln!(
+                        "[NPTK/Wayland] POST-ACK: invoking present for surface_key={}",
+                        surface_key
+                    );
+                    surface.handle_configure_after_ack(serial);
+                } else {
+                    eprintln!(
+                        "[NPTK/Wayland] ERROR: surface not found for key={} in XdgSurface Configure",
+                        surface_key
+                    );
+                }
+            },
+            _ => {},
         }
     }
 }
@@ -631,14 +732,27 @@ impl Dispatch<xdg_toplevel::XdgToplevel, u32> for WaylandClientState {
         if let Some(surface) = state.shared.get_surface(*surface_key) {
             match event {
                 xdg_toplevel::Event::Configure { width, height, .. } => {
-                    log::debug!("Wayland: XdgToplevel({}) Configure {}x{}", surface_key, width, height);
+                    eprintln!(
+                        "[NPTK/Wayland] xdg_toplevel configure width={} height={} (surface_key={})",
+                        width, height, surface_key
+                    );
+                    log::debug!(
+                        "Wayland: XdgToplevel({}) Configure {}x{}",
+                        surface_key,
+                        width,
+                        height
+                    );
                     surface.handle_toplevel_configure(width, height);
-                }
+                },
                 xdg_toplevel::Event::Close => {
+                    eprintln!(
+                        "[NPTK/Wayland] xdg_toplevel close (surface_key={})",
+                        surface_key
+                    );
                     log::debug!("Wayland: XdgToplevel({}) Close", surface_key);
                     surface.mark_closed();
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
     }
@@ -690,8 +804,8 @@ impl Dispatch<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1, u32> for Wa
                 zxdg_toplevel_decoration_v1::Event::Configure { .. } => {
                     // Decoration mode/config changed; request a redraw so chrome can update.
                     surface.request_redraw();
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
     }
@@ -736,4 +850,3 @@ impl Dispatch<wl_shm::WlShm, ()> for WaylandClientState {
     ) {
     }
 }
-

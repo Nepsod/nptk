@@ -32,7 +32,9 @@ impl Platform {
             if let Ok(val) = std::env::var("NPTK_RENDERER") {
                 let val_lower = val.to_lowercase();
                 if val_lower == "wayland" {
-                    eprintln!("[NPTK] NPTK_RENDERER=wayland detected, using native Wayland windowing");
+                    eprintln!(
+                        "[NPTK] NPTK_RENDERER=wayland detected, using native Wayland windowing"
+                    );
                     log::info!("Native Wayland windowing requested via NPTK_RENDERER=wayland");
                     return Platform::Wayland;
                 }
@@ -75,20 +77,23 @@ pub async fn create_surface(
     match platform {
         Platform::Winit => {
             let window = window.ok_or_else(|| "Window required for Winit platform".to_string())?;
-            let gpu_context = gpu_context.ok_or_else(|| "GpuContext required for Winit platform".to_string())?;
-            
+            let gpu_context =
+                gpu_context.ok_or_else(|| "GpuContext required for Winit platform".to_string())?;
+
             // Create surface using GpuContext's Instance
             let instance = gpu_context.instance();
-            let surface = instance.create_surface(window.clone())
+            let surface = instance
+                .create_surface(window.clone())
                 .map_err(|e| format!("Failed to create winit surface: {:?}", e))?;
-            
+
             Ok(Surface::Winit(surface))
-        }
+        },
         Platform::Wayland => {
-            let gpu_context = gpu_context.ok_or_else(|| "GpuContext required for Wayland platform".to_string())?;
+            let gpu_context = gpu_context
+                .ok_or_else(|| "GpuContext required for Wayland platform".to_string())?;
             let wayland_surface = WaylandSurface::new(width, height, title, gpu_context)?;
             Ok(Surface::Wayland(wayland_surface))
-        }
+        },
     }
 }
 
@@ -104,7 +109,14 @@ pub fn create_surface_blocking(
     title: &str,
     gpu_context: Option<&crate::vgi::GpuContext>,
 ) -> Result<Surface, String> {
-    crate::tasks::block_on(create_surface(platform, window, width, height, title, gpu_context))
+    crate::tasks::block_on(create_surface(
+        platform,
+        window,
+        width,
+        height,
+        title,
+        gpu_context,
+    ))
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -119,15 +131,17 @@ pub async fn create_surface(
     match platform {
         Platform::Winit => {
             let window = window.ok_or_else(|| "Window required for Winit platform".to_string())?;
-            let gpu_context = gpu_context.ok_or_else(|| "GpuContext required for Winit platform".to_string())?;
-            
+            let gpu_context =
+                gpu_context.ok_or_else(|| "GpuContext required for Winit platform".to_string())?;
+
             // Create surface using GpuContext's Instance
             let instance = gpu_context.instance();
-            let surface = instance.create_surface(window.clone())
+            let surface = instance
+                .create_surface(window.clone())
                 .map_err(|e| format!("Failed to create winit surface: {:?}", e))?;
-            
+
             Ok(Surface::Winit(surface))
-        }
+        },
     }
 }
 
@@ -140,6 +154,12 @@ pub fn create_surface_blocking(
     _title: &str,
     gpu_context: Option<&crate::vgi::GpuContext>,
 ) -> Result<Surface, String> {
-    crate::tasks::block_on(create_surface(platform, window, width, height, "", gpu_context))
+    crate::tasks::block_on(create_surface(
+        platform,
+        window,
+        width,
+        height,
+        "",
+        gpu_context,
+    ))
 }
-

@@ -2,13 +2,13 @@
 
 //! Text rendering using Parley for proper text layout and glyph mapping
 
-use parley::{LayoutContext, StyleProperty, Alignment, Layout};
 use crate::app::font_ctx::FontContext;
 use crate::vgi::Graphics;
-use vello::Scene;
+use fontique::QueryFont;
+use parley::{Alignment, Layout, LayoutContext, StyleProperty};
 use vello::kurbo::Affine;
 use vello::peniko::{Brush, Fill};
-use fontique::QueryFont;
+use vello::Scene;
 
 /// Brush index type for Parley integration
 #[derive(Clone, PartialEq, Default, Debug)]
@@ -43,15 +43,29 @@ impl TextRenderContext {
             return;
         }
 
-        log::debug!("TextRenderContext::render_text called with text: '{}'", text);
+        log::debug!(
+            "TextRenderContext::render_text called with text: '{}'",
+            text
+        );
 
         // Extract Scene from Graphics for Parley rendering
         // Parley needs direct Scene access for glyph drawing
         if let Some(scene) = graphics.as_scene_mut() {
             // Try Parley first, but fall back to simple rendering if it fails
-            if let Err(_e) = self.try_render_with_parley(font_cx, scene, text, font.clone(), font_size, color.clone(), transform, hint) {
+            if let Err(_e) = self.try_render_with_parley(
+                font_cx,
+                scene,
+                text,
+                font.clone(),
+                font_size,
+                color.clone(),
+                transform,
+                hint,
+            ) {
                 log::debug!("Parley rendering failed, using simple fallback");
-                self.render_simple_fallback(font_cx, scene, text, font, font_size, color, transform);
+                self.render_simple_fallback(
+                    font_cx, scene, text, font, font_size, color, transform,
+                );
             }
         } else {
             log::warn!("Graphics backend does not support text rendering via Parley");
@@ -71,31 +85,31 @@ impl TextRenderContext {
         hint: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!("Rendering text: '{}' with font size: {}", text, font_size);
-        
-        
+
         // Use our existing font context but ensure it has system fonts loaded
         let display_scale = 1.0;
         let mut parley_font_cx = _font_cx.create_parley_font_context();
-        let mut builder = self.layout_cx.ranged_builder(&mut parley_font_cx, text, display_scale, true);
-        
+        let mut builder =
+            self.layout_cx
+                .ranged_builder(&mut parley_font_cx, text, display_scale, true);
+
         // Set font size
         builder.push_default(StyleProperty::FontSize(font_size));
-        
+
         let mut layout = builder.build(text);
-        
+
         // Perform layout operations
         layout.break_all_lines(None);
         layout.align(None, Alignment::Start, Default::default());
-        
+
         // Create brushes array
         let brushes = vec![color];
-        
+
         // Render the text using Parley's layout
         self.render_layout_simple(scene, &layout, &brushes, transform, hint);
-        
+
         Ok(())
     }
-
 
     /// Simple fallback rendering method
     fn render_simple_fallback(
@@ -108,11 +122,13 @@ impl TextRenderContext {
         _color: Brush,
         _transform: Affine,
     ) {
-        
         // Use system fonts for fallback rendering
         // For now, we'll skip fallback rendering since we have automatic font selection
         // The main Parley rendering should handle most cases with proper font fallback
-        log::warn!("Could not render text '{}' - no suitable font available", text);
+        log::warn!(
+            "Could not render text '{}' - no suitable font available",
+            text
+        );
     }
 
     /// Render a simple Parley layout to the scene (for default layout type)
@@ -130,7 +146,7 @@ impl TextRenderContext {
                 let parley::PositionedLayoutItem::GlyphRun(glyph_run) = item else {
                     continue;
                 };
-                
+
                 let mut x = glyph_run.offset();
                 let y = glyph_run.baseline();
                 let run = glyph_run.run();
@@ -141,14 +157,13 @@ impl TextRenderContext {
                     .skew()
                     .map(|angle| Affine::skew(angle.to_radians().tan() as f64, 0.0));
                 let coords = run.normalized_coords();
-                
+
                 // Use the first brush for simple rendering
                 let brush = &brushes[0];
-                
+
                 let glyphs: Vec<_> = glyph_run.glyphs().collect();
                 let _glyph_count = glyphs.len();
-                
-                
+
                 if !glyphs.is_empty() {
                     scene
                         .draw_glyphs(font)
@@ -181,22 +196,23 @@ impl TextRenderContext {
         if text.is_empty() {
             return 0.0;
         }
-        
+
         // Create a text layout using Parley to get accurate measurements
         let display_scale = 1.0;
         let mut parley_font_cx = font_cx.create_parley_font_context();
         let mut temp_layout_cx = LayoutContext::<[u8; 4]>::new();
-        let mut builder = temp_layout_cx.ranged_builder(&mut parley_font_cx, text, display_scale, true);
-        
+        let mut builder =
+            temp_layout_cx.ranged_builder(&mut parley_font_cx, text, display_scale, true);
+
         // Set font size
         builder.push_default(StyleProperty::FontSize(font_size));
-        
+
         let mut layout = builder.build(text);
-        
+
         // Perform layout operations
         layout.break_all_lines(None);
         layout.align(None, Alignment::Start, Default::default());
-        
+
         // Calculate total width by summing up glyph advances
         let mut total_width = 0.0;
         for line in layout.lines() {
@@ -204,14 +220,14 @@ impl TextRenderContext {
                 let parley::PositionedLayoutItem::GlyphRun(glyph_run) = item else {
                     continue;
                 };
-                
+
                 // Sum up all glyph advances in this run
                 for glyph in glyph_run.glyphs() {
                     total_width += glyph.advance;
                 }
             }
         }
-        
+
         total_width
     }
 
@@ -229,7 +245,7 @@ impl TextRenderContext {
                 let parley::PositionedLayoutItem::GlyphRun(glyph_run) = item else {
                     continue;
                 };
-                
+
                 let mut x = glyph_run.offset();
                 let y = glyph_run.baseline();
                 let run = glyph_run.run();
@@ -242,7 +258,7 @@ impl TextRenderContext {
                 let coords = run.normalized_coords();
                 let style = glyph_run.style();
                 let brush = &brushes[style.brush.0];
-                
+
                 scene
                     .draw_glyphs(font)
                     .brush(brush)

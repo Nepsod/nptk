@@ -62,4 +62,3 @@ pub mod vgi;
 
 /// Re-export BrushIndex for use in other modules
 pub use text_render::BrushIndex;
-

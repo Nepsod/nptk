@@ -149,10 +149,10 @@ pub mod id;
 pub mod manager;
 /// Contains type-safe theme properties and values.
 pub mod properties;
+/// Contains centralized widget rendering functionality.
+pub mod rendering;
 /// Contains styling structures.
 /// Contains the [theme::Theme] trait and built-in themes.
 pub mod theme;
 /// Contains the [theme_resolver::SelfContainedThemeResolver] for self-contained theme resolution.
 pub mod theme_resolver;
-/// Contains centralized widget rendering functionality.
-pub mod rendering;

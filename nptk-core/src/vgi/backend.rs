@@ -9,12 +9,12 @@ pub enum Backend {
     /// Standard Vello GPU renderer (uses `vello::Scene`)
     Vello,
     /// Vello Hybrid renderer (CPU/GPU hybrid, uses `vello_hybrid::Scene`)
-    /// 
+    ///
     /// **Note:** Hybrid renderer requires using a different Scene type.
     /// Currently not fully implemented - falls back to Vello renderer.
     Hybrid,
     /// Custom backend (for future extensibility, e.g., tiny skia).
-    /// 
+    ///
     /// The string identifier can be used to look up backend implementations
     /// in a registry or factory system.
     Custom(String),
@@ -47,26 +47,31 @@ impl Backend {
                         eprintln!("[NPTK] Using Vello Hybrid renderer (CPU/GPU hybrid)");
                         log::info!("Using Vello Hybrid renderer");
                         Backend::Hybrid
-                    }
+                    },
                     "wayland" => {
                         // wayland is handled by Platform::detect() for windowing
                         // For rendering backend, default to Vello
                         eprintln!("[NPTK] NPTK_RENDERER=wayland detected (windowing platform), using Vello renderer");
-                        log::info!("NPTK_RENDERER=wayland sets windowing platform, using Vello renderer");
+                        log::info!(
+                            "NPTK_RENDERER=wayland sets windowing platform, using Vello renderer"
+                        );
                         Backend::Vello
-                    }
-                    "vello" | "" => {
-                        Backend::Vello
-                    }
+                    },
+                    "vello" | "" => Backend::Vello,
                     custom => {
-                        eprintln!("[NPTK] Unknown renderer: {}, using Vello (standard)", custom);
-                        eprintln!("[NPTK] For custom backends, use Backend::Custom(\"{}\")", custom);
+                        eprintln!(
+                            "[NPTK] Unknown renderer: {}, using Vello (standard)",
+                            custom
+                        );
+                        eprintln!(
+                            "[NPTK] For custom backends, use Backend::Custom(\"{}\")",
+                            custom
+                        );
                         Backend::Vello
-                    }
+                    },
                 }
-            }
+            },
             Err(_) => Backend::default(),
         }
     }
 }
-

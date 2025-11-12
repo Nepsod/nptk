@@ -1,5 +1,7 @@
 use nptk::prelude::*;
-use nptk::widgets::scroll_container::{ScrollContainer, ScrollDirection, VerticalScrollbarPosition};
+use nptk::widgets::scroll_container::{
+    ScrollContainer, ScrollDirection, VerticalScrollbarPosition,
+};
 
 struct ScrollContainerApp;
 

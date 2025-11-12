@@ -1,5 +1,5 @@
 use nalgebra::Vector2;
-use winit::event::{DeviceId, ElementState, KeyEvent, MouseButton, MouseScrollDelta, Ime};
+use winit::event::{DeviceId, ElementState, Ime, KeyEvent, MouseButton, MouseScrollDelta};
 use winit::keyboard::{Key, ModifiersState, PhysicalKey};
 
 use crate::app::diagnostics::Diagnostics;
@@ -70,9 +70,9 @@ impl AppInfo {
 
 impl Default for AppInfo {
     fn default() -> Self {
-        use crate::app::focus::{FocusManager};
+        use crate::app::focus::FocusManager;
         use std::sync::{Arc, Mutex};
-        
+
         Self {
             cursor_pos: None,
             keys: Vec::with_capacity(4),

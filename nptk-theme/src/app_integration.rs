@@ -322,7 +322,9 @@ pub trait ThemeAware: ThemeConfigurable + DefaultThemeProvider {
     /// let app = MyApp;
     /// let manager = app.theme_manager_with_resolved_theme().unwrap();
     /// ```
-    fn theme_manager_with_resolved_theme(&self) -> Result<Arc<std::sync::RwLock<ThemeManager>>, Box<dyn std::error::Error>> {
+    fn theme_manager_with_resolved_theme(
+        &self,
+    ) -> Result<Arc<std::sync::RwLock<ThemeManager>>, Box<dyn std::error::Error>> {
         let theme = self.resolve_theme()?;
         let manager = ThemeManager::with_theme(theme);
         Ok(Arc::new(std::sync::RwLock::new(manager)))
@@ -360,10 +362,12 @@ pub fn create_app_theme_config() -> ThemeConfig {
 ///
 /// let theme = resolve_app_theme("dark").unwrap();
 /// ```
-pub fn resolve_app_theme(default_theme_name: &str) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
+pub fn resolve_app_theme(
+    default_theme_name: &str,
+) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
     let config = ThemeConfig::from_env_or_default();
     let resolver = SelfContainedThemeResolver::new();
-    
+
     match resolver.resolve_from_config(&config) {
         Ok(theme) => Ok(theme),
         Err(_) => resolver.resolve_theme(default_theme_name),

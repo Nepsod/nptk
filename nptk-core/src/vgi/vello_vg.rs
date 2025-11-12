@@ -1,6 +1,6 @@
+use crate::vgi::Graphics;
 use vello::kurbo::{Affine, BezPath, Shape, Stroke};
 use vello::peniko::{Brush, Fill};
-use crate::vgi::Graphics;
 use vello::Scene;
 
 /// A Vello-based implementation of the [Graphics] trait.
@@ -47,7 +47,8 @@ impl<'a> VelloGraphics<'a> {
         brush_transform: Option<Affine>,
         shape: &impl Shape,
     ) {
-        self.scene.fill(fill_rule, transform, brush, brush_transform, shape);
+        self.scene
+            .fill(fill_rule, transform, brush, brush_transform, shape);
     }
 
     /// Stroke a shape using a concrete shape type (more efficient than BezPath conversion).
@@ -62,7 +63,8 @@ impl<'a> VelloGraphics<'a> {
         brush_transform: Option<Affine>,
         shape: &impl Shape,
     ) {
-        self.scene.stroke(style, transform, brush, brush_transform, shape);
+        self.scene
+            .stroke(style, transform, brush, brush_transform, shape);
     }
 
     /// Push a layer using a concrete shape type (more efficient than BezPath conversion).
@@ -89,7 +91,8 @@ impl<'a> Graphics for VelloGraphics<'a> {
         brush_transform: Option<Affine>,
         shape: &BezPath,
     ) {
-        self.scene.fill(fill_rule, transform, brush, brush_transform, shape);
+        self.scene
+            .fill(fill_rule, transform, brush, brush_transform, shape);
     }
 
     fn stroke(
@@ -100,14 +103,21 @@ impl<'a> Graphics for VelloGraphics<'a> {
         brush_transform: Option<Affine>,
         shape: &BezPath,
     ) {
-        self.scene.stroke(style, transform, brush, brush_transform, shape);
+        self.scene
+            .stroke(style, transform, brush, brush_transform, shape);
     }
 
     fn append(&mut self, other: &vello::Scene, transform: Option<Affine>) {
         self.scene.append(other, transform);
     }
 
-    fn push_layer(&mut self, mix: vello::peniko::Mix, alpha: f32, transform: Affine, shape: &BezPath) {
+    fn push_layer(
+        &mut self,
+        mix: vello::peniko::Mix,
+        alpha: f32,
+        transform: Affine,
+        shape: &BezPath,
+    ) {
         self.scene.push_layer(mix, alpha, transform, shape);
     }
 

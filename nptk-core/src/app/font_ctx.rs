@@ -5,7 +5,7 @@ use std::sync::{Arc, RwLock};
 /// A font manager for nptk applications, powered by `fontique` with system font support.
 ///
 /// This context handles discovery of system fonts using fontique's built-in
-/// fontconfig backend (always enabled on Linux) and provides an interface for 
+/// fontconfig backend (always enabled on Linux) and provides an interface for
 /// querying and resolving fonts, which will be used by the `parley` text layout engine.
 #[derive(Clone)]
 pub struct FontContext {
@@ -21,7 +21,7 @@ impl FontContext {
     pub fn new() -> Self {
         Self {
             collection: Arc::new(RwLock::new(Collection::new(CollectionOptions {
-                system_fonts: false,  // Don't load system fonts immediately
+                system_fonts: false, // Don't load system fonts immediately
                 ..Default::default()
             }))),
             source_cache: Arc::new(RwLock::new(SourceCache::new(Default::default()))),
@@ -41,7 +41,7 @@ impl FontContext {
             }))),
             source_cache: Arc::new(RwLock::new(SourceCache::new(Default::default()))),
         };
-        
+
         context.discover_system_fonts();
         context
     }
@@ -53,28 +53,29 @@ impl FontContext {
         let mut collection = self.collection.write().unwrap();
         let mut source_cache = self.source_cache.write().unwrap();
         let _ = collection.query(&mut source_cache);
-        log::debug!("FontContext discovered {} font families", collection.family_names().count());
+        log::debug!(
+            "FontContext discovered {} font families",
+            collection.family_names().count()
+        );
     }
-
 
     /// Create a parley FontContext from our fontique collection
     /// This bridges our custom font management with Parley's text layout engine
     pub fn create_parley_font_context(&self) -> parley::FontContext {
         let collection = self.collection.read().unwrap();
         let source_cache = self.source_cache.read().unwrap();
-        
+
         parley::FontContext {
             collection: collection.clone(),
             source_cache: source_cache.clone(),
         }
     }
 
-
     /// Load a font into the collection.
     pub fn load(&mut self, name: impl ToString, font: Font) {
         let font_name = name.to_string();
         let mut collection = self.collection.write().unwrap();
-        
+
         let (data, _) = font.data.into_raw_parts();
         let result = collection.register_fonts(Blob::new(data), None);
         log::debug!("Loaded font '{}' with {} families", font_name, result.len());
@@ -84,49 +85,52 @@ impl FontContext {
     pub fn default_font(&self) -> Option<QueryFont> {
         self.query_with_families(
             [QueryFamily::Generic(fontique::GenericFamily::SansSerif)],
-            "Default font"
+            "Default font",
         )
     }
 
     /// Get a font by name.
     pub fn get(&self, name: &str) -> Option<QueryFont> {
-        self.query_with_families(
-            [QueryFamily::Named(name)],
-            &format!("Font '{}'", name)
-        )
+        self.query_with_families([QueryFamily::Named(name)], &format!("Font '{}'", name))
     }
 
     /// Create a query with the given families and execute it.
     ///
     /// This extracts the common pattern of locking, creating a query, and executing it.
-    fn query_with_families(&self, families: [QueryFamily; 1], description: &str) -> Option<QueryFont> {
+    fn query_with_families(
+        &self,
+        families: [QueryFamily; 1],
+        description: &str,
+    ) -> Option<QueryFont> {
         let mut collection = self.collection.write().unwrap();
         let mut source_cache = self.source_cache.write().unwrap();
-        
+
         let mut query = collection.query(&mut source_cache);
         query.set_families(families);
-        
+
         self.execute_query(query, description)
     }
 
     /// Execute a font query and return the first match.
     ///
     /// This extracts the common query execution pattern used by both `default_font()` and `get()`.
-    fn execute_query(&self, mut query: fontique::Query<'_>, description: &str) -> Option<QueryFont> {
+    fn execute_query(
+        &self,
+        mut query: fontique::Query<'_>,
+        description: &str,
+    ) -> Option<QueryFont> {
         let mut result = None;
         query.matches_with(|font| {
             result = Some(font.clone());
             fontique::QueryStatus::Stop
         });
-        
+
         if result.is_none() {
             log::warn!("{} not available", description);
         }
-        
+
         result
     }
-
-    
 }
 
 impl Default for FontContext {

@@ -87,7 +87,8 @@ impl Widget for GestureDetector {
         info: &mut AppInfo,
         context: AppContext,
     ) {
-        self.child.render(graphics, theme, layout_node, info, context)
+        self.child
+            .render(graphics, theme, layout_node, info, context)
     }
 
     fn layout_style(&self) -> StyleNode {
@@ -131,5 +132,3 @@ impl Widget for GestureDetector {
         WidgetId::new("nptk-widgets", "GestureDetector")
     }
 }
-
-

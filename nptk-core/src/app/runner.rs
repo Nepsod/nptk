@@ -22,11 +22,8 @@ impl<T: Theme> MayRunner<T> {
     pub fn new(config: MayConfig<T>) -> Self {
         Self::initialize_task_runner(&config);
         let font_ctx = Self::create_font_context(&config);
-        
-        Self {
-            config,
-            font_ctx,
-        }
+
+        Self { config, font_ctx }
     }
 
     /// Initialize the task runner if configured.
@@ -96,10 +93,7 @@ impl<T: Theme> MayRunner<T> {
     /// Build window attributes from configuration.
     fn build_window_attributes(config: &MayConfig<T>) -> WindowAttributes {
         WindowAttributes::default()
-            .with_inner_size(LogicalSize::new(
-                config.window.size.x,
-                config.window.size.y,
-            ))
+            .with_inner_size(LogicalSize::new(config.window.size.x, config.window.size.y))
             .with_resizable(config.window.resizable)
             .with_enabled_buttons(config.window.buttons)
             .with_title(config.window.title.clone())
@@ -123,7 +117,10 @@ impl<T: Theme> MayRunner<T> {
         Self::set_optional_size(&mut attrs.max_inner_size, &config.window.max_size);
         Self::set_optional_size(&mut attrs.min_inner_size, &config.window.min_size);
         Self::set_optional_position(&mut attrs.position, &config.window.position);
-        Self::set_optional_size(&mut attrs.resize_increments, &config.window.resize_increments);
+        Self::set_optional_size(
+            &mut attrs.resize_increments,
+            &config.window.resize_increments,
+        );
     }
 
     /// Set an optional size attribute.
@@ -132,7 +129,10 @@ impl<T: Theme> MayRunner<T> {
     }
 
     /// Set an optional position attribute.
-    fn set_optional_position(target: &mut Option<Position>, source: &Option<nalgebra::Point2<f64>>) {
+    fn set_optional_position(
+        target: &mut Option<Position>,
+        source: &Option<nalgebra::Point2<f64>>,
+    ) {
         *target = source.map(|v| Position::Logical(LogicalPosition::new(v.x, v.y)));
     }
 
@@ -152,13 +152,7 @@ impl<T: Theme> MayRunner<T> {
     {
         event_loop
             .run_app(&mut AppHandler::new(
-                attrs,
-                config,
-                builder,
-                state,
-                font_ctx,
-                update,
-                plugins,
+                attrs, config, builder, state, font_ctx, update, plugins,
             ))
             .expect("Failed to run event loop");
     }
