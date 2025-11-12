@@ -327,7 +327,12 @@ impl WaylandSurfaceInner {
         if state.frame_callback.is_none() {
             let callback = self.wl_surface.frame(&self.queue_handle, self.surface_key);
             state.frame_callback = Some(callback);
-            let _ = WaylandClient::instance().flush();
+            if let Err(err) = WaylandClient::instance().connection().flush() {
+                log::warn!(
+                    "Failed to flush Wayland connection after frame request: {:?}",
+                    err
+                );
+            }
             log::trace!("Registered wl_surface.frame callback");
         }
     }
