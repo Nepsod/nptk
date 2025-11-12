@@ -799,7 +799,6 @@ where
 
     /// Render a frame to the screen.
     fn render_frame(&mut self, layout_node: &LayoutNode, event_loop: &ActiveEventLoop) {
-        eprintln!("[NPTK] render_frame() called - Draw update detected!");
         log::debug!("Draw update detected!");
         let render_start = Instant::now();
 
@@ -821,7 +820,6 @@ where
             // FORCE should only trigger one render, not continuous rendering
             self.update
                 .set(self.update.get() & !(Update::DRAW | Update::FORCE));
-            eprintln!("[NPTK] render_frame() completed successfully");
         } else {
             // Rendering failed - check if it's due to invalid surface size
             // If so, clear DRAW flag to prevent infinite loop (we'll retry when surface is configured)
@@ -841,14 +839,14 @@ where
             };
 
             if surface_size.0 == 0 || surface_size.1 == 0 {
-                eprintln!("[NPTK] render_frame() failed - surface size is 0x0, clearing DRAW flag to prevent infinite loop");
+                log::debug!(
+                    "render_frame() failed - surface size is 0x0, clearing DRAW flag to prevent infinite loop"
+                );
                 // Clear DRAW flag but keep FORCE flag so we retry once surface is ready
                 self.update.set(self.update.get() & !Update::DRAW);
             } else {
                 // Other error - keep DRAW flag for retry, but clear FORCE to prevent infinite loop
-                eprintln!(
-                    "[NPTK] render_frame() failed - keeping DRAW flag for retry, clearing FORCE"
-                );
+                log::debug!("render_frame() failed - keeping DRAW flag for retry, clearing FORCE");
                 self.update.set(self.update.get() & !Update::FORCE);
                 log::debug!("Rendering failed, keeping DRAW flag for retry");
             }
@@ -909,7 +907,6 @@ where
         // Don't render until async initialization is complete
         if !self.async_init_complete.load(Ordering::Relaxed) {
             log::warn!("Async initialization not complete. Skipping render.");
-            eprintln!("[NPTK] Skipping render: async initialization not complete");
             return None;
         }
 
@@ -917,7 +914,6 @@ where
             Some(r) => r,
             None => {
                 log::warn!("Renderer not initialized. Skipping render.");
-                eprintln!("[NPTK] Skipping render: renderer not initialized");
                 return None;
             },
         };
@@ -926,7 +922,6 @@ where
             Some(ctx) => ctx,
             None => {
                 log::warn!("GPU context not initialized. Skipping render.");
-                eprintln!("[NPTK] Skipping render: GPU context not initialized");
                 return None;
             },
         };
@@ -934,7 +929,6 @@ where
         let devices = gpu_context.enumerate_devices();
         if devices.is_empty() {
             log::warn!("No devices found. Skipping render.");
-            eprintln!("[NPTK] Skipping render: no devices found");
             return None;
         }
 
@@ -945,7 +939,6 @@ where
             Some(s) => s,
             None => {
                 log::warn!("Surface not initialized. Skipping render.");
-                eprintln!("[NPTK] Skipping render: surface not initialized");
                 return None;
             },
         };
@@ -955,7 +948,6 @@ where
         if let crate::vgi::Surface::Wayland(ref mut wayland_surface) = &mut *surface {
             if !wayland_surface.has_received_configure() {
                 log::debug!("Wayland surface has not received configure yet. Skipping render.");
-                eprintln!("[NPTK] Skipping render: awaiting first configure");
                 return None;
             }
             if wayland_surface.requires_reconfigure() {
@@ -967,14 +959,13 @@ where
                     wgpu_types::PresentMode::FifoRelaxed => vello::wgpu::PresentMode::Fifo,
                     wgpu_types::PresentMode::Mailbox => vello::wgpu::PresentMode::Mailbox,
                 };
-                eprintln!("[NPTK] Wayland reconfigure requested...");
+                log::debug!("Wayland reconfigure requested...");
                 if let Err(e) = wayland_surface.configure_surface(
                     &device_handle.device,
                     wayland_surface.format(),
                     present_mode,
                 ) {
                     log::warn!("Wayland reconfigure failed: {}", e);
-                    eprintln!("[NPTK] Wayland reconfigure failed: {}", e);
                 } else {
                     log::debug!(
                         "Wayland surface reconfigured to {}x{}",
