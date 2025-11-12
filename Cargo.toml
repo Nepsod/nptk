@@ -58,7 +58,7 @@ canvas = ["nptk-widgets/canvas"]
 tokio-runner = ["nptk-core/tokio-runner"]
 
 # Enables the `vello` vector graphics backend.
-vello-vg = ["nptk-core/vello-vg"]
+vello = ["nptk-core/vello"]
 
 [lib]
 name = "nptk"

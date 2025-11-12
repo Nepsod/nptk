@@ -6,8 +6,11 @@ use crate::app::font_ctx::FontContext;
 use crate::vgi::Graphics;
 use fontique::QueryFont;
 use parley::{Alignment, Layout, LayoutContext, StyleProperty};
+#[cfg(feature = "vello")]
 use vello::kurbo::Affine;
+#[cfg(feature = "vello")]
 use vello::peniko::{Brush, Fill};
+#[cfg(feature = "vello")]
 use vello::Scene;
 
 /// Brush index type for Parley integration

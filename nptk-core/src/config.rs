@@ -1,6 +1,7 @@
 use crate::vgi::DeviceHandle;
 use nalgebra::{Point2, Vector2};
 use std::num::NonZeroUsize;
+#[cfg(feature = "vello")]
 pub use vello::AaConfig;
 pub use wgpu_types::PresentMode;
 pub use winit::window::{

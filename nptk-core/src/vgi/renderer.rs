@@ -6,7 +6,9 @@
 use super::backend::Backend;
 use super::options::RendererOptions;
 use super::scene::Scene;
+#[cfg(feature = "vello")]
 use vello::wgpu::{Device, Queue, SurfaceTexture};
+#[cfg(feature = "vello")]
 use vello::{RenderParams, Scene as VelloScene};
 #[cfg(feature = "vello-hybrid")]
 use vello_hybrid::Renderer as HybridRenderer;
@@ -53,6 +55,7 @@ pub trait RendererTrait {
 /// for rendering, while still allowing backend-specific optimizations.
 pub enum Renderer {
     /// Standard Vello renderer
+    #[cfg(feature = "vello")]
     Vello(vello::Renderer),
     /// Vello Hybrid renderer (CPU/GPU hybrid)
     #[cfg(feature = "vello-hybrid")]
@@ -72,6 +75,7 @@ impl Renderer {
     /// # Returns
     /// * `Ok(Renderer)` if creation succeeded
     /// * `Err(String)` if creation failed
+    #[cfg(feature = "vello")]
     pub fn new(
         device: &Device,
         backend: Backend,
@@ -113,6 +117,17 @@ impl Renderer {
             },
         }
     }
+    
+    #[cfg(not(feature = "vello"))]
+    pub fn new(
+        _device: &wgpu::Device,
+        backend: Backend,
+        _options: RendererOptions,
+        _width: u32,
+        _height: u32,
+    ) -> Result<Self, String> {
+        Err(format!("Vello renderer is not available (feature 'vello' is disabled). Backend requested: {:?}", backend))
+    }
 
     /// Render a Vello scene (legacy method for compatibility).
     ///
@@ -129,6 +144,7 @@ impl Renderer {
     /// # Returns
     /// * `Ok(())` if rendering succeeded
     /// * `Err(String)` if rendering failed or renderer is not Vello
+    #[cfg(feature = "vello")]
     pub fn render_vello_scene_to_surface(
         &mut self,
         device: &Device,
@@ -138,6 +154,7 @@ impl Renderer {
         params: &RenderParams,
     ) -> Result<(), String> {
         match self {
+            #[cfg(feature = "vello")]
             Renderer::Vello(renderer) => {
                 renderer
                     .render_to_surface(device, queue, scene, surface_texture, params)
@@ -183,7 +200,7 @@ impl RendererTrait for Renderer {
         surface_texture: &SurfaceTexture,
         params: &RenderParams,
     ) -> Result<(), String> {
-        #[cfg(feature = "vello-hybrid")]
+        #[cfg(all(feature = "vello-hybrid", feature = "vello"))]
         {
             match (self, scene) {
                 (Renderer::Vello(renderer), Scene::Vello(vello_scene)) => {
@@ -199,7 +216,7 @@ impl RendererTrait for Renderer {
                 _ => Err("Renderer and scene backend mismatch".to_string()),
             }
         }
-        #[cfg(not(feature = "vello-hybrid"))]
+        #[cfg(all(not(feature = "vello-hybrid"), feature = "vello"))]
         {
             #[allow(irrefutable_let_patterns)]
             if let (Renderer::Vello(renderer), Scene::Vello(vello_scene)) = (self, scene) {
@@ -211,12 +228,17 @@ impl RendererTrait for Renderer {
                 Err("Renderer and scene backend mismatch".to_string())
             }
         }
+        #[cfg(not(feature = "vello"))]
+        {
+            Err("Vello renderer is not available (feature 'vello' is disabled)".to_string())
+        }
     }
 
     fn update_render_target_size(&mut self, _width: u32, _height: u32) {
         // Hybrid renderer needs scene size, not render target size
         // This is a no-op for now, size is handled by the scene
         match self {
+            #[cfg(feature = "vello")]
             Renderer::Vello(_) => {},
             #[cfg(feature = "vello-hybrid")]
             Renderer::Hybrid(_) => {},

@@ -6,7 +6,10 @@
 //! on Wayland.
 
 use pollster;
+#[cfg(feature = "vello")]
 use vello::wgpu;
+#[cfg(not(feature = "vello"))]
+use wgpu;
 
 /// Handle to a GPU device and its associated queue.
 ///

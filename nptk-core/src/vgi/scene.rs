@@ -4,6 +4,7 @@
 //! rendering backends (Vello, Hybrid, and possibly future backends like tiny skia).
 
 use std::any::Any;
+#[cfg(feature = "vello")]
 use vello::Scene as VelloScene;
 #[cfg(feature = "vello-hybrid")]
 use vello_hybrid::Scene as HybridScene;
@@ -37,6 +38,7 @@ pub trait SceneTrait: 'static {
 /// for widget rendering, while still allowing backend-specific optimizations.
 pub enum Scene {
     /// Standard Vello scene
+    #[cfg(feature = "vello")]
     Vello(VelloScene),
     /// Vello Hybrid scene (CPU/GPU hybrid rendering)
     #[cfg(feature = "vello-hybrid")]
@@ -56,23 +58,58 @@ impl Scene {
     /// this will fall back to creating a Vello scene to match the renderer fallback behavior.
     pub fn new(backend: super::backend::Backend, _width: u32, _height: u32) -> Self {
         match backend {
+            #[cfg(feature = "vello")]
             super::backend::Backend::Vello => Scene::Vello(VelloScene::new()),
+            #[cfg(not(feature = "vello"))]
+            super::backend::Backend::Vello => {
+                panic!("Vello backend requested but 'vello' feature is disabled")
+            },
             super::backend::Backend::Hybrid => {
-                // CRITICAL: vello_hybrid uses wgpu 26.0.1, while vello uses wgpu 23.0.1.
-                // These are incompatible versions. Since Renderer::new() falls back to Vello,
-                // we must also fall back to Vello scene to avoid renderer/scene mismatch.
-                log::warn!("Hybrid scene requested but unavailable, falling back to Vello scene");
-                Scene::Vello(VelloScene::new())
+                #[cfg(feature = "vello-hybrid")]
+                {
+                    // CRITICAL: vello_hybrid uses wgpu 26.0.1, while vello uses wgpu 23.0.1.
+                    // These are incompatible versions. Since Renderer::new() falls back to Vello,
+                    // we must also fall back to Vello scene to avoid renderer/scene mismatch.
+                    #[cfg(feature = "vello")]
+                    {
+                        log::warn!("Hybrid scene requested but unavailable, falling back to Vello scene");
+                        Scene::Vello(VelloScene::new())
+                    }
+                    #[cfg(not(feature = "vello"))]
+                    {
+                        panic!("Hybrid scene requested but 'vello' feature is disabled")
+                    }
+                }
+                #[cfg(not(feature = "vello-hybrid"))]
+                {
+                    #[cfg(feature = "vello")]
+                    {
+                        log::warn!("Hybrid scene requested but unavailable, falling back to Vello scene");
+                        Scene::Vello(VelloScene::new())
+                    }
+                    #[cfg(not(feature = "vello"))]
+                    {
+                        panic!("Hybrid scene requested but 'vello' feature is disabled")
+                    }
+                }
             },
             super::backend::Backend::Custom(_) => {
-                // For now, custom backends fall back to Vello
-                // In the future, this can be extended with a registry or factory
-                Scene::Vello(VelloScene::new())
+                #[cfg(feature = "vello")]
+                {
+                    // For now, custom backends fall back to Vello
+                    // In the future, this can be extended with a registry or factory
+                    Scene::Vello(VelloScene::new())
+                }
+                #[cfg(not(feature = "vello"))]
+                {
+                    panic!("Custom backend requested but 'vello' feature is disabled")
+                }
             },
         }
     }
 
     /// Get a mutable reference to the Vello scene if this is a Vello scene.
+    #[cfg(feature = "vello")]
     pub fn as_vello_mut(&mut self) -> Option<&mut VelloScene> {
         match self {
             Scene::Vello(scene) => Some(scene),
@@ -115,6 +152,7 @@ impl Scene {
 impl SceneTrait for Scene {
     fn reset(&mut self) {
         match self {
+            #[cfg(feature = "vello")]
             Scene::Vello(scene) => scene.reset(),
             #[cfg(feature = "vello-hybrid")]
             Scene::Hybrid(scene) => scene.reset(),
@@ -123,6 +161,7 @@ impl SceneTrait for Scene {
 
     fn width(&self) -> u32 {
         match self {
+            #[cfg(feature = "vello")]
             Scene::Vello(_) => 0, // Vello scenes don't track dimensions
             #[cfg(feature = "vello-hybrid")]
             Scene::Hybrid(scene) => scene.width() as u32,
@@ -131,6 +170,7 @@ impl SceneTrait for Scene {
 
     fn height(&self) -> u32 {
         match self {
+            #[cfg(feature = "vello")]
             Scene::Vello(_) => 0, // Vello scenes don't track dimensions
             #[cfg(feature = "vello-hybrid")]
             Scene::Hybrid(scene) => scene.height() as u32,

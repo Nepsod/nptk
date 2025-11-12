@@ -16,7 +16,9 @@
 //! Widgets use the [Graphics] trait for drawing. The renderer and scene management
 //! is handled by the application framework, allowing widgets to remain backend-agnostic.
 
+#[cfg(feature = "vello")]
 use vello::kurbo::{Affine, BezPath, Shape, Stroke};
+#[cfg(feature = "vello")]
 use vello::peniko::{Brush, Fill};
 
 // Re-export unified abstractions
