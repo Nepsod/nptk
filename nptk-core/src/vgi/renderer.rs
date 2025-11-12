@@ -8,6 +8,8 @@ use super::options::RendererOptions;
 use super::scene::Scene;
 use vello::wgpu::{Device, Queue, SurfaceTexture};
 use vello::{RenderParams, Scene as VelloScene};
+#[cfg(feature = "vello-hybrid")]
+use vello_hybrid::Renderer as HybridRenderer;
 
 /// A trait for renderer implementations that can render scenes to surfaces.
 ///
@@ -53,7 +55,8 @@ pub enum Renderer {
     /// Standard Vello renderer
     Vello(vello::Renderer),
     /// Vello Hybrid renderer (CPU/GPU hybrid)
-    Hybrid(vello_hybrid::Renderer),
+    #[cfg(feature = "vello-hybrid")]
+    Hybrid(HybridRenderer),
 }
 
 impl Renderer {
@@ -82,12 +85,18 @@ impl Renderer {
                     .map_err(|e| format!("Failed to create Vello renderer: {:?}", e))?,
             )),
             Backend::Hybrid => {
-                // CRITICAL: vello_hybrid uses wgpu 26.0.1, while vello uses wgpu 23.0.1.
-                // These are incompatible versions and cannot be safely converted.
-                // For now, Hybrid backend is disabled until we can resolve the version conflict.
-                log::error!("Hybrid renderer requested but unavailable due to wgpu version conflict (vello=23.0.1, vello_hybrid=26.0.1)");
-                log::warn!("Falling back to Vello renderer");
-
+                #[cfg(feature = "vello-hybrid")]
+                {
+                    // CRITICAL: vello_hybrid uses wgpu 26.0.1, while vello uses wgpu 23.0.1.
+                    // These are incompatible versions and cannot be safely converted.
+                    // For now, Hybrid backend is disabled until we can resolve the version conflict.
+                    log::error!("Hybrid renderer requested but unavailable due to wgpu version conflict (vello=23.0.1, vello_hybrid=26.0.1)");
+                    log::warn!("Falling back to Vello renderer");
+                }
+                #[cfg(not(feature = "vello-hybrid"))]
+                {
+                    log::warn!("Hybrid renderer requested but the 'vello-hybrid' feature is disabled; falling back to Vello renderer");
+                }
                 Ok(Renderer::Vello(
                     vello::Renderer::new(device, options.vello_options())
                         .map_err(|e| format!("Failed to create renderer: {:?}", e))?,
@@ -135,6 +144,7 @@ impl Renderer {
                     .map_err(|e| format!("Vello render error: {:?}", e))?;
                 Ok(())
             },
+            #[cfg(feature = "vello-hybrid")]
             Renderer::Hybrid(_) => Err(
                 "Cannot render Vello scene with Hybrid renderer. Use Scene enum instead."
                     .to_string(),
@@ -173,18 +183,33 @@ impl RendererTrait for Renderer {
         surface_texture: &SurfaceTexture,
         params: &RenderParams,
     ) -> Result<(), String> {
-        match (self, scene) {
-            (Renderer::Vello(renderer), Scene::Vello(vello_scene)) => {
+        #[cfg(feature = "vello-hybrid")]
+        {
+            match (self, scene) {
+                (Renderer::Vello(renderer), Scene::Vello(vello_scene)) => {
+                    renderer
+                        .render_to_surface(device, queue, vello_scene, surface_texture, params)
+                        .map_err(|e| format!("Vello render error: {:?}", e))?;
+                    Ok(())
+                },
+                (Renderer::Hybrid(_), Scene::Hybrid(_)) => {
+                    // Hybrid renderer is disabled due to wgpu version conflict
+                    Err("Hybrid renderer is not available due to wgpu version conflict between vello (23.0.1) and vello_hybrid (26.0.1)".to_string())
+                },
+                _ => Err("Renderer and scene backend mismatch".to_string()),
+            }
+        }
+        #[cfg(not(feature = "vello-hybrid"))]
+        {
+            #[allow(irrefutable_let_patterns)]
+            if let (Renderer::Vello(renderer), Scene::Vello(vello_scene)) = (self, scene) {
                 renderer
                     .render_to_surface(device, queue, vello_scene, surface_texture, params)
                     .map_err(|e| format!("Vello render error: {:?}", e))?;
                 Ok(())
-            },
-            (Renderer::Hybrid(_), Scene::Hybrid(_)) => {
-                // Hybrid renderer is disabled due to wgpu version conflict
-                Err("Hybrid renderer is not available due to wgpu version conflict between vello (23.0.1) and vello_hybrid (26.0.1)".to_string())
-            },
-            _ => Err("Renderer and scene backend mismatch".to_string()),
+            } else {
+                Err("Renderer and scene backend mismatch".to_string())
+            }
         }
     }
 
@@ -193,6 +218,7 @@ impl RendererTrait for Renderer {
         // This is a no-op for now, size is handled by the scene
         match self {
             Renderer::Vello(_) => {},
+            #[cfg(feature = "vello-hybrid")]
             Renderer::Hybrid(_) => {},
         }
     }

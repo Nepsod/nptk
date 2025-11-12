@@ -105,6 +105,7 @@ pub fn shape_to_path(shape: &impl Shape) -> BezPath {
 /// # Returns
 /// * `Some(Box<dyn Graphics>)` if the scene backend is supported
 /// * `None` if the scene backend doesn't have a Graphics implementation yet
+#[cfg(feature = "vello-hybrid")]
 pub fn graphics_from_scene(scene: &mut Scene) -> Option<Box<dyn Graphics + '_>> {
     match scene {
         Scene::Vello(vello_scene) => Some(Box::new(vello_vg::VelloGraphics::new(vello_scene))),
@@ -112,8 +113,16 @@ pub fn graphics_from_scene(scene: &mut Scene) -> Option<Box<dyn Graphics + '_>> 
     }
 }
 
+#[cfg(not(feature = "vello-hybrid"))]
+pub fn graphics_from_scene(scene: &mut Scene) -> Option<Box<dyn Graphics + '_>> {
+    match scene {
+        Scene::Vello(vello_scene) => Some(Box::new(vello_vg::VelloGraphics::new(vello_scene))),
+    }
+}
+
 /// A default graphics implementation using Vello.
 pub mod vello_vg;
 
 /// A Hybrid graphics implementation using Vello Hybrid.
+#[cfg(feature = "vello-hybrid")]
 pub mod hybrid_vg;

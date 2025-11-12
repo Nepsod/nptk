@@ -5,6 +5,8 @@
 
 use std::any::Any;
 use vello::Scene as VelloScene;
+#[cfg(feature = "vello-hybrid")]
+use vello_hybrid::Scene as HybridScene;
 
 /// A trait for scene abstraction that allows different backends to provide
 /// their own scene implementations.
@@ -37,7 +39,8 @@ pub enum Scene {
     /// Standard Vello scene
     Vello(VelloScene),
     /// Vello Hybrid scene (CPU/GPU hybrid rendering)
-    Hybrid(vello_hybrid::Scene),
+    #[cfg(feature = "vello-hybrid")]
+    Hybrid(HybridScene),
 }
 
 impl Scene {
@@ -73,12 +76,14 @@ impl Scene {
     pub fn as_vello_mut(&mut self) -> Option<&mut VelloScene> {
         match self {
             Scene::Vello(scene) => Some(scene),
+            #[cfg(feature = "vello-hybrid")]
             Scene::Hybrid(_) => None,
         }
     }
 
     /// Get a mutable reference to the Hybrid scene if this is a Hybrid scene.
-    pub fn as_hybrid_mut(&mut self) -> Option<&mut vello_hybrid::Scene> {
+    #[cfg(feature = "vello-hybrid")]
+    pub fn as_hybrid_mut(&mut self) -> Option<&mut HybridScene> {
         match self {
             Scene::Vello(_) => None,
             Scene::Hybrid(scene) => Some(scene),
@@ -111,6 +116,7 @@ impl SceneTrait for Scene {
     fn reset(&mut self) {
         match self {
             Scene::Vello(scene) => scene.reset(),
+            #[cfg(feature = "vello-hybrid")]
             Scene::Hybrid(scene) => scene.reset(),
         }
     }
@@ -118,6 +124,7 @@ impl SceneTrait for Scene {
     fn width(&self) -> u32 {
         match self {
             Scene::Vello(_) => 0, // Vello scenes don't track dimensions
+            #[cfg(feature = "vello-hybrid")]
             Scene::Hybrid(scene) => scene.width() as u32,
         }
     }
@@ -125,6 +132,7 @@ impl SceneTrait for Scene {
     fn height(&self) -> u32 {
         match self {
             Scene::Vello(_) => 0, // Vello scenes don't track dimensions
+            #[cfg(feature = "vello-hybrid")]
             Scene::Hybrid(scene) => scene.height() as u32,
         }
     }

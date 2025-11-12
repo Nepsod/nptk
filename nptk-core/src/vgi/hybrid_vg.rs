@@ -1,3 +1,5 @@
+#![cfg(feature = "vello-hybrid")]
+
 use crate::vgi::Graphics;
 use vello::kurbo::{Affine, BezPath, Stroke};
 use vello::peniko::{Brush, Fill};

@@ -6,6 +6,7 @@
 use std::num::NonZeroUsize;
 use vello::wgpu::TextureFormat;
 use vello::AaSupport;
+#[cfg(feature = "vello-hybrid")]
 use wgpu::TextureFormat as WgpuTextureFormat;
 
 /// Options for creating a renderer.
@@ -45,6 +46,7 @@ impl RendererOptions {
     /// Note: This requires converting vello::wgpu::TextureFormat to wgpu::TextureFormat.
     /// Since they're different types but represent the same enum, we use unsafe conversion
     /// as a workaround. This is safe because both types have the same memory layout.
+    #[cfg(feature = "vello-hybrid")]
     pub fn hybrid_render_target_config(
         &self,
         width: u32,
