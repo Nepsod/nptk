@@ -252,7 +252,6 @@ impl WaylandSurfaceInner {
         log::trace!("Wayland frame callback done");
         let mut state = self.state.lock().unwrap();
         state.frame_callback = None;
-        state.needs_redraw = true;
         state.first_frame_seen = true;
     }
 
@@ -327,7 +326,6 @@ impl WaylandSurfaceInner {
     fn after_present(&self) {
         let mut state = self.state.lock().unwrap();
         state.needs_redraw = false;
-        self.ensure_frame_callback_locked(&mut state);
     }
 
     fn ensure_frame_callback_locked(&self, state: &mut SurfaceState) {

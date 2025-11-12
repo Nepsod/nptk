@@ -116,10 +116,12 @@ impl GpuContext {
         log::debug!("Creating device from adapter...");
 
         let adapter_info = adapter.get_info();
-        log::debug!(
-            "Adapter: {} ({:?})",
+        log::info!(
+            "Selected GPU adapter: {} ({:?}, device_id=0x{:x}, vendor_id=0x{:x})",
             adapter_info.name,
-            adapter_info.backend
+            adapter_info.backend,
+            adapter_info.device,
+            adapter_info.vendor
         );
 
         let (device, queue) = pollster::block_on(adapter.request_device(

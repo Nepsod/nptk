@@ -425,7 +425,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
                         surface_x,
                         surface_y,
                     }));
-                    surface.handle_frame_done();
+                    surface.request_redraw();
                 }
             },
             wl_pointer::Event::Leave { .. } => {
@@ -433,7 +433,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
                 if let Some(key) = *focused {
                     if let Some(surface) = state.shared.get_surface(key) {
                         surface.push_input_event(InputEvent::Pointer(PointerEvent::Leave));
-                        surface.handle_frame_done();
+                        surface.request_redraw();
                     }
                 }
                 *focused = None;
@@ -449,7 +449,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
                             surface_x,
                             surface_y,
                         }));
-                        surface.handle_frame_done();
+                        surface.request_redraw();
                     }
                 }
             },
@@ -466,7 +466,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
                                 button,
                                 state: button_state,
                             }));
-                            surface.handle_frame_done();
+                            surface.request_redraw();
                         }
                     }
                 }
@@ -494,7 +494,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
                                 },
                             };
                             surface.push_input_event(InputEvent::Pointer(event));
-                            surface.handle_frame_done();
+                            surface.request_redraw();
                         }
                     }
                 }
@@ -506,7 +506,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
                             surface.push_input_event(InputEvent::Pointer(
                                 PointerEvent::AxisSource { source },
                             ));
-                            surface.handle_frame_done();
+                            surface.request_redraw();
                         }
                     }
                 }
@@ -516,7 +516,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
                     if let Some(surface) = state.shared.get_surface(key) {
                         if axis.into_result().is_ok() {
                             surface.push_input_event(InputEvent::Pointer(PointerEvent::AxisStop));
-                            surface.handle_frame_done();
+                            surface.request_redraw();
                         }
                     }
                 }
@@ -531,7 +531,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
                                     discrete,
                                 },
                             ));
-                            surface.handle_frame_done();
+                            surface.request_redraw();
                         }
                     }
                 }
@@ -546,7 +546,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
                                     value120,
                                 },
                             ));
-                            surface.handle_frame_done();
+                            surface.request_redraw();
                         }
                     }
                 }
@@ -555,7 +555,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
                 if let Some(key) = *state.shared.focused_surface_key.lock().unwrap() {
                     if let Some(surface) = state.shared.get_surface(key) {
                         surface.push_input_event(InputEvent::Pointer(PointerEvent::Frame));
-                        surface.handle_frame_done();
+                        surface.request_redraw();
                     }
                 }
             },
@@ -583,7 +583,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientState {
                 *state.shared.focused_surface_key.lock().unwrap() = Some(key);
                 if let Some(surface) = state.shared.get_surface(key) {
                     surface.push_input_event(InputEvent::Keyboard(KeyboardEvent::Enter));
-                    surface.handle_frame_done();
+                    surface.request_redraw();
                 }
             },
             wl_keyboard::Event::Leave { serial: _, .. } => {
@@ -591,7 +591,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientState {
                 if let Some(key) = *focused {
                     if let Some(surface) = state.shared.get_surface(key) {
                         surface.push_input_event(InputEvent::Keyboard(KeyboardEvent::Leave));
-                        surface.handle_frame_done();
+                        surface.request_redraw();
                     }
                 }
                 *focused = None;
@@ -609,7 +609,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientState {
                                 keycode: key,
                                 state: actual_state,
                             }));
-                            surface.handle_frame_done();
+                            surface.request_redraw();
                         }
                     }
                 }
@@ -629,7 +629,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientState {
                             mods_locked,
                             group,
                         }));
-                        surface.handle_frame_done();
+                        surface.request_redraw();
                     }
                 }
             },
@@ -640,7 +640,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientState {
                             rate,
                             delay,
                         }));
-                        surface.handle_frame_done();
+                        surface.request_redraw();
                     }
                 }
             },
