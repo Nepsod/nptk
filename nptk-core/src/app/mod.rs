@@ -2,6 +2,7 @@ use crate::app::context::AppContext;
 use crate::app::runner::MayRunner;
 use crate::config::MayConfig;
 use crate::plugin::PluginManager;
+#[cfg(feature = "vello")]
 use crate::widget::Widget;
 use nptk_theme::theme::Theme;
 
@@ -46,6 +47,7 @@ pub trait Application: Sized {
     /// Renders/builds the application's widgets.
     ///
     /// This function will be passed to the [MayRunner] to create and run the application.
+    #[cfg(feature = "vello")]
     fn build(context: AppContext, state: Self::State) -> impl Widget;
 
     /// Returns the [MayConfig] for the application.
@@ -64,6 +66,7 @@ pub trait Application: Sized {
     /// Runs the application using the [MayRunner].
     ///
     /// Override this method if you want to use a custom event loop.
+    #[cfg(feature = "vello")]
     fn run(self, state: Self::State) {
         MayRunner::<Self::Theme>::new(self.config()).run(state, Self::build, self.plugins());
     }

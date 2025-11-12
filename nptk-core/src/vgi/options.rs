@@ -24,6 +24,7 @@ pub struct RendererOptions {
     /// Whether to use CPU for path processing (Vello-specific)
     pub use_cpu: bool,
     /// Antialiasing support configuration
+    #[cfg(feature = "vello")]
     pub antialiasing_support: AaSupport,
     /// Number of initialization threads (optional)
     pub num_init_threads: Option<NonZeroUsize>,
@@ -33,6 +34,7 @@ impl RendererOptions {
     /// Convert these options to Vello-specific renderer options.
     ///
     /// This method is used when creating a Vello renderer.
+    #[cfg(feature = "vello")]
     pub fn vello_options(self) -> vello::RendererOptions {
         vello::RendererOptions {
             surface_format: self.surface_format,

@@ -1,9 +1,11 @@
 use crate::app::context::AppContext;
 use crate::app::font_ctx::FontContext;
+#[cfg(feature = "vello")]
 use crate::app::handler::AppHandler;
 use crate::app::update::UpdateManager;
 use crate::config::MayConfig;
 use crate::plugin::PluginManager;
+#[cfg(feature = "vello")]
 use crate::widget::Widget;
 use nptk_theme::theme::Theme;
 use peniko::Font;
@@ -58,6 +60,7 @@ impl<T: Theme> MayRunner<T> {
     }
 
     /// Run the application with given widget and state.
+    #[cfg(feature = "vello")]
     pub fn run<S, W, F>(mut self, state: S, builder: F, mut plugins: PluginManager<T>)
     where
         W: Widget,
@@ -137,6 +140,7 @@ impl<T: Theme> MayRunner<T> {
     }
 
     /// Run the application handler with the event loop.
+    #[cfg(feature = "vello")]
     fn run_app_handler<S, W, F>(
         event_loop: winit::event_loop::EventLoop<()>,
         attrs: WindowAttributes,

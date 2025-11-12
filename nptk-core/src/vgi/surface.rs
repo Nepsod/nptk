@@ -80,7 +80,10 @@ pub trait SurfaceTrait {
 /// for rendering, while still allowing platform-specific optimizations.
 pub enum Surface {
     /// Winit-based surface (works on X11/Wayland via winit abstraction)
+    #[cfg(feature = "vello")]
     Winit(vello::wgpu::Surface<'static>),
+    #[cfg(not(feature = "vello"))]
+    Winit(wgpu::Surface<'static>),
     /// Native Wayland surface (direct Wayland protocol)
     #[cfg(all(target_os = "linux", feature = "wayland"))]
     Wayland(WaylandSurface),

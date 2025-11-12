@@ -89,6 +89,7 @@ impl<C: Component> Widget for Composed<C> {
     }
 }
 
+#[cfg(feature = "vello")]
 impl<C: Component + WidgetChildrenExt> WidgetChildrenExt for Composed<C> {
     fn set_children(&mut self, children: Vec<BoxedWidget>) {
         self.component.set_children(children)
@@ -113,6 +114,7 @@ impl<C: Component + WidgetChildrenExt> WidgetChildrenExt for Composed<C> {
     }
 }
 
+#[cfg(feature = "vello")]
 impl<C: Component + WidgetChildExt> WidgetChildExt for Composed<C> {
     fn set_child(&mut self, child: impl Widget + 'static) {
         self.component.set_child(child)
@@ -126,6 +128,7 @@ impl<C: Component + WidgetChildExt> WidgetChildExt for Composed<C> {
     }
 }
 
+#[cfg(feature = "vello")]
 impl<C: Component + WidgetLayoutExt> WidgetLayoutExt for Composed<C> {
     fn set_layout_style(&mut self, layout_style: impl Into<MaybeSignal<LayoutStyle>>) {
         self.component.set_layout_style(layout_style)
@@ -139,6 +142,7 @@ impl<C: Component + WidgetLayoutExt> WidgetLayoutExt for Composed<C> {
     }
 }
 
+#[cfg(feature = "vello")]
 impl<C: Component + Clone> Clone for Composed<C> {
     fn clone(&self) -> Self {
         Self {
@@ -148,6 +152,7 @@ impl<C: Component + Clone> Clone for Composed<C> {
     }
 }
 
+#[cfg(feature = "vello")]
 impl<C: Component + Debug> Debug for Composed<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ComposedWidget")
@@ -157,6 +162,7 @@ impl<C: Component + Debug> Debug for Composed<C> {
     }
 }
 
+#[cfg(feature = "vello")]
 impl<C: Component> Deref for Composed<C> {
     type Target = C;
 
@@ -165,6 +171,7 @@ impl<C: Component> Deref for Composed<C> {
     }
 }
 
+#[cfg(feature = "vello")]
 impl<C: Component> DerefMut for Composed<C> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.component

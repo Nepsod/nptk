@@ -1,6 +1,6 @@
 //! GPU context management for unified Instance and device handling.
 //!
-//! This module provides a GPUI-style GPU context that manages a single wgpu Instance
+//! This module provides a GPU context that manages a single wgpu Instance
 //! and provides device/adapter enumeration. This ensures all surfaces are created
 //! with the same Instance that enumerates adapters, solving Instance mismatch issues
 //! on Wayland.
@@ -38,11 +38,17 @@ impl GpuContext {
     pub fn new() -> Result<Self, String> {
         log::debug!("Creating GPU context...");
 
+        #[cfg(feature = "vello")]
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
             dx12_shader_compiler: Default::default(),
             flags: wgpu::InstanceFlags::default(),
             gles_minor_version: Default::default(),
+        });
+        #[cfg(not(feature = "vello"))]
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::PRIMARY,
+            ..Default::default()
         });
 
         log::debug!("GPU context created successfully");
@@ -76,20 +82,37 @@ impl GpuContext {
     ) -> Option<wgpu::Adapter> {
         log::debug!("Requesting adapter with surface...");
 
-        let adapter =
-            pollster::block_on(self.instance.request_adapter(&wgpu::RequestAdapterOptions {
+        #[cfg(feature = "vello")]
+        {
+            let adapter = pollster::block_on(self.instance.request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
                 compatible_surface: Some(surface),
                 force_fallback_adapter: false,
             }));
 
-        if adapter.is_some() {
-            log::debug!("Successfully requested adapter with surface");
-        } else {
-            log::warn!("No adapter found with surface");
-        }
+            if adapter.is_some() {
+                log::debug!("Successfully requested adapter with surface");
+            } else {
+                log::warn!("No adapter found with surface");
+            }
 
-        adapter
+            adapter
+        }
+        #[cfg(not(feature = "vello"))]
+        {
+            let adapter_result = pollster::block_on(self.instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::default(),
+                compatible_surface: Some(surface),
+                force_fallback_adapter: false,
+            }));
+
+            match &adapter_result {
+                Ok(_) => log::debug!("Successfully requested adapter with surface"),
+                Err(_) => log::warn!("No adapter found with surface"),
+            }
+
+            adapter_result.ok()
+        }
     }
 
     /// Enumerate all available adapters.
@@ -127,6 +150,7 @@ impl GpuContext {
             adapter_info.vendor
         );
 
+        #[cfg(feature = "vello")]
         let (device, queue) = pollster::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
                 label: Some("nptk-gpu-device"),
@@ -137,6 +161,18 @@ impl GpuContext {
             None, // trace_path
         ))
         .map_err(|e| format!("Failed to create device: {:?}", e))?;
+        
+        #[cfg(not(feature = "vello"))]
+        let (device, queue) = {
+            // wgpu 26.0.1 requires trace field, but it's not in DeviceDescriptor
+            // Use Default::default() which should include all required fields
+            let mut desc = wgpu::DeviceDescriptor::default();
+            desc.label = Some("nptk-gpu-device");
+            desc.required_features = wgpu::Features::default();
+            desc.required_limits = wgpu::Limits::default();
+            pollster::block_on(adapter.request_device(&desc))
+                .map_err(|e| format!("Failed to create device: {:?}", e))?
+        };
 
         let device_handle = DeviceHandle {
             device,

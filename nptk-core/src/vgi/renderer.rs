@@ -8,15 +8,42 @@ use super::options::RendererOptions;
 use super::scene::Scene;
 #[cfg(feature = "vello")]
 use vello::wgpu::{Device, Queue, SurfaceTexture};
+#[cfg(not(feature = "vello"))]
+use wgpu::{Device, Queue, SurfaceTexture};
 #[cfg(feature = "vello")]
 use vello::{RenderParams, Scene as VelloScene};
 #[cfg(feature = "vello-hybrid")]
 use vello_hybrid::Renderer as HybridRenderer;
+#[cfg(not(feature = "vello"))]
+use crate::config::AaConfig;
+#[cfg(not(feature = "vello"))]
+use wgpu::CommandEncoderDescriptor;
+#[cfg(not(feature = "vello"))]
+use wgpu::Operations;
+#[cfg(not(feature = "vello"))]
+use wgpu::RenderPassColorAttachment;
+#[cfg(not(feature = "vello"))]
+use wgpu::RenderPassDescriptor;
+#[cfg(not(feature = "vello"))]
+use wgpu::TextureViewDescriptor;
+
+#[cfg(not(feature = "vello"))]
+#[derive(Clone, Debug)]
+pub struct RenderParams {
+    pub clear_color: wgpu::Color,
+    #[allow(dead_code)]
+    pub width: u32,
+    #[allow(dead_code)]
+    pub height: u32,
+    #[allow(dead_code)]
+    pub antialiasing_method: AaConfig,
+}
 
 /// A trait for renderer implementations that can render scenes to surfaces.
 ///
 /// This trait allows different backends to provide their own renderer
 /// implementations while maintaining a unified API.
+#[cfg(feature = "vello")]
 pub trait RendererTrait {
     /// Render the scene to a surface texture.
     ///
@@ -53,6 +80,7 @@ pub trait RendererTrait {
 ///
 /// This enum wraps different renderer types to provide a unified interface
 /// for rendering, while still allowing backend-specific optimizations.
+#[cfg(feature = "vello")]
 pub enum Renderer {
     /// Standard Vello renderer
     #[cfg(feature = "vello")]
@@ -62,6 +90,7 @@ pub enum Renderer {
     Hybrid(HybridRenderer),
 }
 
+#[cfg(feature = "vello")]
 impl Renderer {
     /// Create a new renderer based on the backend type.
     ///
@@ -117,18 +146,6 @@ impl Renderer {
             },
         }
     }
-    
-    #[cfg(not(feature = "vello"))]
-    pub fn new(
-        _device: &wgpu::Device,
-        backend: Backend,
-        _options: RendererOptions,
-        _width: u32,
-        _height: u32,
-    ) -> Result<Self, String> {
-        Err(format!("Vello renderer is not available (feature 'vello' is disabled). Backend requested: {:?}", backend))
-    }
-
     /// Render a Vello scene (legacy method for compatibility).
     ///
     /// This method is provided for backward compatibility with code that
@@ -172,6 +189,7 @@ impl Renderer {
     /// Render the scene to a surface texture.
     ///
     /// This is a convenience method that calls the `RendererTrait::render_to_surface` method.
+    #[cfg(feature = "vello")]
     pub fn render_to_surface(
         &mut self,
         device: &Device,
@@ -186,11 +204,13 @@ impl Renderer {
     /// Update the render target size.
     ///
     /// This is a convenience method that calls the `RendererTrait::update_render_target_size` method.
+    #[cfg(feature = "vello")]
     pub fn update_render_target_size(&mut self, width: u32, height: u32) {
         RendererTrait::update_render_target_size(self, width, height);
     }
 }
 
+#[cfg(feature = "vello")]
 impl RendererTrait for Renderer {
     fn render_to_surface(
         &mut self,
@@ -244,4 +264,58 @@ impl RendererTrait for Renderer {
             Renderer::Hybrid(_) => {},
         }
     }
+}
+
+#[cfg(not(feature = "vello"))]
+pub struct Renderer;
+
+#[cfg(not(feature = "vello"))]
+pub trait RendererTrait {}
+
+#[cfg(not(feature = "vello"))]
+impl Renderer {
+    pub fn new(
+        _device: &Device,
+        _backend: Backend,
+        _options: RendererOptions,
+        _width: u32,
+        _height: u32,
+    ) -> Result<Self, String> {
+        Ok(Self)
+    }
+
+    pub fn render_to_surface(
+        &mut self,
+        device: &Device,
+        queue: &Queue,
+        _scene: &Scene,
+        surface_texture: &SurfaceTexture,
+        params: &RenderParams,
+    ) -> Result<(), String> {
+        let view = surface_texture
+            .texture
+            .create_view(&TextureViewDescriptor::default());
+        let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
+            label: Some("nptk-clear-pass"),
+        });
+        {
+            let _pass = encoder.begin_render_pass(&RenderPassDescriptor {
+                label: Some("nptk-clear-pass"),
+                color_attachments: &[Some(RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: Operations {
+                        load: wgpu::LoadOp::Clear(params.clear_color),
+                        store: true,
+                    },
+                })],
+                depth_stencil_attachment: None,
+            });
+        }
+        queue.submit(std::iter::once(encoder.finish()));
+        Ok(())
+    }
+
+    #[allow(clippy::unused_self)]
+    pub fn update_render_target_size(&mut self, _width: u32, _height: u32) {}
 }

@@ -9,7 +9,10 @@ use std::sync::{Arc, Mutex};
 use raw_window_handle::{
     RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle,
 };
+#[cfg(feature = "vello")]
 use vello::wgpu::{self, SurfaceTexture};
+#[cfg(not(feature = "vello"))]
+use wgpu::{self, SurfaceTexture};
 
 use wayland_client::protocol::{
     wl_compositor, wl_keyboard, wl_pointer, wl_region, wl_shm, wl_surface,

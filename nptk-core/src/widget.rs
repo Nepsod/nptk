@@ -230,6 +230,7 @@ pub type BoxedWidget = Box<dyn Widget>;
 /// - ✅ **Simple**: No separate overlay management system needed
 /// - ✅ **Natural**: Z-ordering follows render order automatically
 /// - ✅ **Integrated**: Full access to AppInfo, fonts, events, etc.
+#[cfg(feature = "vello")]
 pub trait Widget {
     /// Render the widget to the canvas.
     fn render(
@@ -305,6 +306,7 @@ pub trait Widget {
 }
 
 /// An extension trait for widgets with a single child widget.
+#[cfg(feature = "vello")]
 pub trait WidgetChildExt {
     /// Sets the child widget of the widget.
     fn set_child(&mut self, child: impl Widget + 'static);
@@ -320,6 +322,7 @@ pub trait WidgetChildExt {
 }
 
 /// An extension trait for widgets with multiple child widgets.
+#[cfg(feature = "vello")]
 pub trait WidgetChildrenExt {
     /// Sets the child widgets of the widget.
     fn set_children(&mut self, children: Vec<BoxedWidget>);
@@ -357,6 +360,71 @@ pub trait WidgetLayoutExt {
         Self: Sized,
     {
         self.set_layout_style(layout_style);
+        self
+    }
+}
+
+#[cfg(not(feature = "vello"))]
+pub trait Widget {
+    fn render(
+        &mut self,
+        _graphics: &mut dyn crate::vgi::Graphics,
+        _theme: &mut dyn Theme,
+        _layout_node: &LayoutNode,
+        _info: &mut AppInfo,
+        _context: AppContext,
+    ) {
+    }
+
+    fn render_postfix(
+        &mut self,
+        _graphics: &mut dyn crate::vgi::Graphics,
+        _theme: &mut dyn Theme,
+        _layout_node: &LayoutNode,
+        _info: &mut AppInfo,
+        _context: AppContext,
+    ) {
+    }
+
+    fn layout_style(&self) -> StyleNode;
+
+    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update;
+
+    fn widget_id(&self) -> WidgetId;
+}
+
+#[cfg(not(feature = "vello"))]
+pub trait WidgetChildExt {
+    fn set_child(&mut self, child: impl Widget + 'static);
+
+    fn with_child(mut self, child: impl Widget + 'static) -> Self
+    where
+        Self: Sized,
+    {
+        self.set_child(child);
+        self
+    }
+}
+
+#[cfg(not(feature = "vello"))]
+pub trait WidgetChildrenExt {
+    fn set_children(&mut self, children: Vec<BoxedWidget>);
+
+    fn with_children(mut self, children: Vec<BoxedWidget>) -> Self
+    where
+        Self: Sized,
+    {
+        self.set_children(children);
+        self
+    }
+
+    fn add_child(&mut self, child: impl Widget + 'static);
+
+    fn with_child(mut self, child: impl Widget + 'static) -> Self
+    where
+        Self: Sized,
+    {
+        self.add_child(child);
         self
     }
 }
