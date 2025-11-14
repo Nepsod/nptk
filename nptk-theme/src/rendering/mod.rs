@@ -158,7 +158,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::theme::dark::DarkTheme;
+    use crate::{properties::ThemeProperty, theme::dark::DarkTheme};
 
     #[test]
     fn button_mapping_matches_state() {

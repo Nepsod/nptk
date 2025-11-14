@@ -94,8 +94,9 @@ impl Theme for CelesteTheme {
                     _ => None,
                 },
                 "Checkbox" => match property {
-                    crate::properties::ThemeProperty::ColorChecked => {
-                        Some(palette.primary_dark)
+                    crate::properties::ThemeProperty::ColorChecked
+                    | crate::properties::ThemeProperty::ColorIndeterminate => {
+                        Some(palette.primary_light)
                     },
                     crate::properties::ThemeProperty::ColorUnchecked => {
                         Some(palette.primary_light)
@@ -170,7 +171,7 @@ impl Theme for CelesteTheme {
                 },
                 "Toggle" => match property {
                     crate::properties::ThemeProperty::ColorToggleTrackOn => {
-                        Some(palette.accent)
+                        Some(palette.primary_light)
                     },
                     crate::properties::ThemeProperty::ColorToggleTrackOff => {
                         Some(palette.background_elevated)
