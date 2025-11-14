@@ -4,45 +4,8 @@
 //!
 //! Contains core app logic and widget types.
 
-#[cfg(feature = "vello")]
+#[cfg(all(feature = "vg", feature = "vello"))]
 pub use vello as vg;
-
-#[cfg(not(feature = "vello"))]
-pub mod vg {
-    pub mod kurbo {
-        pub use ::kurbo::*;
-    }
-
-    pub mod peniko {
-        pub use ::peniko::*;
-    }
-
-    /// Minimal Scene placeholder when `vello` feature is disabled.
-    #[derive(Clone, Debug, Default)]
-    pub struct Scene;
-
-    impl Scene {
-        /// Create a new placeholder scene.
-        #[must_use]
-        pub fn new() -> Self {
-            Scene
-        }
-
-        /// Reset the scene state (no-op for placeholder).
-        pub fn reset(&mut self) {}
-    }
-
-    /// Placeholder glyph type used by text rendering fallbacks.
-    #[derive(Clone, Copy, Debug, Default)]
-    pub struct Glyph {
-        /// Glyph id
-        pub id: u16,
-        /// Glyph x position
-        pub x: f32,
-        /// Glyph y position
-        pub y: f32,
-    }
-}
 
 #[cfg(feature = "vg")]
 pub use skrifa;

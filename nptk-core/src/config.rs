@@ -3,15 +3,6 @@ use nalgebra::{Point2, Vector2};
 use std::num::NonZeroUsize;
 #[cfg(feature = "vello")]
 pub use vello::AaConfig;
-
-#[cfg(not(feature = "vello"))]
-/// Stub antialiasing config when vello feature is disabled
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AaConfig {
-    Area,
-    Msaa8,
-    Msaa16,
-}
 pub use wgpu_types::PresentMode;
 pub use winit::window::{
     BadIcon, Cursor, CursorIcon, CustomCursor, Icon as WindowIcon, WindowButtons, WindowLevel,
@@ -139,8 +130,6 @@ pub struct RenderConfig {
     /// - `area` (default, fastest) - Area-based antialiasing
     /// - `msaa8` - MSAA 8x (slower but higher quality)
     /// - `msaa16` - MSAA 16x (slowest but best quality)
-    ///
-    /// Note: Only used when vello feature is enabled
     pub antialiasing: AaConfig,
     /// If the backend should use the CPU for most drawing operations.
     ///
@@ -205,7 +194,6 @@ impl Default for RenderConfig {
 
         // Check environment variable for antialiasing
         // Options: area (default, fastest), msaa8, msaa16
-        #[cfg(feature = "vello")]
         let antialiasing = match std::env::var("NPTK_ANTIALIASING") {
             Ok(val) => {
                 let val_lower = val.to_lowercase();
@@ -232,8 +220,6 @@ impl Default for RenderConfig {
             },
             Err(_) => AaConfig::Area,
         };
-        #[cfg(not(feature = "vello"))]
-        let antialiasing = AaConfig::Area;
 
         // Check environment variable for present mode
         // Options: auto, auto_vsync, fifo, immediate, mailbox

@@ -5,14 +5,9 @@
 
 use std::any::Any;
 #[cfg(feature = "vello")]
-#[cfg(feature = "vello")]
 use vello::Scene as VelloScene;
-#[cfg(not(feature = "vello"))]
-use crate::vg::Scene as VelloScene;
 #[cfg(feature = "vello-hybrid")]
 use vello_hybrid::Scene as HybridScene;
-#[cfg(not(feature = "vello"))]
-use crate::vg::Scene as PlaceholderScene;
 
 /// A trait for scene abstraction that allows different backends to provide
 /// their own scene implementations.
@@ -48,9 +43,6 @@ pub enum Scene {
     /// Vello Hybrid scene (CPU/GPU hybrid rendering)
     #[cfg(feature = "vello-hybrid")]
     Hybrid(HybridScene),
-    /// Placeholder scene used when Vello is unavailable
-    #[cfg(not(feature = "vello"))]
-    Placeholder(PlaceholderScene),
 }
 
 impl Scene {
@@ -69,7 +61,9 @@ impl Scene {
             #[cfg(feature = "vello")]
             super::backend::Backend::Vello => Scene::Vello(VelloScene::new()),
             #[cfg(not(feature = "vello"))]
-            super::backend::Backend::Vello => Scene::Placeholder(PlaceholderScene::new()),
+            super::backend::Backend::Vello => {
+                panic!("Vello backend requested but 'vello' feature is disabled")
+            },
             super::backend::Backend::Hybrid => {
                 #[cfg(feature = "vello-hybrid")]
                 {
@@ -83,8 +77,7 @@ impl Scene {
                     }
                     #[cfg(not(feature = "vello"))]
                     {
-                        log::warn!("Hybrid scene requested but 'vello' feature is disabled; using placeholder scene");
-                        Scene::Placeholder(PlaceholderScene::new())
+                        panic!("Hybrid scene requested but 'vello' feature is disabled")
                     }
                 }
                 #[cfg(not(feature = "vello-hybrid"))]
@@ -96,8 +89,7 @@ impl Scene {
                     }
                     #[cfg(not(feature = "vello"))]
                     {
-                        log::warn!("Hybrid scene requested but 'vello' feature is disabled; using placeholder scene");
-                        Scene::Placeholder(PlaceholderScene::new())
+                        panic!("Hybrid scene requested but 'vello' feature is disabled")
                     }
                 }
             },
@@ -110,8 +102,7 @@ impl Scene {
                 }
                 #[cfg(not(feature = "vello"))]
                 {
-                    log::warn!("Custom backend requested but 'vello' feature is disabled; using placeholder scene");
-                    Scene::Placeholder(PlaceholderScene::new())
+                    panic!("Custom backend requested but 'vello' feature is disabled")
                 }
             },
         }
@@ -124,8 +115,6 @@ impl Scene {
             Scene::Vello(scene) => Some(scene),
             #[cfg(feature = "vello-hybrid")]
             Scene::Hybrid(_) => None,
-            #[cfg(not(feature = "vello"))]
-            Scene::Placeholder(_) => None,
         }
     }
 
@@ -135,8 +124,6 @@ impl Scene {
         match self {
             Scene::Vello(_) => None,
             Scene::Hybrid(scene) => Some(scene),
-            #[cfg(not(feature = "vello"))]
-            Scene::Placeholder(_) => None,
         }
     }
 
@@ -169,8 +156,6 @@ impl SceneTrait for Scene {
             Scene::Vello(scene) => scene.reset(),
             #[cfg(feature = "vello-hybrid")]
             Scene::Hybrid(scene) => scene.reset(),
-            #[cfg(not(feature = "vello"))]
-            Scene::Placeholder(scene) => scene.reset(),
         }
     }
 
@@ -180,8 +165,6 @@ impl SceneTrait for Scene {
             Scene::Vello(_) => 0, // Vello scenes don't track dimensions
             #[cfg(feature = "vello-hybrid")]
             Scene::Hybrid(scene) => scene.width() as u32,
-            #[cfg(not(feature = "vello"))]
-            Scene::Placeholder(_scene) => 0,
         }
     }
 
@@ -191,8 +174,6 @@ impl SceneTrait for Scene {
             Scene::Vello(_) => 0, // Vello scenes don't track dimensions
             #[cfg(feature = "vello-hybrid")]
             Scene::Hybrid(scene) => scene.height() as u32,
-            #[cfg(not(feature = "vello"))]
-            Scene::Placeholder(_scene) => 0,
         }
     }
 

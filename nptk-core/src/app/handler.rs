@@ -29,7 +29,6 @@ use crate::layout::{LayoutNode, StyleNode};
 use crate::plugin::PluginManager;
 #[cfg(all(target_os = "linux", feature = "wayland"))]
 use crate::vgi::wayland_surface::{InputEvent, KeyboardEvent, PointerEvent};
-#[cfg(feature = "vello")]
 use crate::widget::Widget;
 use nptk_theme::theme::Theme;
 #[cfg(all(target_os = "linux", feature = "wayland"))]
@@ -38,7 +37,6 @@ use winit::event::DeviceId;
 use winit::keyboard::{Key, KeyCode, ModifiersState, NativeKey, NativeKeyCode, PhysicalKey};
 
 /// The core application handler. You should use [MayApp](crate::app::MayApp) instead for running applications.
-#[cfg(feature = "vello")]
 pub struct AppHandler<T, W, S, F>
 where
     T: Theme,
@@ -67,7 +65,6 @@ where
     wayland_pressed_keys: HashSet<u32>,
 }
 
-#[cfg(feature = "vello")]
 impl<T, W, S, F> AppHandler<T, W, S, F>
 where
     T: Theme,
@@ -955,7 +952,6 @@ where
                 return None;
             }
             if wayland_surface.requires_reconfigure() {
-                #[cfg(feature = "vello")]
                 let present_mode = match self.config.render.present_mode {
                     wgpu_types::PresentMode::AutoVsync => vello::wgpu::PresentMode::AutoVsync,
                     wgpu_types::PresentMode::AutoNoVsync => vello::wgpu::PresentMode::AutoNoVsync,
@@ -963,15 +959,6 @@ where
                     wgpu_types::PresentMode::Fifo => vello::wgpu::PresentMode::Fifo,
                     wgpu_types::PresentMode::FifoRelaxed => vello::wgpu::PresentMode::Fifo,
                     wgpu_types::PresentMode::Mailbox => vello::wgpu::PresentMode::Mailbox,
-                };
-                #[cfg(not(feature = "vello"))]
-                let present_mode = match self.config.render.present_mode {
-                    wgpu_types::PresentMode::AutoVsync => wgpu::PresentMode::AutoVsync,
-                    wgpu_types::PresentMode::AutoNoVsync => wgpu::PresentMode::AutoNoVsync,
-                    wgpu_types::PresentMode::Immediate => wgpu::PresentMode::Immediate,
-                    wgpu_types::PresentMode::Fifo => wgpu::PresentMode::Fifo,
-                    wgpu_types::PresentMode::FifoRelaxed => wgpu::PresentMode::Fifo,
-                    wgpu_types::PresentMode::Mailbox => wgpu::PresentMode::Mailbox,
                 };
                 log::debug!("Wayland reconfigure requested...");
                 if let Err(e) = wayland_surface.configure_surface(
@@ -1039,7 +1026,6 @@ where
         if let crate::vgi::Surface::Wayland(ref mut wayland_surface) = &mut *surface {
             // Proactively configure once after first configure to guarantee swapchain is ready.
             if wayland_surface.is_configured() && wayland_surface.requires_reconfigure() {
-                #[cfg(feature = "vello")]
                 let present_mode = match self.config.render.present_mode {
                     wgpu_types::PresentMode::AutoVsync => vello::wgpu::PresentMode::AutoVsync,
                     wgpu_types::PresentMode::AutoNoVsync => vello::wgpu::PresentMode::AutoNoVsync,
@@ -1047,15 +1033,6 @@ where
                     wgpu_types::PresentMode::Fifo => vello::wgpu::PresentMode::Fifo,
                     wgpu_types::PresentMode::FifoRelaxed => vello::wgpu::PresentMode::Fifo,
                     wgpu_types::PresentMode::Mailbox => vello::wgpu::PresentMode::Mailbox,
-                };
-                #[cfg(not(feature = "vello"))]
-                let present_mode = match self.config.render.present_mode {
-                    wgpu_types::PresentMode::AutoVsync => wgpu::PresentMode::AutoVsync,
-                    wgpu_types::PresentMode::AutoNoVsync => wgpu::PresentMode::AutoNoVsync,
-                    wgpu_types::PresentMode::Immediate => wgpu::PresentMode::Immediate,
-                    wgpu_types::PresentMode::Fifo => wgpu::PresentMode::Fifo,
-                    wgpu_types::PresentMode::FifoRelaxed => wgpu::PresentMode::Fifo,
-                    wgpu_types::PresentMode::Mailbox => wgpu::PresentMode::Mailbox,
                 };
                 log::debug!("Wayland proactive configure before get_current_texture...");
                 if let Err(e) = wayland_surface.configure_surface(
@@ -1095,7 +1072,6 @@ where
 
         log::debug!("Rendering scene to surface ({}x{})...", width, height);
         let gpu_render_start = Instant::now();
-        #[cfg(feature = "vello")]
         if let Err(e) = renderer.render_to_surface(
             &device_handle.device,
             &device_handle.queue,
@@ -1109,11 +1085,6 @@ where
             },
         ) {
             log::warn!("Failed to render to surface: {}, skipping present", e);
-            return None;
-        }
-        #[cfg(not(feature = "vello"))]
-        {
-            log::error!("Rendering attempted but vello feature is disabled");
             return None;
         }
         log::debug!("Successfully rendered scene to surface");
@@ -1229,7 +1200,6 @@ struct RenderTimes {
     total_time: Duration,
 }
 
-#[cfg(feature = "vello")]
 impl<T, W, S, F> AppHandler<T, W, S, F>
 where
     T: Theme,
@@ -1291,14 +1261,7 @@ where
             gpu_context.create_device_from_adapter(&adapter)
         } else {
             // Fallback: create device from first adapter
-            #[cfg(feature = "vello")]
-            {
             gpu_context.create_device_from_first_adapter(vello::wgpu::Backends::PRIMARY)
-            }
-            #[cfg(not(feature = "vello"))]
-            {
-                gpu_context.create_device_from_first_adapter(wgpu::Backends::PRIMARY)
-            }
         } {
             Ok(handle) => handle,
             Err(e) => {
@@ -1325,8 +1288,7 @@ where
                 // Get surface format from renderer options or use default
                 let surface_format = wayland_surface.format();
                 
-                // Convert PresentMode from config to wgpu::PresentMode
-                #[cfg(feature = "vello")]
+                // Convert PresentMode from config to vello::wgpu::PresentMode
                 let present_mode = match self.config.render.present_mode {
                     wgpu_types::PresentMode::AutoVsync => vello::wgpu::PresentMode::AutoVsync,
                     wgpu_types::PresentMode::AutoNoVsync => vello::wgpu::PresentMode::AutoNoVsync,
@@ -1334,15 +1296,6 @@ where
                     wgpu_types::PresentMode::Fifo => vello::wgpu::PresentMode::Fifo,
                     wgpu_types::PresentMode::FifoRelaxed => vello::wgpu::PresentMode::Fifo,
                     wgpu_types::PresentMode::Mailbox => vello::wgpu::PresentMode::Mailbox,
-                };
-                #[cfg(not(feature = "vello"))]
-                let present_mode = match self.config.render.present_mode {
-                    wgpu_types::PresentMode::AutoVsync => wgpu::PresentMode::AutoVsync,
-                    wgpu_types::PresentMode::AutoNoVsync => wgpu::PresentMode::AutoNoVsync,
-                    wgpu_types::PresentMode::Immediate => wgpu::PresentMode::Immediate,
-                    wgpu_types::PresentMode::Fifo => wgpu::PresentMode::Fifo,
-                    wgpu_types::PresentMode::FifoRelaxed => wgpu::PresentMode::Fifo,
-                    wgpu_types::PresentMode::Mailbox => wgpu::PresentMode::Mailbox,
                 };
                 
                 if let Err(e) = wayland_surface.configure_surface(
@@ -1366,13 +1319,9 @@ where
                 
                 // Get surface format - try to get it from the surface's capabilities
                 // For now, use a default format (Bgra8Unorm is common)
-                #[cfg(feature = "vello")]
                 let surface_format = vello::wgpu::TextureFormat::Bgra8Unorm;
-                #[cfg(not(feature = "vello"))]
-                let surface_format = wgpu::TextureFormat::Bgra8Unorm;
                 
-                // Convert PresentMode from config to wgpu::PresentMode
-                #[cfg(feature = "vello")]
+                // Convert PresentMode from config to vello::wgpu::PresentMode
                 let present_mode = match self.config.render.present_mode {
                     wgpu_types::PresentMode::AutoVsync => vello::wgpu::PresentMode::AutoVsync,
                     wgpu_types::PresentMode::AutoNoVsync => vello::wgpu::PresentMode::AutoNoVsync,
@@ -1381,17 +1330,7 @@ where
                     wgpu_types::PresentMode::FifoRelaxed => vello::wgpu::PresentMode::Fifo,
                     wgpu_types::PresentMode::Mailbox => vello::wgpu::PresentMode::Mailbox,
                 };
-                #[cfg(not(feature = "vello"))]
-                let present_mode = match self.config.render.present_mode {
-                    wgpu_types::PresentMode::AutoVsync => wgpu::PresentMode::AutoVsync,
-                    wgpu_types::PresentMode::AutoNoVsync => wgpu::PresentMode::AutoNoVsync,
-                    wgpu_types::PresentMode::Immediate => wgpu::PresentMode::Immediate,
-                    wgpu_types::PresentMode::Fifo => wgpu::PresentMode::Fifo,
-                    wgpu_types::PresentMode::FifoRelaxed => wgpu::PresentMode::Fifo,
-                    wgpu_types::PresentMode::Mailbox => wgpu::PresentMode::Mailbox,
-                };
                 
-                #[cfg(feature = "vello")]
                 let config = vello::wgpu::SurfaceConfiguration {
                     usage: vello::wgpu::TextureUsages::RENDER_ATTACHMENT,
                     format: surface_format,
@@ -1399,17 +1338,6 @@ where
                     height: window_size.height,
                     present_mode,
                     alpha_mode: vello::wgpu::CompositeAlphaMode::Auto,
-                    view_formats: vec![],
-                    desired_maximum_frame_latency: 2,
-                };
-                #[cfg(not(feature = "vello"))]
-                let config = wgpu::SurfaceConfiguration {
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                    format: surface_format,
-                    width: window_size.width,
-                    height: window_size.height,
-                    present_mode,
-                    alpha_mode: wgpu::CompositeAlphaMode::Auto,
                     view_formats: vec![],
                     desired_maximum_frame_latency: 2,
                 };
@@ -1490,17 +1418,10 @@ where
     /// Create the renderer from a device handle.
     fn create_renderer(&mut self, device_handle: &DeviceHandle) {
         // Get surface format from surface
-        #[cfg(feature = "vello")]
         let surface_format = if let Some(ref surface) = self.surface {
             surface.format()
         } else {
             vello::wgpu::TextureFormat::Bgra8Unorm // Default fallback
-        };
-        #[cfg(not(feature = "vello"))]
-        let surface_format = if let Some(ref surface) = self.surface {
-            surface.format()
-        } else {
-            wgpu::TextureFormat::Bgra8Unorm // Default fallback
         };
         
         // Build renderer options
@@ -1530,7 +1451,6 @@ where
     }
 
     /// Build renderer options from configuration.
-    #[cfg(feature = "vello")]
     fn build_renderer_options(
         config: &MayConfig<T>,
         surface_format: &vello::wgpu::TextureFormat,
@@ -1542,21 +1462,8 @@ where
             num_init_threads: config.render.init_threads,
         }
     }
-    
-    #[cfg(not(feature = "vello"))]
-    fn build_renderer_options(
-        _config: &MayConfig<T>,
-        surface_format: &wgpu::TextureFormat,
-    ) -> RendererOptions {
-        RendererOptions {
-            surface_format: Some(*surface_format),
-            use_cpu: false,
-            num_init_threads: None,
-        }
-    }
 
     /// Convert antialiasing config to support flags.
-    #[cfg(feature = "vello")]
     fn convert_antialiasing_config(config: &AaConfig) -> AaSupport {
         match config {
             AaConfig::Area => AaSupport::area_only(),
@@ -1840,7 +1747,6 @@ where
     }
 }
 
-#[cfg(feature = "vello")]
 impl<T, W, S, F> ApplicationHandler for AppHandler<T, W, S, F>
 where
     T: Theme,

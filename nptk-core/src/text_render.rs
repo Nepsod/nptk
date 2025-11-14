@@ -3,7 +3,6 @@
 //! Text rendering using Parley for proper text layout and glyph mapping
 
 use crate::app::font_ctx::FontContext;
-#[cfg(feature = "vello")]
 use crate::vgi::Graphics;
 use fontique::QueryFont;
 use parley::{Alignment, Layout, LayoutContext, StyleProperty};
@@ -32,7 +31,6 @@ impl TextRenderContext {
     }
 
     /// Render text using Parley for proper layout and glyph mapping
-    #[cfg(feature = "vello")]
     pub fn render_text(
         &mut self,
         font_cx: &mut FontContext,
@@ -78,7 +76,6 @@ impl TextRenderContext {
     }
 
     /// Try to render with Parley
-    #[cfg(feature = "vello")]
     fn try_render_with_parley(
         &mut self,
         _font_cx: &mut FontContext,
@@ -118,7 +115,6 @@ impl TextRenderContext {
     }
 
     /// Simple fallback rendering method
-    #[cfg(feature = "vello")]
     fn render_simple_fallback(
         &self,
         _font_cx: &mut FontContext,
@@ -139,7 +135,6 @@ impl TextRenderContext {
     }
 
     /// Render a simple Parley layout to the scene (for default layout type)
-    #[cfg(feature = "vello")]
     fn render_layout_simple(
         &self,
         scene: &mut Scene,
@@ -240,7 +235,6 @@ impl TextRenderContext {
     }
 
     /// Render a Parley layout to the scene
-    #[cfg(feature = "vello")]
     pub fn render_layout(
         &self,
         scene: &mut Scene,
