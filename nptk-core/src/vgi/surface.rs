@@ -6,10 +6,7 @@
 
 #[cfg(all(target_os = "linux", feature = "wayland"))]
 use crate::vgi::wayland_surface::{InputEvent, WaylandSurface};
-#[cfg(feature = "vello")]
 use vello::wgpu::{SurfaceTexture, TextureFormat};
-#[cfg(not(feature = "vello"))]
-use wgpu::{SurfaceTexture, TextureFormat};
 
 /// A trait for platform-agnostic surface implementations.
 ///

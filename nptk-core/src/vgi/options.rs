@@ -4,11 +4,7 @@
 //! with different backends.
 
 use std::num::NonZeroUsize;
-#[cfg(feature = "vello")]
 use vello::wgpu::TextureFormat;
-#[cfg(not(feature = "vello"))]
-use wgpu::TextureFormat;
-#[cfg(feature = "vello")]
 use vello::AaSupport;
 #[cfg(feature = "vello-hybrid")]
 use wgpu::TextureFormat as WgpuTextureFormat;

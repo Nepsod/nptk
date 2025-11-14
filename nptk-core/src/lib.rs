@@ -4,7 +4,7 @@
 //!
 //! Contains core app logic and widget types.
 
-#[cfg(all(feature = "vg", feature = "vello"))]
+#[cfg(feature = "vg")]
 pub use vello as vg;
 
 #[cfg(feature = "vg")]

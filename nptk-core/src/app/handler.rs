@@ -12,7 +12,6 @@ use taffy::{
     AvailableSpace, Dimension, NodeId, PrintTree, Size, Style, TaffyResult, TaffyTree,
     TraversePartialTree,
 };
-#[cfg(feature = "vello")]
 use vello::{AaConfig, AaSupport, RenderParams};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
