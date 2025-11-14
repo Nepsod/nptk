@@ -49,4 +49,3 @@ fn default_symbol_color(state: CheckboxState) -> Color {
         CheckboxState::Checked | CheckboxState::Indeterminate => Color::WHITE,
     }
 }
-

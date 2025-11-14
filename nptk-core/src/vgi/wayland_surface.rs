@@ -398,10 +398,7 @@ impl WaylandSurface {
         let client = WaylandClient::instance();
         let globals = client.globals();
         let queue_handle = client.queue_handle();
-        log::debug!(
-            "WaylandSurface::new queue_handle_ptr={:p}",
-            &queue_handle
-        );
+        log::debug!("WaylandSurface::new queue_handle_ptr={:p}", &queue_handle);
 
         let wl_surface: wl_surface::WlSurface =
             globals.compositor.create_surface(&queue_handle, ());

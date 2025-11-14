@@ -3,13 +3,7 @@ use peniko::Color;
 use crate::globals::Globals;
 use crate::id::WidgetId;
 use crate::properties::{ThemeProperty, ThemeStyle, ThemeVariables};
-use crate::theme::{
-    LayoutMetrics,
-    ProvidesLayoutMetrics,
-    ProvidesPalette,
-    Theme,
-    ThemePalette,
-};
+use crate::theme::{LayoutMetrics, ProvidesLayoutMetrics, ProvidesPalette, Theme, ThemePalette};
 
 /// A dark theme with high contrast and modern styling.
 #[derive(Debug, Clone)]
@@ -60,9 +54,11 @@ impl DarkTheme {
         self.variables.set_color("text-primary", self.palette.text);
         self.variables
             .set_color("text-secondary", Color::from_rgb8(180, 180, 180));
-        self.variables.set_color("text-muted", self.palette.text_muted);
+        self.variables
+            .set_color("text-muted", self.palette.text_muted);
 
-        self.variables.set_color("border-primary", self.palette.border);
+        self.variables
+            .set_color("border-primary", self.palette.border);
         self.variables
             .set_color("border-secondary", Color::from_rgb8(100, 100, 100));
 
@@ -84,7 +80,6 @@ impl DarkTheme {
         }
         style
     }
-
 }
 
 impl Default for DarkTheme {

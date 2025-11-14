@@ -1,5 +1,4 @@
 use nptk::prelude::*;
-use std::sync::Arc;
 struct ProgressApp;
 
 impl Application for ProgressApp {
@@ -96,7 +95,7 @@ impl Application for ProgressApp {
                         ..Default::default()
                     }),
             ),
-            
+
             // Progress bar 1: Determinate
             Box::new(
                 Text::new("Determinate Progress:".to_string())
@@ -106,13 +105,12 @@ impl Application for ProgressApp {
                     }),
             ),
             Box::new(
-                Progress::new(progress_value.clone() as Arc<dyn Signal<f32>>)
-                    .with_layout_style(LayoutStyle {
+                Progress::new(progress_value.clone().maybe()).with_layout_style(LayoutStyle {
                         size: Vector2::new(Dimension::percent(1.0), Dimension::length(30.0)),
                         ..Default::default()
                     }),
             ),
-            
+
             // Progress bar 2: Indeterminate
             Box::new(
                 Text::new("Indeterminate Progress:".to_string())
@@ -123,13 +121,13 @@ impl Application for ProgressApp {
             ),
             Box::new(
                 Progress::new(0.0)
-                    .with_indeterminate(indeterminate.clone() as Arc<dyn Signal<bool>>)
+                    .with_indeterminate(indeterminate.clone().maybe())
                     .with_layout_style(LayoutStyle {
                         size: Vector2::new(Dimension::percent(1.0), Dimension::length(30.0)),
                         ..Default::default()
                     }),
             ),
-            
+
             // Control buttons
             Box::new(
                 Container::new(vec![
@@ -149,7 +147,7 @@ impl Application for ProgressApp {
                     ..Default::default()
                 }),
             ),
-            
+
             // Instructions
             Box::new(
                 Text::new("Use the buttons to control the progress bars. The indeterminate mode shows an animated progress bar.".to_string())

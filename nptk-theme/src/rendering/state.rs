@@ -27,9 +27,9 @@ impl WidgetState {
             WidgetState::Hovered | WidgetState::FocusedHovered | WidgetState::SelectedHovered => {
                 Color::from_rgb8(180, 180, 180)
             },
-            WidgetState::Pressed
-            | WidgetState::FocusedPressed
-            | WidgetState::SelectedPressed => Color::from_rgb8(160, 160, 160),
+            WidgetState::Pressed | WidgetState::FocusedPressed | WidgetState::SelectedPressed => {
+                Color::from_rgb8(160, 160, 160)
+            },
             WidgetState::Released
             | WidgetState::FocusedReleased
             | WidgetState::SelectedReleased => Color::from_rgb8(180, 180, 180),
@@ -100,4 +100,3 @@ pub enum CheckboxState {
     Checked,
     Indeterminate,
 }
-

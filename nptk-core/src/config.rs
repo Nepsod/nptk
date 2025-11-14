@@ -244,10 +244,7 @@ impl Default for RenderConfig {
                     },
                     "auto" | _ => {
                         if val_lower != "auto" {
-                            log::warn!(
-                                "Unknown present mode '{}'; using AutoNoVsync",
-                                val
-                            );
+                            log::warn!("Unknown present mode '{}'; using AutoNoVsync", val);
                         }
                         PresentMode::AutoNoVsync
                     },

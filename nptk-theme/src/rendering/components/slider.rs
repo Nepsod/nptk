@@ -48,4 +48,3 @@ fn default_thumb_color(state: WidgetState) -> Color {
         Color::from_rgb8(180, 180, 180)
     }
 }
-

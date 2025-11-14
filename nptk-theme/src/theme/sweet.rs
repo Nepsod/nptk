@@ -3,13 +3,7 @@ use peniko::Color;
 use crate::globals::Globals;
 use crate::id::WidgetId;
 use crate::properties::{ThemeProperty, ThemeStyle, ThemeVariables};
-use crate::theme::{
-    LayoutMetrics,
-    ProvidesLayoutMetrics,
-    ProvidesPalette,
-    Theme,
-    ThemePalette,
-};
+use crate::theme::{LayoutMetrics, ProvidesLayoutMetrics, ProvidesPalette, Theme, ThemePalette};
 
 /// A modern dark theme inspired by the Sweet Dark theme for Kvantum and KDE.
 ///
@@ -64,11 +58,13 @@ impl SweetTheme {
         self.variables.set_color("text-primary", self.palette.text);
         self.variables
             .set_color("text-secondary", Color::from_rgb8(195, 199, 209));
-        self.variables.set_color("text-muted", self.palette.text_muted);
+        self.variables
+            .set_color("text-muted", self.palette.text_muted);
         self.variables
             .set_color("text-disabled", self.palette.text_muted);
 
-        self.variables.set_color("border-primary", self.palette.border);
+        self.variables
+            .set_color("border-primary", self.palette.border);
         self.variables
             .set_color("border-secondary", self.palette.border);
 
@@ -105,7 +101,6 @@ impl SweetTheme {
         }
         style
     }
-
 }
 
 impl Default for SweetTheme {

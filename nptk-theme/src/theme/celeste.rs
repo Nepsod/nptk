@@ -2,13 +2,7 @@ use peniko::Color;
 
 use crate::globals::Globals;
 use crate::id::WidgetId;
-use crate::theme::{
-    LayoutMetrics,
-    ProvidesLayoutMetrics,
-    ProvidesPalette,
-    Theme,
-    ThemePalette,
-};
+use crate::theme::{LayoutMetrics, ProvidesLayoutMetrics, ProvidesPalette, Theme, ThemePalette};
 
 /// A smooth and minimalistic theme with a cold blue and purple touch.
 #[derive(Debug, Clone)]
@@ -73,24 +67,14 @@ impl Theme for CelesteTheme {
             "nptk-widgets" => match id.id() {
                 "Text" => match property {
                     crate::properties::ThemeProperty::Color => Some(palette.text),
-                    crate::properties::ThemeProperty::ColorInvert => {
-                        Some(palette.background)
-                    },
+                    crate::properties::ThemeProperty::ColorInvert => Some(palette.background),
                     _ => None,
                 },
                 "Button" => match property {
-                    crate::properties::ThemeProperty::ColorIdle => {
-                        Some(palette.primary)
-                    },
-                    crate::properties::ThemeProperty::ColorPressed => {
-                        Some(palette.primary_dark)
-                    },
-                    crate::properties::ThemeProperty::ColorHovered => {
-                        Some(palette.primary_light)
-                    },
-                    crate::properties::ThemeProperty::ColorFocused => {
-                        Some(palette.primary_dark)
-                    },
+                    crate::properties::ThemeProperty::ColorIdle => Some(palette.primary),
+                    crate::properties::ThemeProperty::ColorPressed => Some(palette.primary_dark),
+                    crate::properties::ThemeProperty::ColorHovered => Some(palette.primary_light),
+                    crate::properties::ThemeProperty::ColorFocused => Some(palette.primary_dark),
                     _ => None,
                 },
                 "Checkbox" => match property {
@@ -98,18 +82,12 @@ impl Theme for CelesteTheme {
                     | crate::properties::ThemeProperty::ColorIndeterminate => {
                         Some(palette.primary_light)
                     },
-                    crate::properties::ThemeProperty::ColorUnchecked => {
-                        Some(palette.primary_light)
-                    },
+                    crate::properties::ThemeProperty::ColorUnchecked => Some(palette.primary_light),
                     _ => None,
                 },
                 "Slider" => match property {
-                    crate::properties::ThemeProperty::SliderTrack => {
-                        Some(palette.primary_dark)
-                    },
-                    crate::properties::ThemeProperty::SliderThumb => {
-                        Some(palette.primary_light)
-                    },
+                    crate::properties::ThemeProperty::SliderTrack => Some(palette.primary_dark),
+                    crate::properties::ThemeProperty::SliderThumb => Some(palette.primary_light),
                     _ => None,
                 },
                 "TextInput" => match property {
@@ -120,31 +98,19 @@ impl Theme for CelesteTheme {
                     _ => None,
                 },
                 "Progress" => match property {
-                    crate::properties::ThemeProperty::Color => {
-                        Some(palette.background_elevated)
-                    },
-                    crate::properties::ThemeProperty::ColorProgress => {
-                        Some(palette.primary)
-                    },
-                    crate::properties::ThemeProperty::ColorBorder => {
-                        Some(palette.border)
-                    },
+                    crate::properties::ThemeProperty::Color => Some(palette.background_elevated),
+                    crate::properties::ThemeProperty::ColorProgress => Some(palette.primary),
+                    crate::properties::ThemeProperty::ColorBorder => Some(palette.border),
                     _ => None,
                 },
                 "MenuBar" => match property {
                     crate::properties::ThemeProperty::ColorBackground => {
                         Some(palette.background_alt)
                     },
-                    crate::properties::ThemeProperty::ColorBorder => {
-                        Some(palette.border)
-                    },
+                    crate::properties::ThemeProperty::ColorBorder => Some(palette.border),
                     crate::properties::ThemeProperty::ColorText => Some(palette.text),
-                    crate::properties::ThemeProperty::ColorDisabled => {
-                        Some(palette.text_muted)
-                    },
-                    crate::properties::ThemeProperty::ColorMenuSelected => {
-                        Some(palette.selection)
-                    },
+                    crate::properties::ThemeProperty::ColorDisabled => Some(palette.text_muted),
+                    crate::properties::ThemeProperty::ColorMenuSelected => Some(palette.selection),
                     crate::properties::ThemeProperty::ColorMenuHovered => {
                         Some(palette.background_elevated)
                     },
@@ -154,19 +120,13 @@ impl Theme for CelesteTheme {
                     crate::properties::ThemeProperty::ColorBackground => {
                         Some(palette.background_alt)
                     },
-                    crate::properties::ThemeProperty::ColorBorder => {
-                        Some(palette.border)
-                    },
+                    crate::properties::ThemeProperty::ColorBorder => Some(palette.border),
                     crate::properties::ThemeProperty::ColorText => Some(palette.text),
-                    crate::properties::ThemeProperty::ColorDisabled => {
-                        Some(palette.text_muted)
-                    },
+                    crate::properties::ThemeProperty::ColorDisabled => Some(palette.text_muted),
                     crate::properties::ThemeProperty::ColorMenuHovered => {
                         Some(palette.background_elevated)
                     },
-                    crate::properties::ThemeProperty::ColorMenuDisabled => {
-                        Some(palette.text_muted)
-                    },
+                    crate::properties::ThemeProperty::ColorMenuDisabled => Some(palette.text_muted),
                     _ => None,
                 },
                 "Toggle" => match property {

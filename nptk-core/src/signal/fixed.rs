@@ -1,24 +1,29 @@
-use crate::signal::{Listener, Ref, Signal};
+use crate::signal::{BoxedSignal, Listener, Ref, Signal};
+use std::rc::Rc;
 
-/// A signal with a fixed value.
-///
-/// The inner value cannot be changed and listeners do not exist.
-/// Useful for testing purposes.
-#[derive(Clone)]
-pub struct FixedSignal<T> {
-    value: T,
+/// A signal with a fixed value. The inner value cannot be mutated and listeners do not exist.
+pub struct FixedSignal<T: 'static> {
+    value: Rc<T>,
 }
 
-impl<T> FixedSignal<T> {
+impl<T: 'static> FixedSignal<T> {
     /// Creates a new fixed signal.
     pub fn new(value: T) -> Self {
+        Self {
+            value: Rc::new(value),
+        }
+    }
+}
+
+impl<T: 'static> From<Rc<T>> for FixedSignal<T> {
+    fn from(value: Rc<T>) -> Self {
         Self { value }
     }
 }
 
 impl<T: 'static> Signal<T> for FixedSignal<T> {
-    fn get(&'_ self) -> Ref<'_, T> {
-        Ref::Borrow(&self.value)
+    fn get(&self) -> Ref<'_, T> {
+        Ref::Rc(self.value.clone())
     }
 
     fn set_value(&self, _: T) {}
@@ -26,4 +31,16 @@ impl<T: 'static> Signal<T> for FixedSignal<T> {
     fn listen(&mut self, _: Listener<T>) {}
 
     fn notify(&self) {}
+
+    fn dyn_clone(&self) -> BoxedSignal<T> {
+        Box::new(self.clone())
+    }
+}
+
+impl<T: 'static> Clone for FixedSignal<T> {
+    fn clone(&self) -> Self {
+        Self {
+            value: self.value.clone(),
+        }
+    }
 }

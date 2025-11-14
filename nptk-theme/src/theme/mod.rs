@@ -188,18 +188,18 @@ use crate::id::WidgetId;
 use crate::properties::{ThemeProperty, ThemeStyle, ThemeVariables};
 use crate::rendering::ThemeRenderer;
 
+/// The Celeste Theme.
+pub mod celeste;
 /// Shared color palettes.
 pub mod colors;
-/// Canonical palette utilities.
-pub mod palette;
+/// The Dark Theme.
+pub mod dark;
 /// Shared layout metrics.
 pub mod layout;
 /// Canonical layout metrics utilities.
 pub mod metrics;
-/// The Celeste Theme.
-pub mod celeste;
-/// The Dark Theme.
-pub mod dark;
+/// Canonical palette utilities.
+pub mod palette;
 /// The Sweet Theme.
 pub mod sweet;
 /// The System Theme.

@@ -70,4 +70,3 @@ fn default_border_color(state: WidgetState) -> Color {
         Color::from_rgb8(190, 190, 190)
     }
 }
-

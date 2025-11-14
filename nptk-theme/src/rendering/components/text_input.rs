@@ -23,7 +23,10 @@ pub fn text_input_visual<T: Theme + ?Sized>(
     state: WidgetState,
 ) -> TextInputVisual {
     let background = theme
-        .get_property(id.clone(), &crate::properties::ThemeProperty::ColorBackground)
+        .get_property(
+            id.clone(),
+            &crate::properties::ThemeProperty::ColorBackground,
+        )
         .unwrap_or_else(|| default_background(state));
 
     let border = theme
@@ -64,4 +67,3 @@ fn default_caret(state: WidgetState) -> Color {
         Color::from_rgb8(30, 30, 30)
     }
 }
-

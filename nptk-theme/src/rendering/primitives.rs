@@ -23,7 +23,9 @@ pub fn themed_color_or<T: Theme + ?Sized>(
     property: ThemeProperty,
     fallback: Color,
 ) -> Color {
-    theme.get_property(id.clone(), &property).unwrap_or(fallback)
+    theme
+        .get_property(id.clone(), &property)
+        .unwrap_or(fallback)
 }
 
 /// Map a [WidgetState] to its corresponding button property lookup.
@@ -81,4 +83,3 @@ pub fn checkbox_mapping(state: CheckboxState) -> PropertyMapping {
         },
     }
 }
-

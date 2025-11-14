@@ -1,25 +1,26 @@
 use crate::reference::Ref;
-use crate::signal::{Listener, Signal};
+use crate::signal::{BoxedSignal, Listener, Signal};
+use std::rc::Rc;
 
 /// A signal that evaluates a function to get the value.
 ///
 /// The evaluation function will be called every time the value is requested via [Signal::get],
 /// so it's recommended to avoid expensive operations.
-pub struct EvalSignal<T> {
-    eval: Box<dyn Fn() -> T>,
+pub struct EvalSignal<T: 'static> {
+    eval: Rc<dyn Fn() -> T>,
 }
 
-impl<T> EvalSignal<T> {
+impl<T: 'static> EvalSignal<T> {
     /// Create a new eval signal using the given evaluation function.
     pub fn new(eval: impl Fn() -> T + 'static) -> Self {
         Self {
-            eval: Box::new(eval),
+            eval: Rc::new(eval),
         }
     }
 }
 
 impl<T: 'static> Signal<T> for EvalSignal<T> {
-    fn get(&'_ self) -> Ref<'_, T> {
+    fn get(&self) -> Ref<'_, T> {
         Ref::Owned((self.eval)())
     }
 
@@ -28,4 +29,16 @@ impl<T: 'static> Signal<T> for EvalSignal<T> {
     fn listen(&mut self, _: Listener<T>) {}
 
     fn notify(&self) {}
+
+    fn dyn_clone(&self) -> BoxedSignal<T> {
+        Box::new(self.clone())
+    }
+}
+
+impl<T: 'static> Clone for EvalSignal<T> {
+    fn clone(&self) -> Self {
+        Self {
+            eval: self.eval.clone(),
+        }
+    }
 }

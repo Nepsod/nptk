@@ -20,7 +20,7 @@ impl Application for MyApp {
             Box::new(Text::new(
                 "Simple Checkbox (checked/unchecked only):".to_string(),
             )),
-            Box::new(Checkbox::new(MaybeSignal::signal(checkbox1_state.clone()))),
+            Box::new(Checkbox::new(checkbox1_state.clone().maybe())),
             Box::new(Text::new(
                 checkbox1_state.map(|val| Ref::Owned(format!("State: {:?}", *val))),
             )),
@@ -28,10 +28,7 @@ impl Application for MyApp {
             Box::new(Text::new(
                 "Three-State Checkbox (with indeterminate):".to_string(),
             )),
-            Box::new(
-                Checkbox::new(MaybeSignal::signal(checkbox2_state.clone()))
-                    .with_indeterminate_state(),
-            ),
+            Box::new(Checkbox::new(checkbox2_state.clone().maybe()).with_indeterminate_state()),
             Box::new(Text::new(
                 checkbox2_state.map(|val| Ref::Owned(format!("State: {:?}", *val))),
             )),
@@ -40,7 +37,7 @@ impl Application for MyApp {
                 "Three-State Checkbox (indeterminate locked):".to_string(),
             )),
             Box::new(
-                Checkbox::new(MaybeSignal::signal(checkbox3_state.clone()))
+                Checkbox::new(checkbox3_state.clone().maybe())
                     .with_indeterminate_state()
                     .with_locked_state(CheckboxState::Indeterminate),
             ),
@@ -51,7 +48,7 @@ impl Application for MyApp {
             Box::new(Text::new("".to_string())), // Spacer
             Box::new(Text::new("Toggle Button:".to_string())),
             Box::new(
-                Toggle::new(MaybeSignal::signal(toggle_state.clone())).with_on_toggle(|is_on| {
+                Toggle::new(toggle_state.clone().maybe()).with_on_toggle(|is_on| {
                     println!("Toggle is now: {}", if is_on { "ON" } else { "OFF" });
                 }),
             ),

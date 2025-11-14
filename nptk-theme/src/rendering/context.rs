@@ -1,6 +1,6 @@
 //! Lightweight data structures shared by rendering helpers.
-use crate::id::WidgetId;
 use super::state::WidgetState;
+use crate::id::WidgetId;
 
 /// Dimensions for a widget render pass.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -19,13 +19,19 @@ impl RenderBounds {
 
     /// Convenience helper for square bounds.
     pub fn square(size: f32) -> Self {
-        Self { width: size, height: size }
+        Self {
+            width: size,
+            height: size,
+        }
     }
 }
 
 impl Default for RenderBounds {
     fn default() -> Self {
-        Self { width: 0.0, height: 0.0 }
+        Self {
+            width: 0.0,
+            height: 0.0,
+        }
     }
 }
 
@@ -81,4 +87,3 @@ impl<'a, T> RenderContext<'a, T> {
         self.payload
     }
 }
-
