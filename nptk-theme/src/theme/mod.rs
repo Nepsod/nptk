@@ -188,6 +188,14 @@ use crate::id::WidgetId;
 use crate::properties::{ThemeProperty, ThemeStyle, ThemeVariables};
 use crate::rendering::ThemeRenderer;
 
+/// Shared color palettes.
+pub mod colors;
+/// Canonical palette utilities.
+pub mod palette;
+/// Shared layout metrics.
+pub mod layout;
+/// Canonical layout metrics utilities.
+pub mod metrics;
 /// The Celeste Theme.
 pub mod celeste;
 /// The Dark Theme.
@@ -196,6 +204,9 @@ pub mod dark;
 pub mod sweet;
 /// The System Theme.
 pub mod system;
+
+pub use metrics::{LayoutMetrics, ProvidesLayoutMetrics};
+pub use palette::{ProvidesPalette, ThemePalette};
 
 #[cfg(test)]
 mod tests {
@@ -334,6 +345,8 @@ pub trait Theme: ThemeRenderer {
             ThemeProperty::ColorMenuSelected => Some(Color::from_rgb8(100, 150, 255)),
             ThemeProperty::ColorMenuDisabled => Some(Color::from_rgb8(150, 150, 150)),
             ThemeProperty::CheckboxSymbol => Some(Color::from_rgb8(255, 255, 255)),
+            ThemeProperty::SliderTrack => Some(Color::from_rgb8(220, 220, 220)),
+            ThemeProperty::SliderThumb => Some(Color::from_rgb8(180, 180, 180)),
             _ => None,
         }
     }

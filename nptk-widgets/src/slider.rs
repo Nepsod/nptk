@@ -81,7 +81,7 @@ impl Widget for Slider {
         let track_brush = theme
             .get_property(
                 self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::Color,
+                &nptk_theme::properties::ThemeProperty::SliderTrack,
             )
             .map(|color| Brush::Solid(color))
             .unwrap_or_else(|| Brush::Solid(Color::from_rgb8(200, 200, 200)));
@@ -94,7 +94,7 @@ impl Widget for Slider {
         let thumb_brush = theme
             .get_property(
                 self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::ColorBall,
+                &nptk_theme::properties::ThemeProperty::SliderThumb,
             )
             .map(|color| Brush::Solid(color))
             .unwrap_or_else(|| Brush::Solid(Color::from_rgb8(100, 150, 255)));

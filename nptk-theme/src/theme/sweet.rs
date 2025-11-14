@@ -3,7 +3,13 @@ use peniko::Color;
 use crate::globals::Globals;
 use crate::id::WidgetId;
 use crate::properties::{ThemeProperty, ThemeStyle, ThemeVariables};
-use crate::theme::Theme;
+use crate::theme::{
+    LayoutMetrics,
+    ProvidesLayoutMetrics,
+    ProvidesPalette,
+    Theme,
+    ThemePalette,
+};
 
 /// A modern dark theme inspired by the Sweet Dark theme for Kvantum and KDE.
 ///
@@ -12,14 +18,25 @@ use crate::theme::Theme;
 pub struct SweetTheme {
     globals: Globals,
     variables: ThemeVariables,
+    palette: ThemePalette,
+    metrics: LayoutMetrics,
 }
 
 impl SweetTheme {
     /// Create a new Sweet theme.
     pub fn new() -> Self {
+        let palette = ThemePalette::sweet();
+        let metrics = LayoutMetrics::vibrant_dark();
+        let globals = Globals {
+            invert_text_color: metrics.prefers_inverted_text,
+            ..Globals::default()
+        };
+
         let mut theme = Self {
-            globals: Globals::default(),
+            globals,
             variables: ThemeVariables::new(),
+            palette,
+            metrics,
         };
 
         // Set up theme variables
@@ -29,45 +46,35 @@ impl SweetTheme {
 
     /// Set up CSS-like variables for the theme.
     fn setup_variables(&mut self) {
-        // Primary colors
+        self.variables.set_color("primary", self.palette.primary);
         self.variables
-            .set_color("primary", Color::from_rgb8(197, 14, 210)); // controlAccentColor / highlight
+            .set_color("primary-dark", self.palette.primary_dark);
         self.variables
-            .set_color("primary-dark", Color::from_rgb8(157, 51, 213)); // systemPurpleColor
-        self.variables
-            .set_color("primary-light", Color::from_rgb8(254, 207, 14)); // systemYellowColor
+            .set_color("primary-light", self.palette.primary_light);
 
-        // Background colors - Sweet palette
         self.variables
-            .set_color("bg-primary", Color::from_rgb8(22, 25, 37)); // backgroundColor2
+            .set_color("bg-primary", self.palette.background);
         self.variables
-            .set_color("bg-secondary", Color::from_rgb8(30, 34, 51)); // controlBackgroundColor
+            .set_color("bg-secondary", self.palette.background_alt);
         self.variables
-            .set_color("bg-tertiary", Color::from_rgb8(24, 27, 40)); // windowBackgroundColor
+            .set_color("bg-tertiary", self.palette.background_elevated);
         self.variables
-            .set_color("bg-quaternary", Color::from_rgb8(12, 14, 21)); // light.color / dark.color
+            .set_color("bg-quaternary", Color::from_rgb8(12, 14, 21));
 
-        // Text colors
+        self.variables.set_color("text-primary", self.palette.text);
         self.variables
-            .set_color("text-primary", Color::from_rgb8(211, 218, 227)); // textColor
+            .set_color("text-secondary", Color::from_rgb8(195, 199, 209));
+        self.variables.set_color("text-muted", self.palette.text_muted);
         self.variables
-            .set_color("text-secondary", Color::from_rgb8(195, 199, 209)); // labelColor
-        self.variables
-            .set_color("text-muted", Color::from_rgb8(102, 106, 115)); // secondaryLabelColor
-        self.variables
-            .set_color("text-disabled", Color::from_rgb8(102, 106, 115)); // disabled, with opacity
+            .set_color("text-disabled", self.palette.text_muted);
 
-        // Border colors
+        self.variables.set_color("border-primary", self.palette.border);
         self.variables
-            .set_color("border-primary", Color::from_rgb8(102, 106, 115)); // separatorColor
-        self.variables
-            .set_color("border-secondary", Color::from_rgb8(102, 106, 115)); // controlColor
+            .set_color("border-secondary", self.palette.border);
 
-        // Accent colors
         self.variables
-            .set_color("accent-original", Color::from_rgb8(0, 232, 198)); // origControlAccentColor (green)
-        self.variables
-            .set_color("accent", Color::from_rgb8(197, 14, 210)); // controlAccentColor (magenta)
+            .set_color("accent-original", self.palette.accent);
+        self.variables.set_color("accent", self.palette.primary);
 
         // System colors
         self.variables
@@ -83,11 +90,11 @@ impl SweetTheme {
 
         // Selection colors
         self.variables
-            .set_color("selection-bg", Color::from_rgb8(197, 14, 210)); // selectedTextBackgroundColor
+            .set_color("selection-bg", self.palette.selection);
         self.variables
-            .set_color("selection-text", Color::from_rgb8(254, 254, 254)); // selectedTextColor
+            .set_color("selection-text", Color::from_rgb8(254, 254, 254));
         self.variables
-            .set_color("selection-unfocused-bg", Color::from_rgb8(47, 52, 63)); // unemphasizedSelectedTextBackgroundColor
+            .set_color("selection-unfocused-bg", Color::from_rgb8(47, 52, 63));
     }
 
     /// Create a type-safe theme style for a widget.
@@ -98,6 +105,7 @@ impl SweetTheme {
         }
         style
     }
+
 }
 
 impl Default for SweetTheme {
@@ -230,12 +238,12 @@ impl Theme for SweetTheme {
                     _ => None,
                 },
                 "Slider" => match property {
-                    crate::properties::ThemeProperty::Color => Some(
+                    crate::properties::ThemeProperty::SliderTrack => Some(
                         self.variables
                             .get_color("border-primary")
                             .unwrap_or(Color::from_rgb8(102, 106, 115)),
                     ),
-                    crate::properties::ThemeProperty::ColorBall => Some(
+                    crate::properties::ThemeProperty::SliderThumb => Some(
                         self.variables
                             .get_color("primary")
                             .unwrap_or(Color::from_rgb8(197, 14, 210)),
@@ -489,11 +497,11 @@ impl Theme for SweetTheme {
 
                 "Slider" => Some(self.create_widget_style(&[
                     (
-                        ThemeProperty::Color,
+                        ThemeProperty::SliderTrack,
                         self.variables.get_color("border-primary").unwrap(),
                     ),
                     (
-                        ThemeProperty::ColorBall,
+                        ThemeProperty::SliderThumb,
                         self.variables.get_color("primary").unwrap(),
                     ),
                 ])),
@@ -654,3 +662,15 @@ impl Theme for SweetTheme {
 }
 
 // ThemeRenderer is automatically implemented via blanket impl for all Theme types
+
+impl ProvidesPalette for SweetTheme {
+    fn palette(&self) -> &ThemePalette {
+        &self.palette
+    }
+}
+
+impl ProvidesLayoutMetrics for SweetTheme {
+    fn layout_metrics(&self) -> LayoutMetrics {
+        self.metrics
+    }
+}

@@ -3,21 +3,38 @@ use peniko::Color;
 use crate::globals::Globals;
 use crate::id::WidgetId;
 use crate::properties::{ThemeProperty, ThemeStyle, ThemeVariables};
-use crate::theme::Theme;
+use crate::theme::{
+    LayoutMetrics,
+    ProvidesLayoutMetrics,
+    ProvidesPalette,
+    Theme,
+    ThemePalette,
+};
 
 /// A dark theme with high contrast and modern styling.
 #[derive(Debug, Clone)]
 pub struct DarkTheme {
     globals: Globals,
     variables: ThemeVariables,
+    palette: ThemePalette,
+    metrics: LayoutMetrics,
 }
 
 impl DarkTheme {
     /// Create a new dark theme.
     pub fn new() -> Self {
+        let palette = ThemePalette::dark();
+        let metrics = LayoutMetrics::modern_dark();
+        let globals = Globals {
+            invert_text_color: metrics.prefers_inverted_text,
+            ..Globals::default()
+        };
+
         let mut theme = Self {
-            globals: Globals::default(),
+            globals,
             variables: ThemeVariables::new(),
+            palette,
+            metrics,
         };
 
         // Set up theme variables
@@ -27,37 +44,28 @@ impl DarkTheme {
 
     /// Set up CSS-like variables for the theme.
     fn setup_variables(&mut self) {
-        // Primary colors
+        self.variables.set_color("primary", self.palette.primary);
         self.variables
-            .set_color("primary", Color::from_rgb8(100, 150, 255));
+            .set_color("primary-dark", self.palette.primary_dark);
         self.variables
-            .set_color("primary-dark", Color::from_rgb8(80, 130, 235));
-        self.variables
-            .set_color("primary-light", Color::from_rgb8(120, 170, 255));
+            .set_color("primary-light", self.palette.primary_light);
 
-        // Background colors
         self.variables
-            .set_color("bg-primary", Color::from_rgb8(30, 30, 30));
+            .set_color("bg-primary", self.palette.background);
         self.variables
-            .set_color("bg-secondary", Color::from_rgb8(40, 40, 40));
+            .set_color("bg-secondary", self.palette.background_alt);
         self.variables
-            .set_color("bg-tertiary", Color::from_rgb8(50, 50, 50));
+            .set_color("bg-tertiary", self.palette.background_elevated);
 
-        // Text colors
-        self.variables
-            .set_color("text-primary", Color::from_rgb8(220, 220, 220));
+        self.variables.set_color("text-primary", self.palette.text);
         self.variables
             .set_color("text-secondary", Color::from_rgb8(180, 180, 180));
-        self.variables
-            .set_color("text-muted", Color::from_rgb8(140, 140, 140));
+        self.variables.set_color("text-muted", self.palette.text_muted);
 
-        // Border colors
-        self.variables
-            .set_color("border-primary", Color::from_rgb8(80, 80, 80));
+        self.variables.set_color("border-primary", self.palette.border);
         self.variables
             .set_color("border-secondary", Color::from_rgb8(100, 100, 100));
 
-        // State colors
         self.variables
             .set_color("success", Color::from_rgb8(76, 175, 80));
         self.variables
@@ -76,6 +84,7 @@ impl DarkTheme {
         }
         style
     }
+
 }
 
 impl Default for DarkTheme {
@@ -142,12 +151,12 @@ impl Theme for DarkTheme {
                     _ => None,
                 },
                 "Slider" => match property {
-                    crate::properties::ThemeProperty::Color => Some(
+                    crate::properties::ThemeProperty::SliderTrack => Some(
                         self.variables
                             .get_color("border-primary")
                             .unwrap_or(Color::from_rgb8(80, 80, 80)),
                     ),
-                    crate::properties::ThemeProperty::ColorBall => Some(
+                    crate::properties::ThemeProperty::SliderThumb => Some(
                         self.variables
                             .get_color("primary")
                             .unwrap_or(Color::from_rgb8(100, 150, 255)),
@@ -348,11 +357,11 @@ impl Theme for DarkTheme {
 
                 "Slider" => Some(self.create_widget_style(&[
                     (
-                        ThemeProperty::Color,
+                        ThemeProperty::SliderTrack,
                         self.variables.get_color("border-primary").unwrap(),
                     ),
                     (
-                        ThemeProperty::ColorBall,
+                        ThemeProperty::SliderThumb,
                         self.variables.get_color("primary").unwrap(),
                     ),
                 ])),
@@ -513,3 +522,15 @@ impl Theme for DarkTheme {
 }
 
 // ThemeRenderer is automatically implemented via blanket impl for all Theme types
+
+impl ProvidesPalette for DarkTheme {
+    fn palette(&self) -> &ThemePalette {
+        &self.palette
+    }
+}
+
+impl ProvidesLayoutMetrics for DarkTheme {
+    fn layout_metrics(&self) -> LayoutMetrics {
+        self.metrics
+    }
+}

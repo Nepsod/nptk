@@ -2,19 +2,54 @@ use peniko::Color;
 
 use crate::globals::Globals;
 use crate::id::WidgetId;
-use crate::theme::Theme;
+use crate::theme::{
+    LayoutMetrics,
+    ProvidesLayoutMetrics,
+    ProvidesPalette,
+    Theme,
+    ThemePalette,
+};
 
 /// A smooth and minimalistic theme with a cold blue and purple touch.
 #[derive(Debug, Clone)]
 pub enum CelesteTheme {
     /// Use [CelesteTheme::light] to use the light Celeste theme.
-    Light(Globals),
+    Light(CelesteThemeData),
+}
+
+#[derive(Debug, Clone)]
+struct CelesteThemeData {
+    globals: Globals,
+    palette: ThemePalette,
+    metrics: LayoutMetrics,
 }
 
 impl CelesteTheme {
     /// The Light Celeste Theme.
     pub fn light() -> Self {
-        Self::Light(Globals::default())
+        let palette = ThemePalette::celeste_light();
+        let metrics = LayoutMetrics::classic_light();
+        let globals = Globals {
+            invert_text_color: metrics.prefers_inverted_text,
+            ..Globals::default()
+        };
+        Self::Light(CelesteThemeData {
+            globals,
+            palette,
+            metrics,
+        })
+    }
+
+    fn data(&self) -> &CelesteThemeData {
+        match self {
+            CelesteTheme::Light(data) => data,
+        }
+    }
+
+    fn data_mut(&mut self) -> &mut CelesteThemeData {
+        match self {
+            CelesteTheme::Light(data) => data,
+        }
     }
 }
 
@@ -30,127 +65,127 @@ impl Theme for CelesteTheme {
         id: WidgetId,
         property: &crate::properties::ThemeProperty,
     ) -> Option<Color> {
+        let palette = match self {
+            CelesteTheme::Light(data) => &data.palette,
+        };
+
         match id.namespace() {
             "nptk-widgets" => match id.id() {
                 "Text" => match property {
-                    crate::properties::ThemeProperty::Color => Some(Color::from_rgb8(0, 0, 0)),
+                    crate::properties::ThemeProperty::Color => Some(palette.text),
                     crate::properties::ThemeProperty::ColorInvert => {
-                        Some(Color::from_rgb8(255, 255, 255))
+                        Some(palette.background)
                     },
                     _ => None,
                 },
                 "Button" => match property {
                     crate::properties::ThemeProperty::ColorIdle => {
-                        Some(Color::from_rgb8(150, 170, 250))
+                        Some(palette.primary)
                     },
                     crate::properties::ThemeProperty::ColorPressed => {
-                        Some(Color::from_rgb8(130, 150, 230))
+                        Some(palette.primary_dark)
                     },
                     crate::properties::ThemeProperty::ColorHovered => {
-                        Some(Color::from_rgb8(140, 160, 240))
+                        Some(palette.primary_light)
                     },
                     crate::properties::ThemeProperty::ColorFocused => {
-                        Some(Color::from_rgb8(120, 140, 220))
+                        Some(palette.primary_dark)
                     },
                     _ => None,
                 },
                 "Checkbox" => match property {
                     crate::properties::ThemeProperty::ColorChecked => {
-                        Some(Color::from_rgb8(130, 130, 230))
+                        Some(palette.primary_dark)
                     },
                     crate::properties::ThemeProperty::ColorUnchecked => {
-                        Some(Color::from_rgb8(170, 170, 250))
+                        Some(palette.primary_light)
                     },
                     _ => None,
                 },
                 "Slider" => match property {
-                    crate::properties::ThemeProperty::Color => {
-                        Some(Color::from_rgb8(130, 130, 230))
+                    crate::properties::ThemeProperty::SliderTrack => {
+                        Some(palette.primary_dark)
                     },
-                    crate::properties::ThemeProperty::ColorBall => {
-                        Some(Color::from_rgb8(170, 170, 250))
+                    crate::properties::ThemeProperty::SliderThumb => {
+                        Some(palette.primary_light)
                     },
                     _ => None,
                 },
                 "TextInput" => match property {
-                    crate::properties::ThemeProperty::ColorBackground => Some(Color::WHITE),
-                    crate::properties::ThemeProperty::ColorBorder => {
-                        Some(Color::from_rgb8(200, 200, 200))
-                    },
-                    crate::properties::ThemeProperty::ColorBorderFocused => {
-                        Some(Color::from_rgb8(100, 150, 255))
-                    },
-                    crate::properties::ThemeProperty::ColorText => Some(Color::BLACK),
+                    crate::properties::ThemeProperty::ColorBackground => Some(palette.background),
+                    crate::properties::ThemeProperty::ColorBorder => Some(palette.border),
+                    crate::properties::ThemeProperty::ColorBorderFocused => Some(palette.accent),
+                    crate::properties::ThemeProperty::ColorText => Some(palette.text),
                     _ => None,
                 },
                 "Progress" => match property {
                     crate::properties::ThemeProperty::Color => {
-                        Some(Color::from_rgb8(220, 220, 220))
+                        Some(palette.background_elevated)
                     },
                     crate::properties::ThemeProperty::ColorProgress => {
-                        Some(Color::from_rgb8(150, 170, 250))
+                        Some(palette.primary)
                     },
                     crate::properties::ThemeProperty::ColorBorder => {
-                        Some(Color::from_rgb8(200, 200, 200))
+                        Some(palette.border)
                     },
                     _ => None,
                 },
                 "MenuBar" => match property {
                     crate::properties::ThemeProperty::ColorBackground => {
-                        Some(Color::from_rgb8(245, 245, 245))
+                        Some(palette.background_alt)
                     },
                     crate::properties::ThemeProperty::ColorBorder => {
-                        Some(Color::from_rgb8(200, 200, 200))
+                        Some(palette.border)
                     },
-                    crate::properties::ThemeProperty::ColorText => Some(Color::from_rgb8(0, 0, 0)),
+                    crate::properties::ThemeProperty::ColorText => Some(palette.text),
                     crate::properties::ThemeProperty::ColorDisabled => {
-                        Some(Color::from_rgb8(150, 150, 150))
+                        Some(palette.text_muted)
                     },
                     crate::properties::ThemeProperty::ColorMenuSelected => {
-                        Some(Color::from_rgb8(100, 150, 255))
+                        Some(palette.selection)
                     },
                     crate::properties::ThemeProperty::ColorMenuHovered => {
-                        Some(Color::from_rgb8(220, 220, 220))
+                        Some(palette.background_elevated)
                     },
                     _ => None,
                 },
                 "MenuPopup" => match property {
                     crate::properties::ThemeProperty::ColorBackground => {
-                        Some(Color::from_rgb8(245, 245, 245))
+                        Some(palette.background_alt)
                     },
                     crate::properties::ThemeProperty::ColorBorder => {
-                        Some(Color::from_rgb8(200, 200, 200))
+                        Some(palette.border)
                     },
-                    crate::properties::ThemeProperty::ColorText => Some(Color::from_rgb8(0, 0, 0)),
+                    crate::properties::ThemeProperty::ColorText => Some(palette.text),
                     crate::properties::ThemeProperty::ColorDisabled => {
-                        Some(Color::from_rgb8(150, 150, 150))
+                        Some(palette.text_muted)
                     },
                     crate::properties::ThemeProperty::ColorMenuHovered => {
-                        Some(Color::from_rgb8(220, 220, 220))
+                        Some(palette.background_elevated)
                     },
                     crate::properties::ThemeProperty::ColorMenuDisabled => {
-                        Some(Color::from_rgb8(150, 150, 150))
+                        Some(palette.text_muted)
                     },
                     _ => None,
                 },
                 "Toggle" => match property {
                     crate::properties::ThemeProperty::ColorToggleTrackOn => {
-                        Some(Color::from_rgb8(100, 150, 255))
+                        Some(palette.accent)
                     },
                     crate::properties::ThemeProperty::ColorToggleTrackOff => {
-                        Some(Color::from_rgb8(240, 240, 240))
+                        Some(palette.background_elevated)
                     },
                     crate::properties::ThemeProperty::ColorToggleTrackBorder => {
-                        Some(Color::from_rgb8(180, 180, 180))
+                        Some(palette.border)
                     },
                     crate::properties::ThemeProperty::ColorToggleThumb => {
                         Some(Color::from_rgb8(255, 255, 255))
                     },
                     crate::properties::ThemeProperty::ColorToggleThumbBorder => {
-                        Some(Color::from_rgb8(180, 180, 180))
+                        Some(palette.border)
                     },
                     crate::properties::ThemeProperty::ColorToggleDisabled => {
-                        Some(Color::from_rgb8(200, 200, 200))
+                        Some(palette.text_muted)
                     },
                     _ => None,
                 },
@@ -161,19 +196,15 @@ impl Theme for CelesteTheme {
     }
 
     fn window_background(&self) -> Color {
-        Color::WHITE
+        self.data().palette.background
     }
 
     fn globals(&self) -> &Globals {
-        match &self {
-            CelesteTheme::Light(globals) => globals,
-        }
+        &self.data().globals
     }
 
     fn globals_mut(&mut self) -> &mut Globals {
-        match self {
-            CelesteTheme::Light(globals) => globals,
-        }
+        &mut self.data_mut().globals
     }
 
     fn widget_id(&self) -> WidgetId {
@@ -188,3 +219,15 @@ impl Theme for CelesteTheme {
 }
 
 // ThemeRenderer is automatically implemented via blanket impl for all Theme types
+
+impl ProvidesPalette for CelesteTheme {
+    fn palette(&self) -> &ThemePalette {
+        &self.data().palette
+    }
+}
+
+impl ProvidesLayoutMetrics for CelesteTheme {
+    fn layout_metrics(&self) -> LayoutMetrics {
+        self.data().metrics
+    }
+}

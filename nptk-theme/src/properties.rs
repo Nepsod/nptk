@@ -223,8 +223,10 @@ pub enum ThemeProperty {
     CheckboxSymbol,
 
     // Slider-specific properties
+    /// Slider track color.
+    SliderTrack,
     /// Slider thumb/ball color.
-    ColorBall,
+    SliderThumb,
 
     // Radio button-specific properties
     /// Radio button background color when selected.
@@ -331,7 +333,8 @@ impl ThemeProperty {
             ThemeProperty::ColorUnchecked => "color_unchecked",
             ThemeProperty::ColorIndeterminate => "color_indeterminate",
             ThemeProperty::CheckboxSymbol => "checkbox_symbol",
-            ThemeProperty::ColorBall => "color_ball",
+            ThemeProperty::SliderTrack => "slider_track",
+            ThemeProperty::SliderThumb => "slider_thumb",
             ThemeProperty::ColorBackgroundSelected => "color_background_selected",
             ThemeProperty::ColorBackgroundDisabled => "color_background_disabled",
             ThemeProperty::ColorBorderHovered => "color_border_hovered",
