@@ -1,10 +1,10 @@
-use nptk::color::{Blob, ImageFormat};
+use nptk::color::{Blob, ImageAlphaType, ImageFormat};
 use nptk::core::app::context::AppContext;
 use nptk::core::app::Application;
 use nptk::core::config::MayConfig;
 use nptk::core::signal::fixed::FixedSignal;
 use nptk::core::signal::Signal;
-use nptk::core::vg::peniko::Color;
+use nptk::core::vg::peniko::{Color, ImageBrush};
 use nptk::core::widget::Widget;
 use nptk::theme::config::{ThemeConfig, ThemeSource};
 use nptk::theme::globals::Globals;
@@ -83,20 +83,21 @@ impl Application for MyApp {
     type State = ();
 
     fn build(context: AppContext, _: Self::State) -> impl Widget {
-        let image = FixedSignal::new(ImageData::new(
-            Blob::from(
-                image::load_from_memory(IMAGE_DATA)
-                    .unwrap()
-                    .into_rgba8()
-                    .to_vec(),
-            ),
-            ImageFormat::Rgba8,
-            427,
-            640,
-        ))
+        let rgba = image::load_from_memory(IMAGE_DATA)
+            .expect("failed to load embedded image")
+            .into_rgba8();
+        let (width, height) = rgba.dimensions();
+
+        let brush = FixedSignal::new(ImageBrush::new(ImageData {
+            data: Blob::from(rgba.into_raw()),
+            format: ImageFormat::Rgba8,
+            alpha_type: ImageAlphaType::Alpha,
+            width,
+            height,
+        }))
         .hook(&context);
 
-        Image::new(image.maybe())
+        Image::new(brush.maybe())
     }
 
     fn config(&self) -> MayConfig<Self::Theme> {

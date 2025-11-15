@@ -3,7 +3,7 @@
 //! This module provides functions to detect the current platform (Winit vs Wayland)
 //! and create appropriate surfaces based on the platform.
 
-use crate::vgi::surface::Surface;
+use crate::vgi::surface::{Surface, WinitSurface};
 #[cfg(all(target_os = "linux", feature = "wayland"))]
 use crate::vgi::wayland_surface::WaylandSurface;
 use std::sync::Arc;
@@ -86,7 +86,7 @@ pub async fn create_surface(
                 .create_surface(window.clone())
                 .map_err(|e| format!("Failed to create winit surface: {:?}", e))?;
 
-            Ok(Surface::Winit(surface))
+            Ok(Surface::Winit(WinitSurface::new(surface, width, height)))
         },
         Platform::Wayland => {
             #[cfg(feature = "wayland")]
@@ -147,7 +147,7 @@ pub async fn create_surface(
                 .create_surface(window.clone())
                 .map_err(|e| format!("Failed to create winit surface: {:?}", e))?;
 
-            Ok(Surface::Winit(surface))
+            Ok(Surface::Winit(WinitSurface::new(surface, width, height)))
         },
     }
 }

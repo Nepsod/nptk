@@ -13,8 +13,13 @@ use vello::wgpu;
 /// This is similar to `vello::util::DeviceHandle` but uses our own structure
 /// to ensure compatibility with our GpuContext.
 pub struct DeviceHandle {
+    /// Adapter used to create the logical device.
+    pub adapter: wgpu::Adapter,
+    /// Logical device used for rendering.
     pub device: wgpu::Device,
+    /// Queue associated with the logical device.
     pub queue: wgpu::Queue,
+    /// Metadata describing the adapter.
     pub adapter_info: wgpu::AdapterInfo,
 }
 
@@ -35,11 +40,11 @@ impl GpuContext {
     pub fn new() -> Result<Self, String> {
         log::debug!("Creating GPU context...");
 
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
-            dx12_shader_compiler: Default::default(),
             flags: wgpu::InstanceFlags::default(),
-            gles_minor_version: Default::default(),
+            memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
+            backend_options: wgpu::BackendOptions::default(),
         });
 
         log::debug!("GPU context created successfully");
@@ -73,20 +78,23 @@ impl GpuContext {
     ) -> Option<wgpu::Adapter> {
         log::debug!("Requesting adapter with surface...");
 
-        let adapter =
+        let adapter_result =
             pollster::block_on(self.instance.request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
                 compatible_surface: Some(surface),
                 force_fallback_adapter: false,
             }));
 
-        if adapter.is_some() {
-            log::debug!("Successfully requested adapter with surface");
-        } else {
-            log::warn!("No adapter found with surface");
+        match adapter_result {
+            Ok(adapter) => {
+                log::debug!("Successfully requested adapter with surface");
+                Some(adapter)
+            },
+            Err(err) => {
+                log::warn!("No adapter found with surface: {:?}", err);
+                None
+            },
         }
-
-        adapter
     }
 
     /// Enumerate all available adapters.
@@ -124,18 +132,17 @@ impl GpuContext {
             adapter_info.vendor
         );
 
-        let (device, queue) = pollster::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("nptk-gpu-device"),
-                required_features: wgpu::Features::default(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: Default::default(),
-            },
-            None, // trace_path
-        ))
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("nptk-gpu-device"),
+            required_features: wgpu::Features::default(),
+            required_limits: wgpu::Limits::default(),
+            memory_hints: Default::default(),
+            trace: wgpu::Trace::default(),
+        }))
         .map_err(|e| format!("Failed to create device: {:?}", e))?;
 
         let device_handle = DeviceHandle {
+            adapter: adapter.clone(),
             device,
             queue,
             adapter_info,

@@ -36,7 +36,7 @@ impl AppContext {
 
     /// Get the [Diagnostics] of the application.
     pub fn diagnostics(&self) -> Diagnostics {
-        self.diagnostics.clone()
+        self.diagnostics
     }
 
     /// Get the [GpuContext] of the application.

@@ -4,7 +4,7 @@
 
 use crate::app::font_ctx::FontContext;
 use crate::vgi::Graphics;
-use fontique::QueryFont;
+use parley::fontique::QueryFont;
 use parley::{Alignment, Layout, LayoutContext, StyleProperty};
 use vello::kurbo::Affine;
 use vello::peniko::{Brush, Fill};

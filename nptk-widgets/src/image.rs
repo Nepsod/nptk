@@ -4,27 +4,26 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vg::kurbo::{Affine, Vec2};
+use nptk_core::vg::peniko::ImageBrush;
+pub use nptk_core::vg::peniko::ImageData;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
-use vello_svg::vello;
-
-/// Owned shareable image data.
-pub type ImageData = vello::peniko::Image;
+use std::ops::Deref;
 
 /// An image widget. Pretty self-explanatory.
 ///
 /// ### Theming
 /// The widget itself only draws the underlying image, so theming is useless.
 pub struct Image {
-    image: MaybeSignal<ImageData>,
+    image: MaybeSignal<ImageBrush>,
     style: MaybeSignal<LayoutStyle>,
 }
 
 impl Image {
-    /// Create an image widget from the given [ImageData].
-    pub fn new(image: impl Into<MaybeSignal<ImageData>>) -> Self {
+    /// Create an image widget from the given [ImageBrush].
+    pub fn new(image: impl Into<MaybeSignal<ImageBrush>>) -> Self {
         Self {
             image: image.into(),
             style: LayoutStyle::default().into(),
@@ -32,7 +31,7 @@ impl Image {
     }
 
     /// Set the image.
-    pub fn with_image(mut self, image: impl Into<MaybeSignal<ImageData>>) -> Self {
+    pub fn with_image(mut self, image: impl Into<MaybeSignal<ImageBrush>>) -> Self {
         self.image = image.into();
         self
     }
@@ -58,7 +57,7 @@ impl Widget for Image {
         // Use as_scene_mut() to get Scene for image drawing
         if let Some(scene) = graphics.as_scene_mut() {
             scene.draw_image(
-                &image,
+                image.deref(),
                 Affine::translate(Vec2::new(
                     layout_node.layout.location.x as f64,
                     layout_node.layout.location.y as f64,

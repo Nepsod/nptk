@@ -9,7 +9,8 @@ use std::sync::{Arc, Mutex};
 use raw_window_handle::{
     RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle,
 };
-use vello::wgpu::{self, SurfaceTexture};
+use vello::wgpu::util::TextureBlitter;
+use vello::wgpu::{self, SurfaceTexture, TextureView};
 
 use wayland_client::protocol::{
     wl_compositor, wl_keyboard, wl_pointer, wl_region, wl_shm, wl_surface,
@@ -19,7 +20,7 @@ use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel};
 use wayland_protocols_plasma::server_decoration::client::org_kde_kwin_server_decoration;
 
-use super::surface::SurfaceTrait;
+use super::surface::{OffscreenSurface, SurfaceTrait};
 use crate::vgi::wl_client::{WaylandClient, WaylandQueueHandle};
 
 #[derive(Default)]
@@ -386,6 +387,8 @@ pub struct WaylandSurface {
     pending_reconfigure: bool,
     first_configure_seen: bool,
     pending_input_events: Vec<InputEvent>,
+    offscreen: Option<OffscreenSurface>,
+    blitter: Option<TextureBlitter>,
 }
 
 impl WaylandSurface {
@@ -481,6 +484,8 @@ impl WaylandSurface {
             pending_reconfigure: false,
             first_configure_seen: false,
             pending_input_events: Vec::new(),
+            offscreen: None,
+            blitter: None,
         })
     }
 
@@ -644,7 +649,48 @@ impl WaylandSurface {
         self.is_configured = true;
         self.needs_redraw = true;
         self.pending_reconfigure = false;
+        self.offscreen = Some(OffscreenSurface::new(device, size.0.max(1), size.1.max(1)));
+        self.blitter = Some(TextureBlitter::new(device, format));
         Ok(())
+    }
+
+    pub fn create_render_view(
+        &mut self,
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+    ) -> Result<TextureView, String> {
+        let target_width = width.max(1);
+        let target_height = height.max(1);
+        if self
+            .offscreen
+            .as_ref()
+            .map(|rt| rt.size() != (target_width, target_height))
+            .unwrap_or(true)
+        {
+            self.offscreen = Some(OffscreenSurface::new(device, target_width, target_height));
+        }
+
+        Ok(self
+            .offscreen
+            .as_ref()
+            .expect("offscreen render target should exist")
+            .create_view())
+    }
+
+    pub fn blit_to_surface(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        source: &TextureView,
+        target: &TextureView,
+    ) -> Result<(), String> {
+        if let Some(blitter) = &self.blitter {
+            blitter.copy(device, encoder, source, target);
+            Ok(())
+        } else {
+            Err("Wayland surface is not configured".to_string())
+        }
     }
 
     pub fn is_configured(&self) -> bool {

@@ -6,7 +6,7 @@
 use super::backend::Backend;
 use super::options::RendererOptions;
 use super::scene::Scene;
-use vello::wgpu::{Device, Queue, SurfaceTexture};
+use vello::wgpu::{Device, Queue, TextureView};
 use vello::{RenderParams, Scene as VelloScene};
 #[cfg(feature = "vello-hybrid")]
 use vello_hybrid::Renderer as HybridRenderer;
@@ -16,24 +16,24 @@ use vello_hybrid::Renderer as HybridRenderer;
 /// This trait allows different backends to provide their own renderer
 /// implementations while maintaining a unified API.
 pub trait RendererTrait {
-    /// Render the scene to a surface texture.
+    /// Render the scene to a texture view.
     ///
     /// # Arguments
     /// * `device` - The GPU device
     /// * `queue` - The GPU queue
     /// * `scene` - The scene to render
-    /// * `surface_texture` - The surface texture to render to
+    /// * `texture_view` - The texture view to render to
     /// * `params` - Rendering parameters
     ///
     /// # Returns
     /// * `Ok(())` if rendering succeeded
     /// * `Err(String)` if rendering failed
-    fn render_to_surface(
+    fn render_to_view(
         &mut self,
         device: &Device,
         queue: &Queue,
         scene: &Scene,
-        surface_texture: &SurfaceTexture,
+        texture_view: &TextureView,
         params: &RenderParams,
     ) -> Result<(), String>;
 
@@ -129,18 +129,18 @@ impl Renderer {
     /// # Returns
     /// * `Ok(())` if rendering succeeded
     /// * `Err(String)` if rendering failed or renderer is not Vello
-    pub fn render_vello_scene_to_surface(
+    pub fn render_vello_scene_to_view(
         &mut self,
         device: &Device,
         queue: &Queue,
         scene: &VelloScene,
-        surface_texture: &SurfaceTexture,
+        texture_view: &TextureView,
         params: &RenderParams,
     ) -> Result<(), String> {
         match self {
             Renderer::Vello(renderer) => {
                 renderer
-                    .render_to_surface(device, queue, scene, surface_texture, params)
+                    .render_to_texture(device, queue, scene, texture_view, params)
                     .map_err(|e| format!("Vello render error: {:?}", e))?;
                 Ok(())
             },
@@ -152,18 +152,18 @@ impl Renderer {
         }
     }
 
-    /// Render the scene to a surface texture.
+    /// Render the scene to a texture view.
     ///
-    /// This is a convenience method that calls the `RendererTrait::render_to_surface` method.
-    pub fn render_to_surface(
+    /// This is a convenience method that calls the `RendererTrait::render_to_view` method.
+    pub fn render_to_view(
         &mut self,
         device: &Device,
         queue: &Queue,
         scene: &Scene,
-        surface_texture: &SurfaceTexture,
+        texture_view: &TextureView,
         params: &RenderParams,
     ) -> Result<(), String> {
-        RendererTrait::render_to_surface(self, device, queue, scene, surface_texture, params)
+        RendererTrait::render_to_view(self, device, queue, scene, texture_view, params)
     }
 
     /// Update the render target size.
@@ -175,12 +175,12 @@ impl Renderer {
 }
 
 impl RendererTrait for Renderer {
-    fn render_to_surface(
+    fn render_to_view(
         &mut self,
         device: &Device,
         queue: &Queue,
         scene: &Scene,
-        surface_texture: &SurfaceTexture,
+        texture_view: &TextureView,
         params: &RenderParams,
     ) -> Result<(), String> {
         #[cfg(feature = "vello-hybrid")]
@@ -188,7 +188,7 @@ impl RendererTrait for Renderer {
             match (self, scene) {
                 (Renderer::Vello(renderer), Scene::Vello(vello_scene)) => {
                     renderer
-                        .render_to_surface(device, queue, vello_scene, surface_texture, params)
+                        .render_to_texture(device, queue, vello_scene, texture_view, params)
                         .map_err(|e| format!("Vello render error: {:?}", e))?;
                     Ok(())
                 },
@@ -204,7 +204,7 @@ impl RendererTrait for Renderer {
             #[allow(irrefutable_let_patterns)]
             if let (Renderer::Vello(renderer), Scene::Vello(vello_scene)) = (self, scene) {
                 renderer
-                    .render_to_surface(device, queue, vello_scene, surface_texture, params)
+                    .render_to_texture(device, queue, vello_scene, texture_view, params)
                     .map_err(|e| format!("Vello render error: {:?}", e))?;
                 Ok(())
             } else {

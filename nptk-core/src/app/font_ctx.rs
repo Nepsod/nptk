@@ -1,5 +1,5 @@
-use fontique::{Blob, Collection, CollectionOptions, QueryFamily, QueryFont, SourceCache};
-use peniko::Font;
+use parley::fontique::{Blob, Collection, CollectionOptions, QueryFamily, QueryFont, SourceCache};
+use peniko::FontData;
 use std::sync::{Arc, RwLock};
 
 /// A font manager for nptk applications, powered by `fontique` with system font support.
@@ -72,7 +72,7 @@ impl FontContext {
     }
 
     /// Load a font into the collection.
-    pub fn load(&mut self, name: impl ToString, font: Font) {
+    pub fn load(&mut self, name: impl ToString, font: FontData) {
         let font_name = name.to_string();
         let mut collection = self.collection.write().unwrap();
 
@@ -84,7 +84,9 @@ impl FontContext {
     /// Get the default font.
     pub fn default_font(&self) -> Option<QueryFont> {
         self.query_with_families(
-            [QueryFamily::Generic(fontique::GenericFamily::SansSerif)],
+            [QueryFamily::Generic(
+                parley::fontique::GenericFamily::SansSerif,
+            )],
             "Default font",
         )
     }
@@ -116,13 +118,13 @@ impl FontContext {
     /// This extracts the common query execution pattern used by both `default_font()` and `get()`.
     fn execute_query(
         &self,
-        mut query: fontique::Query<'_>,
+        mut query: parley::fontique::Query<'_>,
         description: &str,
     ) -> Option<QueryFont> {
         let mut result = None;
         query.matches_with(|font| {
             result = Some(font.clone());
-            fontique::QueryStatus::Stop
+            parley::fontique::QueryStatus::Stop
         });
 
         if result.is_none() {

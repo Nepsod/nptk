@@ -24,7 +24,9 @@ pub mod prelude {
     pub use crate::core::app::{context::AppContext, update::Update, Application};
     pub use crate::core::layout::*;
     pub use crate::core::reference::Ref;
-    pub use crate::core::signal::{eval::EvalSignal, fixed::FixedSignal, map::MapSignal, state::StateSignal, *};
+    pub use crate::core::signal::{
+        eval::EvalSignal, fixed::FixedSignal, map::MapSignal, state::StateSignal, *,
+    };
     pub use crate::core::widget::{Widget, WidgetLayoutExt};
 
     // Theme

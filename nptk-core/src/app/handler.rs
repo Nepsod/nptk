@@ -12,6 +12,7 @@ use taffy::{
     AvailableSpace, Dimension, NodeId, PrintTree, Size, Style, TaffyResult, TaffyTree,
     TraversePartialTree,
 };
+use vello::wgpu::{CommandEncoderDescriptor, TextureViewDescriptor};
 use vello::{AaConfig, AaSupport, RenderParams};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
@@ -58,6 +59,7 @@ where
     update: UpdateManager,
     last_update: Instant,
     plugins: PluginManager<T>,
+    selected_device: usize,
     /// Tracks whether async initialization is complete
     async_init_complete: Arc<AtomicBool>,
     #[cfg(all(target_os = "linux", feature = "wayland"))]
@@ -111,6 +113,7 @@ where
             update,
             last_update: Instant::now(),
             plugins,
+            selected_device: 0,
             async_init_complete: Arc::new(AtomicBool::new(false)),
             #[cfg(all(target_os = "linux", feature = "wayland"))]
             wayland_pressed_keys: HashSet::new(),
@@ -456,7 +459,7 @@ where
         }
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
     fn map_wayland_text(evdev: u32, shift: bool) -> Option<String> {
         let ch = match evdev {
             2 => Some('1'),
@@ -1050,6 +1053,14 @@ where
             }
         }
 
+        let render_view = match surface.create_render_view(&device_handle.device, width, height) {
+            Ok(view) => view,
+            Err(err) => {
+                log::error!("Failed to prepare render target: {}", err);
+                return None;
+            },
+        };
+
         let surface_get_start = Instant::now();
         log::debug!("Getting surface texture...");
         let surface_texture = match surface.get_current_texture() {
@@ -1071,11 +1082,11 @@ where
 
         log::debug!("Rendering scene to surface ({}x{})...", width, height);
         let gpu_render_start = Instant::now();
-        if let Err(e) = renderer.render_to_surface(
+        if let Err(e) = renderer.render_to_view(
             &device_handle.device,
             &device_handle.queue,
             &self.scene,
-            &surface_texture,
+            &render_view,
             &RenderParams {
                 base_color: self.config.theme.window_background(),
                 width,
@@ -1089,6 +1100,28 @@ where
         log::debug!("Successfully rendered scene to surface");
         let gpu_render_time = gpu_render_start.elapsed();
 
+        let mut encoder = device_handle
+            .device
+            .create_command_encoder(&CommandEncoderDescriptor {
+                label: Some("Surface Blit Encoder"),
+            });
+
+        let surface_view = surface_texture
+            .texture
+            .create_view(&TextureViewDescriptor::default());
+
+        if let Err(err) = surface.blit_render_view(
+            &device_handle.device,
+            &mut encoder,
+            &render_view,
+            &surface_view,
+        ) {
+            log::error!("Failed to composite render target: {}", err);
+            return None;
+        }
+
+        device_handle.queue.submit([encoder.finish()]);
+
         log::debug!("Presenting surface ({}x{})...", width, height);
         let present_start = Instant::now();
 
@@ -1096,12 +1129,10 @@ where
         // The Surface::present() method is a no-op for Winit
         match &mut *surface {
             crate::vgi::Surface::Winit(_) => {
-                // Present the texture directly for Winit surfaces
                 surface_texture.present();
             },
             #[cfg(all(target_os = "linux", feature = "wayland"))]
             crate::vgi::Surface::Wayland(_) => {
-                // Wayland also needs the texture to be presented before committing the surface.
                 if let crate::vgi::Surface::Wayland(ref wayland_surface) = surface {
                     wayland_surface.prepare_frame();
                 }
@@ -1312,15 +1343,9 @@ where
                 self.update.insert(Update::FORCE | Update::DRAW);
             },
             Some(crate::vgi::Surface::Winit(ref mut winit_surface)) => {
-                // Configure Winit surface
                 let window = self.window.as_ref().expect("Window should exist for Winit");
                 let window_size = window.inner_size();
 
-                // Get surface format - try to get it from the surface's capabilities
-                // For now, use a default format (Bgra8Unorm is common)
-                let surface_format = vello::wgpu::TextureFormat::Bgra8Unorm;
-
-                // Convert PresentMode from config to vello::wgpu::PresentMode
                 let present_mode = match self.config.render.present_mode {
                     wgpu_types::PresentMode::AutoVsync => vello::wgpu::PresentMode::AutoVsync,
                     wgpu_types::PresentMode::AutoNoVsync => vello::wgpu::PresentMode::AutoNoVsync,
@@ -1330,28 +1355,17 @@ where
                     wgpu_types::PresentMode::Mailbox => vello::wgpu::PresentMode::Mailbox,
                 };
 
-                let config = vello::wgpu::SurfaceConfiguration {
-                    usage: vello::wgpu::TextureUsages::RENDER_ATTACHMENT,
-                    format: surface_format,
-                    width: window_size.width,
-                    height: window_size.height,
-                    present_mode,
-                    alpha_mode: vello::wgpu::CompositeAlphaMode::Auto,
-                    view_formats: vec![],
-                    desired_maximum_frame_latency: 2,
-                };
-
-                winit_surface.configure(&device_handle_ref.device, &config);
-                log::debug!(
-                    "Winit surface configured: {}x{} format={:?} present_mode={:?}",
+                if let Err(err) = winit_surface.configure(
+                    &device_handle_ref.device,
+                    &device_handle_ref.adapter,
                     window_size.width,
                     window_size.height,
-                    surface_format,
-                    present_mode
-                );
+                    present_mode,
+                ) {
+                    log::error!("Failed to configure Winit surface: {}", err);
+                    panic!("Failed to configure Winit surface: {}", err);
+                }
 
-                // Ensure window is visible after surface is configured
-                // This might help if the window manager hides windows until they're ready
                 if let Some(window) = &self.window {
                     window.set_visible(true);
                 }
@@ -1416,15 +1430,8 @@ where
 
     /// Create the renderer from a device handle.
     fn create_renderer(&mut self, device_handle: &DeviceHandle) {
-        // Get surface format from surface
-        let surface_format = if let Some(ref surface) = self.surface {
-            surface.format()
-        } else {
-            vello::wgpu::TextureFormat::Bgra8Unorm // Default fallback
-        };
-
         // Build renderer options
-        let options = Self::build_renderer_options(&self.config, &surface_format);
+        let options = Self::build_renderer_options(&self.config);
 
         // Get surface size for renderer initialization
         let (width, height) = if let Some(ref surface) = self.surface {
@@ -1450,12 +1457,8 @@ where
     }
 
     /// Build renderer options from configuration.
-    fn build_renderer_options(
-        config: &MayConfig<T>,
-        surface_format: &vello::wgpu::TextureFormat,
-    ) -> RendererOptions {
+    fn build_renderer_options(config: &MayConfig<T>) -> RendererOptions {
         RendererOptions {
-            surface_format: Some(*surface_format),
             use_cpu: config.render.cpu,
             antialiasing_support: Self::convert_antialiasing_config(&config.render.antialiasing),
             num_init_threads: config.render.init_threads,
