@@ -234,8 +234,8 @@ impl ThemeConfig {
     /// ```
     pub fn new() -> Self {
         Self {
-            default_theme: ThemeSource::Light,
-            fallback_theme: Some(ThemeSource::Dark),
+            default_theme: ThemeSource::Sweet,
+            fallback_theme: Some(ThemeSource::Sweet),
             custom_themes: HashMap::new(),
             theme_manager: None,
         }

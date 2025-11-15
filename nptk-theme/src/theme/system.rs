@@ -26,10 +26,10 @@ use std::any::Any;
 /// ```
 #[derive(Clone)]
 pub enum SystemTheme {
-    /// Light theme variant (Celeste).
-    Light(CelesteTheme),
     /// Dark theme variant.
     Dark(DarkTheme),
+    /// Light theme variant (Celeste).
+    Light(CelesteTheme),
     /// Sweet theme variant (modern dark with vibrant accents).
     Sweet(SweetTheme),
 }
@@ -52,8 +52,8 @@ impl SystemTheme {
     /// ```
     pub fn from_config(config: &ThemeConfig) -> Self {
         match &config.default_theme {
-            ThemeSource::Light => SystemTheme::Light(CelesteTheme::light()),
             ThemeSource::Dark => SystemTheme::Dark(DarkTheme::new()),
+            ThemeSource::Light => SystemTheme::Light(CelesteTheme::light()),
             ThemeSource::Sweet => SystemTheme::Sweet(SweetTheme::new()),
             _ => SystemTheme::Dark(DarkTheme::new()), // Default fallback
         }

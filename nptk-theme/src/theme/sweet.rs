@@ -22,7 +22,7 @@ impl SweetTheme {
         let palette = ThemePalette::sweet();
         let metrics = LayoutMetrics::vibrant_dark();
         let globals = Globals {
-            invert_text_color: metrics.prefers_inverted_text,
+            invert_text_color: false,
             ..Globals::default()
         };
 

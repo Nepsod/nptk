@@ -20,7 +20,7 @@ impl DarkTheme {
         let palette = ThemePalette::dark();
         let metrics = LayoutMetrics::modern_dark();
         let globals = Globals {
-            invert_text_color: metrics.prefers_inverted_text,
+            invert_text_color: false,
             ..Globals::default()
         };
 
