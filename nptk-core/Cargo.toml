@@ -36,7 +36,7 @@ smithay-client-toolkit = { version = "0.18", optional = true }
 wayland-client = { version = "0.31", optional = true }
 wayland-protocols = { version = "0.31", features = ["client"], optional = true }
 wayland-protocols-plasma = { version = "0.2", features = ["client"], optional = true }
-raw-window-handle = { version = "0.6", optional = true }
+raw-window-handle = "0.6"
 tempfile = { version = "3.10.1", optional = true }
 
 [features]
@@ -49,6 +49,5 @@ wayland = [
     "wayland-client",
     "wayland-protocols",
     "wayland-protocols-plasma",
-    "raw-window-handle",
     "tempfile",
 ]

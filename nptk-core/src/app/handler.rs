@@ -23,6 +23,8 @@ use winit::window::{Window, WindowAttributes, WindowId};
 use crate::app::context::AppContext;
 use crate::app::font_ctx::FontContext;
 use crate::app::info::{AppInfo, AppKeyEvent};
+#[cfg(target_os = "linux")]
+use crate::app::info::WindowIdentity;
 use crate::app::update::{Update, UpdateManager};
 use crate::config::MayConfig;
 use crate::layout::{LayoutNode, StyleNode};
@@ -35,6 +37,10 @@ use nptk_theme::theme::Theme;
 use winit::event::DeviceId;
 #[cfg(target_os = "linux")]
 use winit::keyboard::{Key, KeyCode, ModifiersState, NativeKey, NativeKeyCode, PhysicalKey};
+#[cfg(target_os = "linux")]
+use winit::raw_window_handle::HasWindowHandle;
+#[cfg(target_os = "linux")]
+use raw_window_handle::RawWindowHandle;
 
 /// The core application handler. You should use [MayApp](crate::app::MayApp) instead for running applications.
 pub struct AppHandler<T, W, S, F>
@@ -1693,6 +1699,22 @@ where
         });
     }
 
+    #[cfg(target_os = "linux")]
+    fn update_window_identity(&mut self) {
+        let identity = self.window.as_ref().and_then(|window| {
+            let handle = window.window_handle().ok()?;
+            match handle.as_raw() {
+                RawWindowHandle::Xlib(xlib) => Some(WindowIdentity::X11(xlib.window as u32)),
+                RawWindowHandle::Xcb(xcb) => Some(WindowIdentity::X11(xcb.window.get())),
+                _ => None,
+            }
+        });
+        self.info.set_window_identity(identity);
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn update_window_identity(&mut self) {}
+
     /// Create the application window.
     fn create_window(&mut self, event_loop: &ActiveEventLoop) {
         log::debug!("Creating window...");
@@ -1705,6 +1727,7 @@ where
         window.set_visible(true);
 
         self.window = Some(Arc::new(window));
+        self.update_window_identity();
     }
 
     /// Set up the window node in the layout tree.

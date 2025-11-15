@@ -6,6 +6,13 @@ use crate::app::diagnostics::Diagnostics;
 use crate::app::focus::SharedFocusManager;
 use crate::app::font_ctx::FontContext;
 
+#[cfg(target_os = "linux")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WindowIdentity {
+    /// X11/XWayland-backed window ID.
+    X11(u32),
+}
+
 /// Keyboard event snapshot stored in `AppInfo`.
 #[derive(Clone, Debug)]
 pub struct AppKeyEvent {
@@ -56,6 +63,9 @@ pub struct AppInfo {
     pub size: Vector2<f64>,
     /// Focus manager for tracking widget focus state.
     pub focus_manager: SharedFocusManager,
+    /// Platform-specific window identity metadata.
+    #[cfg(target_os = "linux")]
+    pub window_identity: Option<WindowIdentity>,
 }
 
 impl AppInfo {
@@ -65,6 +75,20 @@ impl AppInfo {
         self.keys.clear();
         self.mouse_scroll_delta = None;
         self.ime_events.clear();
+    }
+
+    #[cfg(target_os = "linux")]
+    /// Returns the underlying X11/XWayland window ID if available.
+    pub fn window_x11_id(&self) -> Option<u32> {
+        match self.window_identity {
+            Some(WindowIdentity::X11(id)) => Some(id),
+            _ => None,
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn set_window_identity(&mut self, identity: Option<WindowIdentity>) {
+        self.window_identity = identity;
     }
 }
 
@@ -84,6 +108,8 @@ impl Default for AppInfo {
             font_context: FontContext::default(),
             size: Vector2::new(0.0, 0.0),
             focus_manager: Arc::new(Mutex::new(FocusManager::new())),
+            #[cfg(target_os = "linux")]
+            window_identity: None,
         }
     }
 }
