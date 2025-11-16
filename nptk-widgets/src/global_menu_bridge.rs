@@ -241,7 +241,7 @@ mod platform {
         let iface_ref = connection
             .object_server()
             .interface::<_, MenuObject>(MENU_OBJECT_PATH)?;
-        let mut registrar = AppMenuRegistrar::new(&connection);
+        let mut registrar = AppMenuRegistrar::new(&connection, service_name.clone());
 
         loop {
             match cmd_rx.recv_timeout(Duration::from_millis(16)) {
@@ -291,10 +291,11 @@ mod platform {
     struct AppMenuRegistrar<'a> {
         proxy: Proxy<'a>,
         current: Option<u32>,
+        service: String,
     }
 
     impl<'a> AppMenuRegistrar<'a> {
-        fn new(connection: &'a Connection) -> Self {
+        fn new(connection: &'a Connection, service: String) -> Self {
             let proxy = Proxy::new(
                 connection,
                 REGISTRAR_BUS,
@@ -305,6 +306,7 @@ mod platform {
             Self {
                 proxy,
                 current: None,
+                service,
             }
         }
 
@@ -315,7 +317,10 @@ mod platform {
 
             if let Some(id) = window_id {
                 let path = ObjectPath::try_from(MENU_OBJECT_PATH)?;
-                let _: () = self.proxy.call("RegisterWindow", &(id, path))?;
+                // Canonical registrar expects (u32 windowId, s service, o path)
+                let _: () = self
+                    .proxy
+                    .call("RegisterWindow", &(id, self.service.as_str(), path))?;
             } else if let Some(id) = self.current.take() {
                 let _: () = self.proxy.call("UnregisterWindow", &(id,))?;
             }
