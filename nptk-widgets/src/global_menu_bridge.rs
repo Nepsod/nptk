@@ -97,7 +97,7 @@ mod platform {
 
     #[derive(Default)]
     struct MenuState {
-        revision: i32,
+        revision: u32,
         entries: Vec<RemoteMenuNode>,
     }
 
@@ -195,7 +195,7 @@ mod platform {
             parent_id: i32,
             depth: i32,
             properties: Vec<&str>,
-        ) -> (i32, SubMenuLayout) {
+        ) -> (u32, SubMenuLayout) {
             let st = self.state.lock().unwrap();
             let props_debug = properties.clone();
             let layout = st.layout_with(parent_id, depth, properties);
@@ -208,7 +208,7 @@ mod platform {
                 st.entries.len(),
                 layout.submenus.len()
             );
-            (st.revision as i32, layout)
+            (st.revision, layout)
         }
 
         #[zbus(name = "GetGroupProperties")]
@@ -216,7 +216,7 @@ mod platform {
             &self,
             ids: Vec<i32>,
             properties: Vec<String>,
-        ) -> (i32, Vec<(i32, HashMap<String, OwnedValue>)>) {
+        ) -> (u32, Vec<(i32, HashMap<String, OwnedValue>)>) {
             log::info!("DBusMenu.GetGroupProperties ids={:?} props={:?}", ids, properties);
             let st = self.state.lock().unwrap();
             let mut out: Vec<(i32, HashMap<String, OwnedValue>)> = Vec::new();
@@ -255,17 +255,12 @@ mod platform {
         #[zbus(name = "GetProperty")]
         async fn get_property(&self, _id: i32, _name: &str) -> OwnedValue {
             log::info!("DBusMenu.GetProperty id={} name={}", _id, _name);
-            // Minimal fallback
+            // Root node is a pure container - only children-display property exists
             if _id == 0 {
                 return match _name {
                     "children-display" => owned_value("menubar"),
-                    // Root node should be minimal - only children-display property.
-                    // Return empty/default values if explicitly requested, but don't include
-                    // in GetLayout/GetGroupProperties to avoid libdbusmenu-qt treating it as a menu item.
-                    "enabled" => OwnedValue::from(true),
-                    "visible" => OwnedValue::from(true),
-                    "type" => owned_value("menubar"),
-                    "label" => owned_value(String::new()),
+                    // Root node has no item-like properties. Return empty string for all others
+                    // to ensure it's treated as a pure container, not a menu item.
                     _ => owned_value(String::new()),
                 };
             }
@@ -281,7 +276,7 @@ mod platform {
         #[zbus(name = "LayoutUpdated")]
         async fn layout_updated(
             emitter: &SignalEmitter<'_>,
-            revision: i32,
+            revision: u32,
             parent: i32,
         ) -> zbus::Result<()>;
 
@@ -372,40 +367,37 @@ mod platform {
                             }
                         }
                         // Nudge clients to query the layout after registration
-                        // Only emit signals if menu has entries (revision > 0 or entries not empty)
+                        // CRITICAL: We MUST run this even if entries are empty, so the root node (id=0)
+                        // properties are sent. This prevents a race condition where SetWindow arrives
+                        // before UpdateMenu - Plasma needs to know about the root container first.
                         let state_guard = state.lock().unwrap();
-                        if !state_guard.entries.is_empty() {
-                            let revision = state_guard.revision;
-                            drop(state_guard);
-                            if let Err(err) = block_on(MenuObject::layout_updated(
-                                iface_ref.signal_emitter(),
-                                revision,
-                                0,
-                            )) {
-                                warn!("Failed to emit layout update after registration: {err}");
-                            }
-                            // Also publish full properties so importers can seed their models
-                            let state_guard = state.lock().unwrap();
-                            let mut updates = flatten_properties_updates(&state_guard.entries);
-                            // Include root (id 0) minimal props - only children-display.
-                            // Root node should be minimal - libdbusmenu-qt treats any item-like
-                            // properties (label, enabled, visible, type) as making it a menu item
-                            // rather than a container.
-                            let mut root_map: HashMap<String, OwnedValue> = HashMap::new();
-                            root_map.insert("children-display".into(), owned_value("menubar"));
-                            // Explicitly do NOT include label, enabled, visible, or type for root node
-                            updates.push((0, root_map));
-                            drop(state_guard);
-                            let removed: Vec<(i32, Vec<String>)> = Vec::new();
-                            if let Err(err) = block_on(MenuObject::items_properties_updated(
-                                iface_ref.signal_emitter(),
-                                updates,
-                                removed,
-                            )) {
-                                warn!("Failed to emit initial items properties after registration: {err}");
-                            }
-                        } else {
-                            log::info!("Menu is empty, skipping signal emission on registration");
+                        let revision = state_guard.revision;
+                        drop(state_guard);
+                        if let Err(err) = block_on(MenuObject::layout_updated(
+                            iface_ref.signal_emitter(),
+                            revision,
+                            0,
+                        )) {
+                            warn!("Failed to emit layout update after registration: {err}");
+                        }
+                        // Also publish full properties so importers can seed their models
+                        let state_guard = state.lock().unwrap();
+                        let mut updates = flatten_properties_updates(&state_guard.entries);
+                        // CRITICAL: Root node (id=0) must be a pure container with ONLY children-display.
+                        // libdbusmenu-qt treats ANY item-like properties (label, enabled, visible, type)
+                        // as making it a menu item rather than a container. This causes empty menus.
+                        let mut root_map: HashMap<String, OwnedValue> = HashMap::new();
+                        root_map.insert("children-display".into(), owned_value("menubar"));
+                        // DO NOT include: label, enabled, visible, or type for root node
+                        updates.push((0, root_map));
+                        drop(state_guard);
+                        let removed: Vec<(i32, Vec<String>)> = Vec::new();
+                        if let Err(err) = block_on(MenuObject::items_properties_updated(
+                            iface_ref.signal_emitter(),
+                            updates,
+                            removed,
+                        )) {
+                            warn!("Failed to emit initial items properties after registration: {err}");
                         }
                     }
                 },
@@ -426,16 +418,8 @@ mod platform {
                         for n in &st_guard.entries {
                             updates.push((n.id, node_properties_map(n)));
                         }
-                        // Nudge importers to query top-level submenus by also emitting layout updates for them
-                        for n in &st_guard.entries {
-                            if let Err(err) = block_on(MenuObject::layout_updated(
-                                iface_ref.signal_emitter(),
-                                revision,
-                                n.id,
-                            )) {
-                                warn!("Failed to emit layout update for top-level item {}: {err}", n.id);
-                            }
-                        }
+                        // Do NOT emit LayoutUpdated for children here - the importer will call
+                        // AboutToShow(id) or GetLayout(id, ...) when it needs the layout for a submenu.
                     } else if let Some(pnode) = find_node_by_id(&st_guard.entries, parent) {
                         for c in &pnode.children {
                             updates.push((c.id, node_properties_map(c)));
@@ -572,8 +556,8 @@ mod platform {
         }
         if !node.children.is_empty() {
             fields.insert("children-display".into(), owned_value("submenu"));
-            // Many consumers (incl. libdbusmenu-qt) tolerate/expect explicit type for containers
-            fields.insert("type".into(), owned_value("menu"));
+            // DO NOT add type: "menu" - type is only for item types like "separator",
+            // not for indicating that an item has children. children-display is sufficient.
         }
         if let Some(shortcut) = &node.shortcut {
             if let Some(seq) = encode_shortcut(shortcut) {
@@ -610,7 +594,8 @@ mod platform {
         }
         if !node.children.is_empty() {
             props.insert("children-display".into(), owned_value("submenu"));
-            props.insert("type".into(), owned_value("menu"));
+            // DO NOT add type: "menu" - type is only for item types like "separator",
+            // not for indicating that an item has children. children-display is sufficient.
         }
         if let Some(shortcut) = &node.shortcut {
             if let Some(seq) = encode_shortcut(shortcut) {

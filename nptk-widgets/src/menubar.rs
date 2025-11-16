@@ -769,7 +769,11 @@ impl MenuBar {
         
         // Always send menu on first bridge initialization or when menu changes
         if bridge_was_none || menu_changed {
+            // CRITICAL: Update signature BEFORE registration logic checks it
             if menu_changed {
+                self.global_menu_signature = signature;
+            } else if bridge_was_none {
+                // On first initialization, signature is 0, so update it now
                 self.global_menu_signature = signature;
             }
             if let Some(bridge) = self.global_menu_bridge.as_ref() {
