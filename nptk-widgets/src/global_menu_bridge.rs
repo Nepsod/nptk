@@ -35,11 +35,12 @@ mod platform {
         pub fn start() -> Option<Self> {
             let (tx, cmd_rx) = mpsc::channel();
             let (evt_tx, evt_rx) = mpsc::channel();
+            let tx_for_thread = tx.clone();
 
             thread::Builder::new()
                 .name("nptk-global-menu".into())
                 .spawn(move || {
-                    if let Err(err) = run(cmd_rx, evt_tx) {
+                    if let Err(err) = run(cmd_rx, evt_tx, tx_for_thread) {
                         error!("Global menu bridge thread exited: {err}");
                     }
                 })
@@ -89,6 +90,7 @@ mod platform {
     enum Command {
         UpdateMenu(MenuSnapshot),
         SetWindow(Option<u64>),
+        RequestLayout(i32),
         Shutdown,
     }
 
@@ -142,6 +144,7 @@ mod platform {
     struct MenuObject {
         state: Arc<Mutex<MenuState>>,
         evt_tx: Sender<BridgeEvent>,
+        cmd_tx: Sender<Command>,
     }
 
     #[interface(name = "com.canonical.dbusmenu")]
@@ -149,7 +152,17 @@ mod platform {
         #[zbus(name = "AboutToShow")]
         async fn about_to_show(&self, _id: i32) -> bool {
             log::info!("DBusMenu.AboutToShow id={}", _id);
-            false
+            // Return true if this node has (or may have) children to show
+            if _id == 0 {
+                return !self.state.lock().unwrap().entries.is_empty();
+            }
+            self
+                .state
+                .lock()
+                .unwrap()
+                .entries
+                .iter()
+                .any(|n| n.id == _id && !n.children.is_empty())
         }
 
         #[zbus(name = "Event")]
@@ -163,6 +176,10 @@ mod platform {
             log::info!("DBusMenu.Event id={} event_id={}", id, event_id);
             if event_id == "clicked" {
                 let _ = self.evt_tx.send(BridgeEvent::Activated(id));
+            } else if event_id == "opened" {
+                let _ = self.cmd_tx.send(Command::RequestLayout(id));
+            } else if event_id == "about-to-show" {
+                let _ = self.cmd_tx.send(Command::RequestLayout(id));
             }
         }
 
@@ -190,9 +207,28 @@ mod platform {
             ids: Vec<i32>,
             properties: Vec<String>,
         ) -> (i32, Vec<(i32, HashMap<String, OwnedValue>)>) {
+            log::info!("DBusMenu.GetGroupProperties ids={:?} props={:?}", ids, properties);
             let st = self.state.lock().unwrap();
             let mut out: Vec<(i32, HashMap<String, OwnedValue>)> = Vec::new();
             for id in ids {
+                if id == 0 {
+                    let mut m: HashMap<String, OwnedValue> = HashMap::new();
+                    let want_all = properties.is_empty();
+                    if want_all || properties.iter().any(|p| p == "children-display") {
+                        m.insert("children-display".into(), owned_value("submenu"));
+                    }
+                    if want_all || properties.iter().any(|p| p == "enabled") {
+                        m.insert("enabled".into(), OwnedValue::from(true));
+                    }
+                    if want_all || properties.iter().any(|p| p == "visible") {
+                        m.insert("visible".into(), OwnedValue::from(true));
+                    }
+                    if want_all || properties.iter().any(|p| p == "type") {
+                        m.insert("type".into(), owned_value("menubar"));
+                    }
+                    out.push((id, m));
+                    continue;
+                }
                 if let Some(node) = find_node_by_id(&st.entries, id) {
                     if properties.is_empty() {
                         let map = node_properties_map(node);
@@ -213,13 +249,24 @@ mod platform {
 
         #[zbus(name = "GetProperty")]
         async fn get_property(&self, _id: i32, _name: &str) -> OwnedValue {
+            log::info!("DBusMenu.GetProperty id={} name={}", _id, _name);
             // Minimal fallback
+            if _id == 0 {
+                return match _name {
+                    "children-display" => owned_value("submenu"),
+                    "enabled" => OwnedValue::from(true),
+                    "visible" => OwnedValue::from(true),
+                    "type" => owned_value("menubar"),
+                    "label" => owned_value(String::new()),
+                    _ => owned_value(String::new()),
+                };
+            }
             if let Some(node) = find_node_by_id(&self.state.lock().unwrap().entries, _id) {
                 if let Some(v) = node_property_value(node, _name) {
                     return v;
                 }
             }
-            owned_value(0u32)
+            owned_value(String::new())
         }
 
         #[zbus(signal)]
@@ -239,7 +286,7 @@ mod platform {
         #[zbus(property)]
         #[zbus(name = "Version")]
         fn version(&self) -> u32 {
-            3
+            2
         }
 
         #[zbus(signal)]
@@ -251,7 +298,7 @@ mod platform {
         ) -> zbus::Result<()>;
     }
 
-    fn run(cmd_rx: Receiver<Command>, evt_tx: Sender<BridgeEvent>) -> ZbusResult<()> {
+    fn run(cmd_rx: Receiver<Command>, evt_tx: Sender<BridgeEvent>, cmd_tx: Sender<Command>) -> ZbusResult<()> {
         // D-Bus well-known names must have elements that don't start with a digit.
         // Use a letter-prefixed instance component to incorporate the PID safely.
         let service_name = format!("com.nptk.menubar.app_{}", std::process::id());
@@ -259,6 +306,7 @@ mod platform {
         let menu_obj = MenuObject {
             state: state.clone(),
             evt_tx,
+            cmd_tx,
         };
 
         let connection = ConnectionBuilder::session()?
@@ -270,7 +318,7 @@ mod platform {
         let iface_ref = connection
             .object_server()
             .interface::<_, MenuObject>(MENU_OBJECT_PATH)?;
-        let mut registrar = AppMenuRegistrar::new(&connection);
+        let mut registrar = AppMenuRegistrar::new(&connection, service_name.clone());
 
         loop {
             match cmd_rx.recv_timeout(Duration::from_millis(16)) {
@@ -320,6 +368,38 @@ mod platform {
                         }
                     }
                 },
+                Ok(Command::RequestLayout(parent)) => {
+                    let st_guard = state.lock().unwrap();
+                    let revision = st_guard.revision;
+                    // Emit LayoutUpdated for this parent id
+                    if let Err(err) = block_on(MenuObject::layout_updated(
+                        iface_ref.signal_emitter(),
+                        revision,
+                        parent,
+                    )) {
+                        warn!("Failed to emit layout update for parent {parent}: {err}");
+                    }
+                    // Emit ItemsPropertiesUpdated for immediate children of this parent
+                    let mut updates: Vec<(i32, HashMap<String, OwnedValue>)> = Vec::new();
+                    if parent == 0 {
+                        for n in &st_guard.entries {
+                            updates.push((n.id, node_properties_map(n)));
+                        }
+                    } else if let Some(pnode) = find_node_by_id(&st_guard.entries, parent) {
+                        for c in &pnode.children {
+                            updates.push((c.id, node_properties_map(c)));
+                        }
+                    }
+                    drop(st_guard);
+                    let removed: Vec<(i32, Vec<String>)> = Vec::new();
+                    if let Err(err) = block_on(MenuObject::items_properties_updated(
+                        iface_ref.signal_emitter(),
+                        updates,
+                        removed,
+                    )) {
+                        warn!("Failed to emit items properties updated for parent {parent}: {err}");
+                    }
+                },
                 Ok(Command::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 Err(mpsc::RecvTimeoutError::Timeout) => {},
             }
@@ -332,10 +412,11 @@ mod platform {
     struct AppMenuRegistrar<'a> {
         proxy: Proxy<'a>,
         current: Option<u64>,
+        service: String,
     }
 
     impl<'a> AppMenuRegistrar<'a> {
-        fn new(connection: &'a Connection) -> Self {
+        fn new(connection: &'a Connection, service: String) -> Self {
             let proxy = Proxy::new(
                 connection,
                 REGISTRAR_BUS,
@@ -346,6 +427,7 @@ mod platform {
             Self {
                 proxy,
                 current: None,
+                service,
             }
         }
 
@@ -356,8 +438,16 @@ mod platform {
 
             if let Some(id) = window_id {
                 let path = ObjectPath::try_from(MENU_OBJECT_PATH)?;
-                // Canonical registrar expects (u32 windowId, object_path)
-                let _: () = self.proxy.call("RegisterWindow", &((id as u32), path))?;
+                // Plasma registrar commonly uses the 2-arg signature (u32, object_path).
+                // Try 2-arg first; on failure, fall back to the 3-arg variant (u32, service, object_path).
+                let call2: ZbusResult<()> =
+                    self.proxy.call("RegisterWindow", &((id as u32), path.clone()));
+                if call2.is_err() {
+                    let _call3: ZbusResult<()> = self
+                        .proxy
+                        .call("RegisterWindow", &((id as u32), self.service.as_str(), path));
+                    // Ignore error here; caller will report via outer error path if needed.
+                }
             } else if let Some(id) = self.current.take() {
                 let _: () = self.proxy.call("UnregisterWindow", &((id as u32),))?;
             }
@@ -376,12 +466,10 @@ mod platform {
 
     fn remote_node_to_owned_value(node: &RemoteMenuNode) -> OwnedValue {
         let mut fields: HashMap<String, OwnedValue> = HashMap::new();
-        let label = if node.is_separator {
-            node.label.clone()
-        } else {
-            node.label.replace('_', "__")
-        };
-        fields.insert("label".into(), owned_value(label));
+        if !node.is_separator {
+            let label = node.label.replace('_', "__");
+            fields.insert("label".into(), owned_value(label));
+        }
         fields.insert("enabled".into(), OwnedValue::from(node.enabled));
         fields.insert("visible".into(), OwnedValue::from(true));
         if node.is_separator {
@@ -389,8 +477,6 @@ mod platform {
         }
         if !node.children.is_empty() {
             fields.insert("children-display".into(), owned_value("submenu"));
-            // Some panels expect explicit item type for menu containers.
-            fields.insert("type".into(), owned_value("menu"));
         }
         if let Some(shortcut) = &node.shortcut {
             if let Some(seq) = encode_shortcut(shortcut) {
@@ -437,7 +523,9 @@ mod platform {
             }
         }
 
-        let recurse_children = depth < 0 || depth > 1;
+        // depth semantics:
+        // -1 → recurse fully; 0 → no children; N≥1 → include children and recurse with N-1
+        let recurse_children = depth < 0 || depth >= 1;
         let next_depth = if depth < 0 { -1 } else { depth.saturating_sub(1) };
         let children: Vec<OwnedValue> = if recurse_children {
             node.children
@@ -453,12 +541,10 @@ mod platform {
 
     fn node_properties_map(node: &RemoteMenuNode) -> HashMap<String, OwnedValue> {
         let mut props: HashMap<String, OwnedValue> = HashMap::new();
-        let label = if node.is_separator {
-            node.label.clone()
-        } else {
-            node.label.replace('_', "__")
-        };
-        props.insert("label".into(), owned_value(label));
+        if !node.is_separator {
+            let label = node.label.replace('_', "__");
+            props.insert("label".into(), owned_value(label));
+        }
         props.insert("enabled".into(), OwnedValue::from(node.enabled));
         props.insert("visible".into(), OwnedValue::from(true));
         if node.is_separator {
@@ -466,7 +552,6 @@ mod platform {
         }
         if !node.children.is_empty() {
             props.insert("children-display".into(), owned_value("submenu"));
-            props.insert("type".into(), owned_value("menu"));
         }
         if let Some(shortcut) = &node.shortcut {
             if let Some(seq) = encode_shortcut(shortcut) {
@@ -478,10 +563,7 @@ mod platform {
 
     fn node_property_value(node: &RemoteMenuNode, name: &str) -> Option<OwnedValue> {
         match name {
-            "label" => {
-                let label = if node.is_separator { node.label.clone() } else { node.label.replace('_', "__") };
-                Some(owned_value(label))
-            },
+            "label" if !node.is_separator => Some(owned_value(node.label.replace('_', "__"))),
             "enabled" => Some(OwnedValue::from(node.enabled)),
             "visible" => Some(OwnedValue::from(true)),
             "type" if node.is_separator => Some(owned_value("separator")),
