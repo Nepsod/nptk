@@ -3,6 +3,7 @@ mod platform {
     use log::{error, warn};
     use std::collections::HashMap;
     use std::convert::TryFrom;
+    use std::ffi::CString;
     use std::sync::mpsc::{self, Receiver, Sender};
     use std::sync::{Arc, Mutex};
     use std::thread;
@@ -106,7 +107,7 @@ mod platform {
             self.revision = (self.revision.wrapping_add(1)).max(1);
         }
 
-        fn layout_with(&self, parent_id: i32, depth: i32, properties: Vec<&str>) -> SubMenuLayout {
+        fn layout_with(&self, parent_id: i32, depth: i32, _properties: Vec<&str>) -> SubMenuLayout {
             // - parent_id = 0 → top-level entries
             // - depth: -1 = full recursion, 0 = only this node, >0 recurse that many levels
             let submenus: Vec<OwnedValue> = if parent_id == 0 {
@@ -128,12 +129,10 @@ mod platform {
                 fields: {
                     let mut root_fields: HashMap<String, OwnedValue> = HashMap::new();
                     if parent_id == 0 {
-                        // Hint to panels that this node contains a menubar/submenus
+                        // Root node should be minimal - only children-display property.
+                        // libdbusmenu-qt treats any item-like properties (label, enabled, visible, type)
+                        // as making it a menu item rather than a container.
                         root_fields.insert("children-display".into(), owned_value("menubar"));
-                        root_fields.insert("type".into(), owned_value("menubar"));
-                        root_fields.insert("visible".into(), OwnedValue::from(true));
-                        root_fields.insert("enabled".into(), OwnedValue::from(true));
-                        root_fields.insert("label".into(), owned_value(String::new()));
                     }
                     root_fields
                 },
@@ -198,14 +197,18 @@ mod platform {
             properties: Vec<&str>,
         ) -> (i32, SubMenuLayout) {
             let st = self.state.lock().unwrap();
+            let props_debug = properties.clone();
+            let layout = st.layout_with(parent_id, depth, properties);
             log::info!(
-                "DBusMenu.GetLayout parent_id={} depth={} props={:?} revision={}",
+                "DBusMenu.GetLayout parent_id={} depth={} props={:?} revision={} entries_count={} submenus_count={}",
                 parent_id,
                 depth,
-                properties,
-                st.revision
+                props_debug,
+                st.revision,
+                st.entries.len(),
+                layout.submenus.len()
             );
-            (st.revision as i32, st.layout_with(parent_id, depth, properties))
+            (st.revision as i32, layout)
         }
 
         #[zbus(name = "GetGroupProperties")]
@@ -221,18 +224,13 @@ mod platform {
                 if id == 0 {
                     let mut m: HashMap<String, OwnedValue> = HashMap::new();
                     let want_all = properties.is_empty();
+                    // Root node should be minimal - only children-display property.
+                    // libdbusmenu-qt treats any item-like properties (label, enabled, visible, type)
+                    // as making it a menu item rather than a container.
                     if want_all || properties.iter().any(|p| p == "children-display") {
                         m.insert("children-display".into(), owned_value("menubar"));
                     }
-                    if want_all || properties.iter().any(|p| p == "enabled") {
-                        m.insert("enabled".into(), OwnedValue::from(true));
-                    }
-                    if want_all || properties.iter().any(|p| p == "visible") {
-                        m.insert("visible".into(), OwnedValue::from(true));
-                    }
-                    if want_all || properties.iter().any(|p| p == "type") {
-                        m.insert("type".into(), owned_value("menubar"));
-                    }
+                    // Explicitly do NOT include label, enabled, visible, or type for root node
                     out.push((id, m));
                     continue;
                 }
@@ -261,6 +259,9 @@ mod platform {
             if _id == 0 {
                 return match _name {
                     "children-display" => owned_value("menubar"),
+                    // Root node should be minimal - only children-display property.
+                    // Return empty/default values if explicitly requested, but don't include
+                    // in GetLayout/GetGroupProperties to avoid libdbusmenu-qt treating it as a menu item.
                     "enabled" => OwnedValue::from(true),
                     "visible" => OwnedValue::from(true),
                     "type" => owned_value("menubar"),
@@ -364,30 +365,47 @@ mod platform {
                         warn!("Failed to register global menu window: {err}");
                     } else {
                         log::info!("Global menu registered window id: {:?}", id);
-                        // Nudge clients to query the layout after registration
-                        let revision = state.lock().unwrap().revision;
-                        if let Err(err) = block_on(MenuObject::layout_updated(
-                            iface_ref.signal_emitter(),
-                            revision,
-                            0,
-                        )) {
-                            warn!("Failed to emit layout update after registration: {err}");
+                        // Set X11 window hints for Plasma appmenu discovery (X11/XWayland only)
+                        if let Some(window_id) = id {
+                            if let Err(err) = set_x11_appmenu_hints(window_id as u32, &service_name) {
+                                warn!("Failed to set X11 appmenu hints: {err}");
+                            }
                         }
-                        // Also publish full properties so importers can seed their models
-                        let mut updates = flatten_properties_updates(&state.lock().unwrap().entries);
-                        // Include root (id 0) basic props as some importers read them
-                        let mut root_map: HashMap<String, OwnedValue> = HashMap::new();
-                        root_map.insert("children-display".into(), owned_value("menubar"));
-                        root_map.insert("visible".into(), OwnedValue::from(true));
-                        root_map.insert("enabled".into(), OwnedValue::from(true));
-                        updates.push((0, root_map));
-                        let removed: Vec<(i32, Vec<String>)> = Vec::new();
-                        if let Err(err) = block_on(MenuObject::items_properties_updated(
-                            iface_ref.signal_emitter(),
-                            updates,
-                            removed,
-                        )) {
-                            warn!("Failed to emit initial items properties after registration: {err}");
+                        // Nudge clients to query the layout after registration
+                        // Only emit signals if menu has entries (revision > 0 or entries not empty)
+                        let state_guard = state.lock().unwrap();
+                        if !state_guard.entries.is_empty() {
+                            let revision = state_guard.revision;
+                            drop(state_guard);
+                            if let Err(err) = block_on(MenuObject::layout_updated(
+                                iface_ref.signal_emitter(),
+                                revision,
+                                0,
+                            )) {
+                                warn!("Failed to emit layout update after registration: {err}");
+                            }
+                            // Also publish full properties so importers can seed their models
+                            let state_guard = state.lock().unwrap();
+                            let mut updates = flatten_properties_updates(&state_guard.entries);
+                            // Include root (id 0) minimal props - only children-display.
+                            // Root node should be minimal - libdbusmenu-qt treats any item-like
+                            // properties (label, enabled, visible, type) as making it a menu item
+                            // rather than a container.
+                            let mut root_map: HashMap<String, OwnedValue> = HashMap::new();
+                            root_map.insert("children-display".into(), owned_value("menubar"));
+                            // Explicitly do NOT include label, enabled, visible, or type for root node
+                            updates.push((0, root_map));
+                            drop(state_guard);
+                            let removed: Vec<(i32, Vec<String>)> = Vec::new();
+                            if let Err(err) = block_on(MenuObject::items_properties_updated(
+                                iface_ref.signal_emitter(),
+                                updates,
+                                removed,
+                            )) {
+                                warn!("Failed to emit initial items properties after registration: {err}");
+                            }
+                        } else {
+                            log::info!("Menu is empty, skipping signal emission on registration");
                         }
                     }
                 },
@@ -471,15 +489,22 @@ mod platform {
 
             if let Some(id) = window_id {
                 let path = ObjectPath::try_from(MENU_OBJECT_PATH)?;
-                // Plasma registrar commonly uses the 2-arg signature (u32, object_path).
-                // Try 2-arg first; on failure, fall back to the 3-arg variant (u32, service, object_path).
-                let call2: ZbusResult<()> =
-                    self.proxy.call("RegisterWindow", &((id as u32), path.clone()));
-                if call2.is_err() {
-                    let _call3: ZbusResult<()> = self
-                        .proxy
-                        .call("RegisterWindow", &((id as u32), self.service.as_str(), path));
-                    // Ignore error here; caller will report via outer error path if needed.
+                // Always use 3-arg version to ensure service name is registered.
+                // This helps Plasma resolve the menu even if it only has the unique bus name.
+                let call3: ZbusResult<()> = self
+                    .proxy
+                    .call("RegisterWindow", &((id as u32), self.service.as_str(), path.clone()));
+                if call3.is_err() {
+                    // Fall back to 2-arg if 3-arg fails (for compatibility)
+                    log::debug!("3-arg RegisterWindow failed, trying 2-arg");
+                    let call2: ZbusResult<()> =
+                        self.proxy.call("RegisterWindow", &((id as u32), path));
+                    if call2.is_err() {
+                        return Err(call2.unwrap_err());
+                    }
+                    log::debug!("Window registered with 2-arg RegisterWindow");
+                } else {
+                    log::debug!("Window registered with 3-arg RegisterWindow (service={})", self.service);
                 }
             } else if let Some(id) = self.current.take() {
                 let _: () = self.proxy.call("UnregisterWindow", &((id as u32),))?;
@@ -602,7 +627,7 @@ mod platform {
             "visible" => Some(OwnedValue::from(true)),
             "type" if node.is_separator => Some(owned_value("separator")),
             "children-display" if !node.children.is_empty() => Some(owned_value("submenu")),
-            "shortcut" => node.shortcut.as_ref().map(|s| owned_value(s.clone())),
+            "shortcut" => node.shortcut.as_ref().and_then(|s| encode_shortcut(s.as_str())).map(owned_value),
             _ => None,
         }
     }
@@ -646,6 +671,87 @@ mod platform {
         Value<'static>: From<T>,
     {
         OwnedValue::try_from(Value::from(value)).expect("value conversion")
+    }
+
+    #[cfg(feature = "global-menu")]
+    fn set_x11_appmenu_hints(window_id: u32, service_name: &str) -> Result<(), String> {
+        use x11_dl::xlib::{Xlib, XA_STRING, PropModeReplace};
+
+        let xlib = Xlib::open().map_err(|e| format!("Failed to load X11 library: {e}"))?;
+        unsafe {
+            let display = (xlib.XOpenDisplay)(std::ptr::null());
+            if display.is_null() {
+                return Err("Failed to open X11 display".to_string());
+            }
+
+            // Get atoms for the KDE appmenu properties
+            let service_name_atom_cstr = CString::new("_KDE_NET_WM_APPMENU_SERVICE_NAME")
+                .map_err(|e| format!("Failed to create CString: {e}"))?;
+            let object_path_atom_cstr = CString::new("_KDE_NET_WM_APPMENU_OBJECT_PATH")
+                .map_err(|e| format!("Failed to create CString: {e}"))?;
+
+            let service_name_atom = (xlib.XInternAtom)(
+                display,
+                service_name_atom_cstr.as_ptr(),
+                0, // only_if_exists = false
+            );
+            let object_path_atom = (xlib.XInternAtom)(
+                display,
+                object_path_atom_cstr.as_ptr(),
+                0, // only_if_exists = false
+            );
+
+            if service_name_atom == 0 || object_path_atom == 0 {
+                (xlib.XCloseDisplay)(display);
+                return Err("Failed to intern X11 atoms".to_string());
+            }
+
+            // Set _KDE_NET_WM_APPMENU_SERVICE_NAME property
+            let service_name_cstr = CString::new(service_name)
+                .map_err(|e| format!("Failed to create service name CString: {e}"))?;
+            (xlib.XChangeProperty)(
+                display,
+                window_id as u64,
+                service_name_atom,
+                XA_STRING,
+                8, // format: 8 bits per element
+                PropModeReplace,
+                service_name_cstr.as_ptr() as *const u8,
+                service_name_cstr.as_bytes().len() as i32,
+            );
+
+            // Set _KDE_NET_WM_APPMENU_OBJECT_PATH property
+            let object_path_cstr = CString::new(MENU_OBJECT_PATH)
+                .map_err(|e| format!("Failed to create object path CString: {e}"))?;
+            (xlib.XChangeProperty)(
+                display,
+                window_id as u64,
+                object_path_atom,
+                XA_STRING,
+                8, // format: 8 bits per element
+                PropModeReplace,
+                object_path_cstr.as_ptr() as *const u8,
+                object_path_cstr.as_bytes().len() as i32,
+            );
+
+            // Flush to ensure properties are set
+            (xlib.XFlush)(display);
+            (xlib.XCloseDisplay)(display);
+
+            log::info!(
+                "Set X11 appmenu hints: service={}, path={} on window {}",
+                service_name,
+                MENU_OBJECT_PATH,
+                window_id
+            );
+        }
+
+        Ok(())
+    }
+
+    #[cfg(not(feature = "global-menu"))]
+    fn set_x11_appmenu_hints(_window_id: u32, _service_name: &str) -> Result<(), String> {
+        Ok(())
     }
 
     // Encode "Ctrl+Shift+N" into [["Ctrl","Shift","N"]] per DBusMenu spec.

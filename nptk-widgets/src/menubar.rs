@@ -760,24 +760,42 @@ impl MenuBar {
     #[cfg(feature = "global-menu")]
     fn process_global_menu(&mut self, info: &AppInfo) -> Update {
         let mut update = Update::empty();
+        let bridge_was_none = self.global_menu_bridge.is_none();
         self.ensure_global_menu_bridge();
 
+        // Build menu snapshot first to ensure it's available before window registration
+        let (snapshot, actions, signature) = build_menu_snapshot(&self.items);
+        let menu_changed = self.global_menu_signature != signature;
+        
+        // Always send menu on first bridge initialization or when menu changes
+        if bridge_was_none || menu_changed {
+            if menu_changed {
+                self.global_menu_signature = signature;
+            }
+            if let Some(bridge) = self.global_menu_bridge.as_ref() {
+                // Send menu immediately, especially on first initialization
+                bridge.update_menu(snapshot.clone());
+                log::info!("Menu snapshot sent: {} top-level items", snapshot.entries.len());
+            }
+        }
+
+        // Register window after menu is available (or updated)
         let window_id = current_window_x11_id(info).map(|id| id as u64);
         if let Some(bridge) = self.global_menu_bridge.as_ref() {
-            if self.last_window_id != window_id {
+            // Register window if:
+            // 1. Window ID changed, OR
+            // 2. Menu was just sent (bridge was just initialized or menu changed)
+            let should_register = self.last_window_id != window_id || bridge_was_none || menu_changed;
+            if should_register && self.global_menu_signature != 0 {
+                // Only register if menu has been sent (signature is non-zero)
                 bridge.set_window_id(window_id);
+                self.last_window_id = window_id;
+            } else if window_id.is_some() {
+                // Store window ID for later registration once menu is ready
                 self.last_window_id = window_id;
             }
         } else {
             self.last_window_id = window_id;
-        }
-
-        let (snapshot, actions, signature) = build_menu_snapshot(&self.items);
-        if self.global_menu_signature != signature {
-            self.global_menu_signature = signature;
-            if let Some(bridge) = self.global_menu_bridge.as_ref() {
-                bridge.update_menu(snapshot);
-            }
         }
 
         self.global_menu_actions = actions;
