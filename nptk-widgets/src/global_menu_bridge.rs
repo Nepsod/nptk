@@ -16,7 +16,7 @@ mod platform {
     use zbus::zvariant::{ObjectPath, OwnedValue, Structure, Value};
     use zbus::Result as ZbusResult;
 
-    const MENU_OBJECT_PATH: &str = "/com/nptk/MenuBar";
+    const MENU_OBJECT_PATH: &str = "/com/canonical/menu/1";
     const REGISTRAR_BUS: &str = "com.canonical.AppMenu.Registrar";
     const REGISTRAR_PATH: &str = "/com/canonical/AppMenu/Registrar";
     const REGISTRAR_INTERFACE: &str = "com.canonical.AppMenu.Registrar";
@@ -136,10 +136,12 @@ mod platform {
 
     #[interface(name = "com.canonical.dbusmenu")]
     impl MenuObject {
+        #[zbus(name = "AboutToShow")]
         async fn about_to_show(&self, _id: i32) -> bool {
             false
         }
 
+        #[zbus(name = "Event")]
         async fn event(
             &self,
             id: i32,
@@ -152,6 +154,7 @@ mod platform {
             }
         }
 
+        #[zbus(name = "GetLayout")]
         async fn get_layout(
             &self,
             parent_id: i32,
@@ -162,6 +165,7 @@ mod platform {
             (st.revision as i32, st.layout_with(parent_id, depth, properties))
         }
 
+        #[zbus(name = "GetGroupProperties")]
         async fn get_group_properties(
             &self,
             ids: Vec<i32>,
@@ -188,6 +192,7 @@ mod platform {
             (st.revision, out)
         }
 
+        #[zbus(name = "GetProperty")]
         async fn get_property(&self, _id: i32, _name: &str) -> OwnedValue {
             // Minimal fallback
             if let Some(node) = find_node_by_id(&self.state.lock().unwrap().entries, _id) {
@@ -199,6 +204,7 @@ mod platform {
         }
 
         #[zbus(signal)]
+        #[zbus(name = "LayoutUpdated")]
         async fn layout_updated(
             emitter: &SignalEmitter<'_>,
             revision: u32,
@@ -206,16 +212,19 @@ mod platform {
         ) -> zbus::Result<()>;
 
         #[zbus(property)]
+        #[zbus(name = "Status")]
         fn status(&self) -> &str {
             "normal"
         }
 
         #[zbus(property)]
+        #[zbus(name = "Version")]
         fn version(&self) -> u32 {
             4
         }
 
         #[zbus(signal)]
+        #[zbus(name = "ItemsPropertiesUpdated")]
         async fn items_properties_updated(
             emitter: &SignalEmitter<'_>,
             updated: Vec<(i32, HashMap<String, OwnedValue>)>,
