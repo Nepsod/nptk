@@ -2,10 +2,7 @@ use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 // Overlay system removed for now - using direct rendering instead
 #[cfg(feature = "global-menu")]
-use self::global_menu::{
-    GlobalMenuCommand, GlobalMenuCommandSender, GlobalMenuEvent, GlobalMenuSnapshot,
-    GlobalMenuState, RemoteMenuEntry,
-};
+use crate::global_menu_bridge::{Bridge, BridgeEvent, MenuSnapshot, RemoteMenuNode};
 use crate::menu_popup::{MenuBarItem as MenuBarItemImpl, MenuPopup};
 #[cfg(feature = "global-menu")]
 use log::error;
@@ -23,6 +20,14 @@ use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, KeyCode, MouseButton, PhysicalKey};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+#[cfg(feature = "global-menu")]
+use std::collections::hash_map::DefaultHasher;
+#[cfg(feature = "global-menu")]
+use std::collections::HashMap;
+#[cfg(feature = "global-menu")]
+use std::hash::{Hash, Hasher};
+#[cfg(feature = "global-menu")]
+use std::sync::Arc;
 
 // Re-export MenuBarItem for external use
 pub use crate::menu_popup::MenuBarItem;
@@ -40,9 +45,13 @@ pub use crate::menu_popup::MenuBarItem;
 pub struct MenuBar {
     items: Vec<MenuBarItemImpl>,
     #[cfg(feature = "global-menu")]
-    global_menu_items: Vec<MenuBarItemImpl>,
+    global_menu_bridge: Option<Bridge>,
     #[cfg(feature = "global-menu")]
-    global_menu_state: Option<GlobalMenuState>,
+    global_menu_actions: HashMap<i32, Arc<dyn Fn() -> Update + Send + Sync>>,
+    #[cfg(feature = "global-menu")]
+    global_menu_signature: u64,
+    #[cfg(feature = "global-menu")]
+    last_window_id: Option<u32>,
     layout_style: MaybeSignal<LayoutStyle>,
     visible: StateSignal<bool>,
 
@@ -59,6 +68,97 @@ pub struct MenuBar {
     // global_menu_enabled: bool,
     // #[cfg(feature = "global-menu")]
     // menu_sender: Option<mpsc::UnboundedSender<MenuCommand>>,
+}
+
+#[cfg(feature = "global-menu")]
+fn build_menu_snapshot(
+    items: &[MenuBarItemImpl],
+) -> (
+    MenuSnapshot,
+    HashMap<i32, Arc<dyn Fn() -> Update + Send + Sync>>,
+    u64,
+) {
+    struct SnapshotBuilder {
+        hasher: DefaultHasher,
+        next_id: i32,
+        nodes: Vec<RemoteMenuNode>,
+        actions: HashMap<i32, Arc<dyn Fn() -> Update + Send + Sync>>,
+    }
+
+    impl SnapshotBuilder {
+        fn new() -> Self {
+            Self {
+                hasher: DefaultHasher::new(),
+                next_id: 1,
+                nodes: Vec::new(),
+                actions: HashMap::new(),
+            }
+        }
+
+        fn build(
+            mut self,
+            items: &[MenuBarItemImpl],
+        ) -> (
+            MenuSnapshot,
+            HashMap<i32, Arc<dyn Fn() -> Update + Send + Sync>>,
+            u64,
+        ) {
+            self.nodes = self.convert_items(items);
+            let signature = self.hasher.finish();
+            (
+                MenuSnapshot {
+                    entries: self.nodes,
+                },
+                self.actions,
+                signature,
+            )
+        }
+
+        fn convert_items(&mut self, items: &[MenuBarItemImpl]) -> Vec<RemoteMenuNode> {
+            items.iter().map(|item| self.convert_item(item)).collect()
+        }
+
+        fn convert_item(&mut self, item: &MenuBarItemImpl) -> RemoteMenuNode {
+            let is_separator = item.label.trim() == "---";
+            item.label.hash(&mut self.hasher);
+            item.enabled.hash(&mut self.hasher);
+            is_separator.hash(&mut self.hasher);
+            item.shortcut.hash(&mut self.hasher);
+            self.hasher.write_u64(item.submenu.len() as u64);
+
+            let id = self.next_id;
+            self.next_id += 1;
+
+            let children = self.convert_items(&item.submenu);
+
+            if item.submenu.is_empty() && !is_separator {
+                if let Some(callback) = item.on_activate.clone() {
+                    self.actions.insert(id, callback);
+                }
+            }
+
+            RemoteMenuNode {
+                id,
+                label: item.label.clone(),
+                enabled: item.enabled && !is_separator,
+                is_separator,
+                shortcut: item.shortcut.clone(),
+                children,
+            }
+        }
+    }
+
+    SnapshotBuilder::new().build(items)
+}
+
+#[cfg(target_os = "linux")]
+fn current_window_x11_id(info: &AppInfo) -> Option<u32> {
+    info.window_x11_id()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn current_window_x11_id(_info: &AppInfo) -> Option<u32> {
+    None
 }
 
 // MenuCommand enum removed for now
@@ -86,9 +186,13 @@ impl MenuBar {
             .into(),
             visible: StateSignal::new(true),
             #[cfg(feature = "global-menu")]
-            global_menu_items: Vec::new(),
+            global_menu_bridge: None,
             #[cfg(feature = "global-menu")]
-            global_menu_state: None,
+            global_menu_actions: HashMap::new(),
+            #[cfg(feature = "global-menu")]
+            global_menu_signature: 0,
+            #[cfg(feature = "global-menu")]
+            last_window_id: None,
             hovered_index: None,
             open_menu_index: None,
             hovered_submenu_index: None,
@@ -131,14 +235,10 @@ impl MenuBar {
     #[cfg(feature = "global-menu")]
     /// Lazily start the background bridge that mirrors DBus menus into this menu bar.
     pub fn enable_global_menu(&mut self) {
-        if self.global_menu_state.is_none() {
-            match GlobalMenuState::start() {
-                Some(state) => {
-                    self.global_menu_state = Some(state);
-                },
-                None => {
-                    error!("Failed to initialize global menu bridge");
-                },
+        if self.global_menu_bridge.is_none() {
+            self.global_menu_bridge = Bridge::start();
+            if self.global_menu_bridge.is_none() {
+                error!("Failed to initialize global menu bridge");
             }
         }
     }
@@ -208,7 +308,7 @@ impl MenuBar {
         let mut current_x = layout.layout.location.x as f64 + 2.0; // Start with minimal left margin
 
         #[allow(unused_variables)]
-        let items = self.combined_items();
+        let items = &self.items;
 
         // Calculate x position by summing widths of previous items
         for item in items.iter().take(item_index) {
@@ -491,9 +591,7 @@ impl Widget for MenuBar {
 
         #[cfg(feature = "global-menu")]
         {
-            if self.poll_global_menu_events() {
-                update |= Update::DRAW;
-            }
+            update |= self.process_global_menu(info);
         }
 
         // Get mouse position
@@ -507,7 +605,7 @@ impl Widget for MenuBar {
 
         if let Some(pos) = cursor_pos {
             // Check main menu items
-            for i in 0..self.total_items() {
+            for i in 0..self.items.len() {
                 let item_bounds = self.get_item_bounds(layout, i);
                 if pos.x as f64 >= item_bounds.x0
                     && pos.x as f64 <= item_bounds.x1
@@ -655,410 +753,64 @@ impl WidgetLayoutExt for MenuBar {
 }
 
 impl MenuBar {
-    #[cfg(feature = "global-menu")]
-    fn poll_global_menu_events(&mut self) -> bool {
-        let mut changed = false;
-        if let Some(state) = self.global_menu_state.as_mut() {
-            for event in state.drain_events() {
-                match event {
-                    GlobalMenuEvent::Snapshot(snapshot) => {
-                        if self.rebuild_global_menu_items(snapshot) {
-                            self.reset_menu_state();
-                            changed = true;
-                        }
-                    },
-                    GlobalMenuEvent::Clear => {
-                        if !self.global_menu_items.is_empty() {
-                            self.global_menu_items.clear();
-                            self.reset_menu_state();
-                            changed = true;
-                        }
-                    },
-                }
-            }
-        }
-        changed
-    }
-
-    #[cfg(feature = "global-menu")]
-    fn rebuild_global_menu_items(&mut self, snapshot: GlobalMenuSnapshot) -> bool {
-        let Some(state) = self.global_menu_state.as_ref() else {
-            return false;
-        };
-        let sender = state.command_sender();
-        let mut items = Vec::with_capacity(snapshot.entries.len());
-        for entry in &snapshot.entries {
-            items.push(self.build_remote_item(
-                entry,
-                &snapshot.address,
-                &snapshot.menu_path,
-                &sender,
-            ));
-        }
-        self.global_menu_items = items;
-        true
-    }
-
-    #[cfg(feature = "global-menu")]
-    fn build_remote_item(
-        &self,
-        entry: &RemoteMenuEntry,
-        address: &str,
-        menu_path: &str,
-        sender: &GlobalMenuCommandSender,
-    ) -> MenuBarItemImpl {
-        let mut item = MenuBarItemImpl {
-            id: format!("remote-{address}-{}", entry.id),
-            label: if entry.is_separator {
-                String::from("---")
-            } else {
-                entry.label.clone()
-            },
-            shortcut: entry.shortcut.clone(),
-            enabled: entry.enabled && !entry.is_separator,
-            submenu: entry
-                .submenu
-                .iter()
-                .map(|child| self.build_remote_item(child, address, menu_path, sender))
-                .collect(),
-            on_activate: None,
-        };
-
-        if !item.enabled {
-            return item;
-        }
-
-        if item.submenu.is_empty() {
-            let action = global_menu::GlobalMenuAction {
-                address: address.to_string(),
-                menu_path: menu_path.to_string(),
-                item_id: entry.id,
-            };
-            let sender = sender.clone();
-            item = item.with_on_activate(move || {
-                let _ = sender.send(GlobalMenuCommand::Activate(action.clone()));
-                Update::empty()
-            });
-        }
-
-        item
-    }
-
-    fn total_items(&self) -> usize {
-        #[cfg(feature = "global-menu")]
-        {
-            return self.global_menu_items.len() + self.items.len();
-        }
-        #[cfg(not(feature = "global-menu"))]
-        {
-            self.items.len()
-        }
-    }
-
     fn get_item_by_index(&self, index: usize) -> Option<&MenuBarItemImpl> {
-        #[cfg(feature = "global-menu")]
-        {
-            if index < self.global_menu_items.len() {
-                return self.global_menu_items.get(index);
-            }
-            return self.items.get(index - self.global_menu_items.len());
-        }
-        #[cfg(not(feature = "global-menu"))]
-        {
-            self.items.get(index)
-        }
-    }
-
-    fn combined_items(&self) -> Vec<&MenuBarItemImpl> {
-        let mut items = Vec::with_capacity(self.total_items());
-        #[cfg(feature = "global-menu")]
-        {
-            for item in &self.global_menu_items {
-                items.push(item);
-            }
-        }
-        for item in &self.items {
-            items.push(item);
-        }
-        items
+        self.items.get(index)
     }
 
     #[cfg(feature = "global-menu")]
-    fn reset_menu_state(&mut self) {
-        self.popup_data = None;
-        self.open_menu_index = None;
-        self.hovered_index = None;
-        self.hovered_submenu_index = None;
-    }
-}
+    fn process_global_menu(&mut self, info: &AppInfo) -> Update {
+        let mut update = Update::empty();
+        self.ensure_global_menu_bridge();
 
-#[cfg(feature = "global-menu")]
-mod global_menu {
-    use log::error;
-    use std::collections::HashMap;
-    use std::sync::mpsc::{self, Receiver, Sender};
-    use std::thread;
-    use system_tray::client::{Client, Event as TrayEvent, UpdateEvent};
-    use system_tray::menu::{MenuItem as TrayMenuItem, MenuType, TrayMenu};
-    use tokio::runtime::Builder;
-    use tokio::sync::mpsc as async_mpsc;
-
-    pub(super) type GlobalMenuCommandSender = async_mpsc::UnboundedSender<GlobalMenuCommand>;
-
-    pub(super) struct GlobalMenuState {
-        event_rx: Receiver<GlobalMenuEvent>,
-        command_tx: GlobalMenuCommandSender,
-        thread: Option<thread::JoinHandle<()>>,
-    }
-
-    impl GlobalMenuState {
-        pub fn start() -> Option<Self> {
-            let (event_tx, event_rx) = mpsc::channel();
-            let (command_tx, command_rx) = async_mpsc::unbounded_channel();
-
-            let handle = thread::Builder::new()
-                .name("nptk-global-menu".into())
-                .spawn(move || {
-                    let runtime = Builder::new_multi_thread()
-                        .enable_all()
-                        .build()
-                        .expect("global menu runtime");
-                    runtime.block_on(async move {
-                        run_bridge(event_tx, command_rx).await;
-                    });
-                })
-                .ok()?;
-
-            Some(Self {
-                event_rx,
-                command_tx,
-                thread: Some(handle),
-            })
-        }
-
-        pub fn drain_events(&mut self) -> Vec<GlobalMenuEvent> {
-            let mut events = Vec::new();
-            while let Ok(event) = self.event_rx.try_recv() {
-                events.push(event);
+        let window_id = current_window_x11_id(info);
+        if let Some(bridge) = self.global_menu_bridge.as_ref() {
+            if self.last_window_id != window_id {
+                bridge.set_window_id(window_id);
+                self.last_window_id = window_id;
             }
-            events
+        } else {
+            self.last_window_id = window_id;
         }
 
-        pub fn command_sender(&self) -> GlobalMenuCommandSender {
-            self.command_tx.clone()
-        }
-    }
-
-    impl Drop for GlobalMenuState {
-        fn drop(&mut self) {
-            let _ = self.command_tx.send(GlobalMenuCommand::Shutdown);
-            if let Some(handle) = self.thread.take() {
-                let _ = handle.join();
+        let (snapshot, actions, signature) = build_menu_snapshot(&self.items);
+        if self.global_menu_signature != signature {
+            self.global_menu_signature = signature;
+            if let Some(bridge) = self.global_menu_bridge.as_ref() {
+                bridge.update_menu(snapshot);
             }
         }
-    }
 
-    #[derive(Clone, PartialEq)]
-    pub(super) struct RemoteMenuEntry {
-        pub id: i32,
-        pub label: String,
-        pub enabled: bool,
-        pub shortcut: Option<String>,
-        pub submenu: Vec<RemoteMenuEntry>,
-        pub is_separator: bool,
-    }
+        self.global_menu_actions = actions;
 
-    pub(super) struct GlobalMenuSnapshot {
-        pub address: String,
-        pub menu_path: String,
-        pub entries: Vec<RemoteMenuEntry>,
-    }
-
-    pub(super) enum GlobalMenuEvent {
-        Snapshot(GlobalMenuSnapshot),
-        Clear,
-    }
-
-    #[derive(Clone)]
-    pub(super) struct GlobalMenuAction {
-        pub address: String,
-        pub menu_path: String,
-        pub item_id: i32,
-    }
-
-    #[derive(Clone)]
-    pub(super) enum GlobalMenuCommand {
-        Activate(GlobalMenuAction),
-        Shutdown,
-    }
-
-    #[derive(Clone)]
-    struct RemoteAppState {
-        menu_path: Option<String>,
-        last_entries: Option<Vec<RemoteMenuEntry>>,
-    }
-
-    impl RemoteAppState {
-        fn new() -> Self {
-            Self {
-                menu_path: None,
-                last_entries: None,
-            }
-        }
-    }
-
-    async fn run_bridge(
-        event_tx: Sender<GlobalMenuEvent>,
-        mut command_rx: async_mpsc::UnboundedReceiver<GlobalMenuCommand>,
-    ) {
-        let client = match Client::new().await {
-            Ok(client) => client,
-            Err(err) => {
-                error!("Failed to start StatusNotifier client: {err}");
-                let _ = event_tx.send(GlobalMenuEvent::Clear);
-                return;
-            },
-        };
-
-        let mut updates = client.subscribe();
-        let mut apps: HashMap<String, RemoteAppState> = HashMap::new();
-        let mut active: Option<String> = None;
-
-        loop {
-            tokio::select! {
-                Some(cmd) = command_rx.recv() => {
-                    match cmd {
-                        GlobalMenuCommand::Activate(action) => {
-                            if let Err(err) = client
-                                .activate(system_tray::client::ActivateRequest::MenuItem {
-                                    address: action.address.clone(),
-                                    menu_path: action.menu_path.clone(),
-                                    submenu_id: action.item_id,
-                                })
-                                .await
-                            {
-                                error!("Failed to activate global menu item: {err:?}");
-                            }
+        if let Some(bridge) = self.global_menu_bridge.as_ref() {
+            let events = bridge.poll_events();
+            for event in events {
+                match event {
+                    BridgeEvent::Activated(id) => {
+                        if let Some(callback) = self.global_menu_actions.get(&id) {
+                            update |= callback();
                         }
-                        GlobalMenuCommand::Shutdown => break,
-                    }
+                    },
                 }
-                Ok(event) = updates.recv() => {
-                    match event {
-                        TrayEvent::Add(address, _item) => {
-                            apps.entry(address).or_insert_with(RemoteAppState::new);
-                        }
-                        TrayEvent::Update(address, update) => {
-                            let entry = apps.entry(address.clone()).or_insert_with(RemoteAppState::new);
-                            match update {
-                                UpdateEvent::MenuConnect(path) => {
-                                    entry.menu_path = Some(path);
-                                }
-                                UpdateEvent::Menu(menu) => {
-                                    if let Some(snapshot) = build_snapshot(&address, entry, menu) {
-                                        active = Some(address.clone());
-                                        let _ = event_tx.send(GlobalMenuEvent::Snapshot(snapshot));
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        TrayEvent::Remove(address) => {
-                            let removed_active = active.as_deref() == Some(address.as_str());
-                            apps.remove(&address);
-                            if removed_active {
-                                active = promote_next(&apps, &event_tx);
-                            }
-                        }
-                    }
-                }
-                else => break,
             }
         }
 
-        let _ = event_tx.send(GlobalMenuEvent::Clear);
+        update
     }
 
-    fn build_snapshot(
-        address: &str,
-        entry: &mut RemoteAppState,
-        menu: TrayMenu,
-    ) -> Option<GlobalMenuSnapshot> {
-        let menu_path = entry.menu_path.clone()?;
-        let entries = convert_entries(&menu.submenus);
-        entry.last_entries = Some(entries.clone());
-        Some(GlobalMenuSnapshot {
-            address: address.to_string(),
-            menu_path,
-            entries,
-        })
+    #[cfg(not(feature = "global-menu"))]
+    fn process_global_menu(&mut self, _info: &AppInfo) -> Update {
+        Update::empty()
     }
 
-    fn promote_next(
-        apps: &HashMap<String, RemoteAppState>,
-        event_tx: &Sender<GlobalMenuEvent>,
-    ) -> Option<String> {
-        for (address, state) in apps {
-            if let (Some(path), Some(entries)) = (&state.menu_path, &state.last_entries) {
-                let snapshot = GlobalMenuSnapshot {
-                    address: address.clone(),
-                    menu_path: path.clone(),
-                    entries: entries.clone(),
-                };
-                let _ = event_tx.send(GlobalMenuEvent::Snapshot(snapshot));
-                return Some(address.clone());
+    #[cfg(feature = "global-menu")]
+    fn ensure_global_menu_bridge(&mut self) -> Option<&Bridge> {
+        if self.global_menu_bridge.is_none() {
+            self.global_menu_bridge = Bridge::start();
+            if self.global_menu_bridge.is_none() {
+                error!("Failed to initialize global menu bridge");
             }
         }
-        let _ = event_tx.send(GlobalMenuEvent::Clear);
-        None
-    }
-
-    fn convert_entries(items: &[TrayMenuItem]) -> Vec<RemoteMenuEntry> {
-        items
-            .iter()
-            .filter(|item| item.visible)
-            .map(|item| RemoteMenuEntry {
-                id: item.id,
-                label: item.label.clone().unwrap_or_else(|| {
-                    String::from(if matches!(item.menu_type, MenuType::Separator) {
-                        "---"
-                    } else {
-                        ""
-                    })
-                }),
-                enabled: item.enabled,
-                shortcut: format_shortcut(item),
-                submenu: convert_entries(&item.submenu),
-                is_separator: matches!(item.menu_type, MenuType::Separator),
-            })
-            .collect()
-    }
-
-    fn format_shortcut(item: &TrayMenuItem) -> Option<String> {
-        let shortcuts = item.shortcut.as_ref()?;
-        if shortcuts.is_empty() {
-            return None;
-        }
-
-        let combos: Vec<String> = shortcuts
-            .iter()
-            .map(|combo| {
-                combo
-                    .iter()
-                    .map(|key| format_key(key))
-                    .collect::<Vec<_>>()
-                    .join("+")
-            })
-            .collect();
-
-        Some(combos.join(", "))
-    }
-
-    fn format_key(key: &str) -> &str {
-        match key {
-            "Control" => "Ctrl",
-            "Super" => "Cmd",
-            other => other,
-        }
+        self.global_menu_bridge.as_ref()
     }
 }

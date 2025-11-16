@@ -17,10 +17,11 @@ nptk-core = { workspace = true, features = ["vg"] }
 bytemuck = { workspace = true }
 nalgebra = { workspace = true }
 log = { workspace = true }
-system-tray = { version = "0.8.2", optional = true }
-tokio = { version = "1.0", features = ["rt", "macros"], optional = true }
+zbus = { version = "5.12.0", default-features = false, features = ["async-io", "blocking-api"], optional = true }
+zvariant = { version = "5.1.0", optional = true }
+serde = { version = "1.0", features = ["derive"], optional = true }
 
 [features]
 default = []
 canvas = []
-global-menu = ["system-tray", "tokio"]
+global-menu = ["zbus", "zvariant", "serde"]

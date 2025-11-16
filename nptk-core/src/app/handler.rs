@@ -22,9 +22,9 @@ use winit::window::{Window, WindowAttributes, WindowId};
 
 use crate::app::context::AppContext;
 use crate::app::font_ctx::FontContext;
-use crate::app::info::{AppInfo, AppKeyEvent};
 #[cfg(target_os = "linux")]
 use crate::app::info::WindowIdentity;
+use crate::app::info::{AppInfo, AppKeyEvent};
 use crate::app::update::{Update, UpdateManager};
 use crate::config::MayConfig;
 use crate::layout::{LayoutNode, StyleNode};
@@ -33,14 +33,14 @@ use crate::plugin::PluginManager;
 use crate::vgi::wayland_surface::{InputEvent, KeyboardEvent, PointerEvent};
 use crate::widget::Widget;
 use nptk_theme::theme::Theme;
+#[cfg(target_os = "linux")]
+use raw_window_handle::RawWindowHandle;
 #[cfg(all(target_os = "linux", feature = "wayland"))]
 use winit::event::DeviceId;
 #[cfg(target_os = "linux")]
 use winit::keyboard::{Key, KeyCode, ModifiersState, NativeKey, NativeKeyCode, PhysicalKey};
 #[cfg(target_os = "linux")]
 use winit::raw_window_handle::HasWindowHandle;
-#[cfg(target_os = "linux")]
-use raw_window_handle::RawWindowHandle;
 
 /// The core application handler. You should use [MayApp](crate::app::MayApp) instead for running applications.
 pub struct AppHandler<T, W, S, F>
