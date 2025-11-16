@@ -129,7 +129,7 @@ mod platform {
                     let mut root_fields: HashMap<String, OwnedValue> = HashMap::new();
                     if parent_id == 0 {
                         // Hint to panels that this node contains a menubar/submenus
-                        root_fields.insert("children-display".into(), owned_value("submenu"));
+                        root_fields.insert("children-display".into(), owned_value("menubar"));
                         root_fields.insert("type".into(), owned_value("menubar"));
                         root_fields.insert("visible".into(), OwnedValue::from(true));
                         root_fields.insert("enabled".into(), OwnedValue::from(true));
@@ -222,7 +222,7 @@ mod platform {
                     let mut m: HashMap<String, OwnedValue> = HashMap::new();
                     let want_all = properties.is_empty();
                     if want_all || properties.iter().any(|p| p == "children-display") {
-                        m.insert("children-display".into(), owned_value("submenu"));
+                        m.insert("children-display".into(), owned_value("menubar"));
                     }
                     if want_all || properties.iter().any(|p| p == "enabled") {
                         m.insert("enabled".into(), OwnedValue::from(true));
@@ -260,7 +260,7 @@ mod platform {
             // Minimal fallback
             if _id == 0 {
                 return match _name {
-                    "children-display" => owned_value("submenu"),
+                    "children-display" => owned_value("menubar"),
                     "enabled" => OwnedValue::from(true),
                     "visible" => OwnedValue::from(true),
                     "type" => owned_value("menubar"),
@@ -374,7 +374,13 @@ mod platform {
                             warn!("Failed to emit layout update after registration: {err}");
                         }
                         // Also publish full properties so importers can seed their models
-                        let updates = flatten_properties_updates(&state.lock().unwrap().entries);
+                        let mut updates = flatten_properties_updates(&state.lock().unwrap().entries);
+                        // Include root (id 0) basic props as some importers read them
+                        let mut root_map: HashMap<String, OwnedValue> = HashMap::new();
+                        root_map.insert("children-display".into(), owned_value("menubar"));
+                        root_map.insert("visible".into(), OwnedValue::from(true));
+                        root_map.insert("enabled".into(), OwnedValue::from(true));
+                        updates.push((0, root_map));
                         let removed: Vec<(i32, Vec<String>)> = Vec::new();
                         if let Err(err) = block_on(MenuObject::items_properties_updated(
                             iface_ref.signal_emitter(),
@@ -401,6 +407,16 @@ mod platform {
                     if parent == 0 {
                         for n in &st_guard.entries {
                             updates.push((n.id, node_properties_map(n)));
+                        }
+                        // Nudge importers to query top-level submenus by also emitting layout updates for them
+                        for n in &st_guard.entries {
+                            if let Err(err) = block_on(MenuObject::layout_updated(
+                                iface_ref.signal_emitter(),
+                                revision,
+                                n.id,
+                            )) {
+                                warn!("Failed to emit layout update for top-level item {}: {err}", n.id);
+                            }
                         }
                     } else if let Some(pnode) = find_node_by_id(&st_guard.entries, parent) {
                         for c in &pnode.children {
