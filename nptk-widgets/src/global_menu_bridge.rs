@@ -104,17 +104,29 @@ mod platform {
             self.revision = self.revision.wrapping_add(1).max(1);
         }
 
-        fn layout(&self) -> MenuLayout {
+        fn layout_with(&self, parent_id: i32, depth: i32, properties: Vec<&str>) -> MenuLayout {
+            // - parent_id = 0 → top-level entries
+            // - depth: -1 = full recursion, 0 = only this node, >0 recurse that many levels
+            let submenus: Vec<OwnedValue> = if parent_id == 0 {
+                self.entries
+                    .iter()
+                    .map(|n| build_owned_value_recursive(n, depth))
+                    .collect()
+            } else if let Some(node) = find_node_by_id(&self.entries, parent_id) {
+                node.children
+                    .iter()
+                    .map(|n| build_owned_value_recursive(n, depth))
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
             MenuLayout {
                 id: 0,
                 fields: SubMenuLayout {
-                    id: 0,
+                    id: parent_id,
                     fields: HashMap::new(),
-                    submenus: self
-                        .entries
-                        .iter()
-                        .map(remote_node_to_owned_value)
-                        .collect(),
+                    submenus,
                 },
             }
         }
@@ -145,11 +157,11 @@ mod platform {
 
         async fn get_layout(
             &self,
-            _parent_id: i32,
-            _depth: i32,
-            _properties: Vec<&str>,
+            parent_id: i32,
+            depth: i32,
+            properties: Vec<&str>,
         ) -> MenuLayout {
-            self.state.lock().unwrap().layout()
+            self.state.lock().unwrap().layout_with(parent_id, depth, properties)
         }
 
         async fn get_group_properties(
@@ -320,6 +332,52 @@ mod platform {
             .iter()
             .map(remote_node_to_owned_value)
             .collect();
+
+        owned_value(Structure::from((node.id, fields, children)))
+    }
+
+    fn find_node_by_id<'a>(roots: &'a [RemoteMenuNode], id: i32) -> Option<&'a RemoteMenuNode> {
+        for n in roots {
+            if n.id == id {
+                return Some(n);
+            }
+            if let Some(found) = find_node_by_id(&n.children, id) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    fn build_owned_value_recursive(node: &RemoteMenuNode, depth: i32) -> OwnedValue {
+        let mut fields: HashMap<String, OwnedValue> = HashMap::new();
+        let label = if node.is_separator {
+            node.label.clone()
+        } else {
+            node.label.replace('_', "__")
+        };
+        fields.insert("label".into(), owned_value(label));
+        fields.insert("enabled".into(), OwnedValue::from(node.enabled));
+        fields.insert("visible".into(), OwnedValue::from(true));
+        if node.is_separator {
+            fields.insert("type".into(), owned_value("separator"));
+        }
+        if !node.children.is_empty() {
+            fields.insert("children-display".into(), owned_value("submenu"));
+        }
+        if let Some(shortcut) = &node.shortcut {
+            fields.insert("shortcut".into(), owned_value(shortcut.clone()));
+        }
+
+        let recurse_children = depth != 0;
+        let next_depth = if depth < 0 { -1 } else { depth.saturating_sub(1) };
+        let children: Vec<OwnedValue> = if recurse_children {
+            node.children
+                .iter()
+                .map(|c| build_owned_value_recursive(c, next_depth))
+                .collect()
+        } else {
+            Vec::new()
+        };
 
         owned_value(Structure::from((node.id, fields, children)))
     }
