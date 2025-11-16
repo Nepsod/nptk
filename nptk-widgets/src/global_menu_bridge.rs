@@ -232,9 +232,9 @@ mod platform {
                     )) {
                         warn!("Failed to emit layout update: {err}");
                     }
-                    // Also emit a minimal ItemsPropertiesUpdated to prompt clients to refresh.
-                    // We don't compute diffs yet; send empty removed and a single no-op update.
-                    let updates: Vec<(i32, HashMap<&str, OwnedValue>)> = Vec::new();
+                    // Compute a coarse set of updates for all items (label, enabled, etc.).
+                    let updates: Vec<(i32, HashMap<&str, OwnedValue>)> =
+                        flatten_properties_updates(&state.lock().unwrap().entries);
                     let removed: Vec<(i32, Vec<&str>)> = Vec::new();
                     if let Err(err) = block_on(MenuObject::items_properties_updated(
                         iface_ref.signal_emitter(),
@@ -380,6 +380,48 @@ mod platform {
         };
 
         owned_value(Structure::from((node.id, fields, children)))
+    }
+
+    fn node_properties_map(node: &RemoteMenuNode) -> HashMap<&'static str, OwnedValue> {
+        let mut props: HashMap<&'static str, OwnedValue> = HashMap::new();
+        let label = if node.is_separator {
+            node.label.clone()
+        } else {
+            node.label.replace('_', "__")
+        };
+        props.insert("label", owned_value(label));
+        props.insert("enabled", OwnedValue::from(node.enabled));
+        props.insert("visible", OwnedValue::from(true));
+        if node.is_separator {
+            props.insert("type", owned_value("separator"));
+        }
+        if !node.children.is_empty() {
+            props.insert("children-display", owned_value("submenu"));
+        }
+        if let Some(shortcut) = &node.shortcut {
+            props.insert("shortcut", owned_value(shortcut.clone()));
+        }
+        props
+    }
+
+    fn flatten_properties_updates(
+        roots: &[RemoteMenuNode],
+    ) -> Vec<(i32, HashMap<&'static str, OwnedValue>)> {
+        fn recurse<'a>(
+            node: &'a RemoteMenuNode,
+            acc: &mut Vec<(i32, HashMap<&'static str, OwnedValue>)>,
+        ) {
+            acc.push((node.id, node_properties_map(node)));
+            for c in &node.children {
+                recurse(c, acc);
+            }
+        }
+
+        let mut out = Vec::new();
+        for n in roots {
+            recurse(n, &mut out);
+        }
+        out
     }
 
     fn owned_value<T>(value: T) -> OwnedValue
