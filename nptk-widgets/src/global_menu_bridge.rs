@@ -104,7 +104,7 @@ mod platform {
             self.revision = self.revision.wrapping_add(1).max(1);
         }
 
-        fn layout_with(&self, parent_id: i32, depth: i32, properties: Vec<&str>) -> MenuLayout {
+        fn layout_with(&self, parent_id: i32, depth: i32, properties: Vec<&str>) -> SubMenuLayout {
             // - parent_id = 0 → top-level entries
             // - depth: -1 = full recursion, 0 = only this node, >0 recurse that many levels
             let submenus: Vec<OwnedValue> = if parent_id == 0 {
@@ -121,13 +121,10 @@ mod platform {
                 Vec::new()
             };
 
-            MenuLayout {
-                id: 0,
-                fields: SubMenuLayout {
-                    id: parent_id,
-                    fields: HashMap::new(),
-                    submenus,
-                },
+            SubMenuLayout {
+                id: parent_id,
+                fields: HashMap::new(),
+                submenus,
             }
         }
     }
@@ -160,8 +157,9 @@ mod platform {
             parent_id: i32,
             depth: i32,
             properties: Vec<&str>,
-        ) -> MenuLayout {
-            self.state.lock().unwrap().layout_with(parent_id, depth, properties)
+        ) -> (i32, SubMenuLayout) {
+            let st = self.state.lock().unwrap();
+            (st.revision as i32, st.layout_with(parent_id, depth, properties))
         }
 
         async fn get_group_properties(
@@ -328,12 +326,6 @@ mod platform {
             self.current = window_id;
             Ok(())
         }
-    }
-
-    #[derive(Clone, serde::Serialize, zbus::zvariant::Type)]
-    struct MenuLayout {
-        id: u32,
-        fields: SubMenuLayout,
     }
 
     #[derive(Clone, serde::Serialize, zbus::zvariant::Type)]
