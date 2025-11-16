@@ -133,6 +133,7 @@ mod platform {
                         root_fields.insert("type".into(), owned_value("menubar"));
                         root_fields.insert("visible".into(), OwnedValue::from(true));
                         root_fields.insert("enabled".into(), OwnedValue::from(true));
+                        root_fields.insert("label".into(), owned_value(String::new()));
                     }
                     root_fields
                 },
@@ -153,16 +154,22 @@ mod platform {
         async fn about_to_show(&self, _id: i32) -> bool {
             log::info!("DBusMenu.AboutToShow id={}", _id);
             // Return true if this node has (or may have) children to show
-            if _id == 0 {
-                return !self.state.lock().unwrap().entries.is_empty();
+            let has_children = if _id == 0 {
+                !self.state.lock().unwrap().entries.is_empty()
+            } else {
+                self
+                    .state
+                    .lock()
+                    .unwrap()
+                    .entries
+                    .iter()
+                    .any(|n| n.id == _id && !n.children.is_empty())
+            };
+            if has_children {
+                // Ask the bridge loop to emit LayoutUpdated for this parent
+                let _ = self.cmd_tx.send(Command::RequestLayout(_id));
             }
-            self
-                .state
-                .lock()
-                .unwrap()
-                .entries
-                .iter()
-                .any(|n| n.id == _id && !n.children.is_empty())
+            has_children
         }
 
         #[zbus(name = "Event")]
@@ -286,7 +293,7 @@ mod platform {
         #[zbus(property)]
         #[zbus(name = "Version")]
         fn version(&self) -> u32 {
-            2
+            4
         }
 
         #[zbus(signal)]
@@ -503,12 +510,10 @@ mod platform {
 
     fn build_owned_value_recursive(node: &RemoteMenuNode, depth: i32) -> OwnedValue {
         let mut fields: HashMap<String, OwnedValue> = HashMap::new();
-        let label = if node.is_separator {
-            node.label.clone()
-        } else {
-            node.label.replace('_', "__")
-        };
-        fields.insert("label".into(), owned_value(label));
+        if !node.is_separator {
+            let label = node.label.replace('_', "__");
+            fields.insert("label".into(), owned_value(label));
+        }
         fields.insert("enabled".into(), OwnedValue::from(node.enabled));
         fields.insert("visible".into(), OwnedValue::from(true));
         if node.is_separator {
@@ -516,6 +521,8 @@ mod platform {
         }
         if !node.children.is_empty() {
             fields.insert("children-display".into(), owned_value("submenu"));
+            // Many consumers (incl. libdbusmenu-qt) tolerate/expect explicit type for containers
+            fields.insert("type".into(), owned_value("menu"));
         }
         if let Some(shortcut) = &node.shortcut {
             if let Some(seq) = encode_shortcut(shortcut) {
@@ -552,6 +559,7 @@ mod platform {
         }
         if !node.children.is_empty() {
             props.insert("children-display".into(), owned_value("submenu"));
+            props.insert("type".into(), owned_value("menu"));
         }
         if let Some(shortcut) = &node.shortcut {
             if let Some(seq) = encode_shortcut(shortcut) {
