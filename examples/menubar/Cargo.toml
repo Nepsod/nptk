@@ -4,8 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-nptk = { path= "../../", features = ["tokio-runner"] }
+nptk = { path= "../../", features = ["tokio-runner", "global-menu"] }
 nptk-core = { path = "../../nptk-core" }
-nptk-widgets = { path = "../../nptk-widgets" }
+nptk-widgets = { path = "../../nptk-widgets", features = ["global-menu"] }
 nptk-theme = { path = "../../nptk-theme" }
 nalgebra = { workspace = true }
+log = { workspace = true }
+env_logger = "0.11"

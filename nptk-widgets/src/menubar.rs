@@ -51,7 +51,7 @@ pub struct MenuBar {
     #[cfg(feature = "global-menu")]
     global_menu_signature: u64,
     #[cfg(feature = "global-menu")]
-    last_window_id: Option<u32>,
+    last_window_id: Option<u64>,
     layout_style: MaybeSignal<LayoutStyle>,
     visible: StateSignal<bool>,
 
@@ -762,7 +762,7 @@ impl MenuBar {
         let mut update = Update::empty();
         self.ensure_global_menu_bridge();
 
-        let window_id = current_window_x11_id(info);
+        let window_id = current_window_x11_id(info).map(|id| id as u64);
         if let Some(bridge) = self.global_menu_bridge.as_ref() {
             if self.last_window_id != window_id {
                 bridge.set_window_id(window_id);

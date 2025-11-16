@@ -241,7 +241,7 @@ impl Application for MenuBarApp {
             .with_item(view_menu)
             .with_item(tools_menu)
             .with_item(help_menu);
-        // Global menu integration will be added later
+        let menu_bar = menu_bar.with_global_menu();
 
         // Create content container with padding
         let content_container = Container::new(vec![
@@ -308,6 +308,11 @@ impl Application for MenuBarApp {
 }
 
 fn main() {
+    // Initialize logging for DBus bridge diagnostics
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", "info");
+    }
+    let _ = env_logger::try_init();
     // Print environment variable information
     println!("Menu Bar Demo");
     println!("=============");

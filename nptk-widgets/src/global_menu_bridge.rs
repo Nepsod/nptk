@@ -52,7 +52,7 @@ mod platform {
             let _ = self.tx.send(Command::UpdateMenu(snapshot));
         }
 
-        pub fn set_window_id(&self, window_id: Option<u32>) {
+        pub fn set_window_id(&self, window_id: Option<u64>) {
             let _ = self.tx.send(Command::SetWindow(window_id));
         }
 
@@ -88,20 +88,20 @@ mod platform {
 
     enum Command {
         UpdateMenu(MenuSnapshot),
-        SetWindow(Option<u32>),
+        SetWindow(Option<u64>),
         Shutdown,
     }
 
     #[derive(Default)]
     struct MenuState {
-        revision: u32,
+        revision: i32,
         entries: Vec<RemoteMenuNode>,
     }
 
     impl MenuState {
         fn replace(&mut self, snapshot: MenuSnapshot) {
             self.entries = snapshot.entries;
-            self.revision = self.revision.wrapping_add(1).max(1);
+            self.revision = (self.revision.wrapping_add(1)).max(1);
         }
 
         fn layout_with(&self, parent_id: i32, depth: i32, properties: Vec<&str>) -> SubMenuLayout {
@@ -123,7 +123,17 @@ mod platform {
 
             SubMenuLayout {
                 id: parent_id,
-                fields: HashMap::new(),
+                fields: {
+                    let mut root_fields: HashMap<String, OwnedValue> = HashMap::new();
+                    if parent_id == 0 {
+                        // Hint to panels that this node contains a menubar/submenus
+                        root_fields.insert("children-display".into(), owned_value("submenu"));
+                        root_fields.insert("type".into(), owned_value("menubar"));
+                        root_fields.insert("visible".into(), OwnedValue::from(true));
+                        root_fields.insert("enabled".into(), OwnedValue::from(true));
+                    }
+                    root_fields
+                },
                 submenus,
             }
         }
@@ -138,6 +148,7 @@ mod platform {
     impl MenuObject {
         #[zbus(name = "AboutToShow")]
         async fn about_to_show(&self, _id: i32) -> bool {
+            log::info!("DBusMenu.AboutToShow id={}", _id);
             false
         }
 
@@ -149,6 +160,7 @@ mod platform {
             _data: OwnedValue,
             _timestamp: u32,
         ) {
+            log::info!("DBusMenu.Event id={} event_id={}", id, event_id);
             if event_id == "clicked" {
                 let _ = self.evt_tx.send(BridgeEvent::Activated(id));
             }
@@ -162,6 +174,13 @@ mod platform {
             properties: Vec<&str>,
         ) -> (i32, SubMenuLayout) {
             let st = self.state.lock().unwrap();
+            log::info!(
+                "DBusMenu.GetLayout parent_id={} depth={} props={:?} revision={}",
+                parent_id,
+                depth,
+                properties,
+                st.revision
+            );
             (st.revision as i32, st.layout_with(parent_id, depth, properties))
         }
 
@@ -170,7 +189,7 @@ mod platform {
             &self,
             ids: Vec<i32>,
             properties: Vec<String>,
-        ) -> (u32, Vec<(i32, HashMap<String, OwnedValue>)>) {
+        ) -> (i32, Vec<(i32, HashMap<String, OwnedValue>)>) {
             let st = self.state.lock().unwrap();
             let mut out: Vec<(i32, HashMap<String, OwnedValue>)> = Vec::new();
             for id in ids {
@@ -207,7 +226,7 @@ mod platform {
         #[zbus(name = "LayoutUpdated")]
         async fn layout_updated(
             emitter: &SignalEmitter<'_>,
-            revision: u32,
+            revision: i32,
             parent: i32,
         ) -> zbus::Result<()>;
 
@@ -220,7 +239,7 @@ mod platform {
         #[zbus(property)]
         #[zbus(name = "Version")]
         fn version(&self) -> u32 {
-            4
+            3
         }
 
         #[zbus(signal)]
@@ -233,7 +252,9 @@ mod platform {
     }
 
     fn run(cmd_rx: Receiver<Command>, evt_tx: Sender<BridgeEvent>) -> ZbusResult<()> {
-        let service_name = format!("org.nptk.AppMenu.{}", std::process::id());
+        // D-Bus well-known names must have elements that don't start with a digit.
+        // Use a letter-prefixed instance component to incorporate the PID safely.
+        let service_name = format!("com.nptk.menubar.app_{}", std::process::id());
         let state = Arc::new(Mutex::new(MenuState::default()));
         let menu_obj = MenuObject {
             state: state.clone(),
@@ -244,11 +265,12 @@ mod platform {
             .name(WellKnownName::try_from(service_name.clone())?)?
             .serve_at(MENU_OBJECT_PATH, menu_obj)?
             .build()?;
+        log::info!("Global menu DBus service '{}', object '{}'", service_name, MENU_OBJECT_PATH);
 
         let iface_ref = connection
             .object_server()
             .interface::<_, MenuObject>(MENU_OBJECT_PATH)?;
-        let mut registrar = AppMenuRegistrar::new(&connection, service_name.clone());
+        let mut registrar = AppMenuRegistrar::new(&connection);
 
         loop {
             match cmd_rx.recv_timeout(Duration::from_millis(16)) {
@@ -285,11 +307,23 @@ mod platform {
                 Ok(Command::SetWindow(id)) => {
                     if let Err(err) = registrar.set_window(id) {
                         warn!("Failed to register global menu window: {err}");
+                    } else {
+                        log::info!("Global menu registered window id: {:?}", id);
+                        // Nudge clients to query the layout after registration
+                        let revision = state.lock().unwrap().revision;
+                        if let Err(err) = block_on(MenuObject::layout_updated(
+                            iface_ref.signal_emitter(),
+                            revision,
+                            0,
+                        )) {
+                            warn!("Failed to emit layout update after registration: {err}");
+                        }
                     }
                 },
                 Ok(Command::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 Err(mpsc::RecvTimeoutError::Timeout) => {},
             }
+            // Note: zbus blocking Connection processes incoming messages internally when serving.
         }
 
         Ok(())
@@ -297,12 +331,11 @@ mod platform {
 
     struct AppMenuRegistrar<'a> {
         proxy: Proxy<'a>,
-        current: Option<u32>,
-        service: String,
+        current: Option<u64>,
     }
 
     impl<'a> AppMenuRegistrar<'a> {
-        fn new(connection: &'a Connection, service: String) -> Self {
+        fn new(connection: &'a Connection) -> Self {
             let proxy = Proxy::new(
                 connection,
                 REGISTRAR_BUS,
@@ -313,23 +346,20 @@ mod platform {
             Self {
                 proxy,
                 current: None,
-                service,
             }
         }
 
-        fn set_window(&mut self, window_id: Option<u32>) -> ZbusResult<()> {
+        fn set_window(&mut self, window_id: Option<u64>) -> ZbusResult<()> {
             if self.current == window_id {
                 return Ok(());
             }
 
             if let Some(id) = window_id {
                 let path = ObjectPath::try_from(MENU_OBJECT_PATH)?;
-                // Canonical registrar expects (u32 windowId, s service, o path)
-                let _: () = self
-                    .proxy
-                    .call("RegisterWindow", &(id, self.service.as_str(), path))?;
+                // Canonical registrar expects (u32 windowId, object_path)
+                let _: () = self.proxy.call("RegisterWindow", &((id as u32), path))?;
             } else if let Some(id) = self.current.take() {
-                let _: () = self.proxy.call("UnregisterWindow", &(id,))?;
+                let _: () = self.proxy.call("UnregisterWindow", &((id as u32),))?;
             }
 
             self.current = window_id;
@@ -359,16 +389,16 @@ mod platform {
         }
         if !node.children.is_empty() {
             fields.insert("children-display".into(), owned_value("submenu"));
+            // Some panels expect explicit item type for menu containers.
+            fields.insert("type".into(), owned_value("menu"));
         }
         if let Some(shortcut) = &node.shortcut {
-            fields.insert("shortcut".into(), owned_value(shortcut.clone()));
+            if let Some(seq) = encode_shortcut(shortcut) {
+                fields.insert("shortcut".into(), owned_value(seq));
+            }
         }
 
-        let children: Vec<OwnedValue> = node
-            .children
-            .iter()
-            .map(remote_node_to_owned_value)
-            .collect();
+        let children: Vec<OwnedValue> = Vec::new();
 
         owned_value(Structure::from((node.id, fields, children)))
     }
@@ -402,10 +432,12 @@ mod platform {
             fields.insert("children-display".into(), owned_value("submenu"));
         }
         if let Some(shortcut) = &node.shortcut {
-            fields.insert("shortcut".into(), owned_value(shortcut.clone()));
+            if let Some(seq) = encode_shortcut(shortcut) {
+                fields.insert("shortcut".into(), owned_value(seq));
+            }
         }
 
-        let recurse_children = depth != 0;
+        let recurse_children = depth < 0 || depth > 1;
         let next_depth = if depth < 0 { -1 } else { depth.saturating_sub(1) };
         let children: Vec<OwnedValue> = if recurse_children {
             node.children
@@ -434,9 +466,12 @@ mod platform {
         }
         if !node.children.is_empty() {
             props.insert("children-display".into(), owned_value("submenu"));
+            props.insert("type".into(), owned_value("menu"));
         }
         if let Some(shortcut) = &node.shortcut {
-            props.insert("shortcut".into(), owned_value(shortcut.clone()));
+            if let Some(seq) = encode_shortcut(shortcut) {
+                props.insert("shortcut".into(), owned_value(seq));
+            }
         }
         props
     }
@@ -495,6 +530,20 @@ mod platform {
         Value<'static>: From<T>,
     {
         OwnedValue::try_from(Value::from(value)).expect("value conversion")
+    }
+
+    // Encode "Ctrl+Shift+N" into [["Ctrl","Shift","N"]] per DBusMenu spec.
+    fn encode_shortcut(s: &str) -> Option<Vec<Vec<String>>> {
+        let parts: Vec<String> = s
+            .split('+')
+            .map(|p| p.trim().to_string())
+            .filter(|p| !p.is_empty())
+            .collect();
+        if parts.is_empty() {
+            None
+        } else {
+            Some(vec![parts])
+        }
     }
 }
 
