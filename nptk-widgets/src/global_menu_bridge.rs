@@ -373,6 +373,16 @@ mod platform {
                         )) {
                             warn!("Failed to emit layout update after registration: {err}");
                         }
+                        // Also publish full properties so importers can seed their models
+                        let updates = flatten_properties_updates(&state.lock().unwrap().entries);
+                        let removed: Vec<(i32, Vec<String>)> = Vec::new();
+                        if let Err(err) = block_on(MenuObject::items_properties_updated(
+                            iface_ref.signal_emitter(),
+                            updates,
+                            removed,
+                        )) {
+                            warn!("Failed to emit initial items properties after registration: {err}");
+                        }
                     }
                 },
                 Ok(Command::RequestLayout(parent)) => {
