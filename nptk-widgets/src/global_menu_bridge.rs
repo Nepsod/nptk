@@ -246,8 +246,19 @@ mod platform {
         loop {
             match cmd_rx.recv_timeout(Duration::from_millis(16)) {
                 Ok(Command::UpdateMenu(snapshot)) => {
+                    // Diff properties before/after to emit a tighter ItemsPropertiesUpdated.
+                    let prev_index = properties_index(&state.lock().unwrap().entries);
                     state.lock().unwrap().replace(snapshot);
-                    let revision = state.lock().unwrap().revision;
+                    let guard = state.lock().unwrap();
+                    let next_index = properties_index(&guard.entries);
+                    let mut updates: Vec<(i32, HashMap<String, OwnedValue>)> = Vec::new();
+                    for (id, props) in next_index.iter() {
+                        match prev_index.get(id) {
+                            Some(prev) if prev == props => {},
+                            _ => updates.push((*id, props.clone())),
+                        }
+                    }
+                    let revision = guard.revision;
                     if let Err(err) = block_on(MenuObject::layout_updated(
                         iface_ref.signal_emitter(),
                         revision,
@@ -255,9 +266,6 @@ mod platform {
                     )) {
                         warn!("Failed to emit layout update: {err}");
                     }
-                    // Compute a coarse set of updates for all items (label, enabled, etc.).
-                    let updates: Vec<(i32, HashMap<String, OwnedValue>)> =
-                        flatten_properties_updates(&state.lock().unwrap().entries);
                     let removed: Vec<(i32, Vec<String>)> = Vec::new();
                     if let Err(err) = block_on(MenuObject::items_properties_updated(
                         iface_ref.signal_emitter(),
@@ -460,6 +468,20 @@ mod platform {
             recurse(n, &mut out);
         }
         out
+    }
+
+    fn properties_index(roots: &[RemoteMenuNode]) -> HashMap<i32, HashMap<String, OwnedValue>> {
+        let mut index: HashMap<i32, HashMap<String, OwnedValue>> = HashMap::new();
+        fn recurse(node: &RemoteMenuNode, index: &mut HashMap<i32, HashMap<String, OwnedValue>>) {
+            index.insert(node.id, node_properties_map(node));
+            for c in &node.children {
+                recurse(c, index);
+            }
+        }
+        for n in roots {
+            recurse(n, &mut index);
+        }
+        index
     }
 
     fn owned_value<T>(value: T) -> OwnedValue
