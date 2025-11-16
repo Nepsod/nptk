@@ -166,14 +166,37 @@ mod platform {
 
         async fn get_group_properties(
             &self,
-            _ids: Vec<i32>,
-            _properties: Vec<&str>,
-        ) -> (u32, Vec<(i32, HashMap<&str, OwnedValue>)>) {
-            (self.state.lock().unwrap().revision, Vec::new())
+            ids: Vec<i32>,
+            properties: Vec<String>,
+        ) -> (u32, Vec<(i32, HashMap<String, OwnedValue>)>) {
+            let st = self.state.lock().unwrap();
+            let mut out: Vec<(i32, HashMap<String, OwnedValue>)> = Vec::new();
+            for id in ids {
+                if let Some(node) = find_node_by_id(&st.entries, id) {
+                    if properties.is_empty() {
+                        let map = node_properties_map(node);
+                        out.push((id, map));
+                    } else {
+                        let mut map: HashMap<String, OwnedValue> = HashMap::new();
+                        for p in properties.iter() {
+                            if let Some(v) = node_property_value(node, p.as_str()) {
+                                map.insert(p.clone(), v);
+                            }
+                        }
+                        out.push((id, map));
+                    }
+                }
+            }
+            (st.revision, out)
         }
 
         async fn get_property(&self, _id: i32, _name: &str) -> OwnedValue {
             // Minimal fallback
+            if let Some(node) = find_node_by_id(&self.state.lock().unwrap().entries, _id) {
+                if let Some(v) = node_property_value(node, _name) {
+                    return v;
+                }
+            }
             owned_value(0u32)
         }
 
@@ -197,8 +220,8 @@ mod platform {
         #[zbus(signal)]
         async fn items_properties_updated(
             emitter: &SignalEmitter<'_>,
-            updated: Vec<(i32, HashMap<&str, OwnedValue>)>,
-            removed: Vec<(i32, Vec<&str>)>,
+            updated: Vec<(i32, HashMap<String, OwnedValue>)>,
+            removed: Vec<(i32, Vec<String>)>,
         ) -> zbus::Result<()>;
     }
 
@@ -233,9 +256,9 @@ mod platform {
                         warn!("Failed to emit layout update: {err}");
                     }
                     // Compute a coarse set of updates for all items (label, enabled, etc.).
-                    let updates: Vec<(i32, HashMap<&str, OwnedValue>)> =
+                    let updates: Vec<(i32, HashMap<String, OwnedValue>)> =
                         flatten_properties_updates(&state.lock().unwrap().entries);
-                    let removed: Vec<(i32, Vec<&str>)> = Vec::new();
+                    let removed: Vec<(i32, Vec<String>)> = Vec::new();
                     if let Err(err) = block_on(MenuObject::items_properties_updated(
                         iface_ref.signal_emitter(),
                         updates,
@@ -382,34 +405,49 @@ mod platform {
         owned_value(Structure::from((node.id, fields, children)))
     }
 
-    fn node_properties_map(node: &RemoteMenuNode) -> HashMap<&'static str, OwnedValue> {
-        let mut props: HashMap<&'static str, OwnedValue> = HashMap::new();
+    fn node_properties_map(node: &RemoteMenuNode) -> HashMap<String, OwnedValue> {
+        let mut props: HashMap<String, OwnedValue> = HashMap::new();
         let label = if node.is_separator {
             node.label.clone()
         } else {
             node.label.replace('_', "__")
         };
-        props.insert("label", owned_value(label));
-        props.insert("enabled", OwnedValue::from(node.enabled));
-        props.insert("visible", OwnedValue::from(true));
+        props.insert("label".into(), owned_value(label));
+        props.insert("enabled".into(), OwnedValue::from(node.enabled));
+        props.insert("visible".into(), OwnedValue::from(true));
         if node.is_separator {
-            props.insert("type", owned_value("separator"));
+            props.insert("type".into(), owned_value("separator"));
         }
         if !node.children.is_empty() {
-            props.insert("children-display", owned_value("submenu"));
+            props.insert("children-display".into(), owned_value("submenu"));
         }
         if let Some(shortcut) = &node.shortcut {
-            props.insert("shortcut", owned_value(shortcut.clone()));
+            props.insert("shortcut".into(), owned_value(shortcut.clone()));
         }
         props
     }
 
+    fn node_property_value(node: &RemoteMenuNode, name: &str) -> Option<OwnedValue> {
+        match name {
+            "label" => {
+                let label = if node.is_separator { node.label.clone() } else { node.label.replace('_', "__") };
+                Some(owned_value(label))
+            },
+            "enabled" => Some(OwnedValue::from(node.enabled)),
+            "visible" => Some(OwnedValue::from(true)),
+            "type" if node.is_separator => Some(owned_value("separator")),
+            "children-display" if !node.children.is_empty() => Some(owned_value("submenu")),
+            "shortcut" => node.shortcut.as_ref().map(|s| owned_value(s.clone())),
+            _ => None,
+        }
+    }
+
     fn flatten_properties_updates(
         roots: &[RemoteMenuNode],
-    ) -> Vec<(i32, HashMap<&'static str, OwnedValue>)> {
+    ) -> Vec<(i32, HashMap<String, OwnedValue>)> {
         fn recurse<'a>(
             node: &'a RemoteMenuNode,
-            acc: &mut Vec<(i32, HashMap<&'static str, OwnedValue>)>,
+            acc: &mut Vec<(i32, HashMap<String, OwnedValue>)>,
         ) {
             acc.push((node.id, node_properties_map(node)));
             for c in &node.children {
