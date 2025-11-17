@@ -99,7 +99,7 @@ pub(crate) struct OffscreenSurface {
 }
 
 impl OffscreenSurface {
-    fn new(device: &Device, width: u32, height: u32) -> Self {
+    pub(crate) fn new(device: &Device, width: u32, height: u32) -> Self {
         let clamped_width = width.max(1);
         let clamped_height = height.max(1);
         let texture = device.create_texture(&TextureDescriptor {
@@ -124,11 +124,11 @@ impl OffscreenSurface {
         }
     }
 
-    fn size(&self) -> (u32, u32) {
+    pub(crate) fn size(&self) -> (u32, u32) {
         (self.width, self.height)
     }
 
-    fn create_view(&self) -> TextureView {
+    pub(crate) fn create_view(&self) -> TextureView {
         self.texture.create_view(&TextureViewDescriptor::default())
     }
 }

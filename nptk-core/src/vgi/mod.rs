@@ -22,6 +22,9 @@ use vello::peniko::{Brush, Fill};
 // Re-export unified abstractions
 pub mod backend;
 pub mod gpu_context;
+pub mod menu_info;
+#[cfg(all(target_os = "linux", feature = "global-menu"))]
+pub mod plasma_menu;
 pub mod options;
 pub mod platform;
 pub mod renderer;

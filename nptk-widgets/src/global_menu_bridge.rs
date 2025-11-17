@@ -359,11 +359,39 @@ mod platform {
                     if let Err(err) = registrar.set_window(id) {
                         warn!("Failed to register global menu window: {err}");
                     } else {
-                        log::info!("Global menu registered window id: {:?}", id);
+                        if is_wayland_session() {
+                            log::info!(
+                                "Global menu registered on Wayland with dummy window ID: {:?} (service={}, path={})",
+                                id,
+                                service_name,
+                                MENU_OBJECT_PATH
+                            );
+                            log::debug!(
+                                "On Wayland, Plasma's compositor discovers menus through window properties, not the numeric ID"
+                            );
+                        } else {
+                            log::info!("Global menu registered window id: {:?}", id);
+                        }
                         // Set X11 window hints for Plasma appmenu discovery (X11/XWayland only)
+                        // Only set X11 hints if we're not on native Wayland (where window_id would be a dummy PID)
+                        // X11 window IDs are typically > 0x1000000, while PIDs are much smaller (< 0x100000)
                         if let Some(window_id) = id {
-                            if let Err(err) = set_x11_appmenu_hints(window_id as u32, &service_name) {
-                                warn!("Failed to set X11 appmenu hints: {err}");
+                            // Only set X11 hints if:
+                            // 1. We're not on native Wayland, OR
+                            // 2. The window ID looks like a real X11 window ID (>= 0x1000000)
+                            // This avoids trying to set X11 properties on dummy PIDs used on Wayland
+                            let is_native_wayland = is_wayland_session();
+                            let looks_like_x11_id = window_id >= 0x1000000;
+                            if !is_native_wayland || looks_like_x11_id {
+                                if let Err(err) = set_x11_appmenu_hints(window_id as u32, &service_name) {
+                                    log::debug!("Failed to set X11 appmenu hints (may not be on X11/XWayland): {err}");
+                                }
+                            }
+                        }
+                        // On Wayland, also try to set menu properties via Plasma window management
+                        if is_wayland_session() {
+                            if let Err(err) = set_wayland_appmenu_properties(&connection, &service_name) {
+                                log::debug!("Failed to set Wayland appmenu properties (may not be on Plasma): {err}");
                             }
                         }
                         // Nudge clients to query the layout after registration
@@ -736,6 +764,90 @@ mod platform {
 
     #[cfg(not(feature = "global-menu"))]
     fn set_x11_appmenu_hints(_window_id: u32, _service_name: &str) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// Detect if we're running in a Wayland session.
+    fn is_wayland_session() -> bool {
+        std::env::var("WAYLAND_DISPLAY").is_ok()
+            || std::env::var("XDG_SESSION_TYPE")
+                .map(|s| s.to_lowercase() == "wayland")
+                .unwrap_or(false)
+    }
+
+    /// Set application menu properties via Plasma's Wayland window management protocol.
+    /// This is used on native Wayland (not XWayland) to inform Plasma about the menu.
+    #[cfg(feature = "global-menu")]
+    fn set_wayland_appmenu_properties(
+        _connection: &Connection,
+        service_name: &str,
+    ) -> Result<(), String> {
+        log::info!("set_wayland_appmenu_properties called with service={}", service_name);
+        // On Wayland, Plasma's compositor (KWin) uses the org.kde.plasma_window protocol
+        // to manage windows. The compositor queries the registrar for menus, but it needs
+        // to match windows somehow.
+        //
+        // Store the menu service name and object path in the Wayland client so that
+        // when the compositor queries windows, it can discover the menu information.
+        // The compositor will use the Plasma window management protocol to query windows
+        // and match them to menus.
+        // Store menu info globally for Plasma compositor discovery
+        // This works with both winit-based and native Wayland implementations
+        #[cfg(feature = "global-menu")]
+        {
+            use nptk_core::vgi::menu_info;
+            menu_info::set_menu_info(service_name.to_string(), MENU_OBJECT_PATH.to_string());
+            log::info!(
+                "Menu info stored globally: service={}, path={}",
+                service_name,
+                MENU_OBJECT_PATH
+            );
+            
+            // Notify the Wayland client that menu info has been updated
+            // This will set menu info in the Wayland client if it's available
+            // and try to set appmenu for any existing surfaces
+            #[cfg(target_os = "linux")]
+            {
+                use nptk_core::vgi::menu_info;
+                log::info!("Notifying Wayland client of menu info update...");
+                menu_info::notify_wayland_client();
+                log::info!("Wayland client notified (if available)");
+            }
+            
+            // Initialize Plasma window management protocol client if on Wayland
+            #[cfg(target_os = "linux")]
+            {
+                use nptk_core::vgi::plasma_menu;
+                if is_wayland_session() {
+                    if let Err(err) = plasma_menu::initialize() {
+                        log::debug!("Failed to initialize Plasma window management client: {err} (may not be on Plasma)");
+                    } else {
+                        log::info!("Plasma window management protocol client initialized");
+                    }
+                }
+            }
+        }
+        log::debug!(
+            "Menu registered with registrar (service={}, path={}). On Wayland, Plasma's compositor will discover the menu through window properties or app_id matching.",
+            service_name,
+            MENU_OBJECT_PATH
+        );
+        log::debug!(
+            "Wayland session detected; menu registered with dummy window ID 1 (service={}, path={})",
+            service_name,
+            MENU_OBJECT_PATH
+        );
+        log::debug!(
+            "Plasma's compositor will discover the menu through the Plasma window management protocol"
+        );
+        Ok(())
+    }
+
+    #[cfg(not(feature = "global-menu"))]
+    fn set_wayland_appmenu_properties(
+        _connection: &Connection,
+        _service_name: &str,
+    ) -> Result<(), String> {
         Ok(())
     }
 

@@ -159,6 +159,11 @@ impl WaylandSurfaceInner {
     pub(crate) fn surface_key(&self) -> u32 {
         self.surface_key
     }
+    
+    #[cfg(feature = "global-menu")]
+    pub(crate) fn wl_surface(&self) -> &wl_surface::WlSurface {
+        &self.wl_surface
+    }
 
     pub(crate) fn handle_toplevel_configure(&self, width: i32, height: i32) {
         log::debug!("Wayland toplevel configure: {}x{}", width, height);
@@ -473,6 +478,20 @@ impl WaylandSurface {
         let (wgpu_surface, format) =
             Self::create_wgpu_surface(&connection, &wl_surface, gpu_context)?;
 
+        // Set up KDE AppMenu protocol if available
+        #[cfg(feature = "global-menu")]
+        {
+            log::debug!("Attempting to set appmenu for surface {} during creation", surface_key);
+            match client.set_appmenu_for_surface(&wl_surface) {
+                Ok(()) => {
+                    log::info!("Successfully set application menu for surface {} during creation", surface_key);
+                },
+                Err(err) => {
+                    log::debug!("Failed to set appmenu for surface {} during creation: {err} (menu info may not be available yet, will retry when menu is registered)", surface_key);
+                }
+            }
+        }
+
         Ok(Self {
             client,
             inner,
@@ -616,6 +635,11 @@ impl SurfaceTrait for WaylandSurface {
 }
 
 impl WaylandSurface {
+    /// Get the Wayland surface protocol ID (surface key).
+    pub fn surface_key(&self) -> u32 {
+        self.inner.surface_key()
+    }
+
     pub fn configure_surface(
         &mut self,
         device: &wgpu::Device,

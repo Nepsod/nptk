@@ -661,6 +661,15 @@ where
             }
         }
 
+        // Update window identity periodically to ensure it's set (important for Wayland)
+        // This ensures the Wayland surface protocol ID is available for menu registration
+        #[cfg(target_os = "linux")]
+        {
+            if self.surface.is_some() || self.window.is_some() {
+                self.update_window_identity();
+            }
+        }
+
         self.update_internal(event_loop);
     }
 
@@ -1432,6 +1441,10 @@ where
             .expect("Failed to create surface"),
         );
         log::debug!("Surface created successfully");
+        
+        // Update window identity after surface creation (important for Wayland)
+        // This ensures the Wayland surface protocol ID is available for menu registration
+        self.update_window_identity();
     }
 
     /// Create the renderer from a device handle.
@@ -1701,13 +1714,28 @@ where
 
     #[cfg(target_os = "linux")]
     fn update_window_identity(&mut self) {
-        let identity = self.window.as_ref().and_then(|window| {
-            let handle = window.window_handle().ok()?;
-            match handle.as_raw() {
-                RawWindowHandle::Xlib(xlib) => Some(WindowIdentity::X11(xlib.window as u32)),
-                RawWindowHandle::Xcb(xcb) => Some(WindowIdentity::X11(xcb.window.get())),
-                _ => None,
+        // First, try to get identity from Wayland surface if available
+        #[cfg(feature = "wayland")]
+        let wayland_identity = self.surface.as_ref().and_then(|surface| {
+            if let crate::vgi::Surface::Wayland(wayland_surface) = surface {
+                Some(WindowIdentity::Wayland(wayland_surface.surface_key()))
+            } else {
+                None
             }
+        });
+        #[cfg(not(feature = "wayland"))]
+        let wayland_identity: Option<WindowIdentity> = None;
+
+        // If we have a Wayland identity, use it; otherwise try X11 window
+        let identity = wayland_identity.or_else(|| {
+            self.window.as_ref().and_then(|window| {
+                let handle = window.window_handle().ok()?;
+                match handle.as_raw() {
+                    RawWindowHandle::Xlib(xlib) => Some(WindowIdentity::X11(xlib.window as u32)),
+                    RawWindowHandle::Xcb(xcb) => Some(WindowIdentity::X11(xcb.window.get())),
+                    _ => None,
+                }
+            })
         });
         self.info.set_window_identity(identity);
     }

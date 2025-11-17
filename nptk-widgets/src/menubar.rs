@@ -156,6 +156,19 @@ fn current_window_x11_id(info: &AppInfo) -> Option<u32> {
     info.window_x11_id()
 }
 
+#[cfg(feature = "global-menu")]
+fn is_wayland_session() -> bool {
+    std::env::var("WAYLAND_DISPLAY").is_ok()
+        || std::env::var("XDG_SESSION_TYPE")
+            .map(|s| s.to_lowercase() == "wayland")
+            .unwrap_or(false)
+}
+
+#[cfg(not(feature = "global-menu"))]
+fn is_wayland_session() -> bool {
+    false
+}
+
 #[cfg(not(target_os = "linux"))]
 fn current_window_x11_id(_info: &AppInfo) -> Option<u32> {
     None
@@ -784,7 +797,24 @@ impl MenuBar {
         }
 
         // Register window after menu is available (or updated)
-        let window_id = current_window_x11_id(info).map(|id| id as u64);
+        // On X11/XWayland: use actual X11 window ID
+        // On native Wayland: use dummy window ID (1) - Plasma's compositor will discover
+        // the menu through window properties or other mechanisms, not the numeric ID
+        let x11_window_id = current_window_x11_id(info);
+        let window_id = if let Some(x11_id) = x11_window_id {
+            // X11/XWayland: use actual X11 window ID
+            Some(x11_id as u64)
+        } else if is_wayland_session() {
+            // Native Wayland: use dummy window ID 1
+            // Plasma's compositor doesn't use the numeric ID on Wayland - it discovers
+            // menus through window properties set on the Wayland surface or other mechanisms
+            Some(1u64)
+        } else {
+            // Fallback: use 0 if we can't determine the window ID
+            // This shouldn't happen in normal operation
+            log::warn!("Could not determine window ID for menu registration");
+            Some(0u64)
+        };
         if let Some(bridge) = self.global_menu_bridge.as_ref() {
             // Register window if:
             // 1. Window ID changed, OR

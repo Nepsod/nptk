@@ -11,6 +11,8 @@ use crate::app::font_ctx::FontContext;
 pub enum WindowIdentity {
     /// X11/XWayland-backed window ID.
     X11(u32),
+    /// Wayland surface protocol ID.
+    Wayland(u32),
 }
 
 /// Keyboard event snapshot stored in `AppInfo`.
@@ -82,6 +84,15 @@ impl AppInfo {
     pub fn window_x11_id(&self) -> Option<u32> {
         match self.window_identity {
             Some(WindowIdentity::X11(id)) => Some(id),
+            _ => None,
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    /// Returns the Wayland surface protocol ID if available.
+    pub fn window_wayland_id(&self) -> Option<u32> {
+        match self.window_identity {
+            Some(WindowIdentity::Wayland(id)) => Some(id),
             _ => None,
         }
     }

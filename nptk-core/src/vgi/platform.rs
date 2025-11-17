@@ -34,7 +34,7 @@ impl Platform {
                 if let Ok(val) = std::env::var("NPTK_RENDERER") {
                     let val_lower = val.to_lowercase();
                     if val_lower == "wayland" {
-                        log::info!("Native Wayland windowing requested via NPTK_RENDERER=wayland");
+                        log::debug!("Native Wayland windowing requested via NPTK_RENDERER=wayland");
                         return Platform::Wayland;
                     }
                 }

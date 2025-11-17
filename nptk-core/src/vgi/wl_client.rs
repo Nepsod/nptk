@@ -22,6 +22,10 @@ use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_ba
 use wayland_protocols_plasma::server_decoration::client::{
     org_kde_kwin_server_decoration, org_kde_kwin_server_decoration_manager,
 };
+#[cfg(feature = "global-menu")]
+use wayland_protocols_plasma::appmenu::client::{
+    org_kde_kwin_appmenu, org_kde_kwin_appmenu_manager,
+};
 
 use super::wayland_surface::{InputEvent, KeyboardEvent, PointerEvent, WaylandSurfaceInner};
 
@@ -42,6 +46,8 @@ pub(crate) struct WaylandGlobals {
     pub decoration_manager: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
     pub kde_server_decoration_manager:
         Option<org_kde_kwin_server_decoration_manager::OrgKdeKwinServerDecorationManager>,
+    #[cfg(feature = "global-menu")]
+    pub appmenu_manager: Option<org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager>,
     pub shm: Option<wl_shm::WlShm>,
     pub seat: Option<wl_seat::WlSeat>,
     pub pointer: Option<wl_pointer::WlPointer>,
@@ -51,6 +57,12 @@ pub(crate) struct WaylandGlobals {
 struct SharedState {
     surfaces: Mutex<HashMap<u32, Weak<WaylandSurfaceInner>>>,
     focused_surface_key: Mutex<Option<u32>>,
+    #[cfg(feature = "global-menu")]
+    menu_service_name: Mutex<Option<String>>,
+    #[cfg(feature = "global-menu")]
+    menu_object_path: Mutex<Option<String>>,
+    #[cfg(feature = "global-menu")]
+    appmenu_objects: Mutex<HashMap<u32, org_kde_kwin_appmenu::OrgKdeKwinAppmenu>>,
 }
 
 pub(crate) struct WaylandClientState {
@@ -83,6 +95,101 @@ impl WaylandClient {
         let key = surface.surface_key();
         log::trace!("Wayland register_surface key={}", key);
         map.insert(key, Arc::downgrade(surface));
+    }
+
+    #[cfg(feature = "global-menu")]
+    pub fn set_menu_info(&self, service_name: String, object_path: String) {
+        log::debug!("Setting menu info in Wayland client: service={}, path={}", service_name, object_path);
+        self.shared.set_menu_info(service_name.clone(), object_path.clone());
+        log::info!("Menu info stored in Wayland client: service={}, path={}", service_name, object_path);
+        
+        // After setting menu info, try to set appmenu for all existing surfaces
+        // This handles the case where surfaces were created before menu info was available
+        let surfaces_map = self.shared.surfaces.lock().unwrap();
+        let surface_keys: Vec<u32> = surfaces_map.keys().copied().collect();
+        let surface_count = surface_keys.len();
+        drop(surfaces_map);
+        
+        log::info!("Attempting to set appmenu for {} existing surface(s) after menu info update", surface_count);
+        if surface_count == 0 {
+            log::debug!("No surfaces registered yet, appmenu will be set when surface is created");
+        } else {
+            for surface_key in surface_keys {
+                if let Some(surface) = self.shared.get_surface(surface_key) {
+                    log::debug!("Found surface {}, attempting to set appmenu after menu info update", surface_key);
+                    if let Err(err) = self.set_appmenu_for_surface(surface.wl_surface()) {
+                        log::warn!("Failed to set appmenu for surface {} after menu info update: {err}", surface_key);
+                    } else {
+                        log::info!("Successfully set appmenu for surface {} after menu info update", surface_key);
+                    }
+                } else {
+                    log::debug!("Surface {} not found (may have been dropped)", surface_key);
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "global-menu")]
+    pub fn get_menu_info(&self) -> Option<(String, String)> {
+        self.shared.get_menu_info()
+    }
+
+    #[cfg(feature = "global-menu")]
+    /// Set the application menu for a Wayland surface using the KDE AppMenu protocol.
+    ///
+    /// This should be called when a window surface is created and menu info is available.
+    pub fn set_appmenu_for_surface(
+        &self,
+        surface: &wl_surface::WlSurface,
+    ) -> Result<(), String> {
+        let Some(ref manager) = self.globals.appmenu_manager else {
+            return Err("AppMenu manager not available".to_string());
+        };
+        
+        let menu_info = self.shared.get_menu_info();
+        let Some((ref service, ref path)) = menu_info else {
+            return Err("Menu info not available yet".to_string());
+        };
+        
+        let surface_id = surface.id().protocol_id();
+        
+        // Check if we already have an appmenu for this surface
+        let mut appmenu_objects = self.shared.appmenu_objects.lock().unwrap();
+        if appmenu_objects.contains_key(&surface_id) {
+            log::debug!("Appmenu already set for surface {}, updating address", surface_id);
+            // Update the existing appmenu
+            let appmenu = appmenu_objects.get(&surface_id).unwrap();
+            appmenu.set_address(service.clone(), path.clone());
+        } else {
+            // Create a new appmenu object for this surface
+            let appmenu = manager.create(surface, &self.queue_handle, ());
+            
+            // Set the menu address
+            appmenu.set_address(service.clone(), path.clone());
+            
+            // Store the appmenu object to keep it alive
+            appmenu_objects.insert(surface_id, appmenu);
+            
+            log::info!(
+                "Created and set application menu for surface {}: service={}, path={}",
+                surface_id,
+                service,
+                path
+            );
+        }
+        drop(appmenu_objects);
+        
+        // Flush the connection to ensure the compositor receives the message
+        if let Err(err) = self.flush() {
+            log::warn!("Failed to flush Wayland connection after setting appmenu: {err}");
+        }
+        
+        // Dispatch any pending events
+        if let Err(err) = self.dispatch_pending() {
+            log::warn!("Failed to dispatch Wayland events after setting appmenu: {err}");
+        }
+        
+        Ok(())
     }
 
     pub fn wait_for_initial_configure(&self, surface_key: u32) -> Result<(), String> {
@@ -124,6 +231,13 @@ impl WaylandClient {
     pub fn unregister_surface(&self, surface_key: u32) {
         let mut map = self.shared.surfaces.lock().unwrap();
         map.remove(&surface_key);
+        
+        // Also remove the appmenu object when surface is unregistered
+        #[cfg(feature = "global-menu")]
+        {
+            let mut appmenu_objects = self.shared.appmenu_objects.lock().unwrap();
+            appmenu_objects.remove(&surface_key);
+        }
     }
 
     pub fn dispatch_pending(&self) -> Result<(), String> {
@@ -179,16 +293,25 @@ impl WaylandClient {
     }
 
     fn initialize() -> Result<WaylandClient, String> {
+        log::debug!("Initializing Wayland client...");
         let connection =
             Connection::connect_to_env().map_err(|e| format!("Wayland connect error: {:?}", e))?;
+        log::debug!("Connected to Wayland display");
 
         let (global_list, mut event_queue) = registry_queue_init::<WaylandClientState>(&connection)
             .map_err(|e| format!("Failed to init Wayland registry: {:?}", e))?;
         let queue_handle = event_queue.handle();
+        log::debug!("Wayland registry initialized");
 
         let shared = Arc::new(SharedState {
             surfaces: Mutex::new(HashMap::new()),
             focused_surface_key: Mutex::new(None),
+            #[cfg(feature = "global-menu")]
+            menu_service_name: Mutex::new(None),
+            #[cfg(feature = "global-menu")]
+            menu_object_path: Mutex::new(None),
+            #[cfg(feature = "global-menu")]
+            appmenu_objects: Mutex::new(HashMap::new()),
         });
 
         let mut state = WaylandClientState {
@@ -217,8 +340,12 @@ const COMPOSITOR_VERSION: u32 = 4;
 const XDG_WM_BASE_VERSION: u32 = 6;
 const ZXDG_DECORATION_VERSION: u32 = 1;
 const KDE_SERVER_DECORATION_VERSION: u32 = 1;
+#[cfg(feature = "global-menu")]
+const KDE_APPMENU_MANAGER_VERSION: u32 = 2;
 const WL_SHM_VERSION: u32 = 1;
 const WL_SEAT_VERSION: u32 = 7;
+#[cfg(feature = "global-menu")]
+const PLASMA_WINDOW_MANAGEMENT_VERSION: u32 = 1;
 
 impl WaylandGlobals {
     fn bind_all(
@@ -263,6 +390,26 @@ impl WaylandGlobals {
             }
         };
 
+        #[cfg(feature = "global-menu")]
+        let appmenu_manager = match globals.bind::<
+            org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager,
+            _,
+            _,
+        >(qh, 1..=KDE_APPMENU_MANAGER_VERSION, ()) {
+            Ok(mgr) => {
+                log::info!("Bound to org.kde.kwin.appmenu_manager");
+                Some(mgr)
+            },
+            Err(wayland_client::globals::BindError::NotPresent) => {
+                log::debug!("org.kde.kwin.appmenu_manager not available (not on KWin?)");
+                None
+            },
+            Err(err) => {
+                log::warn!("Failed to bind org.kde.kwin.appmenu_manager: {:?}", err);
+                None
+            },
+        };
+
         let shm = match globals.bind::<wl_shm::WlShm, _, _>(qh, 1..=WL_SHM_VERSION, ()) {
             Ok(s) => Some(s),
             Err(wayland_client::globals::BindError::NotPresent) => None,
@@ -287,6 +434,8 @@ impl WaylandGlobals {
             wm_base,
             decoration_manager,
             kde_server_decoration_manager,
+            #[cfg(feature = "global-menu")]
+            appmenu_manager,
             shm,
             seat,
             pointer,
@@ -306,6 +455,19 @@ impl SharedState {
             log::trace!("Wayland get_surface: key={} found", key);
         }
         surface
+    }
+
+    #[cfg(feature = "global-menu")]
+    fn set_menu_info(&self, service_name: String, object_path: String) {
+        *self.menu_service_name.lock().unwrap() = Some(service_name);
+        *self.menu_object_path.lock().unwrap() = Some(object_path);
+    }
+
+    #[cfg(feature = "global-menu")]
+    fn get_menu_info(&self) -> Option<(String, String)> {
+        let service = self.menu_service_name.lock().unwrap().clone()?;
+        let path = self.menu_object_path.lock().unwrap().clone()?;
+        Some((service, path))
     }
 }
 
@@ -814,6 +976,36 @@ impl Dispatch<org_kde_kwin_server_decoration::OrgKdeKwinServerDecoration, ()>
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
     ) {
+    }
+}
+
+#[cfg(feature = "global-menu")]
+impl Dispatch<org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager, ()>
+    for WaylandClientState
+{
+    fn event(
+        _state: &mut Self,
+        _proxy: &org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager,
+        _event: org_kde_kwin_appmenu_manager::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        // The appmenu manager doesn't send events to clients
+    }
+}
+
+#[cfg(feature = "global-menu")]
+impl Dispatch<org_kde_kwin_appmenu::OrgKdeKwinAppmenu, ()> for WaylandClientState {
+    fn event(
+        _state: &mut Self,
+        _proxy: &org_kde_kwin_appmenu::OrgKdeKwinAppmenu,
+        _event: org_kde_kwin_appmenu::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        // The appmenu object doesn't send events to clients
     }
 }
 

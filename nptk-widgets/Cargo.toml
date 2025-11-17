@@ -25,4 +25,4 @@ x11-dl = { version = "2.21", optional = true }
 [features]
 default = []
 canvas = []
-global-menu = ["zbus", "zvariant", "serde", "x11-dl"]
+global-menu = ["zbus", "zvariant", "serde", "x11-dl", "nptk-core/global-menu"]
