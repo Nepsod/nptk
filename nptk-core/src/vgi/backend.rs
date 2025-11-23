@@ -32,11 +32,10 @@ impl Backend {
     /// Valid values:
     /// - `vello` (default) - Standard Vello GPU renderer
     /// - `hybrid` - Vello Hybrid renderer (CPU/GPU hybrid)
-    /// - `wayland` - Special value: uses native Wayland windowing (rendering backend is still Vello)
     /// - Any other value will default to Vello
     ///
-    /// **Note:** `wayland` is handled by `Platform::detect()` for windowing platform selection.
-    /// This function only handles rendering backend selection, so `wayland` is treated as unknown.
+    /// **Note:** Platform selection (winit vs native Wayland) is handled by `Platform::detect()`
+    /// via the `NPTK_PLATFORM` environment variable. This function only handles rendering backend selection.
     pub fn from_env() -> Self {
         match std::env::var("NPTK_RENDERER") {
             Ok(val) => {
@@ -45,14 +44,6 @@ impl Backend {
                     "hybrid" => {
                         log::info!("NPTK_RENDERER=hybrid detected; using Vello Hybrid renderer");
                         Backend::Hybrid
-                    },
-                    "wayland" => {
-                        // wayland is handled by Platform::detect() for windowing
-                        // For rendering backend, default to Vello
-                        log::info!(
-                            "NPTK_RENDERER=wayland sets windowing platform, using Vello renderer"
-                        );
-                        Backend::Vello
                     },
                     "vello" | "" => Backend::Vello,
                     custom => {

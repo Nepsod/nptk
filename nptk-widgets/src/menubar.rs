@@ -798,16 +798,21 @@ impl MenuBar {
 
         // Register window after menu is available (or updated)
         // On X11/XWayland: use actual X11 window ID
-        // On native Wayland: use dummy window ID (1) - Plasma's compositor will discover
-        // the menu through window properties or other mechanisms, not the numeric ID
+        // On Wayland: use actual Wayland surface ID if available, otherwise dummy ID
         let x11_window_id = current_window_x11_id(info);
+        let wayland_surface_id = info.window_wayland_id();
         let window_id = if let Some(x11_id) = x11_window_id {
             // X11/XWayland: use actual X11 window ID
             Some(x11_id as u64)
+        } else if let Some(wayland_id) = wayland_surface_id {
+            // Wayland: use actual Wayland surface protocol ID
+            // This works for both native Wayland and winit-based Wayland windows
+            log::debug!("Using Wayland surface ID {} for menu registration", wayland_id);
+            Some(wayland_id as u64)
         } else if is_wayland_session() {
-            // Native Wayland: use dummy window ID 1
-            // Plasma's compositor doesn't use the numeric ID on Wayland - it discovers
-            // menus through window properties set on the Wayland surface or other mechanisms
+            // Fallback: use dummy window ID 1 if we can't get the surface ID
+            // Plasma's compositor will try to discover the menu through app_id matching
+            log::debug!("No Wayland surface ID available, using dummy ID 1 for menu registration");
             Some(1u64)
         } else {
             // Fallback: use 0 if we can't determine the window ID

@@ -432,7 +432,7 @@ impl WaylandSurface {
         );
 
         xdg_toplevel.set_title(title.to_owned());
-        xdg_toplevel.set_app_id("nptk".to_owned());
+        xdg_toplevel.set_app_id("com.nptk.app".to_owned());
 
         let mut inner = WaylandSurfaceInner::new(
             wl_surface.clone(),

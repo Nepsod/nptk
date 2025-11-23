@@ -92,7 +92,7 @@ impl<T: Theme> MayRunner<T> {
 
     /// Build window attributes from configuration.
     fn build_window_attributes(config: &MayConfig<T>) -> WindowAttributes {
-        WindowAttributes::default()
+        let mut attrs = WindowAttributes::default()
             .with_inner_size(LogicalSize::new(config.window.size.x, config.window.size.y))
             .with_resizable(config.window.resizable)
             .with_enabled_buttons(config.window.buttons)
@@ -106,7 +106,21 @@ impl<T: Theme> MayRunner<T> {
             .with_content_protected(config.window.content_protected)
             .with_window_level(config.window.level)
             .with_active(config.window.active)
-            .with_cursor(config.window.cursor.clone())
+            .with_cursor(config.window.cursor.clone());
+        
+        // Set app_id on Wayland for menu discovery
+        // For winit: use simple "nptk" for easier Plasma matching with static service name
+        // For native Wayland: keep "com.nptk.app" (uses protocol directly, so service name can have PID)
+        #[cfg(all(target_os = "linux", feature = "global-menu"))]
+        {
+            use winit::platform::wayland::WindowAttributesExtWayland;
+            // Winit mode: use "nptk" for simpler matching with static service "com.nptk.menubar"
+            // Native Wayland uses protocol directly, so it doesn't need app_id matching
+            attrs = attrs.with_name("nptk", "");
+            log::info!("Set app_id to 'nptk' in window attributes for winit (will match service 'nptk.menubar')");
+        }
+        
+        attrs
     }
 
     /// Apply optional window attributes that require manual setting.

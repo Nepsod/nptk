@@ -1726,11 +1726,62 @@ where
         #[cfg(not(feature = "wayland"))]
         let wayland_identity: Option<WindowIdentity> = None;
 
-        // If we have a Wayland identity, use it; otherwise try X11 window
+        // If we have a Wayland identity, use it; otherwise try winit Wayland surface or X11 window
         let identity = wayland_identity.or_else(|| {
             self.window.as_ref().and_then(|window| {
                 let handle = window.window_handle().ok()?;
                 match handle.as_raw() {
+                    RawWindowHandle::Wayland(wayland_handle) => {
+                        // Try to extract surface ID from winit's Wayland surface pointer
+                        // The surface ID is stored in the wl_proxy structure at a specific offset
+                        // This is unsafe but necessary to get the protocol ID
+                        let surface_ptr = wayland_handle.surface.as_ptr();
+                        if !surface_ptr.is_null() {
+                            // In wayland-client, the object ID is stored at offset 0 in wl_proxy
+                            // This is an implementation detail but stable across wayland-client versions
+                            unsafe {
+                                // wl_proxy structure: first field is the object ID (u32)
+                                let surface_id = *(surface_ptr as *const u32);
+                                
+                                // Only log once to avoid spam (update_window_identity is called frequently)
+                                static SURFACE_ID_LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                                if !SURFACE_ID_LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                                    log::info!(
+                                        "Winit Wayland surface: ptr={:p}, extracted_protocol_id={}, pointer_as_u64={}",
+                                        surface_ptr,
+                                        surface_id,
+                                        surface_ptr as u64
+                                    );
+                                }
+                                
+                                // Protocol IDs are typically small sequential numbers (usually < 10000)
+                                // Values > 1000000 are likely not protocol IDs but pointer values or other data
+                                if surface_id > 0 && surface_id < 1000000 {
+                                    if !SURFACE_ID_LOGGED.load(std::sync::atomic::Ordering::Relaxed) {
+                                        log::info!("Using extracted protocol ID {} for menu registration", surface_id);
+                                    }
+                                    Some(WindowIdentity::Wayland(surface_id))
+                                } else {
+                                    // If extracted ID looks like a pointer or invalid value, log warning once
+                                    static INVALID_ID_LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                                    if !INVALID_ID_LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                                        log::warn!(
+                                            "Extracted surface ID {} looks invalid (expected small number < 1000000). \
+                                             This is likely not a protocol ID. Falling back to app_id matching for menu discovery.",
+                                            surface_id
+                                        );
+                                    }
+                                    None
+                                }
+                            }
+                        } else {
+                            static NULL_PTR_LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+                            if !NULL_PTR_LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                                log::warn!("Winit Wayland surface pointer is null");
+                            }
+                            None
+                        }
+                    },
                     RawWindowHandle::Xlib(xlib) => Some(WindowIdentity::X11(xlib.window as u32)),
                     RawWindowHandle::Xcb(xcb) => Some(WindowIdentity::X11(xcb.window.get())),
                     _ => None,
@@ -1738,6 +1789,64 @@ where
             })
         });
         self.info.set_window_identity(identity);
+        
+        // Try to set appmenu via Plasma protocol if we have a winit window on Wayland
+        // Only try once to avoid spam (update_window_identity is called frequently)
+        #[cfg(all(target_os = "linux", feature = "global-menu"))]
+        {
+            use crate::vgi::plasma_menu;
+            use std::sync::atomic::{AtomicBool, Ordering};
+            
+            // Only try once per application run to avoid spam
+            // But only set the flag if we actually have a window to try
+            static ATTEMPTED: AtomicBool = AtomicBool::new(false);
+            static ENTERED: AtomicBool = AtomicBool::new(false);
+            
+            // Log once that we entered this code path
+            if !ENTERED.swap(true, Ordering::Relaxed) {
+                log::info!("update_window_identity: entered appmenu setup code path");
+            }
+            
+            // Only try if we have a winit window and haven't tried yet
+            if let Some(window) = self.window.as_ref() {
+                if !ATTEMPTED.load(Ordering::Relaxed) {
+                    // Check if Plasma client is initialized first
+                    if !plasma_menu::is_initialized() {
+                        // Plasma client not ready yet, will retry later
+                        static WAITING_LOGGED: AtomicBool = AtomicBool::new(false);
+                        if !WAITING_LOGGED.swap(true, Ordering::Relaxed) {
+                            log::info!("Plasma client not initialized yet, will retry setting appmenu later...");
+                        }
+                        return; // Don't set ATTEMPTED flag, so we can retry later
+                    }
+                    
+                    log::info!("Checking if we can set appmenu via Plasma protocol for winit window...");
+                    // Check if it's a Wayland window by trying to get the window handle
+                    match window.window_handle() {
+                        Ok(_) => {
+                            // Set flag before attempting to avoid race conditions
+                            ATTEMPTED.store(true, Ordering::Relaxed);
+                            log::info!("Attempting to set appmenu via Plasma protocol for winit window...");
+                            if let Err(err) = plasma_menu::try_set_appmenu_for_winit_window(window.as_ref()) {
+                                log::info!("Could not set appmenu via Plasma protocol: {err}");
+                            } else {
+                                log::info!("Successfully set appmenu via Plasma protocol!");
+                            }
+                        },
+                        Err(e) => {
+                            log::info!("Cannot set appmenu: window handle error: {:?}", e);
+                            ATTEMPTED.store(true, Ordering::Relaxed); // Don't keep trying if handle fails
+                        }
+                    }
+                }
+            } else if !ATTEMPTED.load(Ordering::Relaxed) {
+                // Log once that we're waiting for window
+                static WAITING_LOGGED: AtomicBool = AtomicBool::new(false);
+                if !WAITING_LOGGED.swap(true, Ordering::Relaxed) {
+                    log::info!("Cannot set appmenu yet: no winit window available (using native Wayland or window not created yet?)");
+                }
+            }
+        }
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -1754,8 +1863,31 @@ where
         // Windows might be created hidden, so we explicitly show them
         window.set_visible(true);
 
+        // Note: app_id is set during window creation via WindowAttributesExtWayland::with_name()
+        // in build_window_attributes(). If we need to change it later, we could use WindowExtWayland
+        // but that trait may not have set_app_id() in winit 0.30.
+        #[cfg(all(target_os = "linux", feature = "global-menu"))]
+        {
+            log::info!("Window created with app_id 'nptk' (set via WindowAttributesExtWayland::with_name()). \
+                       For Plasma menu discovery, menu service should be 'nptk.menubar' (winit mode)");
+        }
+
         self.window = Some(Arc::new(window));
         self.update_window_identity();
+        
+        // Try to set appmenu via Plasma protocol if on Wayland
+        #[cfg(all(target_os = "linux", feature = "global-menu"))]
+        {
+            use crate::vgi::plasma_menu;
+            if let Some(window) = self.window.as_ref() {
+                log::info!("Attempting to set appmenu via Plasma protocol for winit window...");
+                if let Err(err) = plasma_menu::try_set_appmenu_for_winit_window(window.as_ref()) {
+                    log::info!("Could not set appmenu via Plasma protocol: {err}");
+                } else {
+                    log::info!("Successfully set appmenu via Plasma protocol!");
+                }
+            }
+        }
     }
 
     /// Set up the window node in the layout tree.

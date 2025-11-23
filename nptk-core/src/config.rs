@@ -115,6 +115,10 @@ impl Default for WindowConfig {
 /// **Renderer Backend:** Can be configured via `NPTK_RENDERER` environment variable:
 /// - `vello` (default) - Standard Vello GPU renderer
 /// - `hybrid` - Vello Hybrid renderer (currently falls back to Vello; `vello_hybrid` requires different Scene API)
+///
+/// **Windowing Platform:** Can be configured via `NPTK_PLATFORM` environment variable:
+/// - `winit` (default) - Use winit-based windowing (works on X11/Wayland via winit abstraction)
+/// - `wayland` - Use native Wayland windowing (direct Wayland protocol, Linux only)
 #[derive(Clone)]
 pub struct RenderConfig {
     /// The rendering backend to use
@@ -122,6 +126,9 @@ pub struct RenderConfig {
     /// Can be configured via `NPTK_RENDERER` environment variable:
     /// - `vello` (default) - Standard Vello GPU renderer
     /// - `hybrid` - Vello Hybrid renderer (currently falls back to Vello)
+    ///
+    /// **Note:** Windowing platform selection (winit vs native Wayland) is controlled
+    /// separately via the `NPTK_PLATFORM` environment variable.
     pub backend: crate::vgi::Backend,
     /// The antialiasing config
     ///
