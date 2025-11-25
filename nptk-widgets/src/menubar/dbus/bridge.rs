@@ -25,6 +25,8 @@ const MENU_OBJECT_PATH: &str = "/com/canonical/menu/1";
 #[derive(Clone)]
 pub enum BridgeEvent {
     Activated(i32),
+    /// Emitted when a global menu importer is detected (e.g., GetLayout called for root menu)
+    ImporterDetected,
 }
 
 /// Commands sent to the bridge thread.

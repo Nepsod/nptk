@@ -29,6 +29,10 @@ pub mod runner;
 /// Contains the focus management system.
 pub mod focus;
 
+/// Contains the XKB keymap manager for Wayland keyboard handling.
+#[cfg(all(target_os = "linux", feature = "wayland"))]
+pub mod keymap;
+
 /// Contains the overlay and popup management system.
 
 /// The main application interface.

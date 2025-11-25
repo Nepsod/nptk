@@ -67,6 +67,12 @@ impl MenuObject {
         depth: i32,
         properties: Vec<&str>,
     ) -> (u32, SubMenuLayout) {
+        // Detect importer activity: when parent_id == 0, an importer is querying the root menu
+        if parent_id == 0 {
+            // Emit ImporterDetected event to notify the bridge
+            let _ = self.evt_tx.send(super::BridgeEvent::ImporterDetected);
+        }
+        
         let st = self.state.lock().unwrap();
         let props_debug = properties.clone();
         let layout = st.layout_with(parent_id, depth, properties);

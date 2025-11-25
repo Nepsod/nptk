@@ -68,6 +68,8 @@ where
     async_init_complete: Arc<AtomicBool>,
     #[cfg(all(target_os = "linux", feature = "wayland"))]
     wayland_pressed_keys: HashSet<u32>,
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    xkb_keymap: crate::app::keymap::XkbKeymapManager,
 }
 
 impl<T, W, S, F> AppHandler<T, W, S, F>
@@ -96,6 +98,13 @@ where
         let size = config.window.size;
         let backend = config.render.backend.clone();
 
+        #[cfg(all(target_os = "linux", feature = "wayland"))]
+        let xkb_keymap = crate::app::keymap::XkbKeymapManager::new()
+            .unwrap_or_else(|e| {
+                log::warn!("Failed to create XKB keymap manager: {}", e);
+                crate::app::keymap::XkbKeymapManager::default()
+            });
+
         Self {
             attrs,
             window: None,
@@ -121,6 +130,8 @@ where
             async_init_complete: Arc::new(AtomicBool::new(false)),
             #[cfg(all(target_os = "linux", feature = "wayland"))]
             wayland_pressed_keys: HashSet::new(),
+            #[cfg(all(target_os = "linux", feature = "wayland"))]
+            xkb_keymap,
         }
     }
 
@@ -141,6 +152,7 @@ where
             };
             surface.take_wayland_input_events()
         };
+        log::debug!("process_wayland_input_events: got {} events", events.len());
         if events.is_empty() {
             return;
         }
@@ -271,12 +283,65 @@ where
 
                             self.update_wayland_modifiers_state();
 
-                            let physical_key = Self::map_wayland_physical_key(evdev, keycode);
-                            let text = if element_state == ElementState::Pressed {
-                                Self::map_wayland_text(evdev, self.info.modifiers.shift_key())
+                            // Use XKB for keycode decoding if available, otherwise fall back to hardcoded mapping
+                            let (physical_key, text) = if self.xkb_keymap.is_ready() {
+                                // Wayland keycodes are evdev scancodes + 8, which matches XKB keycodes
+                                use xkbcommon_dl::xkb_key_direction;
+                                let direction = match element_state {
+                                    ElementState::Pressed => xkb_key_direction::XKB_KEY_DOWN,
+                                    ElementState::Released => xkb_key_direction::XKB_KEY_UP,
+                                };
+                                let keysym = self.xkb_keymap.keycode_to_keysym(keycode, direction);
+                                log::debug!("XKB keycode {} (direction={:?}) -> keysym {:?}", keycode, direction, keysym);
+                                let utf8_text = if element_state == ElementState::Pressed {
+                                    use xkbcommon_dl::xkb_key_direction;
+                                    self.xkb_keymap.keycode_to_utf8(keycode, xkb_key_direction::XKB_KEY_DOWN)
+                                } else {
+                                    None
+                                };
+                                
+                                let physical = if let Some(ks) = keysym {
+                                    // Special case: keycode 68 with keysym 0xFFBF (65471) is likely F10
+                                    // Some keyboards/XKB return wrong keysym for F10
+                                    if keycode == 68 && (ks == 0xFFBF || ks == 65471) {
+                                        log::debug!("Detected F10: keycode=68, keysym=0xFFBF, using F10 directly");
+                                        PhysicalKey::Code(KeyCode::F10)
+                                    } else {
+                                        let mapped = Self::keysym_to_physical_key(ks);
+                                        log::debug!("XKB keysym {} (0x{:X}) -> physical_key {:?}", ks, ks, mapped);
+                                        // If keysym doesn't match, fall back to hardcoded mapping
+                                        match &mapped {
+                                            PhysicalKey::Unidentified(_) => {
+                                                log::debug!("Keysym {} (0x{:X}) not recognized, falling back to hardcoded mapping (keycode={}, evdev={})", ks, ks, keycode, Self::normalize_wayland_keycode(keycode));
+                                                let evdev = Self::normalize_wayland_keycode(keycode);
+                                                let fallback = Self::map_wayland_physical_key(evdev, keycode);
+                                                log::debug!("Hardcoded mapping: evdev {} -> {:?}", evdev, fallback);
+                                                fallback
+                                            },
+                                            _ => mapped,
+                                        }
+                                    }
+                                } else {
+                                    // Fallback to hardcoded mapping if xkb fails
+                                    log::debug!("XKB keysym lookup failed, falling back to hardcoded mapping");
+                                    let evdev = Self::normalize_wayland_keycode(keycode);
+                                    Self::map_wayland_physical_key(evdev, keycode)
+                                };
+                                
+                                (physical, utf8_text)
                             } else {
-                                None
+                                // Fallback to hardcoded mapping if xkb is not ready
+                                log::debug!("XKB keymap not ready, using hardcoded mapping for keycode {}", keycode);
+                                let evdev = Self::normalize_wayland_keycode(keycode);
+                                let physical = Self::map_wayland_physical_key(evdev, keycode);
+                                let text = if element_state == ElementState::Pressed {
+                                    Self::map_wayland_text(evdev, self.info.modifiers.shift_key())
+                                } else {
+                                    None
+                                };
+                                (physical, text)
                             };
+                            
                             let logical_key = text
                                 .as_ref()
                                 .map(|value| Key::Character(value.clone().into()))
@@ -290,15 +355,28 @@ where
                                 repeat,
                             };
 
+                            log::debug!("Wayland keyboard event: keycode={}, evdev={}, physical_key={:?}, state={:?}", keycode, evdev, physical_key, element_state);
+
                             let keyboard_device = DeviceId::dummy();
                             self.info.keys.push((keyboard_device, app_event));
                             self.request_redraw();
                         },
-                        KeyboardEvent::Modifiers { .. } => {
-                            // Currently handled via key state tracking.
+                        KeyboardEvent::Modifiers { mods_depressed, mods_latched, mods_locked, group } => {
+                            // Update XKB state with modifier changes
+                            self.xkb_keymap.update_modifiers(mods_depressed, mods_latched, mods_locked, group);
+                            // Also update via key state tracking for compatibility
+                            self.update_wayland_modifiers_state();
                         },
                         KeyboardEvent::RepeatInfo { .. } => {
                             // Unsupported repeat customization.
+                        },
+                        KeyboardEvent::Keymap { keymap_string } => {
+                            log::info!("Received keymap ({} bytes), updating XKB keymap manager", keymap_string.len());
+                            if let Err(e) = self.xkb_keymap.update_keymap(&keymap_string) {
+                                log::warn!("Failed to update XKB keymap: {}", e);
+                            } else {
+                                log::info!("XKB keymap updated successfully, ready={}", self.xkb_keymap.is_ready());
+                            }
                         },
                     }
                 },
@@ -353,6 +431,102 @@ where
             keycode - 8
         } else {
             keycode
+        }
+    }
+
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    fn keysym_to_physical_key(keysym: u32) -> PhysicalKey {
+        #[cfg(all(target_os = "linux", feature = "wayland"))]
+        use xkbcommon_dl::keysyms;
+        
+        // Map XKB keysyms to winit KeyCodes
+        match keysym {
+            keysyms::F1 => PhysicalKey::Code(KeyCode::F1),
+            keysyms::F2 => PhysicalKey::Code(KeyCode::F2),
+            keysyms::F3 => PhysicalKey::Code(KeyCode::F3),
+            keysyms::F4 => PhysicalKey::Code(KeyCode::F4),
+            keysyms::F5 => PhysicalKey::Code(KeyCode::F5),
+            keysyms::F6 => PhysicalKey::Code(KeyCode::F6),
+            keysyms::F7 => PhysicalKey::Code(KeyCode::F7),
+            keysyms::F8 => PhysicalKey::Code(KeyCode::F8),
+            keysyms::F9 => PhysicalKey::Code(KeyCode::F9),
+            keysyms::F10 => PhysicalKey::Code(KeyCode::F10),
+            keysyms::F11 => PhysicalKey::Code(KeyCode::F11),
+            keysyms::F12 => PhysicalKey::Code(KeyCode::F12),
+            keysyms::F13 => PhysicalKey::Code(KeyCode::F13),
+            keysyms::F14 => PhysicalKey::Code(KeyCode::F14),
+            keysyms::F15 => PhysicalKey::Code(KeyCode::F15),
+            keysyms::F16 => PhysicalKey::Code(KeyCode::F16),
+            keysyms::F17 => PhysicalKey::Code(KeyCode::F17),
+            keysyms::F18 => PhysicalKey::Code(KeyCode::F18),
+            keysyms::F19 => PhysicalKey::Code(KeyCode::F19),
+            keysyms::F20 => PhysicalKey::Code(KeyCode::F20),
+            keysyms::F21 => PhysicalKey::Code(KeyCode::F21),
+            keysyms::F22 => PhysicalKey::Code(KeyCode::F22),
+            keysyms::F23 => PhysicalKey::Code(KeyCode::F23),
+            keysyms::F24 => PhysicalKey::Code(KeyCode::F24),
+            keysyms::Escape => PhysicalKey::Code(KeyCode::Escape),
+            keysyms::Tab => PhysicalKey::Code(KeyCode::Tab),
+            keysyms::BackSpace => PhysicalKey::Code(KeyCode::Backspace),
+            keysyms::Return => PhysicalKey::Code(KeyCode::Enter),
+            keysyms::space => PhysicalKey::Code(KeyCode::Space),
+            keysyms::Home => PhysicalKey::Code(KeyCode::Home),
+            keysyms::End => PhysicalKey::Code(KeyCode::End),
+            keysyms::Up => PhysicalKey::Code(KeyCode::ArrowUp),
+            keysyms::Down => PhysicalKey::Code(KeyCode::ArrowDown),
+            keysyms::Left => PhysicalKey::Code(KeyCode::ArrowLeft),
+            keysyms::Right => PhysicalKey::Code(KeyCode::ArrowRight),
+            keysyms::Page_Up => PhysicalKey::Code(KeyCode::PageUp),
+            keysyms::Page_Down => PhysicalKey::Code(KeyCode::PageDown),
+            keysyms::Insert => PhysicalKey::Code(KeyCode::Insert),
+            keysyms::Delete => PhysicalKey::Code(KeyCode::Delete),
+            keysyms::Shift_L => PhysicalKey::Code(KeyCode::ShiftLeft),
+            keysyms::Shift_R => PhysicalKey::Code(KeyCode::ShiftRight),
+            keysyms::Control_L => PhysicalKey::Code(KeyCode::ControlLeft),
+            keysyms::Control_R => PhysicalKey::Code(KeyCode::ControlRight),
+            keysyms::Alt_L => PhysicalKey::Code(KeyCode::AltLeft),
+            keysyms::Alt_R => PhysicalKey::Code(KeyCode::AltRight),
+            keysyms::Super_L => PhysicalKey::Code(KeyCode::SuperLeft),
+            keysyms::Super_R => PhysicalKey::Code(KeyCode::SuperRight),
+            // Number keys
+            keysyms::_1 => PhysicalKey::Code(KeyCode::Digit1),
+            keysyms::_2 => PhysicalKey::Code(KeyCode::Digit2),
+            keysyms::_3 => PhysicalKey::Code(KeyCode::Digit3),
+            keysyms::_4 => PhysicalKey::Code(KeyCode::Digit4),
+            keysyms::_5 => PhysicalKey::Code(KeyCode::Digit5),
+            keysyms::_6 => PhysicalKey::Code(KeyCode::Digit6),
+            keysyms::_7 => PhysicalKey::Code(KeyCode::Digit7),
+            keysyms::_8 => PhysicalKey::Code(KeyCode::Digit8),
+            keysyms::_9 => PhysicalKey::Code(KeyCode::Digit9),
+            keysyms::_0 => PhysicalKey::Code(KeyCode::Digit0),
+            // Letter keys
+            keysyms::a => PhysicalKey::Code(KeyCode::KeyA),
+            keysyms::b => PhysicalKey::Code(KeyCode::KeyB),
+            keysyms::c => PhysicalKey::Code(KeyCode::KeyC),
+            keysyms::d => PhysicalKey::Code(KeyCode::KeyD),
+            keysyms::e => PhysicalKey::Code(KeyCode::KeyE),
+            keysyms::f => PhysicalKey::Code(KeyCode::KeyF),
+            keysyms::g => PhysicalKey::Code(KeyCode::KeyG),
+            keysyms::h => PhysicalKey::Code(KeyCode::KeyH),
+            keysyms::i => PhysicalKey::Code(KeyCode::KeyI),
+            keysyms::j => PhysicalKey::Code(KeyCode::KeyJ),
+            keysyms::k => PhysicalKey::Code(KeyCode::KeyK),
+            keysyms::l => PhysicalKey::Code(KeyCode::KeyL),
+            keysyms::m => PhysicalKey::Code(KeyCode::KeyM),
+            keysyms::n => PhysicalKey::Code(KeyCode::KeyN),
+            keysyms::o => PhysicalKey::Code(KeyCode::KeyO),
+            keysyms::p => PhysicalKey::Code(KeyCode::KeyP),
+            keysyms::q => PhysicalKey::Code(KeyCode::KeyQ),
+            keysyms::r => PhysicalKey::Code(KeyCode::KeyR),
+            keysyms::s => PhysicalKey::Code(KeyCode::KeyS),
+            keysyms::t => PhysicalKey::Code(KeyCode::KeyT),
+            keysyms::u => PhysicalKey::Code(KeyCode::KeyU),
+            keysyms::v => PhysicalKey::Code(KeyCode::KeyV),
+            keysyms::w => PhysicalKey::Code(KeyCode::KeyW),
+            keysyms::x => PhysicalKey::Code(KeyCode::KeyX),
+            keysyms::y => PhysicalKey::Code(KeyCode::KeyY),
+            keysyms::z => PhysicalKey::Code(KeyCode::KeyZ),
+            _ => PhysicalKey::Unidentified(NativeKeyCode::Xkb(keysym)),
         }
     }
 
@@ -421,19 +595,22 @@ where
             61 => PhysicalKey::Code(KeyCode::F3),
             62 => PhysicalKey::Code(KeyCode::F4),
             63 => PhysicalKey::Code(KeyCode::F5),
-            64 => PhysicalKey::Code(KeyCode::AltRight),
-            65 => PhysicalKey::Code(KeyCode::Space),
-            66 => PhysicalKey::Code(KeyCode::CapsLock),
-            67 => PhysicalKey::Code(KeyCode::F1),
-            68 => PhysicalKey::Code(KeyCode::F2),
-            69 => PhysicalKey::Code(KeyCode::F3),
-            70 => PhysicalKey::Code(KeyCode::F4),
-            71 => PhysicalKey::Code(KeyCode::F5),
-            72 => PhysicalKey::Code(KeyCode::F6),
-            73 => PhysicalKey::Code(KeyCode::F7),
-            74 => PhysicalKey::Code(KeyCode::F8),
-            75 => PhysicalKey::Code(KeyCode::F9),
-            76 => PhysicalKey::Code(KeyCode::F10),
+            64 => PhysicalKey::Code(KeyCode::F6),
+            65 => PhysicalKey::Code(KeyCode::F7),
+            66 => PhysicalKey::Code(KeyCode::F8),
+            67 => PhysicalKey::Code(KeyCode::F9),
+            68 => PhysicalKey::Code(KeyCode::F10),
+            69 => PhysicalKey::Code(KeyCode::F11),
+            70 => PhysicalKey::Code(KeyCode::F12),
+            68 => PhysicalKey::Code(KeyCode::F10),
+            69 => PhysicalKey::Code(KeyCode::F11),
+            70 => PhysicalKey::Code(KeyCode::F12),
+            71 => PhysicalKey::Code(KeyCode::F13),
+            72 => PhysicalKey::Code(KeyCode::F14),
+            73 => PhysicalKey::Code(KeyCode::F15),
+            74 => PhysicalKey::Code(KeyCode::F16),
+            75 => PhysicalKey::Code(KeyCode::F17),
+            76 => PhysicalKey::Code(KeyCode::F18),
             79 => PhysicalKey::Code(KeyCode::Numpad7),
             80 => PhysicalKey::Code(KeyCode::Numpad8),
             81 => PhysicalKey::Code(KeyCode::Numpad9),
@@ -804,7 +981,7 @@ where
 
     /// Update the widget with the current layout.
     fn update_widget(&mut self, layout_node: &LayoutNode) {
-        log::debug!("Updating root widget...");
+        log::debug!("Updating root widget... ({} keyboard events, {} mouse buttons)", self.info.keys.len(), self.info.buttons.len());
         let context = self.context();
         self.update.insert(self.widget.as_mut().unwrap().update(
             layout_node,

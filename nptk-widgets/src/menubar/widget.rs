@@ -53,6 +53,8 @@ pub struct MenuBar {
     global_menu_signature: u64,
     #[cfg(feature = "global-menu")]
     last_window_id: Option<u64>,
+    #[cfg(feature = "global-menu")]
+    importer_detected: StateSignal<bool>,
     layout_style: MaybeSignal<LayoutStyle>,
     visible: StateSignal<bool>,
 
@@ -204,6 +206,8 @@ impl MenuBar {
             global_menu_signature: 0,
             #[cfg(feature = "global-menu")]
             last_window_id: None,
+            #[cfg(feature = "global-menu")]
+            importer_detected: StateSignal::new(false),
             hovered_index: None,
             open_menu_index: None,
             hovered_submenu_index: None,
@@ -395,6 +399,8 @@ impl Widget for MenuBar {
         _context: AppContext,
     ) -> () {
         // Don't render if not visible
+        // Note: If importer is detected and user presses F10, importer_detected is cleared,
+        // so we just need to check is_visible()
         if !self.is_visible() {
             return;
         }
@@ -561,6 +567,8 @@ impl Widget for MenuBar {
         _context: AppContext,
     ) {
         // Don't render popup if menu bar not visible
+        // Note: If importer is detected and user presses F10, importer_detected is cleared,
+        // so we just need to check is_visible()
         if !self.is_visible() {
             return;
         }
@@ -595,7 +603,40 @@ impl Widget for MenuBar {
     fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
-        // Don't process events if not visible
+        // Process keyboard events FIRST, especially F10, even if menubar is not visible
+        // This allows F10 to show the menubar when it's hidden
+        log::debug!("MenuBar update: processing {} keyboard events", info.keys.len());
+        for (device_id, key_event) in &info.keys {
+            log::debug!("MenuBar: key event - device_id={:?}, physical_key={:?}, state={:?}", device_id, key_event.physical_key, key_event.state);
+            if key_event.state == ElementState::Pressed {
+                match key_event.physical_key {
+                    PhysicalKey::Code(KeyCode::F10) => {
+                        log::info!("F10 key detected in MenuBar update() - current visible={}", self.is_visible());
+                        // Toggle menu bar visibility
+                        // F10 can override importer detection - if importer is detected but user presses F10,
+                        // show the menubar anyway (user wants to see it)
+                        let visible = !self.is_visible();
+                        self.visible.set(visible);
+                        // If user manually shows the menubar, clear importer detection
+                        // so it stays visible until they hide it again or importer queries again
+                        if visible {
+                            #[cfg(feature = "global-menu")]
+                            {
+                                log::info!("F10 pressed - showing menubar (overriding importer detection)");
+                                self.importer_detected.set(false);
+                            }
+                        }
+                        update |= Update::DRAW | Update::LAYOUT;
+                        // Continue processing even if menubar was hidden, in case F10 was pressed
+                    },
+                    _ => {},
+                }
+            }
+        }
+
+        // Don't process other events if not visible
+        // Note: If importer is detected and user presses F10, importer_detected is cleared,
+        // so we just need to check is_visible()
         if !self.is_visible() {
             return update;
         }
@@ -718,7 +759,7 @@ impl Widget for MenuBar {
             }
         }
 
-        // Handle keyboard shortcuts
+        // Handle keyboard shortcuts (F10 is handled above before visibility check)
         for (_, key_event) in &info.keys {
             if key_event.state == ElementState::Pressed {
                 match key_event.physical_key {
@@ -730,11 +771,9 @@ impl Widget for MenuBar {
                             update |= Update::DRAW;
                         }
                     },
+                    // F10 is handled above before the visibility check
                     PhysicalKey::Code(KeyCode::F10) => {
-                        // Toggle menu bar visibility
-                        let visible = !self.is_visible();
-                        self.visible.set(visible);
-                        update |= Update::DRAW | Update::LAYOUT;
+                        // Already handled above
                     },
                     _ => {},
                 }
@@ -746,6 +785,8 @@ impl Widget for MenuBar {
 
     fn layout_style(&self) -> StyleNode {
         // Hide the widget by setting height to 0 if not visible
+        // Note: If importer is detected and user presses F10, importer_detected is cleared,
+        // so we just need to check is_visible()
         let mut style = self.layout_style.get().clone();
         if !self.is_visible() {
             style.size.y = Dimension::length(0.0);
@@ -773,6 +814,30 @@ impl MenuBar {
         let mut update = Update::empty();
         let bridge_was_none = self.global_menu_bridge.is_none();
         self.ensure_global_menu_bridge();
+
+        // Poll bridge events to detect importer activity
+        if let Some(bridge) = self.global_menu_bridge.as_ref() {
+            for event in bridge.poll_events() {
+                match event {
+                    super::dbus::BridgeEvent::Activated(id) => {
+                        if let Some(action) = self.global_menu_actions.get(&id) {
+                            update |= action();
+                        }
+                    },
+                    super::dbus::BridgeEvent::ImporterDetected => {
+                        // An importer is actively querying the menu - mark as detected
+                        if !*self.importer_detected.get() {
+                            log::info!("Global menu importer detected - auto-hiding menubar");
+                            self.importer_detected.set(true);
+                            // Auto-hide the menubar when importer is detected
+                            // User can still show it with F10
+                            self.visible.set(false);
+                            update |= Update::DRAW | Update::LAYOUT;
+                        }
+                    },
+                }
+            }
+        }
 
         // Build menu snapshot first to ensure it's available before window registration
         let (snapshot, actions, signature) = build_menu_snapshot(&self.items);
@@ -836,19 +901,6 @@ impl MenuBar {
         }
 
         self.global_menu_actions = actions;
-
-        if let Some(bridge) = self.global_menu_bridge.as_ref() {
-            let events = bridge.poll_events();
-            for event in events {
-                match event {
-                    BridgeEvent::Activated(id) => {
-                        if let Some(callback) = self.global_menu_actions.get(&id) {
-                            update |= callback();
-                        }
-                    },
-                }
-            }
-        }
 
         update
     }

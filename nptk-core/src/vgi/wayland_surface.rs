@@ -96,6 +96,9 @@ pub(crate) enum KeyboardEvent {
         rate: i32,
         delay: i32,
     },
+    Keymap {
+        keymap_string: String,
+    },
 }
 
 pub(crate) struct WaylandSurfaceInner {
@@ -617,6 +620,12 @@ impl SurfaceTrait for WaylandSurface {
 
         let mut new_events = self.inner.take_input_events();
         if !new_events.is_empty() {
+            log::debug!("WaylandSurface::dispatch_events: got {} input events", new_events.len());
+            for event in &new_events {
+                if let InputEvent::Keyboard(_) = event {
+                    log::debug!("WaylandSurface::dispatch_events: keyboard event: {:?}", event);
+                }
+            }
             self.pending_input_events.append(&mut new_events);
         }
 
