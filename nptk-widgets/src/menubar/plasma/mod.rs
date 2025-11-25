@@ -22,10 +22,9 @@ use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle};
 use wayland_protocols_plasma::appmenu::client::{
     org_kde_kwin_appmenu, org_kde_kwin_appmenu_manager,
 };
-#[cfg(feature = "global-menu")]
-use raw_window_handle::{HasWindowHandle, HasDisplayHandle};
 
-use super::menu_info;
+use crate::menubar::common::MenuInfoStorage;
+mod wl_integration;
 
 /// Plasma AppMenu client state.
 struct PlasmaMenuState {
@@ -45,6 +44,11 @@ struct PlasmaMenuClient {
 
 impl PlasmaMenuClient {
     fn initialize() -> Result<Self, String> {
+        // Only try to initialize if we're actually on a Wayland session
+        if std::env::var("WAYLAND_DISPLAY").is_err() {
+            return Err("Not on Wayland session (WAYLAND_DISPLAY not set)".to_string());
+        }
+
         let connection = Connection::connect_to_env()
             .map_err(|e| format!("Failed to connect to Wayland display: {:?}", e))?;
 
@@ -52,7 +56,7 @@ impl PlasmaMenuClient {
             .map_err(|e| format!("Failed to init Wayland registry: {:?}", e))?;
         let queue_handle = event_queue.handle();
 
-        let menu_info = Arc::new(Mutex::new(menu_info::get_menu_info()));
+        let menu_info = Arc::new(Mutex::new(MenuInfoStorage::get()));
         let appmenu_objects = Arc::new(Mutex::new(std::collections::HashMap::new()));
         let state = Arc::new(Mutex::new(PlasmaMenuState {
             menu_info: menu_info.clone(),
@@ -181,11 +185,6 @@ pub fn initialize() -> Result<(), String> {
 ///
 /// This should be called when a window surface is created and menu info is available.
 /// The surface should be a `wl_surface` from the Wayland connection.
-///
-/// Note: This function requires a `wl_surface` from the same Wayland connection as the
-/// Plasma client. When using `winit`, you cannot directly access the `wl_surface` from
-/// `winit`'s internal connection, so this function won't work. In that case, rely on
-/// the registrar and app_id matching for menu discovery.
 pub fn set_appmenu_for_surface(surface: &wl_surface::WlSurface) -> Result<(), String> {
     let client_guard = PLASMA_CLIENT.get().ok_or("Plasma client not initialized")?;
     let client = client_guard.lock().unwrap();
@@ -197,17 +196,26 @@ pub fn set_appmenu_for_surface(surface: &wl_surface::WlSurface) -> Result<(), St
     Ok(())
 }
 
-/// Attempt to set the application menu for a winit window.
+/// Set application menu properties via Plasma's Wayland window management protocol.
 ///
-/// **Note**: This function is deprecated since winit now only supports X11.
-/// Winit windows are X11 windows and cannot be used with Wayland protocols.
-/// This function will always return an error for winit windows.
-///
-/// For native Wayland windows, use `set_appmenu_for_surface()` instead.
-pub fn try_set_appmenu_for_winit_window<W: HasWindowHandle + HasDisplayHandle>(
-    _window: &W,
-) -> Result<(), String> {
-    Err("Winit windows are X11 windows and cannot be used with Wayland protocols. Use native Wayland windows for Wayland protocol support.".to_string())
+/// This is a convenience function that initializes the Plasma client and stores
+/// menu info for later use when surfaces are created.
+pub fn set_appmenu_properties(service_name: &str) -> Result<(), String> {
+    // Store menu info for later use
+    MenuInfoStorage::set(service_name.to_string(), "/com/canonical/menu/1".to_string());
+    
+    // Notify VGI's Wayland client about the menu update
+    // This will set appmenu for all existing surfaces
+    wl_integration::notify_wl_client_menu_update();
+    
+    // Try to initialize the Plasma client (for standalone use, separate from VGI's client)
+    if let Err(err) = initialize() {
+        log::debug!("Failed to initialize Plasma window management client: {err} (may not be on Plasma)");
+    } else {
+        log::info!("Plasma window management protocol client initialized");
+    }
+    
+    Ok(())
 }
 
 /// Update the menu info when it changes.
@@ -215,6 +223,12 @@ pub fn try_set_appmenu_for_winit_window<W: HasWindowHandle + HasDisplayHandle>(
 /// This should be called whenever the menu service name or object path changes.
 pub fn update_menu_info() {
     if let Some(ref client) = *PLASMA_CLIENT.get().unwrap().lock().unwrap() {
+        // Update the stored menu info
+        if let Some((service, path)) = MenuInfoStorage::get() {
+            let state_guard = client.state.lock().unwrap();
+            let mut menu_info_guard = state_guard.menu_info.lock().unwrap();
+            *menu_info_guard = Some((service, path));
+        }
         client.update_menu_info();
     }
 }

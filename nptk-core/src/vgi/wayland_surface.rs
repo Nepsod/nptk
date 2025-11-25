@@ -478,19 +478,9 @@ impl WaylandSurface {
         let (wgpu_surface, format) =
             Self::create_wgpu_surface(&connection, &wl_surface, gpu_context)?;
 
-        // Set up KDE AppMenu protocol if available
-        #[cfg(feature = "global-menu")]
-        {
-            log::debug!("Attempting to set appmenu for surface {} during creation", surface_key);
-            match client.set_appmenu_for_surface(&wl_surface) {
-                Ok(()) => {
-                    log::info!("Successfully set application menu for surface {} during creation", surface_key);
-                },
-                Err(err) => {
-                    log::debug!("Failed to set appmenu for surface {} during creation: {err} (menu info may not be available yet, will retry when menu is registered)", surface_key);
-                }
-            }
-        }
+        // Appmenu setup is handled by the menubar module via VGI's public appmenu API.
+        // When menu info becomes available, the menubar module will call
+        // appmenu::update_appmenu_for_all_surfaces() which will set appmenu for this surface.
 
         Ok(Self {
             client,

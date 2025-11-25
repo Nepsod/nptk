@@ -58,10 +58,6 @@ struct SharedState {
     surfaces: Mutex<HashMap<u32, Weak<WaylandSurfaceInner>>>,
     focused_surface_key: Mutex<Option<u32>>,
     #[cfg(feature = "global-menu")]
-    menu_service_name: Mutex<Option<String>>,
-    #[cfg(feature = "global-menu")]
-    menu_object_path: Mutex<Option<String>>,
-    #[cfg(feature = "global-menu")]
     appmenu_objects: Mutex<HashMap<u32, org_kde_kwin_appmenu::OrgKdeKwinAppmenu>>,
 }
 
@@ -98,57 +94,16 @@ impl WaylandClient {
     }
 
     #[cfg(feature = "global-menu")]
-    pub fn set_menu_info(&self, service_name: String, object_path: String) {
-        log::debug!("Setting menu info in Wayland client: service={}, path={}", service_name, object_path);
-        self.shared.set_menu_info(service_name.clone(), object_path.clone());
-        log::info!("Menu info stored in Wayland client: service={}, path={}", service_name, object_path);
-        
-        // After setting menu info, try to set appmenu for all existing surfaces
-        // This handles the case where surfaces were created before menu info was available
-        let surfaces_map = self.shared.surfaces.lock().unwrap();
-        let surface_keys: Vec<u32> = surfaces_map.keys().copied().collect();
-        let surface_count = surface_keys.len();
-        drop(surfaces_map);
-        
-        log::info!("Attempting to set appmenu for {} existing surface(s) after menu info update", surface_count);
-        if surface_count == 0 {
-            log::debug!("No surfaces registered yet, appmenu will be set when surface is created");
-        } else {
-            for surface_key in surface_keys {
-                if let Some(surface) = self.shared.get_surface(surface_key) {
-                    log::debug!("Found surface {}, attempting to set appmenu after menu info update", surface_key);
-                    if let Err(err) = self.set_appmenu_for_surface(surface.wl_surface()) {
-                        log::warn!("Failed to set appmenu for surface {} after menu info update: {err}", surface_key);
-                    } else {
-                        log::info!("Successfully set appmenu for surface {} after menu info update", surface_key);
-                    }
-                } else {
-                    log::debug!("Surface {} not found (may have been dropped)", surface_key);
-                }
-            }
-        }
-    }
-
-    #[cfg(feature = "global-menu")]
-    pub fn get_menu_info(&self) -> Option<(String, String)> {
-        self.shared.get_menu_info()
-    }
-
-    #[cfg(feature = "global-menu")]
-    /// Set the application menu for a Wayland surface using the KDE AppMenu protocol.
-    ///
-    /// This should be called when a window surface is created and menu info is available.
-    pub fn set_appmenu_for_surface(
+    /// Set appmenu for a Wayland surface with explicit menu info.
+    /// This is called by the public appmenu API.
+    pub(crate) fn set_appmenu_for_surface_with_info(
         &self,
         surface: &wl_surface::WlSurface,
+        service: String,
+        path: String,
     ) -> Result<(), String> {
         let Some(ref manager) = self.globals.appmenu_manager else {
             return Err("AppMenu manager not available".to_string());
-        };
-        
-        let menu_info = self.shared.get_menu_info();
-        let Some((ref service, ref path)) = menu_info else {
-            return Err("Menu info not available yet".to_string());
         };
         
         let surface_id = surface.id().protocol_id();
@@ -190,6 +145,38 @@ impl WaylandClient {
         }
         
         Ok(())
+    }
+    
+    #[cfg(feature = "global-menu")]
+    /// Update appmenu for all existing surfaces when menu info changes.
+    /// This is called by the menubar module when menu info is updated.
+    pub(crate) fn update_appmenu_for_all_surfaces(
+        &self,
+        service: String,
+        path: String,
+    ) {
+        let surfaces_map = self.shared.surfaces.lock().unwrap();
+        let surface_keys: Vec<u32> = surfaces_map.keys().copied().collect();
+        let surface_count = surface_keys.len();
+        drop(surfaces_map);
+        
+        log::info!("Attempting to set appmenu for {} existing surface(s) after menu info update", surface_count);
+        if surface_count == 0 {
+            log::debug!("No surfaces registered yet, appmenu will be set when surface is created");
+        } else {
+            for surface_key in surface_keys {
+                if let Some(surface) = self.shared.get_surface(surface_key) {
+                    log::debug!("Found surface {}, attempting to set appmenu after menu info update", surface_key);
+                    if let Err(err) = self.set_appmenu_for_surface_with_info(surface.wl_surface(), service.clone(), path.clone()) {
+                        log::warn!("Failed to set appmenu for surface {} after menu info update: {err}", surface_key);
+                    } else {
+                        log::info!("Successfully set appmenu for surface {} after menu info update", surface_key);
+                    }
+                } else {
+                    log::debug!("Surface {} not found (may have been dropped)", surface_key);
+                }
+            }
+        }
     }
 
     pub fn wait_for_initial_configure(&self, surface_key: u32) -> Result<(), String> {
@@ -306,10 +293,6 @@ impl WaylandClient {
         let shared = Arc::new(SharedState {
             surfaces: Mutex::new(HashMap::new()),
             focused_surface_key: Mutex::new(None),
-            #[cfg(feature = "global-menu")]
-            menu_service_name: Mutex::new(None),
-            #[cfg(feature = "global-menu")]
-            menu_object_path: Mutex::new(None),
             #[cfg(feature = "global-menu")]
             appmenu_objects: Mutex::new(HashMap::new()),
         });
@@ -457,18 +440,6 @@ impl SharedState {
         surface
     }
 
-    #[cfg(feature = "global-menu")]
-    fn set_menu_info(&self, service_name: String, object_path: String) {
-        *self.menu_service_name.lock().unwrap() = Some(service_name);
-        *self.menu_object_path.lock().unwrap() = Some(object_path);
-    }
-
-    #[cfg(feature = "global-menu")]
-    fn get_menu_info(&self) -> Option<(String, String)> {
-        let service = self.menu_service_name.lock().unwrap().clone()?;
-        let path = self.menu_object_path.lock().unwrap().clone()?;
-        Some((service, path))
-    }
 }
 
 impl Dispatch<wl_registry::WlRegistry, wayland_client::globals::GlobalListContents>

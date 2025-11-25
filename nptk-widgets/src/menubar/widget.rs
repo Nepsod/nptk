@@ -2,10 +2,12 @@ use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 // Overlay system removed for now - using direct rendering instead
 #[cfg(feature = "global-menu")]
-use crate::global_menu_bridge::{Bridge, BridgeEvent, MenuSnapshot, RemoteMenuNode};
+use super::dbus::{Bridge, BridgeEvent, MenuSnapshot, RemoteMenuNode};
 use crate::menu_popup::{MenuBarItem as MenuBarItemImpl, MenuPopup};
 #[cfg(feature = "global-menu")]
 use log::error;
+#[cfg(feature = "global-menu")]
+use super::common::platform;
 use nptk_core::app::update::Update;
 use nptk_core::layout;
 use nptk_core::layout::{Dimension, Layout, LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
@@ -29,8 +31,7 @@ use std::hash::{Hash, Hasher};
 #[cfg(feature = "global-menu")]
 use std::sync::Arc;
 
-// Re-export MenuBarItem for external use
-pub use crate::menu_popup::MenuBarItem;
+// MenuBarItem is re-exported from the parent module
 
 /// A horizontal menu bar widget with support for hierarchical menus and global menu integration
 ///
@@ -158,10 +159,7 @@ fn current_window_x11_id(info: &AppInfo) -> Option<u32> {
 
 #[cfg(feature = "global-menu")]
 fn is_wayland_session() -> bool {
-    std::env::var("WAYLAND_DISPLAY").is_ok()
-        || std::env::var("XDG_SESSION_TYPE")
-            .map(|s| s.to_lowercase() == "wayland")
-            .unwrap_or(false)
+    platform::is_wayland_session()
 }
 
 #[cfg(not(feature = "global-menu"))]

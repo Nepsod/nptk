@@ -22,7 +22,11 @@ zvariant = { version = "5.1.0", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
 x11-dl = { version = "2.21", optional = true }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+wayland-client = { version = "0.31", optional = true }
+wayland-protocols-plasma = { version = "0.3", features = ["client"], optional = true }
+
 [features]
 default = []
 canvas = []
-global-menu = ["zbus", "zvariant", "serde", "x11-dl", "nptk-core/global-menu"]
+global-menu = ["zbus", "zvariant", "serde", "x11-dl", "wayland-client", "wayland-protocols-plasma", "nptk-core/global-menu"]

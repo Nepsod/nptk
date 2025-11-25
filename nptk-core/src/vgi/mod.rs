@@ -22,9 +22,6 @@ use vello::peniko::{Brush, Fill};
 // Re-export unified abstractions
 pub mod backend;
 pub mod gpu_context;
-pub mod menu_info;
-#[cfg(all(target_os = "linux", feature = "global-menu"))]
-pub mod plasma_menu;
 pub mod options;
 pub mod platform;
 pub mod renderer;
@@ -34,10 +31,12 @@ pub mod surface;
 pub mod wayland_surface;
 #[cfg(all(target_os = "linux", feature = "wayland"))]
 pub(crate) mod wl_client;
+#[cfg(all(target_os = "linux", feature = "global-menu"))]
+pub mod appmenu;
 
 pub use backend::Backend;
 pub use gpu_context::{DeviceHandle, GpuContext};
-pub use options::RendererOptions;
+pub use self::options::RendererOptions;
 pub use platform::Platform;
 pub use renderer::{Renderer, RendererTrait};
 pub use scene::{Scene, SceneTrait};

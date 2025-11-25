@@ -50,10 +50,7 @@ pub mod value_input;
 /// Contains the [radio_button::RadioButton] widget.
 pub mod radio_button;
 
-#[cfg(feature = "global-menu")]
-mod global_menu_bridge;
-
-/// Contains the [menubar::MenuBar] widget.
+/// Contains the [menubar::MenuBar] widget and global menu integration.
 pub mod menubar;
 
 /// Contains the [menu_popup::MenuPopup] widget.
