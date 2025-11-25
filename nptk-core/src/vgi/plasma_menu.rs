@@ -3,10 +3,9 @@
 //! This module implements the KDE AppMenu protocol (`org.kde.kwin.appmenu_manager`)
 //! to allow Plasma's compositor to discover application menus on Wayland.
 //!
-//! **Note on winit compatibility**: When using `winit`, you cannot directly access
-//! the `wl_surface` from `winit`'s internal Wayland connection. This module creates
-//! its own Wayland connection, which is separate from `winit`'s connection. As a result,
-//! you cannot use `set_appmenu_for_surface()` with a `winit` window. Instead, rely on
+//! **Note on winit compatibility**: Since winit now only supports X11 (Wayland support disabled),
+//! winit windows are X11 windows and cannot be used with Wayland protocols. This module creates
+//! its own Wayland connection for native Wayland windows. For winit windows, rely on
 //! the registrar (`com.canonical.AppMenu.Registrar`) and app_id matching for menu discovery.
 //!
 //! This module is primarily useful for native Wayland implementations where you have
@@ -24,7 +23,7 @@ use wayland_protocols_plasma::appmenu::client::{
     org_kde_kwin_appmenu, org_kde_kwin_appmenu_manager,
 };
 #[cfg(feature = "global-menu")]
-use raw_window_handle::{HasWindowHandle, HasDisplayHandle, RawWindowHandle, RawDisplayHandle};
+use raw_window_handle::{HasWindowHandle, HasDisplayHandle};
 
 use super::menu_info;
 
@@ -200,92 +199,15 @@ pub fn set_appmenu_for_surface(surface: &wl_surface::WlSurface) -> Result<(), St
 
 /// Attempt to set the application menu for a winit window.
 ///
-/// This function tries to get the Wayland surface and display from a winit window using
-/// `raw-window-handle`. It checks if winit's display matches our connection's display.
-/// If they match, we're on the same connection and can potentially use the protocol.
+/// **Note**: This function is deprecated since winit now only supports X11.
+/// Winit windows are X11 windows and cannot be used with Wayland protocols.
+/// This function will always return an error for winit windows.
 ///
-/// However, even if the displays match, we still need the actual `WlSurface` object,
-/// not just a pointer. Since winit doesn't expose this, we fall back to app_id matching.
+/// For native Wayland windows, use `set_appmenu_for_surface()` instead.
 pub fn try_set_appmenu_for_winit_window<W: HasWindowHandle + HasDisplayHandle>(
-    window: &W,
+    _window: &W,
 ) -> Result<(), String> {
-    // Get window handle (contains surface pointer)
-    let window_handle = window.window_handle()
-        .map_err(|e| format!("Failed to get window handle: {:?}", e))?;
-    let raw_window_handle = window_handle.as_raw();
-    
-    // Get display handle (contains display pointer)
-    let display_handle = window.display_handle()
-        .map_err(|e| format!("Failed to get display handle: {:?}", e))?;
-    let raw_display_handle = display_handle.as_raw();
-    
-    let RawWindowHandle::Wayland(wayland_window_handle) = raw_window_handle else {
-        return Err("Window is not a Wayland window".to_string());
-    };
-    
-    let RawDisplayHandle::Wayland(wayland_display_handle) = raw_display_handle else {
-        return Err("Display is not a Wayland display".to_string());
-    };
-    
-    let client_guard = PLASMA_CLIENT.get().ok_or("Plasma client not initialized")?;
-    let client = client_guard.lock().unwrap();
-    let Some(ref client) = *client else {
-        return Err("Plasma client not initialized".to_string());
-    };
-    
-    // Get display pointers for comparison
-    let winit_display_ptr = wayland_display_handle.display.as_ptr();
-    let our_display_ptr = client.connection.display().id().as_ptr() as *mut std::ffi::c_void;
-    
-    // Check if we're on the same connection
-    let same_connection = winit_display_ptr == our_display_ptr;
-    
-    // Only log connection details once to avoid spam
-    static CONNECTION_LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    if !CONNECTION_LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
-        log::info!(
-            "Winit window handles: surface_ptr={:p}, display_ptr={:p}, our_display_ptr={:p}, same_connection={}",
-            wayland_window_handle.surface.as_ptr(),
-            winit_display_ptr,
-            our_display_ptr,
-            same_connection
-        );
-    }
-    
-    if !same_connection {
-        if !CONNECTION_LOGGED.load(std::sync::atomic::Ordering::Relaxed) {
-            log::info!(
-                "Winit and Plasma client are on different Wayland connections. \
-                 Cannot use protocol directly. Relying on app_id matching."
-            );
-        }
-        return Err("Different Wayland connections - cannot use protocol directly".to_string());
-    }
-    
-    // We're on the same connection! But we still need the actual WlSurface object.
-    // Unfortunately, winit doesn't expose it, and we can't safely create a proxy
-    // from just a raw pointer. We'd need unsafe code to do this, which is not recommended.
-    //
-    // However, we can at least verify we're on the same connection, which is useful
-    // for debugging and confirms that app_id matching should work.
-    log::info!(
-        "Winit and Plasma client are on the same Wayland connection! \
-         However, winit doesn't expose the WlSurface object, so we still need to rely on app_id matching."
-    );
-    
-    // Extract surface ID for logging/debugging
-    let surface_ptr = wayland_window_handle.surface.as_ptr();
-    if !surface_ptr.is_null() {
-        unsafe {
-            // Extract surface ID from wl_proxy structure (first field is the object ID)
-            let surface_id = *(surface_ptr as *const u32);
-            log::debug!("Winit surface ID: {}", surface_id);
-        }
-    }
-    
-    // Even though we're on the same connection, we can't use the protocol
-    // because we don't have the WlSurface object. Fall back to app_id matching.
-    Err("Same connection but WlSurface object not accessible from winit. Rely on app_id matching.".to_string())
+    Err("Winit windows are X11 windows and cannot be used with Wayland protocols. Use native Wayland windows for Wayland protocol support.".to_string())
 }
 
 /// Update the menu info when it changes.

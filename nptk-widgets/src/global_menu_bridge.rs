@@ -308,10 +308,10 @@ mod platform {
         // - For winit: Use static "com.nptk.menubar" (matches app_id "nptk" via Plasma's heuristic)
         // - For native Wayland/X11: Use "com.nptk.app.menubar_p{pid}" (protocol-based, PID needed for uniqueness)
         //
-        // Detect platform: if NPTK_PLATFORM=wayland, we're using native Wayland
-        let is_native_wayland = std::env::var("NPTK_PLATFORM")
-            .map(|v| v.to_lowercase() == "wayland")
-            .unwrap_or(false);
+        // Detect platform using Platform::detect() to correctly identify native Wayland vs winit/X11
+        use nptk_core::vgi::Platform;
+        let platform = Platform::detect();
+        let is_native_wayland = platform == Platform::Wayland;
         
         let service_name = if is_native_wayland {
             // Native Wayland: use PID-based name (protocol works directly, so uniqueness is important)
@@ -382,7 +382,12 @@ mod platform {
                     if let Err(err) = registrar.set_window(id) {
                         warn!("Failed to register global menu window: {err}");
                     } else {
-                        if is_wayland_session() {
+                        // Use Platform::detect() to determine the actual platform being used
+                        // This correctly distinguishes between native Wayland and winit/X11 (even on XWayland)
+                        // (platform and is_native_wayland are already set at the top of the function)
+                        
+                        if is_native_wayland {
+                            // Native Wayland platform
                             if let Some(window_id) = id {
                                 if window_id == 1 {
                                     log::info!(
@@ -391,21 +396,10 @@ mod platform {
                                         service_name,
                                         MENU_OBJECT_PATH
                                     );
-                                    // Log different messages based on platform
-                                    let is_native_wayland = std::env::var("NPTK_PLATFORM")
-                                        .map(|v| v.to_lowercase() == "wayland")
-                                        .unwrap_or(false);
-                                    if is_native_wayland {
-                                        log::warn!(
-                                            "Using dummy window ID on Wayland. Plasma may not be able to match the window to the menu. \
-                                             Ensure the window's app_id is set to 'com.nptk.app' to match the menu service pattern 'com.nptk.app.menubar_p*'."
-                                        );
-                                    } else {
-                                        log::warn!(
-                                            "Using dummy window ID on Wayland (winit mode). Plasma will use app_id matching. \
-                                             Ensure the window's app_id is set to 'nptk' to match the menu service 'nptk.menubar'."
-                                        );
-                                    }
+                                    log::warn!(
+                                        "Using dummy window ID on Wayland. Plasma may not be able to match the window to the menu. \
+                                         Ensure the window's app_id is set to 'com.nptk.app' to match the menu service pattern 'com.nptk.app.menubar_p*'."
+                                    );
                                 } else {
                                     log::info!(
                                         "Global menu registered on Wayland with surface ID: {} (service={}, path={})",
@@ -413,49 +407,33 @@ mod platform {
                                         service_name,
                                         MENU_OBJECT_PATH
                                     );
-                                    // Log different messages based on platform
-                                    let is_native_wayland = std::env::var("NPTK_PLATFORM")
-                                        .map(|v| v.to_lowercase() == "wayland")
-                                        .unwrap_or(false);
-                                    if is_native_wayland {
-                                        log::info!(
-                                            "For Plasma to discover the menu, the window's app_id should be 'com.nptk.app' to match the menu service pattern 'com.nptk.app.menubar_p*'. \
-                                             The menu service name is '{}'.",
-                                            service_name
-                                        );
-                                    } else {
-                                        log::info!(
-                                            "For Plasma to discover the menu, the window's app_id should be 'nptk' to match the menu service 'nptk.menubar'. \
-                                             The menu service name is '{}'.",
-                                            service_name
-                                        );
-                                    }
+                                    log::info!(
+                                        "For Plasma to discover the menu, the window's app_id should be 'com.nptk.app' to match the menu service pattern 'com.nptk.app.menubar_p*'. \
+                                         The menu service name is '{}'.",
+                                        service_name
+                                    );
                                 }
                             }
                             log::debug!(
-                                "On Wayland, Plasma's compositor discovers menus through window properties and app_id matching. \
-                                 For winit windows, app_id matching is the primary mechanism."
+                                "On Wayland, Plasma's compositor discovers menus through window properties and app_id matching."
                             );
                         } else {
+                            // X11 or XWayland (winit with X11)
                             log::info!("Global menu registered window id: {:?}", id);
                         }
-                        // Set X11 window hints for Plasma appmenu discovery (X11/XWayland only)
-                        // NEVER set X11 hints on native Wayland - only on X11 or XWayland
-                        // We can't reliably distinguish X11 window IDs from Wayland surface IDs by size alone,
-                        // so we only set X11 hints if we're NOT on a native Wayland session
+                        // Set X11 window hints for Plasma appmenu discovery
+                        // Always try to set X11 hints if we have a window ID - the function will fail gracefully
+                        // if we're not on X11. This handles both pure X11 and XWayland cases.
+                        // On native Wayland, this will fail but that's okay - we use Wayland protocols instead.
                         if let Some(window_id) = id {
-                            let is_native_wayland = is_wayland_session();
-                            if !is_native_wayland {
-                                // Only set X11 hints if we're on X11 or XWayland (not native Wayland)
-                                if let Err(err) = set_x11_appmenu_hints(window_id as u32, &service_name) {
-                                    log::debug!("Failed to set X11 appmenu hints (may not be on X11/XWayland): {err}");
-                                }
+                            if let Err(err) = set_x11_appmenu_hints(window_id as u32, &service_name) {
+                                log::debug!("Failed to set X11 appmenu hints (may not be on X11/XWayland): {err}");
                             } else {
-                                log::debug!("Skipping X11 appmenu hints on native Wayland (window_id={})", window_id);
+                                log::debug!("Successfully set X11 appmenu hints on window {}", window_id);
                             }
                         }
-                        // On Wayland, also try to set menu properties via Plasma window management
-                        if is_wayland_session() {
+                        // On native Wayland, also try to set menu properties via Plasma window management
+                        if is_native_wayland {
                             if let Err(err) = set_wayland_appmenu_properties(&connection, &service_name) {
                                 log::debug!("Failed to set Wayland appmenu properties (may not be on Plasma): {err}");
                             }

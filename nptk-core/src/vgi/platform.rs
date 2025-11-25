@@ -6,6 +6,7 @@
 use crate::vgi::surface::{Surface, WinitSurface};
 #[cfg(all(target_os = "linux", feature = "wayland"))]
 use crate::vgi::wayland_surface::WaylandSurface;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 /// Platform type for surface creation.
@@ -23,8 +24,9 @@ impl Platform {
     ///
     /// # Returns
     /// * `Platform::Wayland` if `NPTK_PLATFORM` is set to "wayland" (native Wayland windowing)
+    /// * `Platform::Wayland` if `WAYLAND_DISPLAY` is set (indicates Wayland session, auto-detected)
     /// * `Platform::Winit` if `NPTK_PLATFORM` is set to "winit" (winit-based windowing)
-    /// * `Platform::Winit` otherwise (default, uses winit abstraction, works on X11/Wayland/X11)
+    /// * `Platform::Winit` otherwise (default, uses winit abstraction, works on X11/XWayland)
     pub fn detect() -> Self {
         #[cfg(target_os = "linux")]
         {
@@ -49,6 +51,16 @@ impl Platform {
                             );
                         },
                     }
+                }
+
+                // Check if we're in a Wayland session (auto-detect)
+                if std::env::var("WAYLAND_DISPLAY").is_ok() {
+                    // Only log this message once to avoid spam
+                    static LOGGED: AtomicBool = AtomicBool::new(false);
+                    if !LOGGED.swap(true, Ordering::Relaxed) {
+                        log::info!("WAYLAND_DISPLAY detected, using native Wayland windowing");
+                    }
+                    return Platform::Wayland;
                 }
             }
         }
@@ -86,9 +98,26 @@ pub async fn create_surface(
                 gpu_context.ok_or_else(|| "GpuContext required for Winit platform".to_string())?;
 
             // Create surface using GpuContext's Instance
+            // Note: winit 0.30 with X11-only doesn't implement HasWindowHandle/HasDisplayHandle
+            // We need to use create_surface_unsafe with raw window handles from raw-window-handle
             let instance = gpu_context.instance();
-            let surface = instance
-                .create_surface(window.clone())
+            
+            // Get raw window handles using raw-window-handle crate
+            use raw_window_handle::{HasWindowHandle, HasDisplayHandle};
+            let window_handle = (*window).window_handle()
+                .map_err(|e| format!("Failed to get window handle: {:?}", e))?;
+            let display_handle = (*window).display_handle()
+                .map_err(|e| format!("Failed to get display handle: {:?}", e))?;
+            
+            let raw_window = window_handle.as_raw();
+            let raw_display = display_handle.as_raw();
+            
+            let target = vello::wgpu::SurfaceTargetUnsafe::RawHandle {
+                raw_display_handle: raw_display,
+                raw_window_handle: raw_window,
+            };
+            
+            let surface = unsafe { instance.create_surface_unsafe(target) }
                 .map_err(|e| format!("Failed to create winit surface: {:?}", e))?;
 
             Ok(Surface::Winit(WinitSurface::new(surface, width, height)))
@@ -147,9 +176,26 @@ pub async fn create_surface(
                 gpu_context.ok_or_else(|| "GpuContext required for Winit platform".to_string())?;
 
             // Create surface using GpuContext's Instance
+            // Note: winit 0.30 with X11-only doesn't implement HasWindowHandle/HasDisplayHandle
+            // We need to use create_surface_unsafe with raw window handles from raw-window-handle
             let instance = gpu_context.instance();
-            let surface = instance
-                .create_surface(window.clone())
+            
+            // Get raw window handles using raw-window-handle crate
+            use raw_window_handle::{HasWindowHandle, HasDisplayHandle};
+            let window_handle = (*window).window_handle()
+                .map_err(|e| format!("Failed to get window handle: {:?}", e))?;
+            let display_handle = (*window).display_handle()
+                .map_err(|e| format!("Failed to get display handle: {:?}", e))?;
+            
+            let raw_window = window_handle.as_raw();
+            let raw_display = display_handle.as_raw();
+            
+            let target = vello::wgpu::SurfaceTargetUnsafe::RawHandle {
+                raw_display_handle: raw_display,
+                raw_window_handle: raw_window,
+            };
+            
+            let surface = unsafe { instance.create_surface_unsafe(target) }
                 .map_err(|e| format!("Failed to create winit surface: {:?}", e))?;
 
             Ok(Surface::Winit(WinitSurface::new(surface, width, height)))

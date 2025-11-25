@@ -59,9 +59,16 @@ pub fn get_menu_info() -> Option<(String, String)> {
 /// is aware of the menu information and can set appmenu for existing surfaces.
 ///
 /// This function is safe to call even if the Wayland client is not initialized
-/// or the wayland feature is not enabled.
+/// or the wayland feature is not enabled. It only attempts to connect on actual Wayland sessions.
 #[cfg(all(target_os = "linux", feature = "global-menu"))]
 pub fn notify_wayland_client() {
+    // Only try to notify Wayland client if we're actually on a Wayland session
+    // Check WAYLAND_DISPLAY to avoid trying to connect on X11
+    if std::env::var("WAYLAND_DISPLAY").is_err() {
+        log::debug!("Not on Wayland session (WAYLAND_DISPLAY not set), skipping Wayland client notification");
+        return;
+    }
+
     // Try to get the Wayland client instance and update it with menu info
     // We use catch_unwind because the client might not be initialized yet
     let result = std::panic::catch_unwind(|| {

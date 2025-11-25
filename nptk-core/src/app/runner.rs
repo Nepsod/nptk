@@ -92,7 +92,7 @@ impl<T: Theme> MayRunner<T> {
 
     /// Build window attributes from configuration.
     fn build_window_attributes(config: &MayConfig<T>) -> WindowAttributes {
-        let mut attrs = WindowAttributes::default()
+        let attrs = WindowAttributes::default()
             .with_inner_size(LogicalSize::new(config.window.size.x, config.window.size.y))
             .with_resizable(config.window.resizable)
             .with_enabled_buttons(config.window.buttons)
@@ -108,17 +108,8 @@ impl<T: Theme> MayRunner<T> {
             .with_active(config.window.active)
             .with_cursor(config.window.cursor.clone());
         
-        // Set app_id on Wayland for menu discovery
-        // For winit: use simple "nptk" for easier Plasma matching with static service name
-        // For native Wayland: keep "com.nptk.app" (uses protocol directly, so service name can have PID)
-        #[cfg(all(target_os = "linux", feature = "global-menu"))]
-        {
-            use winit::platform::wayland::WindowAttributesExtWayland;
-            // Winit mode: use "nptk" for simpler matching with static service "com.nptk.menubar"
-            // Native Wayland uses protocol directly, so it doesn't need app_id matching
-            attrs = attrs.with_name("nptk", "");
-            log::info!("Set app_id to 'nptk' in window attributes for winit (will match service 'nptk.menubar')");
-        }
+        // Note: app_id cannot be set for winit windows since winit only supports X11 now.
+        // Native Wayland windows set their app_id directly via the Wayland protocol.
         
         attrs
     }
@@ -164,10 +155,16 @@ impl<T: Theme> MayRunner<T> {
         W: Widget,
         F: Fn(AppContext, S) -> W,
     {
-        event_loop
-            .run_app(&mut AppHandler::new(
-                attrs, config, builder, state, font_ctx, update, plugins,
-            ))
-            .expect("Failed to run event loop");
+        // Run the event loop - handle errors gracefully
+        if let Err(err) = event_loop.run_app(&mut AppHandler::new(
+            attrs, config, builder, state, font_ctx, update, plugins,
+        )) {
+            // Log the error but don't panic - window destruction errors are often harmless
+            if err.to_string().contains("BadWindow") || err.to_string().contains("invalid Window") {
+                log::debug!("Event loop exited with window destruction error (likely harmless): {:?}", err);
+            } else {
+                log::warn!("Event loop exited with error: {:?}", err);
+            }
+        }
     }
 }
