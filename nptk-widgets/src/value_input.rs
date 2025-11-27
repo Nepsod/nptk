@@ -550,6 +550,7 @@ impl Widget for ValueInput {
                 Brush::Solid(text_color),
                 transform,
                 true, // Hinting
+                None, // Value input handles its own scrolling/clipping
             );
         }
 

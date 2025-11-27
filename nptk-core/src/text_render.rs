@@ -28,6 +28,9 @@ impl TextRenderContext {
     }
 
     /// Render text using Parley for proper layout and glyph mapping
+    /// 
+    /// # Arguments
+    /// * `max_width` - Optional maximum width for text wrapping. If None, text will not wrap.
     pub fn render_text(
         &mut self,
         font_cx: &mut FontContext,
@@ -38,15 +41,11 @@ impl TextRenderContext {
         color: Brush,
         transform: Affine,
         hint: bool,
+        max_width: Option<f32>,
     ) {
         if text.is_empty() {
             return;
         }
-
-        log::debug!(
-            "TextRenderContext::render_text called with text: '{}'",
-            text
-        );
 
         // Extract Scene from Graphics for Parley rendering
         // Parley needs direct Scene access for glyph drawing
@@ -61,6 +60,7 @@ impl TextRenderContext {
                 color.clone(),
                 transform,
                 hint,
+                max_width,
             ) {
                 log::debug!("Parley rendering failed, using simple fallback");
                 self.render_simple_fallback(
@@ -83,9 +83,8 @@ impl TextRenderContext {
         color: Brush,
         transform: Affine,
         hint: bool,
+        max_width: Option<f32>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        log::debug!("Rendering text: '{}' with font size: {}", text, font_size);
-
         // Use our existing font context but ensure it has system fonts loaded
         let display_scale = 1.0;
         let mut parley_font_cx = _font_cx.create_parley_font_context();
@@ -98,8 +97,12 @@ impl TextRenderContext {
 
         let mut layout = builder.build(text);
 
-        // Perform layout operations
-        layout.break_all_lines(None);
+        // Perform layout operations with optional width constraint for wrapping
+        if let Some(width) = max_width {
+            layout.break_all_lines(Some(width));
+        } else {
+            layout.break_all_lines(None);
+        }
         layout.align(None, Alignment::Start, Default::default());
 
         // Create brushes array

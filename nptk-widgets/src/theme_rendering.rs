@@ -634,6 +634,7 @@ impl ThemeTextRenderer {
             Brush::Solid(color),
             transform,
             hinting,
+            None, // No width constraint for theme rendering
         );
 
         color
@@ -697,6 +698,7 @@ impl ThemeTextRenderer {
             Brush::Solid(color),
             transform,
             hinting,
+            None, // No width constraint for theme rendering
         );
 
         color

@@ -120,5 +120,6 @@ impl Application for TabsApp {
 }
 
 fn main() {
+    let _ = env_logger::try_init();
     TabsApp.run(())
 }

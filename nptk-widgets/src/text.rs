@@ -109,18 +109,26 @@ impl Widget for Text {
                 .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
         };
 
-        log::info!(
-            "Text widget rendering: '{}' at absolute position: ({:.1}, {:.1})",
-            *text,
-            layout_node.layout.location.x,
-            layout_node.layout.location.y
-        );
-
         // Use TextRenderContext for proper text rendering
         let transform = nptk_core::vg::kurbo::Affine::translate((
             layout_node.layout.location.x as f64,
             layout_node.layout.location.y as f64,
         ));
+
+        // Get the available width for text wrapping
+        // The layout size is already computed by Taffy and accounts for padding
+        // Taffy's layout.size.width is the content area width (after padding)
+        let max_width = if layout_node.layout.size.width > 0.0 {
+            Some(layout_node.layout.size.width)
+        } else {
+            // Fallback: if width is 0, text won't wrap
+            // This can happen if Taffy hasn't computed width yet or widget is in a flex container
+            log::warn!(
+                "Text widget has zero width, text will not wrap. Layout: {:?}",
+                layout_node.layout
+            );
+            None
+        };
 
         self.text_render_context.render_text(
             &mut info.font_context,
@@ -131,6 +139,7 @@ impl Widget for Text {
             Brush::Solid(color),
             transform,
             hinting,
+            max_width,
         );
     }
 
@@ -146,12 +155,20 @@ impl Widget for Text {
 
         let style = self.style.get().deref().clone();
 
+        // Default to filling available width if not explicitly set
+        let width = if style.size.x == Dimension::auto() {
+            Dimension::percent(1.0) // Fill available space by default
+        } else {
+            style.size.x // Keep user-defined width
+        };
+
         StyleNode {
             style: LayoutStyle {
                 size: Vector2::new(
-                    style.size.x, // Keep user-defined width or default
+                    width,
                     Dimension::length(calculated_height),
                 ),
+                flex_grow: if style.size.x == Dimension::auto() { 1.0 } else { style.flex_grow }, // Grow to fill space if auto width
                 ..style
             },
             children: Vec::new(),

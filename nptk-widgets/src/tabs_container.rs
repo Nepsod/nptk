@@ -5,7 +5,7 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::vg::kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
-use nptk_core::vg::peniko::{Brush, Color, Fill};
+use nptk_core::vg::peniko::{Brush, Color, Fill, Mix};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
@@ -864,6 +864,7 @@ impl TabsContainer {
             Brush::Solid(color),
             transform,
             true, // hinting
+            None, // No width constraint for tab labels
         );
     }
 }
@@ -1198,6 +1199,9 @@ impl Widget for TabsContainer {
                 &content_bounds.to_path(0.1),
             );
 
+            // Apply clipping to content area to prevent content from leaking outside bounds
+            graphics.push_layer(Mix::Clip, 1.0, Affine::IDENTITY, &content_bounds.to_path(0.1));
+
             // Render content directly in the content area using child layout if available
             if !layout.children.is_empty() {
                 // Use the first child's layout (which should be positioned correctly)
@@ -1210,6 +1214,9 @@ impl Widget for TabsContainer {
                     .content
                     .render(graphics, theme, layout, info, context);
             }
+
+            // Pop the clipping layer
+            graphics.pop_layer();
         }
     }
 

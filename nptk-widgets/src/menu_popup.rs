@@ -226,6 +226,7 @@ impl MenuPopup {
             Brush::Solid(color),
             transform,
             true, // hinting
+            None, // No width constraint for menu popup items
         );
     }
 }

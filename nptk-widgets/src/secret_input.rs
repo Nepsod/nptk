@@ -500,6 +500,7 @@ impl Widget for SecretInput {
                 Brush::Solid(text_color),
                 transform,
                 true, // hint
+                None, // Secret input handles its own scrolling/clipping
             );
         }
 

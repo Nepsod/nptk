@@ -398,6 +398,7 @@ impl Widget for TextInput {
                 Brush::Solid(text_color),
                 transform,
                 true, // hinting
+                None, // Text input handles its own scrolling/clipping
             );
             log::debug!(
                 "TextInput: TextRenderContext.render_text call completed for: '{}'",
