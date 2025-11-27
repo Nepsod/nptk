@@ -645,16 +645,16 @@ impl Widget for MenuBar {
             }
         }
 
+        #[cfg(feature = "global-menu")]
+        {
+            update |= self.process_global_menu(info);
+        }
+
         // Don't process other events if not visible
         // Note: If importer is detected and user presses F10, importer_detected is cleared,
         // so we just need to check is_visible()
         if !self.is_visible() {
             return update;
-        }
-
-        #[cfg(feature = "global-menu")]
-        {
-            update |= self.process_global_menu(info);
         }
 
         // Get mouse position
