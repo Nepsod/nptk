@@ -380,6 +380,14 @@ where
                         },
                     }
                 },
+                InputEvent::Touch(_touch_event) => {
+                    // Touch input handling - TODO: implement touch event processing
+                    // For now, touch events are ignored
+                },
+                InputEvent::Tablet(_tablet_event) => {
+                    // Tablet input handling - TODO: implement tablet event processing
+                    // For now, tablet events are ignored
+                },
             }
         }
 

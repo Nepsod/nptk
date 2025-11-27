@@ -28,6 +28,8 @@ pub mod renderer;
 pub mod scene;
 pub mod surface;
 #[cfg(all(target_os = "linux", feature = "wayland"))]
+pub mod wayland;
+#[cfg(all(target_os = "linux", feature = "wayland"))]
 pub mod wayland_surface;
 #[cfg(all(target_os = "linux", feature = "wayland"))]
 pub(crate) mod wl_client;

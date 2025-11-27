@@ -65,3 +65,4 @@ impl<'a> AppMenuRegistrar<'a> {
     }
 }
 
+
