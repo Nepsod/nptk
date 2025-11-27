@@ -55,6 +55,8 @@ pub struct MenuBar {
     last_window_id: Option<u64>,
     #[cfg(feature = "global-menu")]
     importer_detected: StateSignal<bool>,
+    #[cfg(feature = "global-menu")]
+    global_menu_enabled: bool,
     layout_style: MaybeSignal<LayoutStyle>,
     visible: StateSignal<bool>,
     previous_visible: bool,
@@ -210,6 +212,8 @@ impl MenuBar {
             last_window_id: None,
             #[cfg(feature = "global-menu")]
             importer_detected: StateSignal::new(false),
+            #[cfg(feature = "global-menu")]
+            global_menu_enabled: true,
             hovered_index: None,
             open_menu_index: None,
             hovered_submenu_index: None,
@@ -245,7 +249,17 @@ impl MenuBar {
     #[cfg(feature = "global-menu")]
     /// Enable integration with the system-wide global menu via StatusNotifierItem + DBusMenu.
     pub fn with_global_menu(mut self) -> Self {
+        self.global_menu_enabled = true;
         self.enable_global_menu();
+        self
+    }
+
+    #[cfg(feature = "global-menu")]
+    /// Disable integration with the system-wide global menu.
+    pub fn without_global_menu(mut self) -> Self {
+        self.global_menu_enabled = false;
+        // If bridge was already started, we can't easily stop it, but we can stop updating it
+        // Ideally we would drop the bridge here if it was an Option<Bridge> that we own fully
         self
     }
 
@@ -834,6 +848,10 @@ impl MenuBar {
 
     #[cfg(feature = "global-menu")]
     fn process_global_menu(&mut self, info: &AppInfo) -> Update {
+        if !self.global_menu_enabled {
+            return Update::empty();
+        }
+
         let mut update = Update::empty();
         let bridge_was_none = self.global_menu_bridge.is_none();
         self.ensure_global_menu_bridge();
