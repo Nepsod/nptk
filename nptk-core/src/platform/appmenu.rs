@@ -1,7 +1,7 @@
 //! Public API for Wayland appmenu integration.
 //!
 //! This module provides a public interface for setting application menus
-//! on Wayland surfaces. The actual implementation is in the private `wayland` module.
+//! on Wayland surfaces. The actual implementation is in the `wayland` module.
 
 #![cfg(all(target_os = "linux", feature = "global-menu"))]
 
@@ -10,7 +10,7 @@ use wayland_client::protocol::wl_surface;
 /// Set the application menu for a Wayland surface.
 ///
 /// This function should be called by the menubar module when menu info is available.
-/// It uses VGI's internal Wayland client to set the appmenu protocol.
+/// It uses the platform's Wayland client to set the appmenu protocol.
 ///
 /// # Arguments
 /// * `surface` - The Wayland surface to set the appmenu on
@@ -25,7 +25,7 @@ pub fn set_appmenu_for_surface(
     service: String,
     path: String,
 ) -> Result<(), String> {
-    use crate::vgi::wayland::client::WaylandClient;
+    use crate::platform::wayland::client::WaylandClient;
     let client = WaylandClient::instance();
     client.set_appmenu_for_surface_with_info(surface, service, path)
 }
@@ -38,7 +38,7 @@ pub fn set_appmenu_for_surface(
 /// * `service` - The D-Bus service name for the menu
 /// * `path` - The D-Bus object path for the menu
 pub fn update_appmenu_for_all_surfaces(service: String, path: String) {
-    use crate::vgi::wayland::client::WaylandClient;
+    use crate::platform::wayland::client::WaylandClient;
     let client = WaylandClient::instance();
     client.update_appmenu_for_all_surfaces(service, path);
 }

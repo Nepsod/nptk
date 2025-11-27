@@ -60,5 +60,11 @@ pub mod text_render;
 /// including scene management, renderer management, and widget drawing APIs.
 pub mod vgi;
 
+/// Contains platform abstraction for windowing and input.
+///
+/// This module provides platform detection and windowing surface implementations
+/// for different platforms (Wayland, Winit, etc.).
+pub mod platform;
+
 /// Re-export BrushIndex for use in other modules
 pub use text_render::BrushIndex;

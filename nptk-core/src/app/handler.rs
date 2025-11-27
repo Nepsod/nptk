@@ -6,7 +6,8 @@ use std::time::{Duration, Instant};
 
 use crate::vgi::graphics_from_scene;
 use crate::vgi::{DeviceHandle, GpuContext};
-use crate::vgi::{Platform, Renderer, RendererOptions, Scene, Surface, SurfaceTrait};
+use crate::vgi::{Renderer, RendererOptions, Scene, Surface, SurfaceTrait};
+use crate::platform::Platform;
 use nalgebra::Vector2;
 use taffy::{
     AvailableSpace, Dimension, NodeId, PrintTree, Size, Style, TaffyResult, TaffyTree,
@@ -30,7 +31,7 @@ use crate::config::MayConfig;
 use crate::layout::{Display, LengthPercentage, LayoutNode, StyleNode};
 use crate::plugin::PluginManager;
 #[cfg(all(target_os = "linux", feature = "wayland"))]
-use crate::vgi::wayland_surface::{InputEvent, KeyboardEvent, PointerEvent};
+use crate::platform::wayland::events::{InputEvent, KeyboardEvent, PointerEvent};
 use crate::widget::Widget;
 use nptk_theme::theme::Theme;
 #[cfg(target_os = "linux")]
@@ -137,7 +138,7 @@ where
 
     #[cfg(all(target_os = "linux", feature = "wayland"))]
     fn process_wayland_input_events(&mut self) {
-        use crate::vgi::Platform;
+        use crate::platform::Platform;
         use wayland_client::protocol::{wl_keyboard, wl_pointer};
         use winit::event::ElementState;
         use winit::event::MouseButton;
@@ -1778,7 +1779,7 @@ where
 
         // Create surface using platform-specific function
         self.surface = Some(
-            crate::vgi::platform::create_surface_blocking(
+            crate::platform::create_surface_blocking(
                 platform,
                 self.window.clone(),
                 width,
@@ -2160,7 +2161,7 @@ where
         // Drive app updates even if no winit window exists (Wayland-native path)
         #[cfg(all(target_os = "linux", feature = "wayland"))]
         {
-            if crate::vgi::Platform::detect() == crate::vgi::Platform::Wayland {
+            if crate::platform::Platform::detect() == crate::platform::Platform::Wayland {
                 // Always poll when running native Wayland so we can pump the custom
                 // event queue even when winit has no Wayland windows to watch.
                 event_loop.set_control_flow(ControlFlow::Poll);

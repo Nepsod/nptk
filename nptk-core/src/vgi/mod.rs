@@ -23,23 +23,14 @@ use vello::peniko::{Brush, Fill};
 pub mod backend;
 pub mod gpu_context;
 pub mod options;
-pub mod platform;
 pub mod renderer;
 pub mod scene;
 pub mod surface;
-#[cfg(all(target_os = "linux", feature = "wayland"))]
-pub mod wayland;
-#[cfg(all(target_os = "linux", feature = "wayland"))]
-pub mod wayland_surface;
-#[cfg(all(target_os = "linux", feature = "wayland"))]
-pub(crate) mod wl_client;
-#[cfg(all(target_os = "linux", feature = "global-menu"))]
-pub mod appmenu;
 
 pub use backend::Backend;
 pub use gpu_context::{DeviceHandle, GpuContext};
 pub use self::options::RendererOptions;
-pub use platform::Platform;
+pub use crate::platform::Platform;
 pub use renderer::{Renderer, RendererTrait};
 pub use scene::{Scene, SceneTrait};
 pub use surface::{Surface, SurfaceTrait};

@@ -3,70 +3,62 @@
 //! This module provides functions to detect the current platform (Winit vs Wayland)
 //! and create appropriate surfaces based on the platform.
 
-use crate::vgi::surface::{Surface, WinitSurface};
-#[cfg(all(target_os = "linux", feature = "wayland"))]
-use crate::vgi::wayland_surface::WaylandSurface;
+use crate::platform::Platform;
+use crate::vgi::{GpuContext, Surface};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-/// Platform type for surface creation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Platform {
-    /// Use winit-based surface (works on X11/Wayland via winit abstraction)
-    Winit,
-    /// Use native Wayland surface (direct Wayland protocol)
+#[cfg(all(target_os = "linux", feature = "wayland"))]
+use crate::platform::wayland::WaylandSurface;
+#[cfg(target_os = "linux")]
+use crate::platform::winit::WinitSurface;
+
+/// Detect the platform to use based on environment variables and system state.
+///
+/// # Returns
+/// * `Platform::Wayland` if `NPTK_PLATFORM` is set to "wayland" (native Wayland windowing)
+/// * `Platform::Wayland` if `WAYLAND_DISPLAY` is set (indicates Wayland session, auto-detected)
+/// * `Platform::Winit` if `NPTK_PLATFORM` is set to "winit" (winit-based windowing)
+/// * `Platform::Winit` otherwise (default, uses winit abstraction, works on X11/XWayland)
+pub fn detect_platform() -> Platform {
     #[cfg(target_os = "linux")]
-    Wayland,
-}
-
-impl Platform {
-    /// Detect the platform to use based on environment variables and system state.
-    ///
-    /// # Returns
-    /// * `Platform::Wayland` if `NPTK_PLATFORM` is set to "wayland" (native Wayland windowing)
-    /// * `Platform::Wayland` if `WAYLAND_DISPLAY` is set (indicates Wayland session, auto-detected)
-    /// * `Platform::Winit` if `NPTK_PLATFORM` is set to "winit" (winit-based windowing)
-    /// * `Platform::Winit` otherwise (default, uses winit abstraction, works on X11/XWayland)
-    pub fn detect() -> Self {
-        #[cfg(target_os = "linux")]
+    {
+        #[cfg(feature = "wayland")]
         {
-            #[cfg(feature = "wayland")]
-            {
-                // Check if platform is explicitly requested via NPTK_PLATFORM
-                if let Ok(val) = std::env::var("NPTK_PLATFORM") {
-                    let val_lower = val.to_lowercase();
-                    match val_lower.as_str() {
-                        "wayland" => {
-                            log::debug!("Native Wayland windowing requested via NPTK_PLATFORM=wayland");
-                            return Platform::Wayland;
-                        },
-                        "winit" => {
-                            log::debug!("Winit windowing requested via NPTK_PLATFORM=winit");
-                            return Platform::Winit;
-                        },
-                        _ => {
-                            log::warn!(
-                                "Unknown NPTK_PLATFORM value '{}'; defaulting to Winit",
-                                val
-                            );
-                        },
-                    }
-                }
-
-                // Check if we're in a Wayland session (auto-detect)
-                if std::env::var("WAYLAND_DISPLAY").is_ok() {
-                    // Only log this message once to avoid spam
-                    static LOGGED: AtomicBool = AtomicBool::new(false);
-                    if !LOGGED.swap(true, Ordering::Relaxed) {
-                        log::info!("WAYLAND_DISPLAY detected, using native Wayland windowing");
-                    }
-                    return Platform::Wayland;
+            // Check if platform is explicitly requested via NPTK_PLATFORM
+            if let Ok(val) = std::env::var("NPTK_PLATFORM") {
+                let val_lower = val.to_lowercase();
+                match val_lower.as_str() {
+                    "wayland" => {
+                        log::debug!("Native Wayland windowing requested via NPTK_PLATFORM=wayland");
+                        return Platform::Wayland;
+                    },
+                    "winit" => {
+                        log::debug!("Winit windowing requested via NPTK_PLATFORM=winit");
+                        return Platform::Winit;
+                    },
+                    _ => {
+                        log::warn!(
+                            "Unknown NPTK_PLATFORM value '{}'; defaulting to Winit",
+                            val
+                        );
+                    },
                 }
             }
-        }
 
-        Platform::Winit
+            // Check if we're in a Wayland session (auto-detect)
+            if std::env::var("WAYLAND_DISPLAY").is_ok() {
+                // Only log this message once to avoid spam
+                static LOGGED: AtomicBool = AtomicBool::new(false);
+                if !LOGGED.swap(true, Ordering::Relaxed) {
+                    log::info!("WAYLAND_DISPLAY detected, using native Wayland windowing");
+                }
+                return Platform::Wayland;
+            }
+        }
     }
+
+    Platform::Winit
 }
 
 /// Create a surface based on the platform.
@@ -77,10 +69,10 @@ impl Platform {
 /// * `width` - Surface width in pixels
 /// * `height` - Surface height in pixels
 /// * `title` - Window title (used for Wayland platform)
-/// * `render_ctx` - Render context (required for Winit platform, ignored for Wayland)
+/// * `gpu_context` - GPU context (required for both platforms)
 ///
 /// # Returns
-/// * `Ok(Surface)` if creation succeeded
+/// * `Ok(Surface)` if creation succeeded (VGI's Surface enum wrapping platform surface)
 /// * `Err(String)` if creation failed
 #[cfg(target_os = "linux")]
 pub async fn create_surface(
@@ -89,7 +81,7 @@ pub async fn create_surface(
     width: u32,
     height: u32,
     title: &str,
-    gpu_context: Option<&crate::vgi::GpuContext>,
+    gpu_context: Option<&GpuContext>,
 ) -> Result<Surface, String> {
     match platform {
         Platform::Winit => {
@@ -148,7 +140,7 @@ pub fn create_surface_blocking(
     width: u32,
     height: u32,
     title: &str,
-    gpu_context: Option<&crate::vgi::GpuContext>,
+    gpu_context: Option<&GpuContext>,
 ) -> Result<Surface, String> {
     crate::tasks::block_on(create_surface(
         platform,
@@ -167,7 +159,7 @@ pub async fn create_surface(
     width: u32,
     height: u32,
     _title: &str,
-    gpu_context: Option<&crate::vgi::GpuContext>,
+    gpu_context: Option<&GpuContext>,
 ) -> Result<Surface, String> {
     match platform {
         Platform::Winit => {
@@ -210,7 +202,7 @@ pub fn create_surface_blocking(
     width: u32,
     height: u32,
     _title: &str,
-    gpu_context: Option<&crate::vgi::GpuContext>,
+    gpu_context: Option<&GpuContext>,
 ) -> Result<Surface, String> {
     crate::tasks::block_on(create_surface(
         platform,
@@ -221,3 +213,6 @@ pub fn create_surface_blocking(
         gpu_context,
     ))
 }
+
+// PlatformSurface enum removed - VGI's Surface enum wraps platform surfaces directly
+
