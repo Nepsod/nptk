@@ -11,6 +11,8 @@ use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use nptk_core::text_render::TextRenderContext;
+use nptk_core::app::font_ctx::FontContext;
 use std::sync::Arc;
 
 /// Position of tabs in the TabsContainer
@@ -94,6 +96,17 @@ pub struct TabsContainer {
     pressed_tab: Option<usize>,
     /// Whether close buttons are hovered
     hovered_close: Option<usize>,
+    
+    // Scrolling
+    scroll_offset: f32,
+    max_scroll: f32,
+    
+    // Reordering
+    dragging_tab: Option<usize>,
+    drag_offset: f32, // Offset of mouse from tab start when drag began
+    
+    // Text rendering
+    text_render_context: TextRenderContext,
 }
 
 impl TabsContainer {
@@ -110,6 +123,11 @@ impl TabsContainer {
             hovered_tab: None,
             pressed_tab: None,
             hovered_close: None,
+            scroll_offset: 0.0,
+            max_scroll: 0.0,
+            dragging_tab: None,
+            drag_offset: 0.0,
+            text_render_context: TextRenderContext::new(),
         }
     }
 
@@ -148,8 +166,44 @@ impl TabsContainer {
         }
     }
 
+    /// Calculate the width of a tab based on its label text
+    fn calculate_tab_width(&self, label: &str, info: &mut AppInfo) -> f32 {
+        let font_size = 14.0;
+        let padding = 20.0; // Left + right padding
+        let close_button_width = 20.0; // Space for close button if present
+        
+        // Use TextRenderContext to measure text width
+        let text_width = self.text_render_context.measure_text_width(
+            &mut info.font_context,
+            label,
+            font_size,
+        );
+        
+        let total_width = text_width + padding;
+        
+        // Add space for close button if tab has one
+        // We'll check this when rendering, but for now assume no close button
+        // You could pass the tab item here to check `on_close.is_some()`
+        
+        total_width.max(80.0) // Minimum tab width
+    }
+
+    /// Calculate total width needed for all tabs
+    fn calculate_total_tabs_width(&self, info: &mut AppInfo) -> f32 {
+        self.tabs.iter()
+            .map(|tab| {
+                let base_width = self.calculate_tab_width(&tab.label, info);
+                if tab.on_close.is_some() {
+                    base_width + 20.0 // Add space for close button
+                } else {
+                    base_width
+                }
+            })
+            .sum()
+    }
+
     /// Get tab bounds for the given index within the tab bar area
-    fn get_tab_bounds(&self, layout: &LayoutNode, index: usize) -> Rect {
+    fn get_tab_bounds(&self, layout: &LayoutNode, index: usize, info: &mut AppInfo) -> Rect {
         let tab_bar_bounds = self.get_tab_bar_bounds(layout);
         let tab_count = self.tabs.len();
 
@@ -159,16 +213,38 @@ impl TabsContainer {
 
         match self.tab_position {
             TabPosition::Top | TabPosition::Bottom => {
-                // Horizontal tabs - distribute evenly across tab bar width
-                let tab_width = tab_bar_bounds.width() / tab_count as f64;
-                let tab_x = tab_bar_bounds.x0 + (index as f64 * tab_width);
-
-                Rect::new(
-                    tab_x,
-                    tab_bar_bounds.y0,
-                    tab_x + tab_width,
-                    tab_bar_bounds.y1,
-                )
+                // Horizontal tabs - use intrinsic widths + scrolling
+                let mut current_x = tab_bar_bounds.x0 - self.scroll_offset as f64;
+                
+                for i in 0..index {
+                    if let Some(tab) = self.tabs.get(i) {
+                        let tab_width = self.calculate_tab_width(&tab.label, info) as f64;
+                        let width_with_close = if tab.on_close.is_some() {
+                            tab_width + 20.0
+                        } else {
+                            tab_width
+                        };
+                        current_x += width_with_close;
+                    }
+                }
+                
+                if let Some(tab) = self.tabs.get(index) {
+                    let tab_width = self.calculate_tab_width(&tab.label, info) as f64;
+                    let width_with_close = if tab.on_close.is_some() {
+                        tab_width + 20.0
+                    } else {
+                        tab_width
+                    };
+                    
+                    Rect::new(
+                        current_x,
+                        tab_bar_bounds.y0,
+                        current_x + width_with_close,
+                        tab_bar_bounds.y1,
+                    )
+                } else {
+                    Rect::ZERO
+                }
             },
             TabPosition::Left | TabPosition::Right => {
                 // Vertical tabs - distribute evenly across tab bar height
@@ -361,7 +437,7 @@ impl Widget for TabsContainer {
 
         // Draw tabs
         for (index, tab) in self.tabs.iter().enumerate() {
-            let tab_bounds = self.get_tab_bounds(layout, index);
+            let tab_bounds = self.get_tab_bounds(layout, index, _info);
             let is_active = index == self.active_tab();
             let is_hovered = self.hovered_tab == Some(index);
             let is_pressed = self.pressed_tab == Some(index);
@@ -542,6 +618,15 @@ impl Widget for TabsContainer {
     fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
+        // Calculate max scroll based on total tabs width vs available width
+        let tab_bar_bounds = self.get_tab_bar_bounds(layout);
+        let total_tabs_width = self.calculate_total_tabs_width(info);
+        let available_width = tab_bar_bounds.width() as f32;
+        self.max_scroll = (total_tabs_width - available_width).max(0.0);
+        
+        // Clamp scroll offset
+        self.scroll_offset = self.scroll_offset.clamp(0.0, self.max_scroll);
+
         // Update mouse position
         if let Some(cursor_pos) = info.cursor_pos {
             self.mouse_pos = Vector2::new(cursor_pos.x as f32, cursor_pos.y as f32);
@@ -552,7 +637,7 @@ impl Widget for TabsContainer {
         self.hovered_close = None;
 
         for (index, tab) in self.tabs.iter().enumerate() {
-            let tab_bounds = self.get_tab_bounds(layout, index);
+            let tab_bounds = self.get_tab_bounds(layout, index, info);
 
             if tab_bounds.contains(Point::new(self.mouse_pos.x as f64, self.mouse_pos.y as f64)) {
                 self.hovered_tab = Some(index);
@@ -570,6 +655,53 @@ impl Widget for TabsContainer {
             }
         }
 
+        // Handle mouse wheel scrolling (for horizontal tabs only)
+        if matches!(self.tab_position, TabPosition::Top | TabPosition::Bottom) {
+            for scroll_delta in &info.mouse_scroll_delta {
+                match scroll_delta {
+                    nptk_core::window::MouseScrollDelta::LineDelta(_, y) => {
+                        // Scroll horizontally with vertical wheel
+                        self.scroll_offset -= y * 30.0; // 30 pixels per line
+                        self.scroll_offset = self.scroll_offset.clamp(0.0, self.max_scroll);
+                        update |= Update::DRAW;
+                    },
+                    nptk_core::window::MouseScrollDelta::PixelDelta(delta) => {
+                        self.scroll_offset -= delta.y as f32;
+                        self.scroll_offset = self.scroll_offset.clamp(0.0, self.max_scroll);
+                        update |= Update::DRAW;
+                    },
+                }
+            }
+        }
+
+        // Handle tab dragging for reordering
+        if let Some(cursor_pos) = info.cursor_pos {
+            if let Some(dragging_index) = self.dragging_tab {
+                // We're dragging a tab - check if we should reorder
+                let mut target_index = dragging_index;
+                
+                // Find which tab position the mouse is over
+                for (i, _) in self.tabs.iter().enumerate() {
+                    let bounds = self.get_tab_bounds(layout, i, info);
+                    if cursor_pos.x >= bounds.x0 as f64 && cursor_pos.x <= bounds.x1 as f64 {
+                        target_index = i;
+                        break;
+                    }
+                }
+                
+                // Reorder if different from current position
+                if target_index != dragging_index {
+                    let tab = self.tabs.remove(dragging_index);
+                    self.tabs.insert(target_index, tab);
+                    self.dragging_tab = Some(target_index);
+                    update |= Update::DRAW;
+                }
+            }
+        }
+
+        // Pre-calculate cursor position for drag offset calculation to avoid borrow issues
+        let cursor_pos_for_drag = info.cursor_pos;
+
         // Handle mouse clicks
         for (_, button, state) in &info.buttons {
             if *button == MouseButton::Left {
@@ -584,6 +716,24 @@ impl Widget for TabsContainer {
                                     update |= callback();
                                 }
                             } else {
+                                // Start dragging for reorder - use pre-calculated bounds
+                                if let Some(cursor_pos) = cursor_pos_for_drag {
+                                    // Calculate drag offset manually to avoid borrowing issues
+                                    let tab_bar_bounds = self.get_tab_bar_bounds(layout);
+                                    let mut current_x = tab_bar_bounds.x0 - self.scroll_offset as f64;
+                                    
+                                    for i in 0..hovered_tab {
+                                        if let Some(tab) = self.tabs.get(i) {
+                                            // Simple approximation - use fixed width to avoid mutable borrow
+                                            let tab_width = 100.0f64; // Approximate width
+                                            current_x += tab_width;
+                                        }
+                                    }
+                                    
+                                    self.dragging_tab = Some(hovered_tab);
+                                    self.drag_offset = (cursor_pos.x - current_x) as f32;
+                                }
+                                
                                 // Switch to clicked tab
                                 self.set_active_tab(hovered_tab);
                                 update |= Update::DRAW;
@@ -592,6 +742,7 @@ impl Widget for TabsContainer {
                     },
                     ElementState::Released => {
                         self.pressed_tab = None;
+                        self.dragging_tab = None;
                     },
                 }
             }
