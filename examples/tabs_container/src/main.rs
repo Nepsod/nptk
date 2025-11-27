@@ -36,19 +36,45 @@ impl Application for TabsApp {
 
         // Second container - dynamic tabs with some initial tabs
         let dynamic_tab1 = TabItem::new("dyn_tab1", "Dynamic Tab 1", Text::new("This is a dynamic tab!".to_string()));
-        let dynamic_tab2 = TabItem::new("dyn_tab2", "Dynamic Tab 2", Text::new("Another dynamic tab.".to_string()))
-            .with_close_callback(|| {
-                println!("Dynamic tab 2 close button clicked!");
-                Update::empty()
-            });
+        let dynamic_tab2 = TabItem::new("dyn_tab2", "Dynamic Tab 2", Text::new("Another dynamic tab.".to_string()));
         
         let dynamic_container = TabsContainer::new_dynamic(&context, vec![dynamic_tab1, dynamic_tab2])
             .with_position(TabPosition::Top)
-            .with_tab_size(40.0)
-            .with_layout_style(LayoutStyle {
-                size: Vector2::new(Dimension::percent(1.0), Dimension::percent(1.0)),
-                ..Default::default()
-            });
+            .with_tab_size(40.0);
+        
+        // Get the shared tabs state to add new tabs (thread-safe)
+        let tabs_shared = dynamic_container.get_tabs_shared().expect("Dynamic container should have shared state");
+        let tab_counter = std::sync::Arc::new(std::sync::Mutex::new(2usize));
+        
+        let dynamic_container = dynamic_container.with_action_button({
+            let tab_counter = tab_counter.clone();
+            let tabs_shared = tabs_shared.clone();
+            move || {
+                let counter = {
+                    let mut c = tab_counter.lock().unwrap();
+                    *c += 1;
+                    *c
+                };
+                let tab_id = format!("dyn_tab_{}", counter);
+                let tab_label = format!("Dynamic Tab {}", counter);
+                
+                // Add new tab data to the shared state (thread-safe)
+                if let Ok(mut tabs) = tabs_shared.lock() {
+                    tabs.push(nptk::widgets::tabs_container::TabData {
+                        id: tab_id.clone(),
+                        label: tab_label.clone(),
+                        enabled: true,
+                    });
+                }
+                
+                println!("Action button clicked! Added: {}", tab_label);
+                Update::EVAL | Update::LAYOUT | Update::DRAW
+            }
+        })
+        .with_layout_style(LayoutStyle {
+            size: Vector2::new(Dimension::percent(1.0), Dimension::percent(1.0)),
+            ..Default::default()
+        });
 
         // Create a container for the dynamic tabs
         let dynamic_section = Container::new(vec![

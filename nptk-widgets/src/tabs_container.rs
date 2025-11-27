@@ -12,6 +12,7 @@ use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use nptk_core::text_render::TextRenderContext;
+use crate::text::Text;
 use std::sync::{Arc, Mutex};
 
 /// Position of tabs in the TabsContainer
@@ -310,9 +311,13 @@ impl TabsContainer {
                     }
                 }
                 
-                // Sync to shared
+                // Sync to shared - clone signal data first to avoid borrow issues
+                let signal_data: Vec<TabData> = {
+                    let signal_ref = signal.get();
+                    signal_ref.iter().cloned().collect()
+                };
                 if let Ok(mut shared_tabs) = shared.lock() {
-                    *shared_tabs = signal.get().iter().cloned().collect();
+                    *shared_tabs = signal_data;
                 }
                 
                 self.validate_state();
@@ -327,6 +332,15 @@ impl TabsContainer {
         match &self.mode {
             TabsMode::Static => None,
             TabsMode::Dynamic(signal, _, _) => Some(signal.clone()),
+        }
+    }
+
+    /// Get the shared tabs state (dynamic mode only)
+    /// Returns Arc<Mutex<Vec<TabData>>> for thread-safe access
+    pub fn get_tabs_shared(&self) -> Option<Arc<Mutex<Vec<TabData>>>> {
+        match &self.mode {
+            TabsMode::Static => None,
+            TabsMode::Dynamic(_, shared, _) => Some(shared.clone()),
         }
     }
 
@@ -501,41 +515,59 @@ impl TabsContainer {
                     tab.label = tab_data.label.clone();
                     tab.enabled = tab_data.enabled;
                     
-                    // If tab has a close callback, wrap it to update Arc<Mutex> first
-                    if tab.on_close.is_some() {
-                        let tab_id = tab.id.clone();
-                        let shared_clone = shared.clone();
-                        
-                        tab.on_close = Some(Arc::new(move || {
-                            // Remove from shared - will be synced to signal in update()
-                            if let Ok(mut shared_tabs) = shared_clone.lock() {
-                                shared_tabs.retain(|t| t.id != tab_id);
-                            }
-                            Update::EVAL | Update::LAYOUT | Update::DRAW
-                        }));
-                    }
+                    // Always set a close callback for dynamic mode tabs to ensure
+                    // they can be removed properly via Arc<Mutex>
+                    let tab_id = tab.id.clone();
+                    let shared_clone = shared.clone();
+                    
+                    tab.on_close = Some(Arc::new(move || {
+                        // Remove from shared - will be synced to signal in update()
+                        // We use Arc<Mutex> to avoid RefCell borrow issues
+                        if let Ok(mut shared_tabs) = shared_clone.lock() {
+                            shared_tabs.retain(|t| t.id != tab_id);
+                        }
+                        // Schedule update via EVAL - the update() method will sync
+                        Update::EVAL | Update::LAYOUT | Update::DRAW
+                    }));
                     new_tabs.push(tab);
                 }
-                // Note: If tab_data exists in signal but no content widget is found,
-                // the tab won't be rendered. Content widgets must be added via add_tab()
-                // or with_tab() methods.
+                // If tab_data exists in signal but no content widget is found,
+                // create a placeholder TabItem with default content
+                else {
+                    let tab_id = tab_data.id.clone();
+                    let shared_clone = shared.clone();
+                    
+                    let placeholder_content = Text::new(format!("Content for {}", tab_data.label));
+                    let mut placeholder_tab = TabItem::new(tab_id.clone(), tab_data.label.clone(), placeholder_content);
+                    placeholder_tab.enabled = tab_data.enabled;
+                    
+                    // Set close callback
+                    placeholder_tab.on_close = Some(Arc::new(move || {
+                        if let Ok(mut shared_tabs) = shared_clone.lock() {
+                            shared_tabs.retain(|t| t.id != tab_id);
+                        }
+                        Update::EVAL | Update::LAYOUT | Update::DRAW
+                    }));
+                    
+                    new_tabs.push(placeholder_tab);
+                }
             }
             // Update content store with rebuilt tabs (move, don't clone)
             *content_store = new_tabs;
-            // In dynamic mode, self.tabs is just a cache - we'll rebuild it when needed
-            // For now, clear it since we can't clone TabItem
-            self.tabs.clear();
+            // In dynamic mode, we use content_store directly for rendering,
+            // so we don't need to populate self.tabs
         }
     }
 
     /// Get mutable reference to tabs (for internal use)
+    /// Note: In dynamic mode, ensure rebuild_tabs_from_signal() is called before this
     fn get_tabs_mut(&mut self) -> &mut Vec<TabItem> {
         match &mut self.mode {
             TabsMode::Static => &mut self.tabs,
-            TabsMode::Dynamic(_, _, _) => {
-                // Rebuild from signal first
-                self.rebuild_tabs_from_signal();
-                &mut self.tabs
+            TabsMode::Dynamic(_, _, content_store) => {
+                // In dynamic mode, return reference to content_store
+                // Caller must ensure rebuild_tabs_from_signal() was called first
+                content_store
             },
         }
     }
@@ -1044,6 +1076,97 @@ impl Widget for TabsContainer {
             }
         }
 
+        // Render action button if present
+        if let Some(_callback) = &self.action_button_callback {
+            let action_bounds = self.get_action_button_bounds(layout, info);
+            
+            // Button background
+            let button_color = if self.action_button_hovered {
+                theme
+                    .get_property(
+                        self.widget_id(),
+                        &nptk_theme::properties::ThemeProperty::TabHovered,
+                    )
+                    .unwrap_or_else(|| Color::from_rgb8(180, 180, 180))
+            } else {
+                theme
+                    .get_property(
+                        self.widget_id(),
+                        &nptk_theme::properties::ThemeProperty::TabInactive,
+                    )
+                    .unwrap_or_else(|| Color::from_rgb8(240, 240, 240))
+            };
+
+            // Create rounded rectangle for button
+            let button_rounded = match self.tab_position {
+                TabPosition::Top => {
+                    RoundedRect::from_rect(action_bounds, RoundedRectRadii::new(6.0, 6.0, 0.0, 0.0))
+                },
+                TabPosition::Bottom => {
+                    RoundedRect::from_rect(action_bounds, RoundedRectRadii::new(0.0, 0.0, 6.0, 6.0))
+                },
+                TabPosition::Left => {
+                    RoundedRect::from_rect(action_bounds, RoundedRectRadii::new(6.0, 0.0, 0.0, 6.0))
+                },
+                TabPosition::Right => {
+                    RoundedRect::from_rect(action_bounds, RoundedRectRadii::new(0.0, 6.0, 6.0, 0.0))
+                },
+            };
+
+            graphics.fill(
+                Fill::NonZero,
+                Affine::IDENTITY,
+                &Brush::Solid(button_color),
+                None,
+                &button_rounded.to_path(0.1),
+            );
+
+            // Button border
+            graphics.stroke(
+                &Stroke::new(1.0),
+                Affine::IDENTITY,
+                &Brush::Solid(border_color),
+                None,
+                &button_rounded.to_path(0.1),
+            );
+
+            // Draw "+" symbol
+            let center_x = action_bounds.center().x;
+            let center_y = action_bounds.center().y;
+            let plus_size = 12.0;
+            let line_width = 2.0;
+
+            // Horizontal line
+            graphics.stroke(
+                &Stroke::new(line_width),
+                Affine::IDENTITY,
+                &Brush::Solid(Color::from_rgb8(0, 0, 0)),
+                None,
+                &Rect::new(
+                    center_x - plus_size / 2.0,
+                    center_y - line_width / 2.0,
+                    center_x + plus_size / 2.0,
+                    center_y + line_width / 2.0,
+                )
+                .to_path(0.1),
+            );
+
+            // Vertical line
+            graphics.stroke(
+                &Stroke::new(line_width),
+                Affine::IDENTITY,
+                &Brush::Solid(Color::from_rgb8(0, 0, 0)),
+                None,
+                &Rect::new(
+                    center_x - line_width / 2.0,
+                    center_y - plus_size / 2.0,
+                    center_x + line_width / 2.0,
+                    center_y + plus_size / 2.0,
+                )
+                .to_path(0.1),
+            );
+        }
+
         // Render active tab content in the content area
         let active_tab_index = self.active_tab();
         let content_bounds = self.get_content_bounds(layout);
@@ -1093,16 +1216,22 @@ impl Widget for TabsContainer {
     fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
-        // If dynamic mode, sync signal changes
+        // If dynamic mode, sync signal changes from Arc<Mutex> to signal
         let needs_rebuild = if let TabsMode::Dynamic(signal, shared, _) = &self.mode {
-            // Check if shared differs from signal and sync
+            // Get signal data first (clone to avoid borrow issues)
+            let signal_vec: Vec<TabData> = {
+                let signal_ref = signal.get();
+                signal_ref.iter().cloned().collect()
+            };
+            
+            // Get shared data and compare
             let mut needs_rebuild = false;
             if let Ok(shared_tabs) = shared.lock() {
-                let signal_tabs = signal.get();
-                if shared_tabs.len() != signal_tabs.len() || 
-                   shared_tabs.iter().zip(signal_tabs.iter()).any(|(a, b)| a.id != b.id) {
-                    // Sync from shared to signal
-                    let shared_vec: Vec<_> = shared_tabs.iter().cloned().collect();
+                let shared_vec: Vec<TabData> = shared_tabs.iter().cloned().collect();
+                
+                if shared_vec.len() != signal_vec.len() || 
+                   shared_vec.iter().zip(signal_vec.iter()).any(|(a, b)| a.id != b.id) {
+                    // Sync from shared to signal (after releasing all borrows)
                     drop(shared_tabs);
                     signal.set(shared_vec);
                     needs_rebuild = true;
