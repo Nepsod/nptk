@@ -109,10 +109,9 @@ impl Widget for Text {
                 .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
         };
 
-        log::debug!(
-            "Text widget rendering: '{}' with color: {:?} at position: ({}, {})",
+        log::info!(
+            "Text widget rendering: '{}' at absolute position: ({:.1}, {:.1})",
             *text,
-            color,
             layout_node.layout.location.x,
             layout_node.layout.location.y
         );

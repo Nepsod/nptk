@@ -1,7 +1,7 @@
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
+use nptk_core::layout::{Display, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetChildrenExt, WidgetLayoutExt};
@@ -55,13 +55,42 @@ impl Widget for Container {
         info: &mut AppInfo,
         context: AppContext,
     ) {
-        for (i, child) in self.children.iter_mut().enumerate() {
-            child.render(
-                graphics,
-                theme,
-                &layout_node.children[i],
-                info,
-                context.clone(),
+        // Track which layout child index we're on (skipping Display::None children)
+        // The layout_node.children should match the visible children in the same order
+        let mut layout_index = 0;
+        for child in &mut self.children {
+            let child_style = child.layout_style();
+            // Skip children with Display::None - they're not in the layout tree
+            if child_style.style.display == Display::None {
+                continue;
+            }
+            if layout_index < layout_node.children.len() {
+                child.render(
+                    graphics,
+                    theme,
+                    &layout_node.children[layout_index],
+                    info,
+                    context.clone(),
+                );
+                layout_index += 1;
+            } else {
+                // Layout node has fewer children than expected - this shouldn't happen
+                // but log it for debugging
+                log::warn!(
+                    "Container render: layout_node has {} children but expected more (child at index {} is visible but missing from layout)",
+                    layout_node.children.len(),
+                    layout_index
+                );
+                break;
+            }
+        }
+        
+        // If we didn't render all layout children, log it
+        if layout_index < layout_node.children.len() {
+            log::warn!(
+                "Container render: layout_node has {} children but only rendered {} (some visible children may be missing)",
+                layout_node.children.len(),
+                layout_index
             );
         }
     }
@@ -76,22 +105,34 @@ impl Widget for Container {
     ) {
         // Call render_postfix on all children after they've all been rendered
         // This ensures overlays appear on top of all sibling content
-        for (i, child) in self.children.iter_mut().enumerate() {
-            child.render_postfix(
-                graphics,
-                theme,
-                &layout_node.children[i],
-                info,
-                context.clone(),
-            );
+        // Track which layout child index we're on (skipping Display::None children)
+        let mut layout_index = 0;
+        for child in &mut self.children {
+            let child_style = child.layout_style();
+            // Skip children with Display::None - they're not in the layout tree
+            if child_style.style.display == Display::None {
+                continue;
+            }
+            if layout_index < layout_node.children.len() {
+                child.render_postfix(
+                    graphics,
+                    theme,
+                    &layout_node.children[layout_index],
+                    info,
+                    context.clone(),
+                );
+                layout_index += 1;
+            }
         }
     }
 
     fn layout_style(&self) -> StyleNode {
         let style = self.style.get().clone();
 
+        // Include ALL children in the style (don't filter Display::None here)
+        // The filtering happens when building the Taffy tree - this ensures
+        // the style always matches the widget structure
         let mut children = Vec::with_capacity(self.children.len());
-
         for child in &self.children {
             children.push(child.layout_style());
         }
@@ -102,8 +143,25 @@ impl Widget for Container {
     fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
-        for (i, child) in self.children.iter_mut().enumerate() {
-            update.insert(child.update(&layout.children[i], context.clone(), info));
+        // Track which layout child index we're on (skipping Display::None children)
+        let mut layout_index = 0;
+        for child in &mut self.children {
+            let child_style = child.layout_style();
+            // Skip children with Display::None - they're not in the layout tree
+            // But still call update on them so they can detect visibility changes
+            if child_style.style.display == Display::None {
+                // Create a dummy layout node for hidden children (they won't be rendered)
+                let dummy_layout = LayoutNode {
+                    layout: Default::default(),
+                    children: vec![],
+                };
+                update.insert(child.update(&dummy_layout, context.clone(), info));
+                continue;
+            }
+            if layout_index < layout.children.len() {
+                update.insert(child.update(&layout.children[layout_index], context.clone(), info));
+                layout_index += 1;
+            }
         }
 
         update

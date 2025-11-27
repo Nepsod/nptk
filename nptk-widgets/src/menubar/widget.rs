@@ -10,7 +10,7 @@ use log::error;
 use super::common::platform;
 use nptk_core::app::update::Update;
 use nptk_core::layout;
-use nptk_core::layout::{Dimension, Layout, LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
+use nptk_core::layout::{Dimension, Display, Layout, LayoutNode, LayoutStyle, LengthPercentage, LengthPercentageAuto, StyleNode};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::text_render::TextRenderContext;
 use nptk_core::vg::kurbo::{
@@ -57,6 +57,7 @@ pub struct MenuBar {
     importer_detected: StateSignal<bool>,
     layout_style: MaybeSignal<LayoutStyle>,
     visible: StateSignal<bool>,
+    previous_visible: bool,
 
     // State
     hovered_index: Option<usize>,
@@ -198,6 +199,7 @@ impl MenuBar {
             }
             .into(),
             visible: StateSignal::new(true),
+            previous_visible: true,
             #[cfg(feature = "global-menu")]
             global_menu_bridge: None,
             #[cfg(feature = "global-menu")]
@@ -603,6 +605,15 @@ impl Widget for MenuBar {
     fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
+        // Detect visibility changes and trigger layout update
+        let current_visible = self.is_visible();
+        if current_visible != self.previous_visible {
+            log::info!("MenuBar visibility changed from {} to {}, triggering FORCE layout update", self.previous_visible, current_visible);
+            // Use FORCE | LAYOUT | DRAW to ensure the entire layout tree is rebuilt and rendered
+            update |= Update::FORCE | Update::LAYOUT | Update::DRAW;
+            self.previous_visible = current_visible;
+        }
+
         // Process keyboard events FIRST, especially F10, even if menubar is not visible
         // This allows F10 to show the menubar when it's hidden
         log::debug!("MenuBar update: processing {} keyboard events", info.keys.len());
@@ -784,12 +795,24 @@ impl Widget for MenuBar {
     }
 
     fn layout_style(&self) -> StyleNode {
-        // Hide the widget by setting height to 0 if not visible
+        // Hide the widget by setting display to None when not visible
+        // This completely removes it from the layout flow, allowing content below to move up
         // Note: If importer is detected and user presses F10, importer_detected is cleared,
         // so we just need to check is_visible()
         let mut style = self.layout_style.get().clone();
         if !self.is_visible() {
+            // Completely remove from layout flow
+            style.display = Display::None;
+            // Also set size to 0 to ensure no space is taken
             style.size.y = Dimension::length(0.0);
+            // Remove all padding and margin
+            style.padding.top = LengthPercentage::length(0.0);
+            style.padding.bottom = LengthPercentage::length(0.0);
+            style.margin.top = LengthPercentageAuto::length(0.0);
+            style.margin.bottom = LengthPercentageAuto::length(0.0);
+            // Remove min/max size constraints
+            style.min_size.y = Dimension::length(0.0);
+            style.max_size.y = Dimension::length(0.0);
         }
         StyleNode {
             style,

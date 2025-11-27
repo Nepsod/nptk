@@ -27,7 +27,7 @@ use crate::app::info::WindowIdentity;
 use crate::app::info::{AppInfo, AppKeyEvent};
 use crate::app::update::{Update, UpdateManager};
 use crate::config::MayConfig;
-use crate::layout::{LayoutNode, StyleNode};
+use crate::layout::{Display, LengthPercentage, LayoutNode, StyleNode};
 use crate::plugin::PluginManager;
 #[cfg(all(target_os = "linux", feature = "wayland"))]
 use crate::vgi::wayland_surface::{InputEvent, KeyboardEvent, PointerEvent};
@@ -737,14 +737,22 @@ where
 
     /// Add the parent node and its children to the layout tree.
     fn layout_widget(&mut self, parent: NodeId, style: &StyleNode) -> TaffyResult<()> {
-        log::debug!("Laying out widget: {:?}", parent);
+        // If this widget itself has Display::None, don't add it to the layout tree at all
+        // This ensures hidden widgets don't take up any space
+        if style.style.display == Display::None {
+            log::info!("Skipping widget with Display::None (parent: {:?})", parent);
+            return Ok(());
+        }
 
         let node = self.taffy.new_leaf(style.style.clone().into())?;
-
         self.taffy.add_child(parent, node)?;
 
+        // Only add children that are not Display::None to the Taffy tree
+        // This ensures hidden widgets don't take up space
         for child in &style.children {
-            self.layout_widget(node, child)?;
+            if child.style.display != Display::None {
+                self.layout_widget(node, child)?;
+            }
         }
 
         Ok(())
@@ -777,17 +785,109 @@ where
     }
 
     /// Collect the computed layout of the given node and its children. Make sure to call [AppHandler::compute_layout] before, to not get dirty results.
+    /// 
+    /// This method converts Taffy's relative positions (relative to parent's content area) to absolute positions
+    /// by accumulating parent positions and paddings as we traverse the tree.
     fn collect_layout(&mut self, node: NodeId, style: &StyleNode) -> TaffyResult<LayoutNode> {
-        log::debug!("Collecting layout for node: {:?}", node);
+        self.collect_layout_impl(node, style, 0.0, 0.0)
+    }
+    
+    /// Internal implementation that accumulates parent positions.
+    /// parent_x and parent_y represent the absolute position of the parent's content area (after padding).
+    fn collect_layout_impl(&mut self, node: NodeId, style: &StyleNode, parent_x: f32, parent_y: f32) -> TaffyResult<LayoutNode> {
+        let mut children = Vec::new();
+        let taffy_child_count = self.taffy.child_count(node);
+        let style_child_count = style.children.len();
 
-        let mut children = Vec::with_capacity(style.children.capacity());
+        // Count visible children in style
+        let visible_style_children: Vec<_> = style.children.iter()
+            .filter(|cs| cs.style.display != Display::None)
+            .collect();
+        let visible_count = visible_style_children.len();
 
-        for (i, child) in style.children.iter().enumerate() {
-            children.push(self.collect_layout(self.taffy.child_at_index(node, i)?, child)?);
+        // Get the relative layout from Taffy
+        let relative_layout = *self.taffy.get_final_layout(node);
+        
+        // Convert relative position to absolute by adding parent's content area position
+        // Taffy positions are relative to parent's content area (after padding)
+        // So: absolute = parent_content + relative
+        let absolute_x = parent_x + relative_layout.location.x;
+        let absolute_y = parent_y + relative_layout.location.y;
+        
+        // Create absolute layout
+        let mut absolute_layout = relative_layout;
+        absolute_layout.location.x = absolute_x;
+        absolute_layout.location.y = absolute_y;
+        
+        // Calculate this node's content area position (absolute position)
+        // This will be the parent position for children
+        // Extract padding values from LengthPercentage
+        // We extract from style.style.padding which is still our LayoutStyle type
+        // The content area starts after the padding (absolute position + padding = content area start)
+        let child_content_x = absolute_x;
+        let child_content_y = absolute_y;
+
+        // The style includes ALL children, but Taffy only has visible ones (Display::None filtered out during build)
+        // We need to iterate through style children and skip Display::None ones, collecting from Taffy in order
+        let mut taffy_index = 0;
+        for child_style in &style.children {
+            // Skip Display::None children - they weren't added to Taffy
+            if child_style.style.display == Display::None {
+                continue;
+            }
+            
+            // Collect this visible child from Taffy, passing our content area position as the new parent content position
+            if taffy_index < taffy_child_count {
+                let child_node = self.taffy.child_at_index(node, taffy_index)?;
+                children.push(self.collect_layout_impl(child_node, child_style, child_content_x, child_content_y)?);
+                taffy_index += 1;
+            } else {
+                // Taffy has fewer children than expected visible children
+                // This can happen if visibility changed between build and collect
+                log::warn!(
+                    "Taffy has fewer children ({}) than visible style children ({}), stopping collection at taffy_index {}",
+                    taffy_child_count,
+                    visible_count,
+                    taffy_index
+                );
+                break;
+            }
         }
 
+        // Warn if we didn't collect all Taffy children
+        if taffy_index < taffy_child_count {
+            log::warn!(
+                "Collected only {} children from Taffy, but Taffy has {} children",
+                taffy_index,
+                taffy_child_count
+            );
+        }
+        
+        // Log layout size and position for debugging (only for containers with children to reduce noise)
+        if !children.is_empty() {
+            // Log first child position to see if children are moving correctly
+            let first_child_pos = if !children.is_empty() {
+                format!("first_child_pos=({:.1}, {:.1})", children[0].layout.location.x, children[0].layout.location.y)
+            } else {
+                "no_children".to_string()
+            };
+            log::info!(
+                "Collected layout for node {:?}: pos=({:.1}, {:.1}), size=({:.1}, {:.1}), {} children, {} (style: {} total, {} visible, Taffy: {})",
+                node,
+                absolute_layout.location.x,
+                absolute_layout.location.y,
+                absolute_layout.size.width,
+                absolute_layout.size.height,
+                children.len(),
+                first_child_pos,
+                style_child_count,
+                visible_count,
+                taffy_child_count
+            );
+        }
+        
         Ok(LayoutNode {
-            layout: *self.taffy.get_final_layout(node),
+            layout: absolute_layout,
             children,
         })
     }
@@ -863,7 +963,12 @@ where
         let mut layout_node = self.ensure_layout_initialized();
         layout_node = self.update_layout_if_needed(layout_node);
 
+        // Update widget - this may set LAYOUT or FORCE flags if visibility changes
         self.update_widget(&layout_node);
+
+        // If widget update set LAYOUT or FORCE flags, rebuild the layout immediately
+        // This ensures visibility changes take effect in the same frame
+        layout_node = self.update_layout_if_needed(layout_node);
 
         let update_flags = self.update.get();
         log::debug!(
@@ -879,6 +984,8 @@ where
                 update_flags.intersects(Update::FORCE),
                 update_flags.intersects(Update::DRAW)
             );
+            // Always use the latest layout_node that was just updated
+            // The layout_node parameter is already the latest one from update_layout_if_needed
             self.render_frame(&layout_node, event_loop);
         }
 
@@ -941,6 +1048,15 @@ where
         }
 
         let style = self.widget.as_ref().unwrap().layout_style();
+        let child_count = self.taffy.child_count(self.window_node);
+        if child_count == 0 {
+            // Root widget has no children (all filtered out) - return empty layout
+            log::debug!("Root widget has no children in layout tree, returning empty layout");
+            return LayoutNode {
+                layout: *self.taffy.get_final_layout(self.window_node),
+                children: vec![],
+            };
+        }
         self.collect_layout(
             self.taffy.child_at_index(self.window_node, 0).unwrap(),
             &style,
@@ -964,27 +1080,76 @@ where
             return layout_node;
         }
 
-        log::debug!("Layout update detected!");
+        log::info!("Layout update detected! Rebuilding layout...");
         self.rebuild_layout();
 
+        // Get the style AFTER rebuilding to ensure it matches what was built
         let style = self.widget.as_ref().unwrap().layout_style();
-        self.collect_layout(
+        let child_count = self.taffy.child_count(self.window_node);
+        if child_count == 0 {
+            // Root widget has no children (all filtered out) - return empty layout
+            log::info!("Root widget has no children in layout tree after rebuild, returning empty layout");
+            return LayoutNode {
+                layout: *self.taffy.get_final_layout(self.window_node),
+                children: vec![],
+            };
+        }
+        let new_layout = self.collect_layout(
             self.taffy.child_at_index(self.window_node, 0).unwrap(),
             &style,
         )
-        .expect("Failed to collect layout")
+        .expect("Failed to collect layout");
+        
+        // Log the difference in positions to verify layout is updating
+        if !new_layout.children.is_empty() && !layout_node.children.is_empty() {
+            let old_pos = layout_node.children[0].layout.location.y;
+            let new_pos = new_layout.children[0].layout.location.y;
+            if (old_pos - new_pos).abs() > 0.1 {
+                log::info!("Content container moved: old_y={:.1}, new_y={:.1}, delta={:.1}", old_pos, new_pos, new_pos - old_pos);
+            }
+        }
+        
+        new_layout
     }
 
     /// Rebuild the layout tree from scratch.
     fn rebuild_layout(&mut self) {
+        log::info!("Rebuilding layout tree from scratch");
+        
+        // Clear all children from the window node - this removes all existing nodes
         self.taffy
             .set_children(self.window_node, &[])
             .expect("Failed to set children");
 
+        // Get the current style (which may have Display::None widgets)
         let style = self.widget.as_ref().unwrap().layout_style();
+        
+        // Count visible children for debugging
+        let visible_children: Vec<_> = style.children.iter()
+            .filter(|c| c.style.display != Display::None)
+            .collect();
+        log::info!(
+            "Rebuilding layout: root has {} total children, {} visible",
+            style.children.len(),
+            visible_children.len()
+        );
+        
+        // Build the layout tree (Display::None widgets will be skipped)
         self.layout_widget(self.window_node, &style)
             .expect("Failed to layout window");
+        
+        // Verify the window node has the correct number of children
+        let child_count = self.taffy.child_count(self.window_node);
+        log::info!(
+            "After layout_widget: window node has {} children (expected {})",
+            child_count,
+            visible_children.len()
+        );
+        
+        // Compute the layout
         self.compute_layout().expect("Failed to compute layout");
+        
+        log::info!("Layout rebuild complete");
     }
 
     /// Update the widget with the current layout.
