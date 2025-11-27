@@ -348,27 +348,35 @@ impl TabsContainer {
         )
     }
 
+
     /// Render text on a tab
     fn render_text(
-        &self,
-        _graphics: &mut dyn Graphics,
-        _text: &str,
-        _x: f64,
-        _y: f64,
-        _color: Color,
-        _info: &AppInfo,
+        text_render_context: &mut TextRenderContext,
+        graphics: &mut dyn Graphics,
+        text: &str,
+        x: f64,
+        y: f64,
+        color: Color,
+        info: &mut AppInfo,
     ) {
-        let _font_size = 14.0;
-        // Use approximate character width for text measurement
-        // TODO: Implement proper text measurement when needed
+        let font_size = 14.0;
 
-        // TODO: Fix the FileRef lifetime issue
-        // let location = font_ref.axes().location::<&[VariationSetting; 0]>(&[]);
-        // let glyph_metrics = font_ref.glyph_metrics(Size::new(font_size), &location);
-        // let charmap = font_ref.charmap();
+        if text.is_empty() {
+            return;
+        }
 
-        // TODO: Implement proper text rendering
-        // For now, text rendering is handled by the TextRenderContext
+        let transform = Affine::translate((x, y));
+
+        text_render_context.render_text(
+            &mut info.font_context,
+            graphics,
+            text,
+            None, // No specific font, use default
+            font_size,
+            Brush::Solid(color),
+            transform,
+            true, // hinting
+        );
     }
 }
 
@@ -534,7 +542,7 @@ impl Widget for TabsContainer {
             let text_x = tab_bounds.x0 + 10.0; // Left padding
             let text_y = tab_bounds.y0 + (tab_bounds.height() - 14.0) / 2.0; // Center vertically
 
-            self.render_text(graphics, &tab.label, text_x, text_y, text_color, _info);
+            Self::render_text(&mut self.text_render_context, graphics, &tab.label, text_x, text_y, text_color, _info);
 
             // Close button if available
             if tab.on_close.is_some() {
