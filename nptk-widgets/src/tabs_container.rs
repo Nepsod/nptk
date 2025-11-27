@@ -12,8 +12,7 @@ use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use nptk_core::text_render::TextRenderContext;
-use nptk_core::app::font_ctx::FontContext;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Position of tabs in the TabsContainer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,13 +73,41 @@ impl TabItem {
     }
 }
 
+/// Error type for tab operations
+#[derive(Debug, Clone)]
+pub enum TabsError {
+    /// Operation not allowed in static mode
+    StaticMode,
+    /// Tab ID not found
+    TabNotFound(String),
+}
+
+/// Tab data for dynamic mode (simplified structure that can be cloned)
+#[derive(Clone, Debug)]
+pub struct TabData {
+    pub id: String,
+    pub label: String,
+    pub enabled: bool,
+}
+
+/// Mode of operation for TabsContainer
+enum TabsMode {
+    /// Static mode: tabs are immutable after construction
+    Static,
+    /// Dynamic mode: tabs are managed via StateSignal
+    /// Stores TabData (id, label) in signal, TabItem content is reconstructed
+    Dynamic(StateSignal<Vec<TabData>>, Arc<Mutex<Vec<TabData>>>, Vec<TabItem>),
+}
+
 /// A container widget that displays tabs and switches between content
 pub struct TabsContainer {
     /// Widget ID
     widget_id: WidgetId,
     /// Layout style
     layout_style: MaybeSignal<LayoutStyle>,
-    /// List of tabs
+    /// Mode of operation (static or dynamic)
+    mode: TabsMode,
+    /// List of tabs (used in static mode, or as cache in dynamic mode)
     tabs: Vec<TabItem>,
     /// Currently active tab index
     active_tab: StateSignal<usize>,
@@ -107,14 +134,31 @@ pub struct TabsContainer {
     
     // Text rendering
     text_render_context: TextRenderContext,
+    
+    // Action button
+    /// Callback for action button click
+    action_button_callback: Option<Arc<dyn Fn() -> Update + Send + Sync>>,
+    /// Whether action button is hovered
+    action_button_hovered: bool,
+    /// Size of action button
+    action_button_size: f32,
+    
+    // Tab history (optional)
+    /// Recently closed tabs (if history is enabled)
+    tab_history: Option<Vec<TabItem>>,
+    /// Whether history tracking is enabled
+    history_enabled: bool,
+    /// Maximum number of closed tabs to remember
+    max_history_size: usize,
 }
 
 impl TabsContainer {
-    /// Create a new TabsContainer
+    /// Create a new TabsContainer in static mode
     pub fn new() -> Self {
         Self {
             widget_id: WidgetId::new("nptk-widgets", "TabsContainer"),
             layout_style: MaybeSignal::value(LayoutStyle::default()),
+            mode: TabsMode::Static,
             tabs: Vec::new(),
             active_tab: StateSignal::new(0),
             tab_position: TabPosition::Top,
@@ -128,18 +172,224 @@ impl TabsContainer {
             dragging_tab: None,
             drag_offset: 0.0,
             text_render_context: TextRenderContext::new(),
+            action_button_callback: None,
+            action_button_hovered: false,
+            action_button_size: 32.0,
+            tab_history: None,
+            history_enabled: false,
+            max_history_size: 10,
         }
     }
 
-    /// Add a tab to the container
-    pub fn add_tab(&mut self, tab: TabItem) {
-        self.tabs.push(tab);
+    /// Create a new TabsContainer in dynamic mode with reactive tab management
+    /// Note: TabItem content widgets are stored separately and matched by ID
+    pub fn new_dynamic(context: &AppContext, initial_tabs: Vec<TabItem>) -> Self {
+        // Extract TabData from TabItems
+        let tabs_data: Vec<TabData> = initial_tabs.iter().map(|tab| TabData {
+            id: tab.id.clone(),
+            label: tab.label.clone(),
+            enabled: tab.enabled,
+        }).collect();
+        
+        let tabs_signal = context.use_state(tabs_data.clone());
+        let tabs_shared = Arc::new(Mutex::new(tabs_data));
+        
+        Self {
+            widget_id: WidgetId::new("nptk-widgets", "TabsContainer"),
+            layout_style: MaybeSignal::value(LayoutStyle::default()),
+            mode: TabsMode::Dynamic(tabs_signal, tabs_shared, initial_tabs),
+            tabs: Vec::new(), // Will be populated from signal
+            active_tab: StateSignal::new(0),
+            tab_position: TabPosition::Top,
+            tab_size: 32.0,
+            mouse_pos: Vector2::zeros(),
+            hovered_tab: None,
+            pressed_tab: None,
+            hovered_close: None,
+            scroll_offset: 0.0,
+            max_scroll: 0.0,
+            dragging_tab: None,
+            drag_offset: 0.0,
+            text_render_context: TextRenderContext::new(),
+            action_button_callback: None,
+            action_button_hovered: false,
+            action_button_size: 32.0,
+            tab_history: None,
+            history_enabled: false,
+            max_history_size: 10,
+        }
     }
 
-    /// Add a tab to the container (builder pattern)
+    /// Add a tab to the container (builder pattern, works in both modes)
     pub fn with_tab(mut self, tab: TabItem) -> Self {
-        self.add_tab(tab);
+        match &mut self.mode {
+            TabsMode::Static => {
+                self.tabs.push(tab);
+            },
+            TabsMode::Dynamic(signal, shared, content_store) => {
+                let tab_data = TabData {
+                    id: tab.id.clone(),
+                    label: tab.label.clone(),
+                    enabled: tab.enabled,
+                };
+                // Store content widget
+                content_store.push(tab);
+                // Update signal
+                signal.mutate(|tabs| {
+                    tabs.push(tab_data.clone());
+                });
+                if let Ok(mut shared_tabs) = shared.lock() {
+                    *shared_tabs = signal.get().iter().cloned().collect();
+                }
+            },
+        }
         self
+    }
+
+    /// Add a tab to the container (dynamic mode only)
+    pub fn add_tab(&mut self, tab: TabItem) -> Result<(), TabsError> {
+        match &mut self.mode {
+            TabsMode::Static => Err(TabsError::StaticMode),
+            TabsMode::Dynamic(signal, shared, content_store) => {
+                let tab_data = TabData {
+                    id: tab.id.clone(),
+                    label: tab.label.clone(),
+                    enabled: tab.enabled,
+                };
+                // Store content widget
+                content_store.push(tab);
+                // Update signal
+                signal.mutate(|tabs| {
+                    tabs.push(tab_data.clone());
+                });
+                if let Ok(mut shared_tabs) = shared.lock() {
+                    *shared_tabs = signal.get().iter().cloned().collect();
+                }
+                self.validate_state();
+                Ok(())
+            },
+        }
+    }
+
+    /// Remove a tab by ID (dynamic mode only)
+    pub fn remove_tab(&mut self, id: &str) -> Result<(), TabsError> {
+        match &mut self.mode {
+            TabsMode::Static => Err(TabsError::StaticMode),
+            TabsMode::Dynamic(signal, shared, content_store) => {
+                let mut found = false;
+                let mut removed_tab_data: Option<TabData> = None;
+                
+                signal.mutate(|tabs| {
+                    if let Some(pos) = tabs.iter().position(|t| t.id == id) {
+                        found = true;
+                        removed_tab_data = Some(tabs.remove(pos).clone());
+                    }
+                });
+                
+                if !found {
+                    return Err(TabsError::TabNotFound(id.to_string()));
+                }
+                
+                // Remove from content store
+                if let Some(tab_data) = &removed_tab_data {
+                    if let Some(pos) = content_store.iter().position(|t| t.id == tab_data.id) {
+                        let removed_tab = content_store.remove(pos);
+                        
+                        // Add to history if enabled
+                        if self.history_enabled {
+                            if let Some(ref mut history) = self.tab_history {
+                                history.push(removed_tab);
+                                // Limit history size
+                                if history.len() > self.max_history_size {
+                                    history.remove(0);
+                                }
+                            } else {
+                                self.tab_history = Some(vec![removed_tab]);
+                            }
+                        }
+                    }
+                }
+                
+                // Sync to shared
+                if let Ok(mut shared_tabs) = shared.lock() {
+                    *shared_tabs = signal.get().iter().cloned().collect();
+                }
+                
+                self.validate_state();
+                Ok(())
+            },
+        }
+    }
+
+    /// Get the tabs signal (dynamic mode only)
+    /// Returns signal containing TabData (id, label, enabled)
+    pub fn get_tabs_signal(&self) -> Option<StateSignal<Vec<TabData>>> {
+        match &self.mode {
+            TabsMode::Static => None,
+            TabsMode::Dynamic(signal, _, _) => Some(signal.clone()),
+        }
+    }
+
+    /// Add an action button callback (works in both modes)
+    pub fn with_action_button(
+        mut self,
+        callback: impl Fn() -> Update + Send + Sync + 'static,
+    ) -> Self {
+        self.action_button_callback = Some(Arc::new(callback));
+        self
+    }
+
+    /// Enable and configure tab history tracking
+    pub fn with_history(mut self, enabled: bool, max_size: usize) -> Self {
+        self.history_enabled = enabled;
+        self.max_history_size = max_size;
+        if enabled && self.tab_history.is_none() {
+            self.tab_history = Some(Vec::new());
+        }
+        self
+    }
+
+    /// Get list of recently closed tabs
+    pub fn get_closed_tabs(&self) -> Option<&[TabItem]> {
+        self.tab_history.as_deref()
+    }
+
+    /// Reopen a tab from history (dynamic mode only)
+    pub fn reopen_tab(&mut self, index: usize) -> Result<(), TabsError> {
+        match &mut self.mode {
+            TabsMode::Static => Err(TabsError::StaticMode),
+            TabsMode::Dynamic(signal, shared, content_store) => {
+                if let Some(ref mut history) = self.tab_history {
+                    if index >= history.len() {
+                        return Err(TabsError::TabNotFound(format!("History index {}", index)));
+                    }
+                    let tab = history.remove(index);
+                    let tab_data = TabData {
+                        id: tab.id.clone(),
+                        label: tab.label.clone(),
+                        enabled: tab.enabled,
+                    };
+                    // Store content widget
+                    content_store.push(tab);
+                    // Update signal
+                    signal.mutate(|tabs| {
+                        tabs.push(tab_data.clone());
+                    });
+                    if let Ok(mut shared_tabs) = shared.lock() {
+                        *shared_tabs = signal.get().iter().cloned().collect();
+                    }
+                    self.validate_state();
+                    Ok(())
+                } else {
+                    Err(TabsError::TabNotFound("History not enabled".to_string()))
+                }
+            },
+        }
+    }
+
+    /// Clear tab history
+    pub fn clear_history(&mut self) {
+        self.tab_history = None;
     }
 
     /// Set the tab position
@@ -161,8 +411,149 @@ impl TabsContainer {
 
     /// Set the active tab index
     pub fn set_active_tab(&mut self, index: usize) {
-        if index < self.tabs.len() {
+        let tabs_len = match &self.mode {
+            TabsMode::Static => self.tabs.len(),
+            TabsMode::Dynamic(signal, _, _) => signal.get().len(),
+        };
+        if index < tabs_len {
             self.active_tab.set(index);
+        }
+    }
+
+    /// Validate and fix tab state consistency
+    fn validate_state(&mut self) {
+        let tabs_len = match &self.mode {
+            TabsMode::Static => self.tabs.len(),
+            TabsMode::Dynamic(signal, _, _) => signal.get().len(),
+        };
+        
+        // Validate active tab index
+        let current_active = *self.active_tab.get();
+        if tabs_len == 0 {
+            self.active_tab.set(0);
+        } else if current_active >= tabs_len {
+            // Active tab was removed, switch to nearest valid tab
+            self.active_tab.set((tabs_len - 1).max(0));
+        }
+        
+        // Validate hovered/pressed tab indices
+        if let Some(hovered) = self.hovered_tab {
+            if hovered >= tabs_len {
+                self.hovered_tab = None;
+            }
+        }
+        if let Some(pressed) = self.pressed_tab {
+            if pressed >= tabs_len {
+                self.pressed_tab = None;
+            }
+        }
+        if let Some(close_hovered) = self.hovered_close {
+            if close_hovered >= tabs_len {
+                self.hovered_close = None;
+            }
+        }
+        if let Some(dragging) = self.dragging_tab {
+            if dragging >= tabs_len {
+                self.dragging_tab = None;
+            }
+        }
+        
+        // Check for duplicate IDs (log warning)
+        let ids: Vec<String> = match &self.mode {
+            TabsMode::Static => self.tabs.iter().map(|t| t.id.clone()).collect(),
+            TabsMode::Dynamic(signal, _, _) => signal.get().iter().map(|t| t.id.clone()).collect(),
+        };
+        let unique_ids: std::collections::HashSet<_> = ids.iter().collect();
+        if ids.len() != unique_ids.len() {
+            log::warn!("TabsContainer: Duplicate tab IDs detected");
+        }
+    }
+
+    /// Ensure tab IDs are unique
+    fn ensure_unique_ids(&self) -> Result<(), TabsError> {
+        let ids: Vec<String> = match &self.mode {
+            TabsMode::Static => self.tabs.iter().map(|t| t.id.clone()).collect(),
+            TabsMode::Dynamic(signal, _, _) => signal.get().iter().map(|t| t.id.clone()).collect(),
+        };
+        let unique_ids: std::collections::HashSet<_> = ids.iter().collect();
+        if ids.len() != unique_ids.len() {
+            Err(TabsError::TabNotFound("Duplicate tab IDs found".to_string()))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Rebuild tabs from signal (for dynamic mode)
+    fn rebuild_tabs_from_signal(&mut self) {
+        if let TabsMode::Dynamic(signal, shared, content_store) = &mut self.mode {
+            // Read tab data from signal
+            let signal_tabs_data: Vec<TabData> = signal.get().iter().cloned().collect();
+            
+            // Rebuild tabs by matching TabData with stored content widgets
+            let mut new_tabs = Vec::new();
+            let mut remaining_content: Vec<TabItem> = content_store.drain(..).collect();
+            
+            for tab_data in signal_tabs_data {
+                // Find matching content widget by ID
+                if let Some(pos) = remaining_content.iter().position(|t| t.id == tab_data.id) {
+                    let mut tab = remaining_content.remove(pos);
+                    // Update tab data
+                    tab.label = tab_data.label.clone();
+                    tab.enabled = tab_data.enabled;
+                    
+                    // If tab has a close callback, wrap it to update Arc<Mutex> first
+                    if tab.on_close.is_some() {
+                        let tab_id = tab.id.clone();
+                        let shared_clone = shared.clone();
+                        
+                        tab.on_close = Some(Arc::new(move || {
+                            // Remove from shared - will be synced to signal in update()
+                            if let Ok(mut shared_tabs) = shared_clone.lock() {
+                                shared_tabs.retain(|t| t.id != tab_id);
+                            }
+                            Update::EVAL | Update::LAYOUT | Update::DRAW
+                        }));
+                    }
+                    new_tabs.push(tab);
+                }
+                // Note: If tab_data exists in signal but no content widget is found,
+                // the tab won't be rendered. Content widgets must be added via add_tab()
+                // or with_tab() methods.
+            }
+            // Update content store with rebuilt tabs (move, don't clone)
+            *content_store = new_tabs;
+            // In dynamic mode, self.tabs is just a cache - we'll rebuild it when needed
+            // For now, clear it since we can't clone TabItem
+            self.tabs.clear();
+        }
+    }
+
+    /// Get mutable reference to tabs (for internal use)
+    fn get_tabs_mut(&mut self) -> &mut Vec<TabItem> {
+        match &mut self.mode {
+            TabsMode::Static => &mut self.tabs,
+            TabsMode::Dynamic(_, _, _) => {
+                // Rebuild from signal first
+                self.rebuild_tabs_from_signal();
+                &mut self.tabs
+            },
+        }
+    }
+
+    /// Get current tabs (clones from Vec or rebuilds from signal)
+    fn get_tabs(&self) -> Vec<TabItem> {
+        match &self.mode {
+            TabsMode::Static => {
+                // Can't clone TabItem, so we need to reconstruct
+                // For static mode, we can return a reference or reconstruct
+                // Since we can't return &Vec, we'll need to handle this differently
+                // For now, return empty and let render/update use self.tabs directly
+                Vec::new()
+            },
+            TabsMode::Dynamic(_, _, _) => {
+                // Return empty - tabs are accessed via content_store in dynamic mode
+                Vec::new()
+            },
         }
     }
 
@@ -170,7 +561,6 @@ impl TabsContainer {
     fn calculate_tab_width(&self, label: &str, info: &mut AppInfo) -> f32 {
         let font_size = 14.0;
         let padding = 20.0; // Left + right padding
-        let close_button_width = 20.0; // Space for close button if present
         
         // Use TextRenderContext to measure text width
         let text_width = self.text_render_context.measure_text_width(
@@ -190,7 +580,11 @@ impl TabsContainer {
 
     /// Calculate total width needed for all tabs
     fn calculate_total_tabs_width(&self, info: &mut AppInfo) -> f32 {
-        self.tabs.iter()
+        let tabs = match &self.mode {
+            TabsMode::Static => &self.tabs,
+            TabsMode::Dynamic(_, _, content_store) => content_store,
+        };
+        let tabs_width: f32 = tabs.iter()
             .map(|tab| {
                 let base_width = self.calculate_tab_width(&tab.label, info);
                 if tab.on_close.is_some() {
@@ -199,13 +593,75 @@ impl TabsContainer {
                     base_width
                 }
             })
-            .sum()
+            .sum();
+        
+        // Add action button width if present
+        let action_button_width = if self.action_button_callback.is_some() {
+            self.action_button_size
+        } else {
+            0.0
+        };
+        
+        tabs_width + action_button_width
+    }
+
+    /// Get action button bounds
+    fn get_action_button_bounds(&self, layout: &LayoutNode, info: &mut AppInfo) -> Rect {
+        let tab_bar_bounds = self.get_tab_bar_bounds(layout);
+        let tabs = match &self.mode {
+            TabsMode::Static => &self.tabs,
+            TabsMode::Dynamic(_, _, content_store) => content_store,
+        };
+        
+        match self.tab_position {
+            TabPosition::Top | TabPosition::Bottom => {
+                // Horizontal: button at the end after all tabs
+                let mut total_tabs_width = 0.0f64;
+                for tab in tabs.iter() {
+                    let tab_width = self.calculate_tab_width(&tab.label, info) as f64;
+                    let width_with_close = if tab.on_close.is_some() {
+                        tab_width + 20.0
+                    } else {
+                        tab_width
+                    };
+                    total_tabs_width += width_with_close;
+                }
+                // Account for scroll offset
+                let button_x = tab_bar_bounds.x0 + total_tabs_width - self.scroll_offset as f64;
+                Rect::new(
+                    button_x,
+                    tab_bar_bounds.y0,
+                    button_x + self.action_button_size as f64,
+                    tab_bar_bounds.y1,
+                )
+            },
+            TabPosition::Left | TabPosition::Right => {
+                // Vertical: button at the bottom after all tabs
+                let tab_height = if tabs.is_empty() {
+                    0.0
+                } else {
+                    (tab_bar_bounds.height() - self.action_button_size as f64) / tabs.len() as f64
+                };
+                let total_tabs_height = tab_height * tabs.len() as f64;
+                let button_y = tab_bar_bounds.y0 + total_tabs_height;
+                Rect::new(
+                    tab_bar_bounds.x0,
+                    button_y,
+                    tab_bar_bounds.x1,
+                    button_y + self.action_button_size as f64,
+                )
+            },
+        }
     }
 
     /// Get tab bounds for the given index within the tab bar area
     fn get_tab_bounds(&self, layout: &LayoutNode, index: usize, info: &mut AppInfo) -> Rect {
         let tab_bar_bounds = self.get_tab_bar_bounds(layout);
-        let tab_count = self.tabs.len();
+        let tabs = match &self.mode {
+            TabsMode::Static => &self.tabs,
+            TabsMode::Dynamic(_, _, content_store) => content_store,
+        };
+        let tab_count = tabs.len();
 
         if tab_count == 0 || index >= tab_count {
             return Rect::ZERO;
@@ -217,7 +673,7 @@ impl TabsContainer {
                 let mut current_x = tab_bar_bounds.x0 - self.scroll_offset as f64;
                 
                 for i in 0..index {
-                    if let Some(tab) = self.tabs.get(i) {
+                    if let Some(tab) = tabs.get(i) {
                         let tab_width = self.calculate_tab_width(&tab.label, info) as f64;
                         let width_with_close = if tab.on_close.is_some() {
                             tab_width + 20.0
@@ -228,7 +684,7 @@ impl TabsContainer {
                     }
                 }
                 
-                if let Some(tab) = self.tabs.get(index) {
+                if let Some(tab) = tabs.get(index) {
                     let tab_width = self.calculate_tab_width(&tab.label, info) as f64;
                     let width_with_close = if tab.on_close.is_some() {
                         tab_width + 20.0
@@ -386,9 +842,20 @@ impl Widget for TabsContainer {
         graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout: &LayoutNode,
-        _info: &mut AppInfo,
-        _context: AppContext,
+        info: &mut AppInfo,
+        context: AppContext,
     ) {
+        // If dynamic mode, rebuild tabs from signal
+        if matches!(self.mode, TabsMode::Dynamic(_, _, _)) {
+            self.rebuild_tabs_from_signal();
+        }
+        
+        // Get tabs based on mode
+        let tabs = match &self.mode {
+            TabsMode::Static => &self.tabs,
+            TabsMode::Dynamic(_, _, content_store) => content_store,
+        };
+        
         // Draw container background
         let container_bounds = Rect::new(
             layout.layout.location.x as f64,
@@ -444,8 +911,8 @@ impl Widget for TabsContainer {
         );
 
         // Draw tabs
-        for (index, tab) in self.tabs.iter().enumerate() {
-            let tab_bounds = self.get_tab_bounds(layout, index, _info);
+        for (index, tab) in tabs.iter().enumerate() {
+            let tab_bounds = self.get_tab_bounds(layout, index, info);
             let is_active = index == self.active_tab();
             let is_hovered = self.hovered_tab == Some(index);
             let is_pressed = self.pressed_tab == Some(index);
@@ -542,7 +1009,7 @@ impl Widget for TabsContainer {
             let text_x = tab_bounds.x0 + 10.0; // Left padding
             let text_y = tab_bounds.y0 + (tab_bounds.height() - 14.0) / 2.0; // Center vertically
 
-            Self::render_text(&mut self.text_render_context, graphics, &tab.label, text_x, text_y, text_color, _info);
+            Self::render_text(&mut self.text_render_context, graphics, &tab.label, text_x, text_y, text_color, info);
 
             // Close button if available
             if tab.on_close.is_some() {
@@ -613,18 +1080,44 @@ impl Widget for TabsContainer {
                 // Use the first child's layout (which should be positioned correctly)
                 active_tab
                     .content
-                    .render(graphics, theme, &layout.children[0], _info, _context);
+                    .render(graphics, theme, &layout.children[0], info, context);
             } else {
                 // Fallback: just render with original layout (content might overlap tabs)
                 active_tab
                     .content
-                    .render(graphics, theme, layout, _info, _context);
+                    .render(graphics, theme, layout, info, context);
             }
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
+
+        // If dynamic mode, sync signal changes
+        let needs_rebuild = if let TabsMode::Dynamic(signal, shared, _) = &self.mode {
+            // Check if shared differs from signal and sync
+            let mut needs_rebuild = false;
+            if let Ok(shared_tabs) = shared.lock() {
+                let signal_tabs = signal.get();
+                if shared_tabs.len() != signal_tabs.len() || 
+                   shared_tabs.iter().zip(signal_tabs.iter()).any(|(a, b)| a.id != b.id) {
+                    // Sync from shared to signal
+                    let shared_vec: Vec<_> = shared_tabs.iter().cloned().collect();
+                    drop(shared_tabs);
+                    signal.set(shared_vec);
+                    needs_rebuild = true;
+                }
+            }
+            needs_rebuild
+        } else {
+            false
+        };
+        
+        if needs_rebuild {
+            self.rebuild_tabs_from_signal();
+            self.validate_state();
+            update |= Update::DRAW | Update::LAYOUT;
+        }
 
         // Calculate max scroll based on total tabs width vs available width
         let tab_bar_bounds = self.get_tab_bar_bounds(layout);
@@ -640,11 +1133,26 @@ impl Widget for TabsContainer {
             self.mouse_pos = Vector2::new(cursor_pos.x as f32, cursor_pos.y as f32);
         }
 
+        // Check action button hover
+        self.action_button_hovered = false;
+        if let Some(ref _callback) = self.action_button_callback {
+            let action_bounds = self.get_action_button_bounds(layout, info);
+            if let Some(cursor_pos) = info.cursor_pos {
+                if action_bounds.contains(Point::new(cursor_pos.x, cursor_pos.y)) {
+                    self.action_button_hovered = true;
+                }
+            }
+        }
+
         // Check tab hover states
         self.hovered_tab = None;
         self.hovered_close = None;
-
-        for (index, tab) in self.tabs.iter().enumerate() {
+        
+        let tabs = match &self.mode {
+            TabsMode::Static => &self.tabs,
+            TabsMode::Dynamic(_, _, content_store) => content_store,
+        };
+        for (index, tab) in tabs.iter().enumerate() {
             let tab_bounds = self.get_tab_bounds(layout, index, info);
 
             if tab_bounds.contains(Point::new(self.mouse_pos.x as f64, self.mouse_pos.y as f64)) {
@@ -689,7 +1197,11 @@ impl Widget for TabsContainer {
                 let mut target_index = dragging_index;
                 
                 // Find which tab position the mouse is over
-                for (i, _) in self.tabs.iter().enumerate() {
+                let tabs = match &self.mode {
+                    TabsMode::Static => &self.tabs,
+                    TabsMode::Dynamic(_, _, content_store) => content_store,
+                };
+                for (i, _) in tabs.iter().enumerate() {
                     let bounds = self.get_tab_bounds(layout, i, info);
                     if cursor_pos.x >= bounds.x0 as f64 && cursor_pos.x <= bounds.x1 as f64 {
                         target_index = i;
@@ -699,10 +1211,30 @@ impl Widget for TabsContainer {
                 
                 // Reorder if different from current position
                 if target_index != dragging_index {
-                    let tab = self.tabs.remove(dragging_index);
-                    self.tabs.insert(target_index, tab);
-                    self.dragging_tab = Some(target_index);
-                    update |= Update::DRAW;
+                    match &mut self.mode {
+                        TabsMode::Static => {
+                            let tab = self.tabs.remove(dragging_index);
+                            self.tabs.insert(target_index, tab);
+                            self.dragging_tab = Some(target_index);
+                            update |= Update::DRAW;
+                        },
+                        TabsMode::Dynamic(signal, shared, content_store) => {
+                            // Reorder in signal
+                            signal.mutate(|tabs| {
+                                let tab = tabs.remove(dragging_index);
+                                tabs.insert(target_index, tab);
+                            });
+                            // Reorder in content store
+                            let tab = content_store.remove(dragging_index);
+                            content_store.insert(target_index, tab);
+                            // Sync to shared
+                            if let Ok(mut shared_tabs) = shared.lock() {
+                                *shared_tabs = signal.get().iter().cloned().collect();
+                            }
+                            self.dragging_tab = Some(target_index);
+                            update |= Update::DRAW;
+                        },
+                    }
                 }
             }
         }
@@ -715,13 +1247,24 @@ impl Widget for TabsContainer {
             if *button == MouseButton::Left {
                 match *state {
                     ElementState::Pressed => {
-                        if let Some(hovered_tab) = self.hovered_tab {
+                        // Check action button click first
+                        if self.action_button_hovered {
+                            if let Some(ref callback) = self.action_button_callback {
+                                update |= callback();
+                            }
+                        } else if let Some(hovered_tab) = self.hovered_tab {
                             self.pressed_tab = Some(hovered_tab);
 
                             // Check if clicking close button
                             if self.hovered_close == Some(hovered_tab) {
-                                if let Some(ref callback) = self.tabs[hovered_tab].on_close {
-                                    update |= callback();
+                                let tabs = match &self.mode {
+                                    TabsMode::Static => &self.tabs,
+                                    TabsMode::Dynamic(_, _, content_store) => content_store,
+                                };
+                                if let Some(tab) = tabs.get(hovered_tab) {
+                                    if let Some(ref callback) = tab.on_close {
+                                        update |= callback();
+                                    }
                                 }
                             } else {
                                 // Start dragging for reorder - use pre-calculated bounds
@@ -730,13 +1273,9 @@ impl Widget for TabsContainer {
                                     let tab_bar_bounds = self.get_tab_bar_bounds(layout);
                                     let mut current_x = tab_bar_bounds.x0 - self.scroll_offset as f64;
                                     
-                                    for i in 0..hovered_tab {
-                                        if let Some(tab) = self.tabs.get(i) {
-                                            // Simple approximation - use fixed width to avoid mutable borrow
-                                            let tab_width = 100.0f64; // Approximate width
-                                            current_x += tab_width;
-                                        }
-                                    }
+                                    // Simple approximation - use fixed width to avoid mutable borrow
+                                    let tab_width = 100.0f64; // Approximate width
+                                    current_x += tab_width * hovered_tab as f64;
                                     
                                     self.dragging_tab = Some(hovered_tab);
                                     self.drag_offset = (cursor_pos.x - current_x) as f32;
@@ -759,11 +1298,12 @@ impl Widget for TabsContainer {
         // Update active tab content
         let active_tab_index = self.active_tab();
         let _content_bounds = self.get_content_bounds(layout);
-        if let Some(active_tab) = self.tabs.get_mut(active_tab_index) {
+        let tabs_mut = self.get_tabs_mut();
+        if let Some(active_tab) = tabs_mut.get_mut(active_tab_index) {
             // Use the parent layout for content rendering (simplified approach)
             let content_layout = layout;
 
-            update |= active_tab.content.update(&content_layout, _context, info);
+            update |= active_tab.content.update(&content_layout, context, info);
         }
 
         update
