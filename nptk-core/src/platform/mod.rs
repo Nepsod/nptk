@@ -15,6 +15,9 @@ pub mod winit;
 #[cfg(all(target_os = "linux", feature = "global-menu"))]
 pub mod appmenu;
 
+#[cfg(all(target_os = "linux", feature = "xdg-portal"))]
+pub mod xdg_desktop_portal;
+
 /// Platform type for surface creation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Platform {
@@ -46,4 +49,8 @@ pub use winit::WinitSurface;
 
 // Re-export detection functions
 pub use detection::{create_surface, create_surface_blocking};
+
+// Re-export xdg-portal types
+#[cfg(all(target_os = "linux", feature = "xdg-portal"))]
+pub use xdg_desktop_portal::{WindowAppearance, XDPEvent, XDPEventSource};
 
