@@ -471,15 +471,22 @@ impl ScrollContainer {
     fn render_scrollbar(
         &self,
         graphics: &mut dyn Graphics,
-        _theme: Option<()>,
+        theme: &mut dyn Theme,
         scrollbar_bounds: Rect,
         thumb_bounds: Rect,
         _is_vertical: bool,
         is_hovered: bool,
         is_pressed: bool,
     ) {
+        let widget_id = self.widget_id();
+        
         // Draw scrollbar track
-        let track_color = Color::from_rgb8(230, 230, 230);
+        let track_color = theme
+            .get_property(
+                widget_id.clone(),
+                &nptk_theme::properties::ThemeProperty::ColorScrollbar,
+            )
+            .unwrap_or_else(|| Color::from_rgb8(230, 230, 230));
 
         graphics.fill(
             Fill::NonZero,
@@ -491,11 +498,26 @@ impl ScrollContainer {
 
         // Draw scrollbar thumb
         let thumb_color = if is_pressed {
-            Color::from_rgb8(120, 120, 120)
+            theme
+                .get_property(
+                    widget_id.clone(),
+                    &nptk_theme::properties::ThemeProperty::ColorScrollbarThumbActive,
+                )
+                .unwrap_or_else(|| Color::from_rgb8(120, 120, 120))
         } else if is_hovered {
-            Color::from_rgb8(150, 150, 150)
+            theme
+                .get_property(
+                    widget_id.clone(),
+                    &nptk_theme::properties::ThemeProperty::ColorScrollbarThumbHover,
+                )
+                .unwrap_or_else(|| Color::from_rgb8(150, 150, 150))
         } else {
-            Color::from_rgb8(180, 180, 180)
+            theme
+                .get_property(
+                    widget_id,
+                    &nptk_theme::properties::ThemeProperty::ColorScrollbarThumb,
+                )
+                .unwrap_or_else(|| Color::from_rgb8(180, 180, 180))
         };
 
         let thumb_rounded = RoundedRect::new(
@@ -518,18 +540,36 @@ impl ScrollContainer {
     fn render_scroll_button(
         &self,
         graphics: &mut dyn Graphics,
-        _theme: Option<()>,
+        theme: &mut dyn Theme,
         bounds: Rect,
         direction: ArrowDirection,
         is_hovered: bool,
         is_pressed: bool,
     ) {
+        let widget_id = self.widget_id();
+        
+        // Use scrollbar thumb colors for buttons
         let bg_color = if is_pressed {
-            Color::from_rgb8(120, 120, 120)
+            theme
+                .get_property(
+                    widget_id.clone(),
+                    &nptk_theme::properties::ThemeProperty::ColorScrollbarThumbActive,
+                )
+                .unwrap_or_else(|| Color::from_rgb8(120, 120, 120))
         } else if is_hovered {
-            Color::from_rgb8(150, 150, 150)
+            theme
+                .get_property(
+                    widget_id.clone(),
+                    &nptk_theme::properties::ThemeProperty::ColorScrollbarThumbHover,
+                )
+                .unwrap_or_else(|| Color::from_rgb8(150, 150, 150))
         } else {
-            Color::from_rgb8(180, 180, 180)
+            theme
+                .get_property(
+                    widget_id.clone(),
+                    &nptk_theme::properties::ThemeProperty::ColorScrollbarThumb,
+                )
+                .unwrap_or_else(|| Color::from_rgb8(180, 180, 180))
         };
         graphics.fill(
             Fill::NonZero,
@@ -539,7 +579,13 @@ impl ScrollContainer {
             &bounds.to_path(0.1),
         );
 
-        let arrow_color = Color::BLACK;
+        // Use text color for arrow
+        let arrow_color = theme
+            .get_property(
+                widget_id,
+                &nptk_theme::properties::ThemeProperty::ColorText,
+            )
+            .unwrap_or_else(|| Color::BLACK);
         let center = bounds.center();
         let size = bounds.width().min(bounds.height()) * 0.4;
         let mut path = BezPath::new();
@@ -722,7 +768,7 @@ impl Widget for ScrollContainer {
             let thumb_bounds = self.get_vertical_thumb_bounds(scrollbar_bounds);
             self.render_scrollbar(
                 graphics,
-                None,
+                theme,
                 scrollbar_bounds,
                 thumb_bounds,
                 true,
@@ -735,7 +781,7 @@ impl Widget for ScrollContainer {
                 let down_button_bounds = self.get_vertical_down_button_bounds(scrollbar_bounds);
                 self.render_scroll_button(
                     graphics,
-                    None,
+                    theme,
                     up_button_bounds,
                     ArrowDirection::Up,
                     self.up_button_hovered,
@@ -743,7 +789,7 @@ impl Widget for ScrollContainer {
                 );
                 self.render_scroll_button(
                     graphics,
-                    None,
+                    theme,
                     down_button_bounds,
                     ArrowDirection::Down,
                     self.down_button_hovered,
@@ -757,7 +803,7 @@ impl Widget for ScrollContainer {
             let thumb_bounds = self.get_horizontal_thumb_bounds(scrollbar_bounds);
             self.render_scrollbar(
                 graphics,
-                None,
+                theme,
                 scrollbar_bounds,
                 thumb_bounds,
                 false,
@@ -770,7 +816,7 @@ impl Widget for ScrollContainer {
                 let right_button_bounds = self.get_horizontal_right_button_bounds(scrollbar_bounds);
                 self.render_scroll_button(
                     graphics,
-                    None,
+                    theme,
                     left_button_bounds,
                     ArrowDirection::Left,
                     self.left_button_hovered,
@@ -778,7 +824,7 @@ impl Widget for ScrollContainer {
                 );
                 self.render_scroll_button(
                     graphics,
-                    None,
+                    theme,
                     right_button_bounds,
                     ArrowDirection::Right,
                     self.right_button_hovered,

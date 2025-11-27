@@ -113,7 +113,7 @@ impl TabsContainer {
     /// Create a new TabsContainer
     pub fn new() -> Self {
         Self {
-            widget_id: WidgetId::new("tabs_container", "default"),
+            widget_id: WidgetId::new("nptk-widgets", "TabsContainer"),
             layout_style: MaybeSignal::value(LayoutStyle::default()),
             tabs: Vec::new(),
             active_tab: StateSignal::new(0),

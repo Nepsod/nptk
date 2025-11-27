@@ -391,6 +391,97 @@ impl Theme for SweetTheme {
                     ),
                     _ => None,
                 },
+                "TabsContainer" => match property {
+                    crate::properties::ThemeProperty::ColorBackground => Some(
+                        self.variables
+                            .get_color("bg-primary")
+                            .unwrap_or(Color::from_rgb8(22, 25, 37)),
+                    ),
+                    crate::properties::ThemeProperty::TabBarBackground => Some(
+                        self.variables
+                            .get_color("bg-secondary")
+                            .unwrap_or(Color::from_rgb8(30, 34, 51)),
+                    ),
+                    crate::properties::ThemeProperty::ContentBackground => Some(
+                        self.variables
+                            .get_color("bg-primary")
+                            .unwrap_or(Color::from_rgb8(22, 25, 37)),
+                    ),
+                    crate::properties::ThemeProperty::ColorBorder => Some(
+                        self.variables
+                            .get_color("border-primary")
+                            .unwrap_or(Color::from_rgb8(102, 106, 115)),
+                    ),
+                    crate::properties::ThemeProperty::TabActive => Some(
+                        self.variables
+                            .get_color("bg-primary")
+                            .unwrap_or(Color::from_rgb8(22, 25, 37)),
+                    ),
+                    crate::properties::ThemeProperty::TabInactive => Some(
+                        self.variables
+                            .get_color("bg-secondary")
+                            .unwrap_or(Color::from_rgb8(30, 34, 51)),
+                    ),
+                    crate::properties::ThemeProperty::TabHovered => Some(
+                        self.variables
+                            .get_color("bg-tertiary")
+                            .unwrap_or(Color::from_rgb8(24, 27, 40)),
+                    ),
+                    crate::properties::ThemeProperty::TabPressed => Some(
+                        self.variables
+                            .get_color("primary-dark")
+                            .unwrap_or(Color::from_rgb8(157, 51, 213)),
+                    ),
+                    crate::properties::ThemeProperty::TabText => Some(
+                        self.variables
+                            .get_color("text-secondary")
+                            .unwrap_or(Color::from_rgb8(195, 199, 209)),
+                    ),
+                    crate::properties::ThemeProperty::TabTextActive => Some(
+                        self.variables
+                            .get_color("text-primary")
+                            .unwrap_or(Color::from_rgb8(211, 218, 227)),
+                    ),
+                    _ => None,
+                },
+                "ScrollContainer" => match property {
+                    crate::properties::ThemeProperty::ColorBackground => Some(
+                        self.variables
+                            .get_color("bg-primary")
+                            .unwrap_or(Color::from_rgb8(22, 25, 37)),
+                    ),
+                    crate::properties::ThemeProperty::ColorBorder => Some(
+                        self.variables
+                            .get_color("border-primary")
+                            .unwrap_or(Color::from_rgb8(102, 106, 115)),
+                    ),
+                    crate::properties::ThemeProperty::ColorScrollbar => Some(
+                        self.variables
+                            .get_color("bg-secondary")
+                            .unwrap_or(Color::from_rgb8(30, 34, 51)),
+                    ),
+                    crate::properties::ThemeProperty::ColorScrollbarThumb => Some(
+                        self.variables
+                            .get_color("border-primary")
+                            .unwrap_or(Color::from_rgb8(102, 106, 115)),
+                    ),
+                    crate::properties::ThemeProperty::ColorScrollbarThumbHover => Some(
+                        self.variables
+                            .get_color("text-secondary")
+                            .unwrap_or(Color::from_rgb8(195, 199, 209)),
+                    ),
+                    crate::properties::ThemeProperty::ColorScrollbarThumbActive => Some(
+                        self.variables
+                            .get_color("primary")
+                            .unwrap_or(Color::from_rgb8(197, 14, 210)),
+                    ),
+                    crate::properties::ThemeProperty::ColorText => Some(
+                        self.variables
+                            .get_color("text-primary")
+                            .unwrap_or(Color::from_rgb8(211, 218, 227)),
+                    ),
+                    _ => None,
+                },
                 _ => None,
             },
             _ => None,
@@ -614,6 +705,80 @@ impl Theme for SweetTheme {
                     (
                         ThemeProperty::ColorToggleDisabled,
                         self.variables.get_color("text-muted").unwrap(),
+                    ),
+                ])),
+
+                "TabsContainer" => Some(self.create_widget_style(&[
+                    (
+                        ThemeProperty::ColorBackground,
+                        self.variables.get_color("bg-primary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::TabBarBackground,
+                        self.variables.get_color("bg-secondary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ContentBackground,
+                        self.variables.get_color("bg-primary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorBorder,
+                        self.variables.get_color("border-primary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::TabActive,
+                        self.variables.get_color("bg-primary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::TabInactive,
+                        self.variables.get_color("bg-secondary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::TabHovered,
+                        self.variables.get_color("bg-tertiary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::TabPressed,
+                        self.variables.get_color("primary-dark").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::TabText,
+                        self.variables.get_color("text-secondary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::TabTextActive,
+                        self.variables.get_color("text-primary").unwrap(),
+                    ),
+                ])),
+
+                "ScrollContainer" => Some(self.create_widget_style(&[
+                    (
+                        ThemeProperty::ColorBackground,
+                        self.variables.get_color("bg-primary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorBorder,
+                        self.variables.get_color("border-primary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorScrollbar,
+                        self.variables.get_color("bg-secondary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorScrollbarThumb,
+                        self.variables.get_color("border-primary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorScrollbarThumbHover,
+                        self.variables.get_color("text-secondary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorScrollbarThumbActive,
+                        self.variables.get_color("primary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorText,
+                        self.variables.get_color("text-primary").unwrap(),
                     ),
                 ])),
 
