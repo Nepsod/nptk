@@ -1,4 +1,5 @@
 use crate::theme_rendering::render_button_with_theme;
+use std::time::{Duration, Instant};
 use nptk_core::app::context::AppContext;
 use nptk_core::app::focus::{FocusBounds, FocusId, FocusProperties, FocusState, FocusableWidget};
 use nptk_core::app::info::AppInfo;
@@ -30,6 +31,12 @@ pub struct Button {
     focus_state: FocusState,
     focus_via_keyboard: bool, // Track if focus was gained via keyboard
     disabled: bool,
+    // Repeat logic
+    repeat_enabled: bool,
+    repeat_delay: Duration,
+    repeat_interval: Duration,
+    press_start_time: Option<Instant>,
+    last_repeat_time: Option<Instant>,
 }
 
 impl Button {
@@ -53,6 +60,11 @@ impl Button {
             focus_state: FocusState::None,
             focus_via_keyboard: false,
             disabled: false,
+            repeat_enabled: false,
+            repeat_delay: Duration::from_millis(500),
+            repeat_interval: Duration::from_millis(100),
+            press_start_time: None,
+            last_repeat_time: None,
         }
     }
 
@@ -65,6 +77,24 @@ impl Button {
     /// Set whether the button is disabled.
     pub fn with_disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
+        self
+    }
+
+    /// Enable or disable auto-repeat when held down.
+    pub fn with_repeat(mut self, enabled: bool) -> Self {
+        self.repeat_enabled = enabled;
+        self
+    }
+
+    /// Set the initial delay before repeating starts (in milliseconds).
+    pub fn with_repeat_delay(mut self, delay_ms: u64) -> Self {
+        self.repeat_delay = Duration::from_millis(delay_ms);
+        self
+    }
+
+    /// Set the interval between repeats (in milliseconds).
+    pub fn with_repeat_interval(mut self, interval_ms: u64) -> Self {
+        self.repeat_interval = Duration::from_millis(interval_ms);
         self
     }
 }
@@ -234,13 +264,29 @@ impl Widget for Button {
                     if *btn == MouseButton::Left {
                         match el {
                             ElementState::Pressed => {
-                                self.state = ButtonState::Pressed;
+                                if self.state != ButtonState::Pressed {
+                                    self.state = ButtonState::Pressed;
+                                    // If repeat is enabled, fire immediately on press too
+                                    if self.repeat_enabled {
+                                        update |= *self.on_pressed.get();
+                                        self.press_start_time = Some(Instant::now());
+                                        self.last_repeat_time = None;
+                                    }
+                                }
                             },
 
                             // actually fire the event if the button is released
                             ElementState::Released => {
                                 self.state = ButtonState::Released;
-                                update |= *self.on_pressed.get();
+                                // Only fire on release if repeat is NOT enabled
+                                // (If repeat is enabled, we already fired on press and during hold)
+                                if !self.repeat_enabled {
+                                    update |= *self.on_pressed.get();
+                                } else {
+                                    // Reset repeat state
+                                    self.press_start_time = None;
+                                    self.last_repeat_time = None;
+                                }
                             },
                         }
                     }
@@ -262,6 +308,52 @@ impl Widget for Button {
         // update on focus state change, due to re-coloring
         if old_focus_state != self.focus_state {
             update |= Update::DRAW;
+        }
+
+        // Handle repeat logic
+        if self.repeat_enabled && self.state == ButtonState::Pressed {
+            let now = Instant::now();
+            
+            if let Some(start_time) = self.press_start_time {
+                // Check if we've passed the initial delay
+                if now.duration_since(start_time) >= self.repeat_delay {
+                    // Check if we've passed the interval since last repeat
+                    let should_repeat = if let Some(last_repeat) = self.last_repeat_time {
+                        now.duration_since(last_repeat) >= self.repeat_interval
+                    } else {
+                        // First repeat after delay
+                        true
+                    };
+
+                    if should_repeat {
+                        update |= *self.on_pressed.get();
+                        self.last_repeat_time = Some(now);
+                    }
+                }
+                
+                // Keep requesting updates while pressed to ensure smooth repeating
+                // We use Update::empty() here because we just need the loop to continue,
+                // but usually we need to signal that we want another frame or update cycle.
+                // In this framework, returning Update::DRAW or similar might be needed if we want to ensure
+                // we get called back efficiently. However, update() is called on events.
+                // To support timer-based updates without events, we might need a way to request a timer.
+                // For now, we'll rely on the fact that if we change something, we get updated.
+                // But if nothing changes (mouse held still), we might not get updates.
+                // We can force a redraw which usually triggers a new update cycle in many game loops,
+                // but here we should be careful. 
+                // Ideally, we'd request a timer callback. Since we don't have that explicit API here yet,
+                // we can return Update::DRAW to force a continuous loop while pressed, 
+                // or rely on the fact that we are modifying state.
+                // Let's try returning Update::DRAW to ensure we get called back.
+                update |= Update::DRAW; 
+            } else {
+                // Should have been set when state became Pressed, but just in case
+                self.press_start_time = Some(now);
+            }
+        } else if self.state != ButtonState::Pressed {
+            // Reset repeat state when not pressed
+            self.press_start_time = None;
+            self.last_repeat_time = None;
         }
 
         update
