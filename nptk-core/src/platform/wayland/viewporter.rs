@@ -1,17 +1,44 @@
 #![cfg(target_os = "linux")]
 
-//! Viewport scaling support via wp_viewporter.
+//! Viewporter support via wp_viewporter.
 
-// Viewporter requires wayland-protocols viewporter support
-// This is a placeholder implementation
+use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
+use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 
 use super::shell::WaylandClientState;
 
-// TODO: Implement viewporter when wayland-protocols viewporter support is available
-// This will require:
-// - wp_viewporter
-// - wp_viewport
-// - Viewport scaling and panning
+pub struct Viewport {
+    pub object: wp_viewport::WpViewport,
+}
 
-// For now, this module is a placeholder
+impl Viewport {
+    pub fn new(object: wp_viewport::WpViewport) -> Self {
+        Self { object }
+    }
+}
 
+impl Dispatch<wp_viewporter::WpViewporter, ()> for WaylandClientState {
+    fn event(
+        _state: &mut Self,
+        _manager: &wp_viewporter::WpViewporter,
+        _event: wp_viewporter::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        // No events for manager
+    }
+}
+
+impl Dispatch<wp_viewport::WpViewport, ()> for WaylandClientState {
+    fn event(
+        _state: &mut Self,
+        _viewport: &wp_viewport::WpViewport,
+        _event: wp_viewport::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        // No events for viewport
+    }
+}

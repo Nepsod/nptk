@@ -19,14 +19,27 @@ use super::input::seat;
 // Import core protocol dispatches
 use super::core;
 
+use super::data_device::{DataDevice, DataOffer};
+use super::primary_selection::{PrimaryDataOffer, PrimarySelectionDevice};
+
 /// Wayland client state for dispatch implementations.
 pub struct WaylandClientState {
     pub(crate) shared: Arc<SharedState>,
+    pub data_devices: Vec<DataDevice>,
+    pub pending_data_offers: Vec<DataOffer>,
+    pub primary_selection_devices: Vec<PrimarySelectionDevice>,
+    pub pending_primary_offers: Vec<PrimaryDataOffer>,
 }
 
 impl WaylandClientState {
     pub fn new(shared: Arc<SharedState>) -> Self {
-        Self { shared }
+        Self {
+            shared,
+            data_devices: Vec::new(),
+            pending_data_offers: Vec::new(),
+            primary_selection_devices: Vec::new(),
+            pending_primary_offers: Vec::new(),
+        }
     }
 }
 

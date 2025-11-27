@@ -34,7 +34,7 @@ harfrust = "0.2.0"
 [target.'cfg(target_os = "linux")'.dependencies]
 smithay-client-toolkit = { version = "0.18", optional = true }
 wayland-client = { version = "0.31", optional = true }
-wayland-protocols = { version = "0.31", features = ["client"], optional = true }
+wayland-protocols = { version = "0.31", features = ["client", "staging", "unstable"], optional = true }
 wayland-protocols-plasma = { version = "0.3", features = ["client"], optional = true }
 raw-window-handle = "0.6"
 tempfile = { version = "3.10.1", optional = true }

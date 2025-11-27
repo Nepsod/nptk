@@ -20,6 +20,9 @@ pub mod viewporter;
 pub mod fractional_scale;
 pub mod presentation;
 pub mod idle;
+pub mod primary_selection;
+pub mod text_input;
+pub mod activation;
 
 // Re-export commonly used types
 pub use client::{WaylandClient, WaylandQueueHandle};

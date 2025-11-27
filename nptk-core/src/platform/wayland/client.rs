@@ -293,6 +293,19 @@ impl WaylandClient {
 
         let globals = WaylandGlobals::bind_all(&global_list, &queue_handle)?;
 
+        // Initialize data devices
+        if let Some(ref seat) = globals.seat {
+            if let Some(ref manager) = globals.data_device_manager {
+                let device = manager.get_data_device(seat, &queue_handle, ());
+                state.data_devices.push(super::data_device::DataDevice::new(device));
+            }
+
+            if let Some(ref manager) = globals.primary_selection_manager {
+                let device = manager.get_device(seat, &queue_handle, ());
+                state.primary_selection_devices.push(super::primary_selection::PrimarySelectionDevice::new(device));
+            }
+        }
+
         Ok(WaylandClient {
             connection,
             queue_handle,

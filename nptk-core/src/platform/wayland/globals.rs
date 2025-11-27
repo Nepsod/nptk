@@ -3,8 +3,13 @@
 //! Wayland global object binding and registry handling.
 
 use wayland_client::globals::GlobalList;
-use wayland_client::protocol::{wl_keyboard, wl_pointer, wl_seat, wl_shm};
+use wayland_client::protocol::{wl_data_device_manager, wl_keyboard, wl_pointer, wl_seat, wl_shm};
 use wayland_client::{Proxy, QueueHandle};
+use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_manager_v1;
+use wayland_protocols::wp::primary_selection::zv1::client::zwp_primary_selection_device_manager_v1;
+use wayland_protocols::wp::text_input::zv3::client::zwp_text_input_manager_v3;
+use wayland_protocols::wp::viewporter::client::wp_viewporter;
+use wayland_protocols::xdg::activation::v1::client::xdg_activation_v1;
 use wayland_protocols::xdg::decoration::zv1::client::zxdg_decoration_manager_v1;
 use wayland_protocols::xdg::shell::client::xdg_wm_base;
 use wayland_protocols_plasma::server_decoration::client::org_kde_kwin_server_decoration_manager;
@@ -22,6 +27,12 @@ const KDE_SERVER_DECORATION_VERSION: u32 = 1;
 const KDE_APPMENU_MANAGER_VERSION: u32 = 2;
 const WL_SHM_VERSION: u32 = 1;
 const WL_SEAT_VERSION: u32 = 7;
+const WL_DATA_DEVICE_MANAGER_VERSION: u32 = 3;
+const ZWP_PRIMARY_SELECTION_DEVICE_MANAGER_V1_VERSION: u32 = 1;
+const ZWP_TEXT_INPUT_MANAGER_V3_VERSION: u32 = 1;
+const WP_FRACTIONAL_SCALE_MANAGER_V1_VERSION: u32 = 1;
+const WP_VIEWPORTER_VERSION: u32 = 1;
+const XDG_ACTIVATION_V1_VERSION: u32 = 1;
 
 /// Wayland global objects bound from the registry.
 #[derive(Clone)]
@@ -38,6 +49,13 @@ pub struct WaylandGlobals {
     pub seat: Option<wl_seat::WlSeat>,
     pub pointer: Option<wl_pointer::WlPointer>,
     pub keyboard: Option<wl_keyboard::WlKeyboard>,
+    pub data_device_manager: Option<wl_data_device_manager::WlDataDeviceManager>,
+    pub primary_selection_manager:
+        Option<zwp_primary_selection_device_manager_v1::ZwpPrimarySelectionDeviceManagerV1>,
+    pub text_input_manager: Option<zwp_text_input_manager_v3::ZwpTextInputManagerV3>,
+    pub fractional_scale_manager: Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
+    pub viewporter: Option<wp_viewporter::WpViewporter>,
+    pub activation: Option<xdg_activation_v1::XdgActivationV1>,
 }
 
 impl WaylandGlobals {
@@ -125,6 +143,81 @@ impl WaylandGlobals {
             log::warn!("No Wayland seat available, keyboard input will not work");
         }
 
+        let data_device_manager = match globals.bind::<wl_data_device_manager::WlDataDeviceManager, _, _>(
+            qh,
+            1..=WL_DATA_DEVICE_MANAGER_VERSION,
+            (),
+        ) {
+            Ok(mgr) => Some(mgr),
+            Err(wayland_client::globals::BindError::NotPresent) => None,
+            Err(err) => return Err(format!("Failed to bind wl_data_device_manager: {:?}", err)),
+        };
+
+        let primary_selection_manager = match globals.bind::<
+            zwp_primary_selection_device_manager_v1::ZwpPrimarySelectionDeviceManagerV1,
+            _,
+            _,
+        >(qh, 1..=ZWP_PRIMARY_SELECTION_DEVICE_MANAGER_V1_VERSION, ()) {
+            Ok(mgr) => Some(mgr),
+            Err(wayland_client::globals::BindError::NotPresent) => None,
+            Err(err) => {
+                return Err(format!(
+                    "Failed to bind zwp_primary_selection_device_manager_v1: {:?}",
+                    err
+                ));
+            }
+        };
+
+        let text_input_manager = match globals.bind::<
+            zwp_text_input_manager_v3::ZwpTextInputManagerV3,
+            _,
+            _,
+        >(qh, 1..=ZWP_TEXT_INPUT_MANAGER_V3_VERSION, ()) {
+            Ok(mgr) => Some(mgr),
+            Err(wayland_client::globals::BindError::NotPresent) => None,
+            Err(err) => {
+                return Err(format!(
+                    "Failed to bind zwp_text_input_manager_v3: {:?}",
+                    err
+                ));
+            }
+        };
+
+        let fractional_scale_manager = match globals.bind::<
+            wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1,
+            _,
+            _,
+        >(qh, 1..=WP_FRACTIONAL_SCALE_MANAGER_V1_VERSION, ()) {
+            Ok(mgr) => Some(mgr),
+            Err(wayland_client::globals::BindError::NotPresent) => None,
+            Err(err) => {
+                return Err(format!(
+                    "Failed to bind wp_fractional_scale_manager_v1: {:?}",
+                    err
+                ));
+            }
+        };
+
+        let viewporter = match globals.bind::<wp_viewporter::WpViewporter, _, _>(
+            qh,
+            1..=WP_VIEWPORTER_VERSION,
+            (),
+        ) {
+            Ok(mgr) => Some(mgr),
+            Err(wayland_client::globals::BindError::NotPresent) => None,
+            Err(err) => return Err(format!("Failed to bind wp_viewporter: {:?}", err)),
+        };
+
+        let activation = match globals.bind::<xdg_activation_v1::XdgActivationV1, _, _>(
+            qh,
+            1..=XDG_ACTIVATION_V1_VERSION,
+            (),
+        ) {
+            Ok(mgr) => Some(mgr),
+            Err(wayland_client::globals::BindError::NotPresent) => None,
+            Err(err) => return Err(format!("Failed to bind xdg_activation_v1: {:?}", err)),
+        };
+
         Ok(Self {
             compositor,
             wm_base,
@@ -136,6 +229,12 @@ impl WaylandGlobals {
             seat,
             pointer,
             keyboard,
+            data_device_manager,
+            primary_selection_manager,
+            text_input_manager,
+            fractional_scale_manager,
+            viewporter,
+            activation,
         })
     }
 }
