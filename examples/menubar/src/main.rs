@@ -271,17 +271,6 @@ impl Application for MenuBarApp {
         ])
         .with_layout_style(LayoutStyle {
             flex_direction: FlexDirection::Column,
-            align_items: Some(AlignItems::Center),
-            padding: nptk_core::layout::Rect {
-                left: LengthPercentage::length(20.0),
-                right: LengthPercentage::length(20.0),
-                top: LengthPercentage::length(20.0),
-                bottom: LengthPercentage::length(20.0),
-            },
-            gap: Vector2::new(
-                LengthPercentage::length(10.0),
-                LengthPercentage::length(10.0),
-            ),
             ..Default::default()
         });
 
