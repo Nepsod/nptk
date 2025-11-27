@@ -254,12 +254,26 @@ impl MenuBar {
         self
     }
 
+    #[cfg(not(feature = "global-menu"))]
+    /// Placeholder for the with_global_menu method when global-menu feature is disabled.
+    pub fn with_global_menu(mut self) -> Self {
+        log::warn!("with_global_menu called when global-menu feature is disabled");
+        self
+    }
+
     #[cfg(feature = "global-menu")]
     /// Disable integration with the system-wide global menu.
     pub fn without_global_menu(mut self) -> Self {
         self.global_menu_enabled = false;
         // If bridge was already started, we can't easily stop it, but we can stop updating it
         // Ideally we would drop the bridge here if it was an Option<Bridge> that we own fully
+        self
+    }
+
+    #[cfg(not(feature = "global-menu"))]
+    /// Placeholder for the without_global_menu method when global-menu feature is disabled.
+    pub fn without_global_menu(mut self) -> Self {
+        log::warn!("without_global_menu called when global-menu feature is disabled");
         self
     }
 
