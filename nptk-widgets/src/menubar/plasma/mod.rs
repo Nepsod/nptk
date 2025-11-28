@@ -23,7 +23,7 @@ use wayland_protocols_plasma::appmenu::client::{
     org_kde_kwin_appmenu, org_kde_kwin_appmenu_manager,
 };
 
-use crate::menubar::common::MenuInfoStorage;
+use nptk_core::platform::MenuInfoStorage;
 mod wl_integration;
 
 /// Plasma AppMenu client state.

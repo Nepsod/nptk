@@ -408,6 +408,8 @@ impl WaylandSurface {
     /// Create a new Wayland surface.
     ///
     /// Initializes a new Wayland surface with the given dimensions and title.
+    /// If appmenu manager is available and menu info is already set, appmenu will be
+    /// configured immediately, before window focus.
     pub fn new(
         width: u32,
         height: u32,
@@ -474,6 +476,22 @@ impl WaylandSurface {
         }
         client.register_surface(&inner);
 
+        // Try to set appmenu immediately if both appmenu_manager and menu info are available
+        #[cfg(feature = "global-menu")]
+        {
+            if client.globals().appmenu_manager.is_some() {
+                if let Some((service, path)) = crate::platform::MenuInfoStorage::get() {
+                    if let Err(e) = client.set_appmenu_for_surface_with_info(&wl_surface, service, path) {
+                        log::debug!("Failed to set appmenu immediately on surface creation: {}", e);
+                    } else {
+                        log::info!("Appmenu set immediately on surface creation (before window focus)");
+                    }
+                } else {
+                    log::debug!("Appmenu manager available but menu info not yet set - will be set when menu info becomes available");
+                }
+            }
+        }
+
         // Commit the surface after registering so we can handle configure events
         wl_surface.commit();
         // Flush the Connection (not the event queue) so compositor sees the commit
@@ -489,8 +507,8 @@ impl WaylandSurface {
         let (wgpu_surface, format) =
             Self::create_wgpu_surface(&connection, &wl_surface, gpu_context)?;
 
-        // Appmenu setup is handled by the menubar module via platform's public appmenu API.
-        // When menu info becomes available, the menubar module will call
+        // Appmenu setup: If menu info is already available, appmenu is set immediately above.
+        // If menu info becomes available later, the menubar module will call
         // appmenu::update_appmenu_for_all_surfaces() which will set appmenu for this surface.
 
         Ok(Self {

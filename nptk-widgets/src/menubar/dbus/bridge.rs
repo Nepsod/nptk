@@ -12,7 +12,8 @@ use zbus::names::WellKnownName;
 use zbus::zvariant::OwnedValue;
 use zbus::Result as ZbusResult;
 
-use crate::menubar::common::{platform, MenuInfoStorage, x11};
+use crate::menubar::common::{platform, x11};
+use nptk_core::platform::MenuInfoStorage;
 use crate::menubar::plasma;
 
 use super::menu_object::MenuObject;

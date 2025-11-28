@@ -7,7 +7,7 @@
 
 use wayland_client::protocol::wl_surface;
 
-use crate::menubar::common::MenuInfoStorage;
+use nptk_core::platform::MenuInfoStorage;
 
 /// Set the application menu for a Wayland surface using platform's public appmenu API.
 ///
