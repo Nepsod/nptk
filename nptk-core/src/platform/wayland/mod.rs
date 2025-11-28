@@ -30,5 +30,4 @@ pub use globals::WaylandGlobals;
 pub use surface::{WaylandSurface, WaylandSurfaceInner};
 
 // Events are pub(crate) for internal use only
-pub(crate) use events::{InputEvent, KeyboardEvent, PointerEvent, TouchEvent, TabletEvent};
 

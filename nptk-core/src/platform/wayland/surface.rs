@@ -42,6 +42,9 @@ pub struct WaylandSurfaceInner {
 }
 
 impl WaylandSurfaceInner {
+    /// Create a new Wayland surface inner state.
+    ///
+    /// Initializes the surface with the given Wayland objects and initial size.
     pub fn new(
         wl_surface: wl_surface::WlSurface,
         xdg_surface: xdg_surface::XdgSurface,
@@ -67,11 +70,15 @@ impl WaylandSurfaceInner {
         })
     }
 
+    /// Push an input event to the surface's event queue.
     pub fn push_input_event(&self, event: InputEvent) {
         let mut state = self.state.lock().unwrap();
         state.input_events.push(event);
     }
 
+    /// Take all pending input events from the surface.
+    ///
+    /// Returns a vector of all accumulated input events and clears the internal queue.
     pub fn take_input_events(&self) -> Vec<InputEvent> {
         let mut state = self.state.lock().unwrap();
         if state.input_events.is_empty() {
@@ -83,15 +90,20 @@ impl WaylandSurfaceInner {
         }
     }
 
+    /// Get the surface's protocol ID.
     pub fn surface_key(&self) -> u32 {
         self.surface_key
     }
     
+    /// Get the underlying Wayland surface object.
     #[cfg(feature = "global-menu")]
     pub fn wl_surface(&self) -> &wl_surface::WlSurface {
         &self.wl_surface
     }
 
+    /// Handle a toplevel configure event.
+    ///
+    /// Stores the pending size to be applied after acknowledging the configure.
     pub fn handle_toplevel_configure(&self, width: i32, height: i32) {
         log::debug!("Wayland toplevel configure: {}x{}", width, height);
         if width <= 0 || height <= 0 {
@@ -101,6 +113,9 @@ impl WaylandSurfaceInner {
         state.pending_size = Some((width as u32, height as u32));
     }
 
+    /// Handle configure acknowledgment.
+    ///
+    /// Applies the pending size after acknowledging the configure event.
     pub fn handle_configure_after_ack(&self, serial: u32) {
         let xdg_id = self.xdg_surface.id().protocol_id();
         let wl_id = self.wl_surface.id().protocol_id();
@@ -176,6 +191,9 @@ impl WaylandSurfaceInner {
         self.ensure_frame_callback_locked(&mut state);
     }
 
+    /// Handle frame callback completion.
+    ///
+    /// Called when the compositor signals that a frame has been presented.
     pub fn handle_frame_done(&self) {
         log::trace!("Wayland frame callback done");
         let mut state = self.state.lock().unwrap();
@@ -183,11 +201,17 @@ impl WaylandSurfaceInner {
         state.first_frame_seen = true;
     }
 
+    /// Prepare a frame callback for the next frame.
+    ///
+    /// Requests a callback from the compositor to pace frame rendering.
     pub fn prepare_frame_callback(&self) {
         let mut state = self.state.lock().unwrap();
         self.ensure_frame_callback_locked(&mut state);
     }
 
+    /// Set a pending size change for the surface.
+    ///
+    /// The size will be applied on the next configure acknowledgment.
     pub fn set_pending_size(&self, width: u32, height: u32) {
         let mut state = self.state.lock().unwrap();
         state.pending_size = Some((width, height));
@@ -199,7 +223,7 @@ impl WaylandSurfaceInner {
         wl_surface: &wl_surface::WlSurface,
         shm: &wl_shm::WlShm,
         queue_handle: &WaylandQueueHandle,
-        surface_key: u32,
+        _surface_key: u32,
         width: u32,
         height: u32,
     ) -> Result<(), String> {
@@ -253,11 +277,17 @@ impl WaylandSurfaceInner {
         Ok(())
     }
 
+    /// Mark the surface as closed.
+    ///
+    /// Signals that the surface should be closed.
     pub fn mark_closed(&self) {
         let mut state = self.state.lock().unwrap();
         state.should_close = true;
     }
 
+    /// Called after presenting a frame.
+    ///
+    /// Marks that a redraw is no longer needed.
     pub fn after_present(&self) {
         let mut state = self.state.lock().unwrap();
         state.needs_redraw = false;
@@ -281,12 +311,18 @@ impl WaylandSurfaceInner {
         }
     }
 
+    /// Request a redraw of the surface.
+    ///
+    /// Marks the surface as needing a redraw and ensures a frame callback is set up.
     pub fn request_redraw(&self) {
         let mut state = self.state.lock().unwrap();
         state.needs_redraw = true;
         self.ensure_frame_callback_locked(&mut state);
     }
 
+    /// Take the current surface status.
+    ///
+    /// Returns the current status and resets the needs_redraw and configured flags.
     pub fn take_status(&self) -> SurfaceStatus {
         let mut state = self.state.lock().unwrap();
         let status = SurfaceStatus {
@@ -300,31 +336,42 @@ impl WaylandSurfaceInner {
         status
     }
 
+    /// Check if the initial configure has been acknowledged.
     pub fn has_acknowledged_initial_configure(&self) -> bool {
         let state = self.state.lock().unwrap();
         state.first_configure_acked
     }
 
+    /// Get the current surface size.
     pub(crate) fn get_size(&self) -> (u32, u32) {
         let state = self.state.lock().unwrap();
         state.size
     }
 
+    /// Check if the first frame has been seen.
     pub(crate) fn get_first_frame_seen(&self) -> bool {
         let state = self.state.lock().unwrap();
         state.first_frame_seen
     }
 
+    /// Check if the surface should be closed.
     pub(crate) fn get_should_close(&self) -> bool {
         let state = self.state.lock().unwrap();
         state.should_close
     }
 }
 
+/// Surface status snapshot.
+///
+/// Contains the current state of a Wayland surface.
 pub(crate) struct SurfaceStatus {
+    /// Current surface size.
     pub size: (u32, u32),
+    /// Whether the surface needs a redraw.
     pub needs_redraw: bool,
+    /// Whether the surface has been configured.
     pub configured: bool,
+    /// Whether the surface should be closed.
     pub should_close: bool,
 }
 
@@ -358,6 +405,9 @@ pub struct WaylandSurface {
 }
 
 impl WaylandSurface {
+    /// Create a new Wayland surface.
+    ///
+    /// Initializes a new Wayland surface with the given dimensions and title.
     pub fn new(
         width: u32,
         height: u32,
@@ -594,6 +644,9 @@ impl WaylandSurface {
         self.inner.surface_key()
     }
 
+    /// Configure the wgpu surface.
+    ///
+    /// Sets up the surface configuration with the given format and present mode.
     pub fn configure_surface(
         &mut self,
         device: &wgpu::Device,
@@ -630,6 +683,9 @@ impl WaylandSurface {
         Ok(())
     }
 
+    /// Create a render view for offscreen rendering.
+    ///
+    /// Creates or updates the offscreen render target for the given dimensions.
     pub fn create_render_view(
         &mut self,
         device: &wgpu::Device,
@@ -654,6 +710,9 @@ impl WaylandSurface {
             .create_view())
     }
 
+    /// Blit the rendered content to the surface.
+    ///
+    /// Copies the offscreen render target to the surface texture.
     pub fn blit_to_surface(
         &self,
         device: &wgpu::Device,
@@ -669,22 +728,27 @@ impl WaylandSurface {
         }
     }
 
+    /// Check if the surface is configured.
     pub fn is_configured(&self) -> bool {
         self.is_configured
     }
 
+    /// Check if the surface has received at least one configure event.
     pub fn has_received_configure(&self) -> bool {
         self.first_configure_seen
     }
 
+    /// Check if the first frame has been presented.
     pub fn first_frame_seen(&self) -> bool {
         self.inner.get_first_frame_seen()
     }
 
+    /// Check if the surface should be closed.
     pub fn should_close(&self) -> bool {
         self.inner.get_should_close()
     }
 
+    /// Check if the surface requires reconfiguration.
     pub fn requires_reconfigure(&self) -> bool {
         self.pending_reconfigure
     }
@@ -697,6 +761,9 @@ impl WaylandSurface {
         }
     }
 
+    /// Prepare for the next frame.
+    ///
+    /// Requests a frame callback from the compositor to pace rendering.
     pub fn prepare_frame(&self) {
         if !self.is_configured {
             return;

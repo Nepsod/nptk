@@ -23,7 +23,7 @@ use nptk::core::config::MayConfig;
 use nptk::core::layout::{
     AlignItems, Dimension, FlexDirection, LayoutNode, LayoutStyle, LengthPercentage, StyleNode,
 };
-use nptk::core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii};
+use nptk::core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Shape};
 use nptk::core::vg::peniko::{Brush, Color, Fill};
 use nptk::core::vg::Scene;
 use nptk::core::widget::{BoxedWidget, Widget, WidgetChildExt, WidgetLayoutExt};
@@ -34,6 +34,8 @@ use nptk::widgets::button::Button;
 use nptk::widgets::container::Container;
 use nptk::widgets::text::Text;
 use nptk_core::signal::MaybeSignal;
+use nptk_core::vgi::Graphics;
+use nptk_core::vgi::vello_vg::VelloGraphics;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 
@@ -79,7 +81,7 @@ impl WidgetLayoutExt for TooltipWidget {
 impl Widget for TooltipWidget {
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
@@ -88,9 +90,11 @@ impl Widget for TooltipWidget {
         // Step 1: Render the main widget content (the child) with proper positioning
         if !layout.children.is_empty() {
             let mut child_scene = Scene::new();
+            let mut child_graphics = VelloGraphics::new(&mut child_scene);
             self.child
-                .render(&mut child_scene, theme, &layout.children[0], info, context);
-            scene.append(
+                .render(&mut child_graphics, theme, &layout.children[0], info, context);
+            
+            graphics.append(
                 &child_scene,
                 Some(Affine::translate((
                     layout.layout.location.x as f64,
@@ -102,7 +106,7 @@ impl Widget for TooltipWidget {
 
     fn render_postfix(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         _theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
@@ -128,12 +132,12 @@ impl Widget for TooltipWidget {
                 RoundedRectRadii::from_single_radius(4.0),
             );
 
-            scene.fill(
+            graphics.fill(
                 Fill::NonZero,
                 Affine::IDENTITY,
-                Color::from_rgba8(40, 40, 40, 230),
+                &Brush::Solid(Color::from_rgba8(40, 40, 40, 230)),
                 None,
-                &tooltip_rect,
+                &tooltip_rect.to_path(0.1),
             );
 
             // Draw tooltip text
@@ -141,13 +145,14 @@ impl Widget for TooltipWidget {
             let mut text_ctx = TextRenderContext::new();
             text_ctx.render_text(
                 &mut info.font_context,
-                scene,
+                graphics,
                 &self.tooltip_text,
                 None,
                 14.0,
                 Brush::Solid(Color::WHITE),
                 Affine::translate((tooltip_x + 8.0, tooltip_y + 8.0 + 14.0)),
                 true,
+                None,
             );
         }
     }
@@ -234,7 +239,7 @@ impl WidgetLayoutExt for SimpleDropdown {
 impl Widget for SimpleDropdown {
     fn render(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         _theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
@@ -255,7 +260,7 @@ impl Widget for SimpleDropdown {
             Color::from_rgb8(150, 150, 150)
         };
 
-        scene.fill(Fill::NonZero, Affine::IDENTITY, color, None, &button_rect);
+        graphics.fill(Fill::NonZero, Affine::IDENTITY, &Brush::Solid(color), None, &button_rect.to_path(0.1));
 
         // Draw selected item text
         // Text baseline renders at y + font_size, so we need to position accordingly
@@ -265,7 +270,7 @@ impl Widget for SimpleDropdown {
         let _button_height = layout.layout.size.height as f64;
         text_ctx.render_text(
             &mut info.font_context,
-            scene,
+            graphics,
             &self.items[self.selected_index],
             None,
             font_size,
@@ -275,12 +280,13 @@ impl Widget for SimpleDropdown {
                 layout.layout.location.y as f64 + font_size as f64,
             )),
             true,
+            None,
         );
     }
 
     fn render_postfix(
         &mut self,
-        scene: &mut Scene,
+        graphics: &mut dyn Graphics,
         _theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
@@ -307,12 +313,12 @@ impl Widget for SimpleDropdown {
             RoundedRectRadii::from_single_radius(4.0),
         );
 
-        scene.fill(
+        graphics.fill(
             Fill::NonZero,
             Affine::IDENTITY,
-            Color::from_rgb8(240, 240, 240),
+            &Brush::Solid(Color::from_rgb8(240, 240, 240)),
             None,
-            &list_rect,
+            &list_rect.to_path(0.1),
         );
 
         // Draw each item
@@ -326,12 +332,12 @@ impl Widget for SimpleDropdown {
             if i == self.selected_index {
                 let highlight_rect =
                     Rect::new(list_x, item_y, list_x + list_width, item_y + item_height);
-                scene.fill(
+                graphics.fill(
                     Fill::NonZero,
                     Affine::IDENTITY,
-                    Color::from_rgb8(200, 220, 240),
+                    &Brush::Solid(Color::from_rgb8(200, 220, 240)),
                     None,
-                    &highlight_rect,
+                    &highlight_rect.to_path(0.1),
                 );
             }
 
@@ -341,13 +347,14 @@ impl Widget for SimpleDropdown {
             let _y_offset = (item_height - item_font_size as f64) / 2.0 + item_font_size as f64;
             text_ctx.render_text(
                 &mut info.font_context,
-                scene,
+                graphics,
                 item,
                 None,
                 item_font_size,
                 Brush::Solid(Color::BLACK),
                 Affine::translate((list_x + 10.0, item_y + 8.0)),
                 true,
+                None,
             );
         }
     }

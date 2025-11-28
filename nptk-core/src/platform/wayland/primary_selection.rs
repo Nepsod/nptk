@@ -3,8 +3,7 @@
 //! Primary selection support via zwp_primary_selection_device_manager_v1.
 
 use std::sync::Arc;
-use wayland_client::protocol::wl_seat;
-use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
+use wayland_client::{Connection, Dispatch, QueueHandle};
 use wayland_protocols::wp::primary_selection::zv1::client::{
     zwp_primary_selection_device_manager_v1, zwp_primary_selection_device_v1,
     zwp_primary_selection_offer_v1, zwp_primary_selection_source_v1,
@@ -32,13 +31,17 @@ impl wayland_client::backend::ObjectData for DummyObjectData {
     }
 }
 
+/// Wrapper around a Wayland primary selection offer.
 #[derive(Debug)]
 pub struct PrimaryDataOffer {
+    /// The underlying Wayland primary selection offer object.
     pub offer: zwp_primary_selection_offer_v1::ZwpPrimarySelectionOfferV1,
+    /// List of MIME types offered.
     pub mime_types: Vec<String>,
 }
 
 impl PrimaryDataOffer {
+    /// Create a new PrimaryDataOffer wrapper.
     pub fn new(offer: zwp_primary_selection_offer_v1::ZwpPrimarySelectionOfferV1) -> Self {
         Self {
             offer,
@@ -47,12 +50,16 @@ impl PrimaryDataOffer {
     }
 }
 
+/// Wrapper around a Wayland primary selection device.
 pub struct PrimarySelectionDevice {
+    /// The underlying Wayland primary selection device object.
     pub device: zwp_primary_selection_device_v1::ZwpPrimarySelectionDeviceV1,
+    /// The current primary selection offer, if any.
     pub selection_offer: Option<PrimaryDataOffer>,
 }
 
 impl PrimarySelectionDevice {
+    /// Create a new PrimarySelectionDevice wrapper.
     pub fn new(device: zwp_primary_selection_device_v1::ZwpPrimarySelectionDeviceV1) -> Self {
         Self {
             device,
@@ -158,7 +165,7 @@ impl Dispatch<zwp_primary_selection_source_v1::ZwpPrimarySelectionSourceV1, ()>
         _qh: &QueueHandle<Self>,
     ) {
         match event {
-            zwp_primary_selection_source_v1::Event::Send { mime_type, fd } => {
+            zwp_primary_selection_source_v1::Event::Send { mime_type: _, fd: _ } => {
                 // TODO: Handle sending data
             }
             zwp_primary_selection_source_v1::Event::Cancelled => {

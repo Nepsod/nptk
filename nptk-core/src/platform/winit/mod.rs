@@ -7,8 +7,7 @@
 use crate::vgi::surface::OffscreenSurface;
 use vello::wgpu::util::TextureBlitter;
 use vello::wgpu::{
-    self, CommandEncoder, Device, Extent3d, SurfaceConfiguration, Texture, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,
+    self, CommandEncoder, Device, SurfaceConfiguration, TextureFormat, TextureUsages, TextureView,
 };
 
 // OffscreenSurface is imported from VGI
@@ -162,6 +161,7 @@ impl WinitSurface {
         self.size
     }
 
+    /// Returns a mutable reference to the underlying wgpu surface.
     pub fn surface(&mut self) -> &mut wgpu::Surface<'static> {
         &mut self.surface
     }

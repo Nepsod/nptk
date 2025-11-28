@@ -28,7 +28,7 @@ use crate::app::info::WindowIdentity;
 use crate::app::info::{AppInfo, AppKeyEvent};
 use crate::app::update::{Update, UpdateManager};
 use crate::config::MayConfig;
-use crate::layout::{Display, LengthPercentage, LayoutNode, StyleNode};
+use crate::layout::{Display, LayoutNode, StyleNode};
 use crate::plugin::PluginManager;
 #[cfg(all(target_os = "linux", feature = "wayland"))]
 use crate::platform::wayland::events::{InputEvent, KeyboardEvent, PointerEvent};
@@ -608,9 +608,6 @@ where
             65 => PhysicalKey::Code(KeyCode::F7),
             66 => PhysicalKey::Code(KeyCode::F8),
             67 => PhysicalKey::Code(KeyCode::F9),
-            68 => PhysicalKey::Code(KeyCode::F10),
-            69 => PhysicalKey::Code(KeyCode::F11),
-            70 => PhysicalKey::Code(KeyCode::F12),
             68 => PhysicalKey::Code(KeyCode::F10),
             69 => PhysicalKey::Code(KeyCode::F11),
             70 => PhysicalKey::Code(KeyCode::F12),

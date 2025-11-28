@@ -2,16 +2,21 @@
 
 //! Viewporter support via wp_viewporter.
 
-use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
+use wayland_client::{Connection, Dispatch, QueueHandle};
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 
 use super::shell::WaylandClientState;
 
+/// Viewport for viewport transformations.
+///
+/// Wraps a Wayland viewport object that can be used to transform the surface viewport.
 pub struct Viewport {
+    /// The underlying Wayland viewport object.
     pub object: wp_viewport::WpViewport,
 }
 
 impl Viewport {
+    /// Create a new viewport wrapper.
     pub fn new(object: wp_viewport::WpViewport) -> Self {
         Self { object }
     }

@@ -10,7 +10,6 @@ use wayland_protocols_plasma::server_decoration::client::{
     org_kde_kwin_server_decoration, org_kde_kwin_server_decoration_manager,
 };
 
-use super::client::SharedState;
 use super::shell::WaylandClientState;
 
 impl Dispatch<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1, ()> for WaylandClientState {

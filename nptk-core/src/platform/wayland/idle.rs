@@ -5,7 +5,6 @@
 // Idle inhibit requires wayland-protocols idle inhibit support
 // This is a placeholder implementation
 
-use super::shell::WaylandClientState;
 
 // TODO: Implement idle inhibit when wayland-protocols idle inhibit support is available
 // This will require:

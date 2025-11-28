@@ -108,6 +108,9 @@ pub fn graphics_from_scene(scene: &mut Scene) -> Option<Box<dyn Graphics + '_>> 
     }
 }
 
+/// Create a graphics interface from a scene (non-hybrid build).
+///
+/// Returns a graphics interface that can render the given scene.
 #[cfg(not(feature = "vello-hybrid"))]
 pub fn graphics_from_scene(scene: &mut Scene) -> Option<Box<dyn Graphics + '_>> {
     match scene {

@@ -6,7 +6,6 @@
 // This is a placeholder implementation that will be expanded when
 // the tablet protocol bindings are available
 
-use super::super::shell::WaylandClientState;
 
 // TODO: Implement tablet input when wayland-protocols tablet support is available
 // This will require:

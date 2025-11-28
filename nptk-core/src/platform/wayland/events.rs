@@ -2,7 +2,7 @@
 
 //! Unified event types for all Wayland input.
 
-use wayland_client::protocol::{wl_keyboard, wl_pointer, wl_touch};
+use wayland_client::protocol::{wl_keyboard, wl_pointer};
 
 /// Unified input event enum for all input types.
 #[derive(Debug, Clone)]

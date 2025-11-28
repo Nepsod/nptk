@@ -8,9 +8,10 @@ use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::{Duration, Instant};
 
 use wayland_client::backend::WaylandError;
-use wayland_client::globals::{registry_queue_init, GlobalList};
+use wayland_client::globals::registry_queue_init;
+#[cfg(feature = "global-menu")]
 use wayland_client::protocol::wl_surface;
-use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle};
+use wayland_client::{Connection, EventQueue, Proxy, QueueHandle};
 
 use super::globals::WaylandGlobals;
 use super::shell::WaylandClientState;
@@ -40,24 +41,33 @@ pub(crate) struct SharedState {
 static WAYLAND_CLIENT: OnceLock<Arc<WaylandClient>> = OnceLock::new();
 
 impl WaylandClient {
+    /// Get or create the singleton Wayland client instance.
+    ///
+    /// This will initialize the Wayland connection if it hasn't been created yet.
     pub fn instance() -> Arc<WaylandClient> {
         WAYLAND_CLIENT
             .get_or_init(|| Arc::new(Self::initialize().expect("Failed to init Wayland client")))
             .clone()
     }
 
+    /// Get the Wayland connection.
     pub fn connection(&self) -> Connection {
         self.connection.clone()
     }
 
+    /// Get the event queue handle.
     pub fn queue_handle(&self) -> QueueHandle<WaylandClientState> {
         self.queue_handle.clone()
     }
 
+    /// Get the bound Wayland globals.
     pub fn globals(&self) -> WaylandGlobals {
         self.globals.clone()
     }
 
+    /// Register a surface with the Wayland client.
+    ///
+    /// This allows the client to track and route input events to the surface.
     pub fn register_surface(&self, surface: &Arc<WaylandSurfaceInner>) {
         let mut map = self.shared.surfaces.lock().unwrap();
         let key = surface.surface_key();
@@ -156,6 +166,9 @@ impl WaylandClient {
         }
     }
 
+    /// Wait for the initial configure event for a surface.
+    ///
+    /// Blocks until the surface receives its first configure event or times out.
     pub fn wait_for_initial_configure(&self, surface_key: u32) -> Result<(), String> {
         const INITIAL_CONFIGURE_TIMEOUT: Duration = Duration::from_secs(2);
         let start = Instant::now();
@@ -192,6 +205,9 @@ impl WaylandClient {
         }
     }
 
+    /// Unregister a surface from the Wayland client.
+    ///
+    /// Removes the surface from tracking and cleans up associated resources.
     pub fn unregister_surface(&self, surface_key: u32) {
         let mut map = self.shared.surfaces.lock().unwrap();
         map.remove(&surface_key);
@@ -204,6 +220,9 @@ impl WaylandClient {
         }
     }
 
+    /// Dispatch pending Wayland events.
+    ///
+    /// Processes all pending events in the event queue.
     pub fn dispatch_pending(&self) -> Result<(), String> {
         let mut data = self.loop_data.lock().unwrap();
         let (event_queue, state) = &mut *data;
@@ -255,6 +274,9 @@ impl WaylandClient {
         Ok(())
     }
 
+    /// Flush pending Wayland requests to the server.
+    ///
+    /// Sends all buffered requests to the Wayland compositor.
     pub fn flush(&self) -> Result<(), String> {
         let mut data = self.loop_data.lock().unwrap();
         let (event_queue, _) = &mut *data;

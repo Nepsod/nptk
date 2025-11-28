@@ -10,9 +10,8 @@ use crate::platform::wayland::events::InputEvent;
 use crate::platform::wayland::WaylandSurface;
 #[cfg(target_os = "linux")]
 use crate::platform::winit::WinitSurface;
-use vello::wgpu::util::TextureBlitter;
 use vello::wgpu::{
-    self, CommandEncoder, Device, Extent3d, SurfaceConfiguration, SurfaceTexture, Texture,
+    CommandEncoder, Device, Extent3d, SurfaceTexture, Texture,
     TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureView,
     TextureViewDescriptor,
 };
@@ -134,10 +133,12 @@ impl OffscreenSurface {
         }
     }
 
+    /// Get the size of the offscreen surface.
     pub fn size(&self) -> (u32, u32) {
         (self.width, self.height)
     }
 
+    /// Create a texture view for rendering.
     pub fn create_view(&self) -> TextureView {
         self.texture.create_view(&TextureViewDescriptor::default())
     }
@@ -230,6 +231,9 @@ impl Surface {
         Vec::new()
     }
 
+    /// Create a render view for the surface.
+    ///
+    /// Creates or updates the offscreen render target for the given dimensions.
     pub fn create_render_view(
         &mut self,
         device: &Device,

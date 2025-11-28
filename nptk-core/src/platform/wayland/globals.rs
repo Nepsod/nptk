@@ -37,28 +37,50 @@ const XDG_ACTIVATION_V1_VERSION: u32 = 1;
 /// Wayland global objects bound from the registry.
 #[derive(Clone)]
 #[allow(dead_code)]
+/// Wayland global objects bound from the registry.
+///
+/// Contains all the Wayland protocol objects that were successfully bound during initialization.
+/// Some fields are optional as not all compositors support all protocols.
 pub struct WaylandGlobals {
+    /// The compositor object for creating surfaces.
     pub compositor: wayland_client::protocol::wl_compositor::WlCompositor,
+    /// XDG window manager base for window management.
     pub wm_base: xdg_wm_base::XdgWmBase,
+    /// XDG decoration manager for server-side decorations.
     pub decoration_manager: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
+    /// KDE server decoration manager (alternative to XDG decorations).
     pub kde_server_decoration_manager:
         Option<org_kde_kwin_server_decoration_manager::OrgKdeKwinServerDecorationManager>,
+    /// KDE appmenu manager for global menu integration.
     #[cfg(feature = "global-menu")]
     pub appmenu_manager: Option<org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager>,
+    /// Shared memory manager for buffer creation.
     pub shm: Option<wl_shm::WlShm>,
+    /// Input seat for keyboard, pointer, and touch devices.
     pub seat: Option<wl_seat::WlSeat>,
+    /// Pointer input device.
     pub pointer: Option<wl_pointer::WlPointer>,
+    /// Keyboard input device.
     pub keyboard: Option<wl_keyboard::WlKeyboard>,
+    /// Data device manager for clipboard and drag-and-drop.
     pub data_device_manager: Option<wl_data_device_manager::WlDataDeviceManager>,
+    /// Primary selection manager for middle-click paste.
     pub primary_selection_manager:
         Option<zwp_primary_selection_device_manager_v1::ZwpPrimarySelectionDeviceManagerV1>,
+    /// Text input manager for IME support.
     pub text_input_manager: Option<zwp_text_input_manager_v3::ZwpTextInputManagerV3>,
+    /// Fractional scale manager for high-DPI support.
     pub fractional_scale_manager: Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
+    /// Viewporter for viewport transformations.
     pub viewporter: Option<wp_viewporter::WpViewporter>,
+    /// XDG activation for window activation requests.
     pub activation: Option<xdg_activation_v1::XdgActivationV1>,
 }
 
 impl WaylandGlobals {
+    /// Bind all available Wayland globals from the registry.
+    ///
+    /// Attempts to bind all supported protocols. Missing protocols will be set to `None`.
     pub fn bind_all(
         globals: &GlobalList,
         qh: &QueueHandle<WaylandClientState>,

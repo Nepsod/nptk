@@ -3,12 +3,10 @@
 //! Drag & drop support via wl_data_device_manager.
 
 use std::sync::Arc;
-use std::os::fd::OwnedFd;
 use wayland_client::protocol::{
-    wl_data_device, wl_data_device_manager, wl_data_offer, wl_data_source, wl_registry,
-    wl_seat, wl_surface,
+    wl_data_device, wl_data_device_manager, wl_data_offer, wl_data_source,
 };
-use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
+use wayland_client::{Connection, Dispatch, QueueHandle};
 use wayland_client::backend::protocol::Message;
 
 use super::shell::WaylandClientState;
@@ -32,13 +30,17 @@ impl wayland_client::backend::ObjectData for DummyObjectData {
     }
 }
 
+/// Wrapper around a Wayland data offer.
 #[derive(Debug)]
 pub struct DataOffer {
+    /// The underlying Wayland data offer object.
     pub offer: wl_data_offer::WlDataOffer,
+    /// List of MIME types offered.
     pub mime_types: Vec<String>,
 }
 
 impl DataOffer {
+    /// Create a new DataOffer wrapper.
     pub fn new(offer: wl_data_offer::WlDataOffer) -> Self {
         Self {
             offer,
@@ -47,13 +49,18 @@ impl DataOffer {
     }
 }
 
+/// Wrapper around a Wayland data device.
 pub struct DataDevice {
+    /// The underlying Wayland data device object.
     pub device: wl_data_device::WlDataDevice,
+    /// The current drag offer, if any.
     pub drag_offer: Option<DataOffer>,
+    /// The current clipboard selection offer, if any.
     pub selection_offer: Option<DataOffer>,
 }
 
 impl DataDevice {
+    /// Create a new DataDevice wrapper.
     pub fn new(device: wl_data_device::WlDataDevice) -> Self {
         Self {
             device,
@@ -95,7 +102,7 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for WaylandClientState {
                 // But typically we need to store it to handle Offer events.
                 state.pending_data_offers.push(offer);
             }
-            wl_data_device::Event::Enter { serial: _, surface, x, y, id } => {
+            wl_data_device::Event::Enter { serial: _, surface: _, x: _, y: _, id } => {
                 // Drag enter
                 if let Some(id) = id {
                     if let Some(index) = state.pending_data_offers.iter().position(|o| o.offer == id) {
@@ -114,7 +121,7 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for WaylandClientState {
                 }
                 // TODO: Handle drag leave logic
             }
-            wl_data_device::Event::Motion { time: _, x, y } => {
+            wl_data_device::Event::Motion { time: _, x: _, y: _ } => {
                 // Drag motion
                 // TODO: Handle drag motion logic
             }
@@ -191,13 +198,13 @@ impl Dispatch<wl_data_source::WlDataSource, ()> for WaylandClientState {
         _qh: &QueueHandle<Self>,
     ) {
         match event {
-            wl_data_source::Event::Send { mime_type, fd } => {
+            wl_data_source::Event::Send { mime_type: _, fd: _ } => {
                 // TODO: Handle sending data
             }
             wl_data_source::Event::Cancelled => {
                 source.destroy();
             }
-            wl_data_source::Event::Target { mime_type } => {
+            wl_data_source::Event::Target { mime_type: _ } => {
                 // Target accepted
             }
             wl_data_source::Event::DndDropPerformed => {
@@ -206,7 +213,7 @@ impl Dispatch<wl_data_source::WlDataSource, ()> for WaylandClientState {
             wl_data_source::Event::DndFinished => {
                 source.destroy();
             }
-            wl_data_source::Event::Action { dnd_action } => {
+            wl_data_source::Event::Action { dnd_action: _ } => {
                 // Action selected
             }
             _ => {}

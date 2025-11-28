@@ -14,6 +14,8 @@ pub enum WindowState {
 }
 
 /// Window state management for XDG toplevel surfaces.
+///
+/// Provides methods to request window state changes like maximize, fullscreen, and minimize.
 pub struct WindowStateManager {
     // Window state will be tracked per surface
 }

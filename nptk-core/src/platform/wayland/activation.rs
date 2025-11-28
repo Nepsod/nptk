@@ -2,7 +2,7 @@
 
 //! Window activation support via xdg_activation_v1.
 
-use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
+use wayland_client::{Connection, Dispatch, QueueHandle};
 use wayland_protocols::xdg::activation::v1::client::{xdg_activation_token_v1, xdg_activation_v1};
 
 use super::shell::WaylandClientState;
@@ -22,8 +22,8 @@ impl Dispatch<xdg_activation_v1::XdgActivationV1, ()> for WaylandClientState {
 
 impl Dispatch<xdg_activation_token_v1::XdgActivationTokenV1, ()> for WaylandClientState {
     fn event(
-        state: &mut Self,
-        token: &xdg_activation_token_v1::XdgActivationTokenV1,
+        _state: &mut Self,
+        _token: &xdg_activation_token_v1::XdgActivationTokenV1,
         event: xdg_activation_token_v1::Event,
         _data: &(),
         _conn: &Connection,

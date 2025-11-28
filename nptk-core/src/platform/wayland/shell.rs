@@ -7,27 +7,29 @@ use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
 use super::client::SharedState;
-use super::surface::WaylandSurfaceInner;
 use std::sync::Arc;
 
 // Import input modules to register their dispatch implementations
-use super::input::keyboard;
-use super::input::pointer;
-use super::input::touch;
-use super::input::seat;
 
 // Import core protocol dispatches
-use super::core;
 
 use super::data_device::{DataDevice, DataOffer};
 use super::primary_selection::{PrimaryDataOffer, PrimarySelectionDevice};
 
 /// Wayland client state for dispatch implementations.
+/// Wayland client state for dispatch implementations.
+///
+/// Contains all the state needed for handling Wayland protocol events.
 pub struct WaylandClientState {
+    /// Shared state accessible across surfaces.
     pub(crate) shared: Arc<SharedState>,
+    /// Registered data devices for clipboard and drag-and-drop.
     pub data_devices: Vec<DataDevice>,
+    /// Pending data offers waiting to be associated with devices.
     pub pending_data_offers: Vec<DataOffer>,
+    /// Registered primary selection devices.
     pub primary_selection_devices: Vec<PrimarySelectionDevice>,
+    /// Pending primary selection offers.
     pub pending_primary_offers: Vec<PrimaryDataOffer>,
 }
 

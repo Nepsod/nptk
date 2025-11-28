@@ -2,14 +2,12 @@
 
 //! Keyboard input handling.
 
-use std::ffi::c_void;
 use std::os::unix::io::AsRawFd;
 use std::ptr;
 
 use wayland_client::protocol::wl_keyboard;
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
 
-use super::super::client::SharedState;
 use super::super::events::{InputEvent, KeyboardEvent};
 use super::super::shell::WaylandClientState;
 
@@ -164,7 +162,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientState {
                 
                 // Send the keymap to all surfaces (keymap is global for the keyboard)
                 let surfaces_map = state.shared.surfaces().lock().unwrap();
-                for (surface_key, surface_weak) in surfaces_map.iter() {
+                for (_surface_key, surface_weak) in surfaces_map.iter() {
                     if let Some(surface) = surface_weak.upgrade() {
                         surface.push_input_event(InputEvent::Keyboard(KeyboardEvent::Keymap {
                             keymap_string: keymap_string.clone(),

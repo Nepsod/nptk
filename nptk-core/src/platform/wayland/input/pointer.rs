@@ -5,7 +5,6 @@
 use wayland_client::protocol::wl_pointer;
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
 
-use super::super::client::SharedState;
 use super::super::events::{InputEvent, PointerEvent};
 use super::super::shell::WaylandClientState;
 

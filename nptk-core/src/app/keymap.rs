@@ -10,10 +10,16 @@ use xkbcommon_dl::{
     xkb_keymap_format, xkb_state, xkbcommon_handle, xkb_keycode_t,
 };
 
+/// XKB keymap manager for handling keyboard layouts on Wayland.
+///
+/// Manages XKB context, keymap, and state for translating keycodes to keysyms.
 #[cfg(all(target_os = "linux", feature = "wayland"))]
 pub struct XkbKeymapManager {
+    /// XKB context for keymap operations.
     context: Mutex<Option<*mut xkb_context>>,
+    /// Current keymap loaded from the compositor.
     keymap: Mutex<Option<*mut xkb_keymap>>,
+    /// XKB state for key translation.
     state: Mutex<Option<*mut xkb_state>>,
 }
 
@@ -35,6 +41,10 @@ impl XkbKeymapManager {
         })
     }
 
+    /// Update the keymap from a keymap string.
+    ///
+    /// Parses the keymap string and creates new XKB keymap and state objects.
+    /// This should be called when the keyboard layout changes.
     pub fn update_keymap(&self, keymap_string: &str) -> Result<(), String> {
         let handle = xkbcommon_handle();
         let context_guard = self.context.lock().unwrap();
@@ -108,6 +118,9 @@ impl XkbKeymapManager {
         Ok(())
     }
 
+    /// Update modifier state.
+    ///
+    /// Updates the XKB state with the current modifier mask and keyboard group.
     pub fn update_modifiers(
         &self,
         mods_depressed: u32,
@@ -126,6 +139,9 @@ impl XkbKeymapManager {
         }
     }
 
+    /// Convert a keycode to a keysym.
+    ///
+    /// Returns the keysym (symbolic key identifier) for the given keycode.
     pub fn keycode_to_keysym(&self, keycode: u32, direction: xkb_key_direction) -> Option<u32> {
         // Wayland keycodes are evdev scancodes + 8, which matches XKB keycodes
         let state_guard = self.state.lock().unwrap();
@@ -156,6 +172,9 @@ impl XkbKeymapManager {
         })
     }
 
+    /// Convert a keycode to UTF-8 text.
+    ///
+    /// Returns the UTF-8 string representation of the key, if applicable.
     pub fn keycode_to_utf8(&self, keycode: u32, direction: xkb_key_direction) -> Option<String> {
         // Wayland keycodes are evdev scancodes + 8, which matches XKB keycodes
         let state_guard = self.state.lock().unwrap();
@@ -188,7 +207,7 @@ impl XkbKeymapManager {
         })
     }
 
-    pub fn keycode_to_keycode_name(&self, keycode: u32) -> Option<String> {
+    pub fn keycode_to_keycode_name(&self, _keycode: u32) -> Option<String> {
         // This would require keymap access, which is more complex
         // For now, return None as this is not critical
         None

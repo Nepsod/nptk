@@ -6,6 +6,9 @@ use crate::app::diagnostics::Diagnostics;
 use crate::app::focus::SharedFocusManager;
 use crate::app::font_ctx::FontContext;
 
+/// Window identity for Linux platforms.
+///
+/// Identifies a window by its platform-specific ID.
 #[cfg(target_os = "linux")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WindowIdentity {
