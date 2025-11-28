@@ -114,7 +114,7 @@ fn run(cmd_rx: Receiver<Command>, evt_tx: Sender<BridgeEvent>, cmd_tx: Sender<Co
     let state = Arc::new(Mutex::new(MenuState::default()));
     let menu_obj = MenuObject {
         state: state.clone(),
-        evt_tx,
+        evt_tx: evt_tx.clone(),
         cmd_tx,
     };
 
@@ -131,6 +131,29 @@ fn run(cmd_rx: Receiver<Command>, evt_tx: Sender<BridgeEvent>, cmd_tx: Sender<Co
 
     // Store menu info for platform integrations
     MenuInfoStorage::set(service_name.clone(), MENU_OBJECT_PATH.to_string());
+
+    // Check if the global menu registrar is present on the bus
+    // If it is, we can assume a global menu is active and should hide the local menu immediately
+    // This avoids the delay of waiting for the window to be focused and the importer to query the menu
+    match connection.call_method(
+        Some("org.freedesktop.DBus"),
+        "/org/freedesktop/DBus",
+        Some("org.freedesktop.DBus"),
+        "NameHasOwner",
+        &("com.canonical.AppMenu.Registrar",),
+    ) {
+        Ok(reply) => {
+            if let Ok(has_owner) = reply.body().deserialize::<bool>() {
+                if has_owner {
+                    log::info!("Global menu registrar detected on startup - auto-hiding menubar");
+                    let _ = evt_tx.send(BridgeEvent::ImporterDetected);
+                }
+            }
+        },
+        Err(e) => {
+            log::warn!("Failed to check for global menu registrar: {}", e);
+        }
+    }
 
     loop {
         match cmd_rx.recv_timeout(Duration::from_millis(16)) {
