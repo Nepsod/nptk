@@ -60,6 +60,8 @@ pub struct MenuBar {
     layout_style: MaybeSignal<LayoutStyle>,
     visible: StateSignal<bool>,
     previous_visible: bool,
+    /// Overrides the auto-hide behavior from global menu integration
+    user_visibility_override: Option<bool>,
 
     // State
     hovered_index: Option<usize>,
@@ -219,6 +221,7 @@ impl MenuBar {
             hovered_submenu_index: None,
             text_render_context: TextRenderContext::new(),
             popup_data: None,
+            user_visibility_override: None,
         }
     }
 
@@ -657,6 +660,9 @@ impl Widget for MenuBar {
                         // show the menubar anyway (user wants to see it)
                         let visible = !self.is_visible();
                         self.visible.set(visible);
+                        // Persist user's choice to override auto-hide
+                        self.user_visibility_override = Some(visible);
+                        
                         // If user manually shows the menubar, clear importer detection
                         // so it stays visible until they hide it again or importer queries again
                         if visible {
@@ -887,7 +893,9 @@ impl MenuBar {
                             self.importer_detected.set(true);
                             // Auto-hide the menubar when importer is detected
                             // User can still show it with F10
-                            self.visible.set(false);
+                            if self.user_visibility_override != Some(true) {
+                                self.visible.set(false);
+                            }
                             update |= Update::DRAW | Update::LAYOUT;
                         }
                     },
