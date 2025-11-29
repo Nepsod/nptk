@@ -1,0 +1,18 @@
+[package]
+name = "nptk-services"
+description = "Core services and settings management for nptk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+xdg = "2.5"
+log = "0.4"
+anyhow = "1.0"

@@ -1,5 +1,5 @@
 [workspace]
-members = ["nptk-core", "nptk-macros", "nptk-theme", "nptk-widgets", "examples/*"]
+members = ["nptk-core", "nptk-macros", "nptk-theme", "nptk-widgets", "nptk-services", "examples/*"]
 
 [workspace.package]
 version = "0.5.0"
