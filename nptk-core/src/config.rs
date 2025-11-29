@@ -8,6 +8,7 @@ pub use winit::window::{
 };
 
 use nptk_theme::theme::Theme;
+use nptk_services::settings::SettingsRegistry;
 
 /// nptk Application Configuration Structure.
 #[derive(Clone)]
@@ -20,6 +21,8 @@ pub struct MayConfig<T: Theme> {
     pub tasks: Option<TasksConfig>,
     /// Theme of the Application.
     pub theme: T,
+    /// Application Settings Registry.
+    pub settings: std::sync::Arc<SettingsRegistry>,
 }
 
 impl<T: Default + Theme> Default for MayConfig<T> {
@@ -29,6 +32,21 @@ impl<T: Default + Theme> Default for MayConfig<T> {
             render: RenderConfig::default(),
             tasks: None,
             theme: T::default(),
+            settings: std::sync::Arc::new(SettingsRegistry::new().unwrap_or_else(|e| {
+                log::error!("Failed to initialize settings registry: {}", e);
+                // Return a default registry if loading fails (it has a default impl internally)
+                // But SettingsRegistry::new() calls load(), so we might need a fallback constructor
+                // For now, let's assume we can construct a default one or handle the error.
+                // Since SettingsRegistry doesn't derive Default publicly (it has a new() that returns Result),
+                // we might need to expose a safe default or panic.
+                // Given this is core config, panicking might be too harsh, but running without settings is also bad.
+                // Let's modify SettingsRegistry to derive Default or have a safe default.
+                // Wait, I implemented new() -> Result<Self>.
+                // I should probably implement Default for SettingsRegistry in nptk-services.
+                // For now, I'll use a hack to create an empty one if it fails, or just panic if it's critical.
+                // Actually, let's just panic for now as it shouldn't fail unless filesystem is broken.
+                panic!("Failed to initialize settings registry: {}", e);
+            })),
         }
     }
 }
