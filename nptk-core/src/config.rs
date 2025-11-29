@@ -155,16 +155,7 @@ pub struct RenderConfig {
     /// - `msaa8` - MSAA 8x (slower but higher quality)
     /// - `msaa16` - MSAA 16x (slowest but best quality)
     pub antialiasing: AaConfig,
-    /// If the backend should use the CPU for most drawing operations.
-    ///
-    /// **NOTE:** The GPU is still used during rasterization.
-    ///
-    /// Can be enabled via the `NPTK_USE_CPU` environment variable.
-    /// Set `NPTK_USE_CPU=true` to enable CPU-based path processing.
-    ///
-    /// **Note:** This option may not significantly improve performance if the
-    /// bottleneck is in GPU rasterization (which still happens) or other Vello bugs.
-    pub cpu: bool,
+
     /// The presentation mode of the window/surface.
     ///
     /// Can be configured via `NPTK_PRESENT_MODE` environment variable:
@@ -180,41 +171,12 @@ pub struct RenderConfig {
     pub init_threads: Option<NonZeroUsize>,
     /// The selector function to determine which device to use for rendering. Defaults to using the first device found.
     pub device_selector: fn(&[DeviceHandle]) -> &DeviceHandle,
-    /// If true, defer system font loading to improve startup performance.
-    /// Fonts will be loaded lazily when needed.
-    /// Note: Lazy loading may cause text rendering issues if fonts aren't loaded properly.
-    pub lazy_font_loading: bool,
+
 }
 
 impl Default for RenderConfig {
     fn default() -> Self {
-        // Check environment variable for CPU rendering
-        // Set NPTK_USE_CPU=true, NPTK_USE_CPU=1, or NPTK_USE_CPU=yes to enable CPU-based path processing
-        let use_cpu = match std::env::var("NPTK_USE_CPU") {
-            Ok(val) => {
-                let val_lower = val.to_lowercase();
-                // Support: true, 1, yes, on, enable
-                let enabled = val_lower == "true"
-                    || val_lower == "1"
-                    || val_lower == "yes"
-                    || val_lower == "on"
-                    || val_lower == "enable";
 
-                if enabled {
-                    log::info!(
-                        "NPTK_USE_CPU={} detected - enabling CPU path processing",
-                        val
-                    );
-                    log::info!(
-                        "GPU is still used for rasterization; CPU handles path processing only"
-                    );
-                } else {
-                    log::debug!("NPTK_USE_CPU={} - CPU rendering disabled (expected: true, 1, yes, on, enable)", val);
-                }
-                enabled
-            },
-            Err(_) => false,
-        };
 
         // Check environment variable for antialiasing
         // Options: area (default, fastest), msaa8, msaa16
@@ -285,11 +247,11 @@ impl Default for RenderConfig {
         Self {
             backend,
             antialiasing,
-            cpu: use_cpu,
+
             present_mode,
             init_threads: None,
             device_selector: |devices| devices.first().expect("No devices found"),
-            lazy_font_loading: false,
+
         }
     }
 }

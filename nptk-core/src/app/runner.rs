@@ -35,12 +35,8 @@ impl<T: Theme> MayRunner<T> {
     }
 
     /// Create a font context based on the configuration.
-    fn create_font_context(config: &MayConfig<T>) -> FontContext {
-        if config.render.lazy_font_loading {
-            FontContext::new()
-        } else {
-            FontContext::new_with_system_fonts()
-        }
+    fn create_font_context(_config: &MayConfig<T>) -> FontContext {
+        FontContext::new()
     }
 
     /// Loads a new font into the font context.

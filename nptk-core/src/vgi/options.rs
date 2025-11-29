@@ -12,8 +12,7 @@ use vello::AaSupport;
 /// for a specific backend. Different backends may use different subsets of
 /// these options.
 pub struct RendererOptions {
-    /// Whether to use CPU for path processing (Vello-specific)
-    pub use_cpu: bool,
+
     /// Antialiasing support configuration
     pub antialiasing_support: AaSupport,
     /// Number of initialization threads (optional)
@@ -26,7 +25,7 @@ impl RendererOptions {
     /// This method is used when creating a Vello renderer.
     pub fn vello_options(self) -> vello::RendererOptions {
         vello::RendererOptions {
-            use_cpu: self.use_cpu,
+            use_cpu: false,
             antialiasing_support: self.antialiasing_support,
             num_init_threads: self.num_init_threads,
             pipeline_cache: None,

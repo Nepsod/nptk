@@ -1824,7 +1824,7 @@ where
     /// Build renderer options from configuration.
     fn build_renderer_options(config: &MayConfig<T>) -> RendererOptions {
         RendererOptions {
-            use_cpu: config.render.cpu,
+
             antialiasing_support: Self::convert_antialiasing_config(&config.render.antialiasing),
             num_init_threads: config.render.init_threads,
         }
