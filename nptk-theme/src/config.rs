@@ -176,7 +176,7 @@ use crate::theme_resolver::SelfContainedThemeResolver;
 #[derive(Clone)]
 pub struct ThemeConfig {
     /// The default theme source.
-    pub default_theme: ThemeSource,
+    pub default_theme: Option<ThemeSource>,
     /// The fallback theme source.
     pub fallback_theme: Option<ThemeSource>,
     /// Custom theme configurations.
@@ -255,7 +255,7 @@ impl ThemeConfig {
     /// ```
     pub fn new() -> Self {
         Self {
-            default_theme: ThemeSource::Sweet,
+            default_theme: None,
             fallback_theme: Some(ThemeSource::Sweet),
             custom_themes: HashMap::new(),
             theme_manager: None,
@@ -282,7 +282,7 @@ impl ThemeConfig {
 
         // Load from NPTK_THEME environment variable
         if let Ok(theme_env) = env::var("NPTK_THEME") {
-            config.default_theme = Self::parse_theme_source(&theme_env);
+            config.default_theme = Some(Self::parse_theme_source(&theme_env));
         }
 
         // Load fallback theme
@@ -349,7 +349,7 @@ impl ThemeConfig {
 
         if let Some(theme_settings) = config_def.theme {
             if let Some(default) = theme_settings.default {
-                config.default_theme = Self::parse_theme_source(&default);
+                config.default_theme = Some(Self::parse_theme_source(&default));
             }
 
             if let Some(fallback) = theme_settings.fallback {
@@ -387,7 +387,7 @@ impl ThemeConfig {
     ///     .with_default_theme(ThemeSource::Dark);
     /// ```
     pub fn with_default_theme(mut self, theme: ThemeSource) -> Self {
-        self.default_theme = theme;
+        self.default_theme = Some(theme);
         self
     }
 
@@ -434,6 +434,19 @@ impl ThemeConfig {
     pub fn with_custom_theme(mut self, name: String, config: CustomThemeConfig) -> Self {
         self.custom_themes.insert(name, config);
         self
+    }
+
+    /// Merge another configuration into this one.
+    ///
+    /// Values from `other` will override values in `self` if they are set.
+    pub fn merge(&mut self, other: ThemeConfig) {
+        if let Some(default) = other.default_theme {
+            self.default_theme = Some(default);
+        }
+        if let Some(fallback) = other.fallback_theme {
+            self.fallback_theme = Some(fallback);
+        }
+        self.custom_themes.extend(other.custom_themes);
     }
 
     /// Resolve the theme from the configuration.

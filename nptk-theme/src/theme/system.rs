@@ -51,7 +51,7 @@ impl SystemTheme {
     /// let theme = SystemTheme::from_config(&config);
     /// ```
     pub fn from_config(config: &ThemeConfig) -> Self {
-        match &config.default_theme {
+        match config.default_theme.as_ref().unwrap_or(&ThemeSource::Sweet) {
             ThemeSource::Dark => SystemTheme::Dark(DarkTheme::new()),
             ThemeSource::Light => SystemTheme::Light(CelesteTheme::light()),
             ThemeSource::Sweet => SystemTheme::Sweet(SweetTheme::new()),

@@ -199,7 +199,8 @@ impl SelfContainedThemeResolver {
         config: &ThemeConfig,
     ) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
         // Try to resolve the default theme
-        match self.resolve_theme_source(&config.default_theme) {
+        let default_source = config.default_theme.as_ref().unwrap_or(&ThemeSource::Sweet);
+        match self.resolve_theme_source(default_source) {
             Ok(theme) => Ok(theme),
             Err(_) => {
                 // Try fallback theme

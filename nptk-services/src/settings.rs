@@ -3,6 +3,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 use xdg::BaseDirectories;
+use nptk_theme::config::ThemeConfig;
 
 /// The main configuration structure for the application.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -33,6 +34,7 @@ pub struct ThemeSettings {
 /// Registry for managing application settings.
 pub struct SettingsRegistry {
     config: Config,
+    pub theme_config: ThemeConfig,
 }
 
 impl SettingsRegistry {
@@ -40,6 +42,7 @@ impl SettingsRegistry {
     pub fn new() -> Result<Self> {
         let mut registry = Self {
             config: Config::default(),
+            theme_config: ThemeConfig::new(),
         };
         registry.load()?;
         Ok(registry)
@@ -92,7 +95,46 @@ impl SettingsRegistry {
             }
         }
 
+        self.load_theme_config(&xdg_dirs);
+
         Ok(())
+    }
+
+    /// Load theme configuration from standard locations.
+    fn load_theme_config(&mut self, xdg_dirs: &BaseDirectories) {
+        let theme_filename = "theme.toml";
+
+        // 1. Load from system data directories
+        for path in xdg_dirs.find_data_files(theme_filename).rev() {
+            self.load_theme_file(&path);
+        }
+
+        // 2. Load from system config directories
+        for path in xdg_dirs.find_config_files(theme_filename).rev() {
+            self.load_theme_file(&path);
+        }
+
+        // 3. Load from user config directory
+        if let Some(user_config_path) = xdg_dirs.find_config_file(theme_filename) {
+            self.load_theme_file(&user_config_path);
+        } else {
+            let user_config_path = xdg_dirs.get_config_home().join(theme_filename);
+            if user_config_path.exists() {
+                self.load_theme_file(&user_config_path);
+            }
+        }
+    }
+
+    fn load_theme_file(&mut self, path: &Path) {
+        log::info!("Loading theme config from: {:?}", path);
+        match ThemeConfig::from_file(path) {
+            Ok(loaded_config) => {
+                self.theme_config.merge(loaded_config);
+            }
+            Err(e) => {
+                log::warn!("Failed to load theme config {:?}: {}", path, e);
+            }
+        }
     }
 
     fn load_file(&mut self, path: &Path) {
