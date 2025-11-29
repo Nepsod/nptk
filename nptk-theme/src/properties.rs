@@ -375,6 +375,72 @@ impl ThemeProperty {
     }
 }
 
+impl std::str::FromStr for ThemeProperty {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "color" => Ok(ThemeProperty::Color),
+            "color_invert" => Ok(ThemeProperty::ColorInvert),
+            "background" => Ok(ThemeProperty::Background),
+            "border" => Ok(ThemeProperty::Border),
+            "text" => Ok(ThemeProperty::Text),
+            "color_idle" => Ok(ThemeProperty::ColorIdle),
+            "color_pressed" => Ok(ThemeProperty::ColorPressed),
+            "color_hovered" => Ok(ThemeProperty::ColorHovered),
+            "color_focused" => Ok(ThemeProperty::ColorFocused),
+            "color_background" => Ok(ThemeProperty::ColorBackground),
+            "color_background_focused" => Ok(ThemeProperty::ColorBackgroundFocused),
+            "color_border" => Ok(ThemeProperty::ColorBorder),
+            "color_border_focused" => Ok(ThemeProperty::ColorBorderFocused),
+            "color_border_error" => Ok(ThemeProperty::ColorBorderError),
+            "color_text" => Ok(ThemeProperty::ColorText),
+            "color_cursor" => Ok(ThemeProperty::ColorCursor),
+            "color_selection" => Ok(ThemeProperty::ColorSelection),
+            "color_placeholder" => Ok(ThemeProperty::ColorPlaceholder),
+            "color_checked" => Ok(ThemeProperty::ColorChecked),
+            "color_unchecked" => Ok(ThemeProperty::ColorUnchecked),
+            "color_indeterminate" => Ok(ThemeProperty::ColorIndeterminate),
+            "checkbox_symbol" => Ok(ThemeProperty::CheckboxSymbol),
+            "slider_track" => Ok(ThemeProperty::SliderTrack),
+            "slider_thumb" => Ok(ThemeProperty::SliderThumb),
+            "color_background_selected" => Ok(ThemeProperty::ColorBackgroundSelected),
+            "color_background_disabled" => Ok(ThemeProperty::ColorBackgroundDisabled),
+            "color_border_hovered" => Ok(ThemeProperty::ColorBorderHovered),
+            "color_border_disabled" => Ok(ThemeProperty::ColorBorderDisabled),
+            "color_dot" => Ok(ThemeProperty::ColorDot),
+            "color_dot_disabled" => Ok(ThemeProperty::ColorDotDisabled),
+            "color_text_disabled" => Ok(ThemeProperty::ColorTextDisabled),
+            "color_toggle_track_on" => Ok(ThemeProperty::ColorToggleTrackOn),
+            "color_toggle_track_off" => Ok(ThemeProperty::ColorToggleTrackOff),
+            "color_toggle_track_border" => Ok(ThemeProperty::ColorToggleTrackBorder),
+            "color_toggle_thumb" => Ok(ThemeProperty::ColorToggleThumb),
+            "color_toggle_thumb_border" => Ok(ThemeProperty::ColorToggleThumbBorder),
+            "color_toggle_disabled" => Ok(ThemeProperty::ColorToggleDisabled),
+            "color_menu_hovered" => Ok(ThemeProperty::ColorMenuHovered),
+            "color_menu_selected" => Ok(ThemeProperty::ColorMenuSelected),
+            "color_menu_disabled" => Ok(ThemeProperty::ColorMenuDisabled),
+            "color_scrollbar" => Ok(ThemeProperty::ColorScrollbar),
+            "color_scrollbar_thumb" => Ok(ThemeProperty::ColorScrollbarThumb),
+            "color_scrollbar_thumb_hover" => Ok(ThemeProperty::ColorScrollbarThumbHover),
+            "color_scrollbar_thumb_active" => Ok(ThemeProperty::ColorScrollbarThumbActive),
+            "tab_bar_background" => Ok(ThemeProperty::TabBarBackground),
+            "content_background" => Ok(ThemeProperty::ContentBackground),
+            "tab_active" => Ok(ThemeProperty::TabActive),
+            "tab_inactive" => Ok(ThemeProperty::TabInactive),
+            "tab_hovered" => Ok(ThemeProperty::TabHovered),
+            "tab_pressed" => Ok(ThemeProperty::TabPressed),
+            "tab_text" => Ok(ThemeProperty::TabText),
+            "tab_text_active" => Ok(ThemeProperty::TabTextActive),
+            "color_progress" => Ok(ThemeProperty::ColorProgress),
+            "color_disabled" => Ok(ThemeProperty::ColorDisabled),
+            // For custom properties, we can't easily return a static str reference from a temporary string
+            // So we'll handle custom properties separately in the config loader
+            _ => Err(()),
+        }
+    }
+}
+
 /// A type-safe theme value that can hold different types of styling data.
 ///
 /// This enum provides a unified way to store various types of styling information

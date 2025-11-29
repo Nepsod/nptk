@@ -124,6 +124,7 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
+use serde::Deserialize;
 
 use crate::manager::ThemeManager;
 use crate::theme::Theme;
@@ -220,6 +221,26 @@ pub struct CustomThemeConfig {
 pub struct ThemeResolver {
     /// Available theme configurations.
     configs: HashMap<String, Box<dyn Theme + Send + Sync>>,
+}
+
+#[derive(Deserialize)]
+struct ThemeConfigDef {
+    theme: Option<ThemeSettings>,
+}
+
+#[derive(Deserialize)]
+struct ThemeSettings {
+    default: Option<String>,
+    fallback: Option<String>,
+    custom: Option<HashMap<String, CustomThemeDef>>,
+}
+
+#[derive(Deserialize)]
+struct CustomThemeDef {
+    name: Option<String>,
+    path: Option<String>,
+    #[serde(flatten)]
+    properties: HashMap<String, String>,
 }
 
 impl ThemeConfig {
@@ -323,22 +344,27 @@ impl ThemeConfig {
     /// let config = ThemeConfig::from_toml(toml_content).unwrap();
     /// ```
     pub fn from_toml(content: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        // For now, we'll use a simple parser. In a real implementation,
-        // you'd use the `toml` crate for proper TOML parsing.
+        let config_def: ThemeConfigDef = toml::from_str(content)?;
         let mut config = Self::new();
 
-        // Simple TOML parsing (in a real implementation, use the `toml` crate)
-        for line in content.lines() {
-            let line = line.trim();
-            if line.starts_with("default = ") {
-                if let Some(theme_str) = line.strip_prefix("default = ") {
-                    let theme = theme_str.trim_matches('"');
-                    config.default_theme = Self::parse_theme_source(theme);
-                }
-            } else if line.starts_with("fallback = ") {
-                if let Some(theme_str) = line.strip_prefix("fallback = ") {
-                    let theme = theme_str.trim_matches('"');
-                    config.fallback_theme = Some(Self::parse_theme_source(theme));
+        if let Some(theme_settings) = config_def.theme {
+            if let Some(default) = theme_settings.default {
+                config.default_theme = Self::parse_theme_source(&default);
+            }
+
+            if let Some(fallback) = theme_settings.fallback {
+                config.fallback_theme = Some(Self::parse_theme_source(&fallback));
+            }
+
+            if let Some(custom_themes) = theme_settings.custom {
+                for (key, custom_def) in custom_themes {
+                    let name = custom_def.name.unwrap_or_else(|| key.clone());
+                    let custom_config = CustomThemeConfig {
+                        name: name.clone(),
+                        path: custom_def.path,
+                        properties: custom_def.properties,
+                    };
+                    config.custom_themes.insert(key, custom_config);
                 }
             }
         }

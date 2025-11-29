@@ -117,7 +117,7 @@ impl Default for WindowConfig {
 /// - `hybrid` - Vello Hybrid renderer (currently falls back to Vello; `vello_hybrid` requires different Scene API)
 ///
 /// **Windowing Platform:** Can be configured via `NPTK_PLATFORM` environment variable:
-/// - `winit` (default) - Use winit-based windowing (works on X11/Wayland via winit abstraction)
+/// - `winit` (X11 only) - Use winit-based windowing (works on X11 via winit abstraction)
 /// - `wayland` - Use native Wayland windowing (direct Wayland protocol, Linux only)
 #[derive(Clone)]
 pub struct RenderConfig {
