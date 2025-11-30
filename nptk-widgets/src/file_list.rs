@@ -9,13 +9,14 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::text_render::TextRenderContext;
-use nptk_core::vg::kurbo::{Affine, Rect, Shape};
+use nptk_core::vg::kurbo::{Affine, Rect, Shape, Vec2};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_services::filesystem::entry::{FileEntry, FileType};
 use nptk_services::filesystem::model::{FileSystemEvent, FileSystemModel};
+use nptk_services::icon::IconRegistry;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use tokio::sync::broadcast;
@@ -56,12 +57,18 @@ impl FileList {
         let entries = StateSignal::new(Vec::new());
         let selected_path = StateSignal::new(None);
         
+        // Create icon registry
+        let icon_registry = Arc::new(
+            IconRegistry::new().unwrap_or_else(|_| IconRegistry::default())
+        );
+        
         // Create content widget
         let content = FileListContent::new(
             entries.clone(),
             selected_path.clone(),
             current_path.clone(),
             fs_model.clone(),
+            icon_registry.clone(),
         );
         
         // Create scroll container
@@ -174,6 +181,7 @@ struct FileListContent {
     selected_path: StateSignal<Option<PathBuf>>,
     current_path: StateSignal<PathBuf>,
     fs_model: Arc<FileSystemModel>,
+    icon_registry: Arc<IconRegistry>,
     
     item_height: f32,
     text_render_context: TextRenderContext,
@@ -181,6 +189,9 @@ struct FileListContent {
     // Input state
     last_click_time: Option<Instant>,
     last_click_index: Option<usize>,
+    
+    // Icon cache per entry (to avoid repeated lookups)
+    icon_cache: Arc<Mutex<std::collections::HashMap<(PathBuf, u32), Option<nptk_services::icon::CachedIcon>>>>,
 }
 
 impl FileListContent {
@@ -189,16 +200,19 @@ impl FileListContent {
         selected_path: StateSignal<Option<PathBuf>>,
         current_path: StateSignal<PathBuf>,
         fs_model: Arc<FileSystemModel>,
+        icon_registry: Arc<IconRegistry>,
     ) -> Self {
         Self {
             entries,
             selected_path,
             current_path,
             fs_model,
+            icon_registry,
             item_height: 30.0,
             text_render_context: TextRenderContext::new(),
             last_click_time: None,
             last_click_index: None,
+            icon_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
     }
 }
@@ -340,13 +354,22 @@ impl Widget for FileListContent {
                 );
             }
             
-            // Draw icon (placeholder)
-            let icon_color = if entry.file_type == FileType::Directory {
-                Color::from_rgb8(255, 200, 100) // Orange for folders
-            } else {
-                Color::from_rgb8(200, 200, 200) // Gray for files
+            // Get icon for this entry
+            let icon_size = 20.0;
+            let cache_key = (entry.path.clone(), icon_size as u32);
+            
+            let cached_icon = {
+                let mut cache = self.icon_cache.lock().unwrap();
+                if let Some(icon) = cache.get(&cache_key) {
+                    icon.clone()
+                } else {
+                    let icon = self.icon_registry.get_file_icon(entry, icon_size as u32);
+                    cache.insert(cache_key.clone(), icon.clone());
+                    icon
+                }
             };
             
+            // Draw icon or fallback
             let icon_rect = Rect::new(
                 row_rect.x0 + 5.0,
                 row_rect.y0 + 5.0,
@@ -354,13 +377,86 @@ impl Widget for FileListContent {
                 row_rect.y1 - 5.0,
             );
             
-            graphics.fill(
-                Fill::NonZero,
-                Affine::IDENTITY,
-                &Brush::Solid(icon_color),
-                None,
-                &icon_rect.to_path(0.1),
-            );
+            if let Some(icon) = cached_icon {
+                // Render icon using FileIcon widget approach
+                // For now, we'll render directly here since we're in the render method
+                // In a more sophisticated implementation, we could use child widgets
+                let icon_x = icon_rect.x0;
+                let icon_y = icon_rect.y0;
+                let icon_size_f64 = icon_rect.width().min(icon_rect.height());
+                
+                match icon {
+                    nptk_services::icon::CachedIcon::Image { data, width, height } => {
+                        use nptk_core::vg::peniko::{Blob, ImageBrush, ImageData, ImageFormat, ImageAlphaType};
+                        let image_data = ImageData {
+                            data: Blob::from(data.as_ref().clone()),
+                            format: ImageFormat::Rgba8,
+                            alpha_type: ImageAlphaType::Alpha,
+                            width,
+                            height,
+                        };
+                        let image_brush = ImageBrush::new(image_data);
+                        let scale_x = icon_size_f64 / (width as f64);
+                        let scale_y = icon_size_f64 / (height as f64);
+                        let scale = scale_x.min(scale_y);
+                        let transform = Affine::scale_non_uniform(scale, scale)
+                            .then_translate(Vec2::new(icon_x, icon_y));
+                        if let Some(scene) = graphics.as_scene_mut() {
+                            scene.draw_image(&image_brush, transform);
+                        }
+                    }
+                    nptk_services::icon::CachedIcon::Svg(svg_source) => {
+                        use vello_svg::usvg::{Tree, Options, ShapeRendering, TextRendering, ImageRendering};
+                        if let Ok(tree) = Tree::from_str(
+                            svg_source.as_str(),
+                            &Options {
+                                shape_rendering: ShapeRendering::GeometricPrecision,
+                                text_rendering: TextRendering::OptimizeLegibility,
+                                image_rendering: ImageRendering::OptimizeSpeed,
+                                ..Default::default()
+                            },
+                        ) {
+                            let scene = vello_svg::render_tree(&tree);
+                            let svg_size = tree.size();
+                            let scale_x = icon_size_f64 / svg_size.width() as f64;
+                            let scale_y = icon_size_f64 / svg_size.height() as f64;
+                            let scale = scale_x.min(scale_y);
+                            let transform = Affine::scale_non_uniform(scale, scale)
+                                .then_translate(Vec2::new(icon_x, icon_y));
+                            graphics.append(&scene, Some(transform));
+                        }
+                    }
+                    nptk_services::icon::CachedIcon::Path(_) => {
+                        // Fallback to colored rectangle
+                        let icon_color = if entry.file_type == FileType::Directory {
+                            Color::from_rgb8(255, 200, 100)
+                        } else {
+                            Color::from_rgb8(200, 200, 200)
+                        };
+                        graphics.fill(
+                            Fill::NonZero,
+                            Affine::IDENTITY,
+                            &Brush::Solid(icon_color),
+                            None,
+                            &icon_rect.to_path(0.1),
+                        );
+                    }
+                }
+            } else {
+                // Fallback to colored rectangle if no icon found
+                let icon_color = if entry.file_type == FileType::Directory {
+                    Color::from_rgb8(255, 200, 100) // Orange for folders
+                } else {
+                    Color::from_rgb8(200, 200, 200) // Gray for files
+                };
+                graphics.fill(
+                    Fill::NonZero,
+                    Affine::IDENTITY,
+                    &Brush::Solid(icon_color),
+                    None,
+                    &icon_rect.to_path(0.1),
+                );
+            }
             
             // Draw text
             let text_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)

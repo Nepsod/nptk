@@ -32,6 +32,9 @@ pub mod canvas;
 /// Contains the [file_list::FileList] widget.
 pub mod file_list;
 
+/// Contains the [file_icon::FileIcon] widget.
+pub mod file_icon;
+
 /// Contains the [gesture_detector::GestureDetector] widget.
 pub mod gesture_detector;
 
