@@ -71,16 +71,22 @@ impl IconLookup {
         context: IconContext,
         theme_name: &str,
     ) -> Option<PathBuf> {
+        log::debug!("IconLookup: Looking for icon '{}' (size: {}, context: {:?}) in theme '{}'", 
+            icon_name, size, context, theme_name);
+        
         // Try current theme
         if let Ok(theme) = self.load_theme(theme_name) {
             if let Some(path) = self.lookup_in_theme(&theme, icon_name, size, context) {
+                log::debug!("IconLookup: Found icon '{}' at {:?}", icon_name, path);
                 return Some(path);
             }
 
             // Try inherited themes
             for inherited in &theme.inherits {
+                log::debug!("IconLookup: Trying inherited theme '{}'", inherited);
                 if let Ok(inherited_theme) = self.load_theme(inherited) {
                     if let Some(path) = self.lookup_in_theme(&inherited_theme, icon_name, size, context) {
+                        log::debug!("IconLookup: Found icon '{}' in inherited theme '{}' at {:?}", icon_name, inherited, path);
                         return Some(path);
                     }
                 }
@@ -89,11 +95,13 @@ impl IconLookup {
 
         // Fallback to hicolor
         if theme_name != "hicolor" {
+            log::debug!("IconLookup: Falling back to hicolor theme");
             if let Some(path) = self.lookup_icon(icon_name, size, context, "hicolor") {
                 return Some(path);
             }
         }
 
+        log::debug!("IconLookup: Icon '{}' not found in any theme", icon_name);
         None
     }
 
@@ -106,18 +114,44 @@ impl IconLookup {
         context: IconContext,
     ) -> Option<PathBuf> {
         // Find best matching directory
-        let best_dir = self.find_best_directory(&theme.directories, size, context)?;
+        let best_dir = match self.find_best_directory(&theme.directories, size, context) {
+            Some(dir) => dir,
+            None => {
+                log::debug!("IconLookup: No matching directory found for size {} and context {:?}", size, context);
+                return None;
+            }
+        };
+        
         let dir_path = theme.directory_path(&best_dir.name);
+        log::debug!("IconLookup: Searching in directory '{}' at {:?}", best_dir.name, dir_path);
 
         // Try different file extensions in order of preference
         let extensions = ["svg", "png", "xpm"];
         for ext in &extensions {
             let icon_path = dir_path.join(format!("{}.{}", icon_name, ext));
             if icon_path.exists() {
+                log::debug!("IconLookup: Found icon file at {:?}", icon_path);
                 return Some(icon_path);
             }
         }
 
+        // If not found in best directory, try all directories (some themes organize differently)
+        log::debug!("IconLookup: Icon '{}' not found in directory '{}', trying all directories", icon_name, best_dir.name);
+        for dir in &theme.directories {
+            if dir.name == best_dir.name {
+                continue; // Already tried this one
+            }
+            let dir_path = theme.directory_path(&dir.name);
+            for ext in &extensions {
+                let icon_path = dir_path.join(format!("{}.{}", icon_name, ext));
+                if icon_path.exists() {
+                    log::debug!("IconLookup: Found icon file at {:?} in directory '{}'", icon_path, dir.name);
+                    return Some(icon_path);
+                }
+            }
+        }
+
+        log::debug!("IconLookup: Icon '{}' not found in theme '{}'", icon_name, theme.name);
         None
     }
 
@@ -128,13 +162,30 @@ impl IconLookup {
         size: u32,
         context: IconContext,
     ) -> Option<&'a IconDirectory> {
+        // First try: exact context match
         let mut candidates: Vec<&IconDirectory> = directories
             .iter()
-            .filter(|d| d.context == context || d.context == IconContext::Unknown)
+            .filter(|d| d.context == context)
             .collect();
 
+        // Second try: Unknown context (many themes use this)
         if candidates.is_empty() {
-            // Fallback to any directory
+            candidates = directories
+                .iter()
+                .filter(|d| d.context == IconContext::Unknown)
+                .collect();
+        }
+
+        // Third try: Mimetypes context (for file type icons)
+        if candidates.is_empty() && context == IconContext::Mimetypes {
+            candidates = directories
+                .iter()
+                .filter(|d| d.context == IconContext::Mimetypes)
+                .collect();
+        }
+
+        // Final fallback: any directory
+        if candidates.is_empty() {
             candidates = directories.iter().collect();
         }
 

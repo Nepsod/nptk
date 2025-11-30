@@ -96,7 +96,28 @@ impl IconRegistry {
     pub fn get_file_icon(&self, entry: &FileEntry, size: u32) -> Option<CachedIcon> {
         // Get icon name from MIME provider
         let icon_data = self.mime_provider.get_icon(entry)?;
-        self.get_icon(&icon_data.name, size)
+        log::debug!("IconRegistry: Looking up icon '{}' for file '{}' (MIME: {:?})", 
+            icon_data.name, 
+            entry.name,
+            entry.metadata.mime_type
+        );
+        
+        // Try to get the icon
+        let icon = self.get_icon(&icon_data.name, size);
+        
+        if icon.is_none() {
+            log::debug!("IconRegistry: Icon '{}' not found, trying fallback 'text-x-generic'", icon_data.name);
+            // Fallback to generic text icon if specific icon not found
+            if icon_data.name.starts_with("text-") {
+                return self.get_icon("text-x-generic", size);
+            }
+            // Fallback to generic application icon
+            if icon_data.name.starts_with("application-") {
+                return self.get_icon("application-x-generic", size);
+            }
+        }
+        
+        icon
     }
 
     /// Guess icon context from icon name.
