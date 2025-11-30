@@ -104,7 +104,7 @@ impl FileSystemModel {
             ).await;
         });
 
-        let mut model = Self {
+        let model = Self {
             root_path: root_path.clone(),
             cache,
             watcher,
@@ -141,15 +141,10 @@ impl FileSystemModel {
 
     /// Refresh a directory (reload from filesystem).
     pub fn refresh(&self, path: &Path) -> Result<(), FileSystemError> {
-        // Invalidate cache
-        self.cache.invalidate(path);
-
-        // Trigger reload
+        println!("FileSystemModel: Refreshing path {:?}", path);
         self.task_tx
-            .send(FileSystemTask::RefreshDirectory(path.to_path_buf()))
-            .map_err(|_| FileSystemError::ChannelClosed)?;
-
-        Ok(())
+            .send(FileSystemTask::LoadDirectory(path.to_path_buf()))
+            .map_err(|_| FileSystemError::Io(std::io::Error::new(std::io::ErrorKind::Other, "Worker task died")))
     }
 
     /// Get file entry for a path.
@@ -248,23 +243,42 @@ impl FileSystemModel {
             tokio::select! {
                 // Handle tasks
                 task = task_rx.recv() => {
+                    println!("FileSystemModel: Worker received task {:?}", task);
                     match task {
                         Some(FileSystemTask::LoadDirectory(path)) => {
-                            if let Ok(entries) = Self::load_directory(&path).await {
-                                cache.insert_children(&path, entries.clone());
-                                let _ = event_tx.send(FileSystemEvent::DirectoryLoaded {
-                                    path,
-                                    entries,
-                                });
+                            println!("FileSystemModel: Worker loading directory {:?}", path);
+                            match Self::load_directory(&path).await {
+                                Ok(entries) => {
+                                    println!("FileSystemModel: Worker loaded {} entries for {:?}", entries.len(), path);
+                                    // Update cache
+                                    cache.insert_children(&path, entries.clone());
+                                    
+                                    // Emit event
+                                    let _ = event_tx.send(FileSystemEvent::DirectoryLoaded {
+                                        path,
+                                        entries,
+                                    });
+                                }
+                                Err(e) => {
+                                    println!("FileSystemModel: Worker failed to load directory {:?}: {:?}", path, e);
+                                    // Error occurred, but we don't emit an error event (just log it)
+                                }
                             }
                         }
                         Some(FileSystemTask::RefreshDirectory(path)) => {
-                            if let Ok(entries) = Self::load_directory(&path).await {
-                                cache.insert_children(&path, entries.clone());
-                                let _ = event_tx.send(FileSystemEvent::DirectoryLoaded {
-                                    path,
-                                    entries,
-                                });
+                            println!("FileSystemModel: Worker refreshing directory {:?}", path);
+                            match Self::load_directory(&path).await {
+                                Ok(entries) => {
+                                    cache.insert_children(&path, entries.clone());
+                                    let _ = event_tx.send(FileSystemEvent::DirectoryLoaded {
+                                        path,
+                                        entries,
+                                    });
+                                }
+                                Err(e) => {
+                                    println!("FileSystemModel: Worker failed to refresh directory {:?}: {:?}", path, e);
+                                    // Error occurred, but we don't emit an error event (just log it)
+                                }
                             }
                         }
                         Some(FileSystemTask::GetChildren(path, tx)) => {

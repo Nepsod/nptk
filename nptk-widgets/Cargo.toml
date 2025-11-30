@@ -13,6 +13,7 @@ homepage.workspace = true
 [dependencies]
 vello_svg = { version = "0.8.0", default-features = false }
 nptk-theme = { workspace = true }
+nptk-services = { workspace = true }
 nptk-core = { workspace = true, features = ["vg"] }
 bytemuck = { workspace = true }
 nalgebra = { workspace = true }
@@ -20,6 +21,7 @@ log = { workspace = true }
 zbus = { version = "5.12.0", default-features = false, features = ["async-io", "blocking-api"], optional = true }
 zvariant = { version = "5.1.0", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
+tokio = { version = "1.35", features = ["sync"] }
 x11-dl = { version = "2.21", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]

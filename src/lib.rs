@@ -51,6 +51,7 @@ pub mod prelude {
     pub use crate::widgets::checkbox::{Checkbox, CheckboxState};
     pub use crate::widgets::container::Container;
     pub use crate::widgets::fetcher::WidgetFetcher;
+    pub use crate::widgets::file_list::FileList;
     pub use crate::widgets::gesture_detector::GestureDetector;
     pub use crate::widgets::icon::Icon;
     pub use crate::widgets::image::{Image, ImageData};
