@@ -501,7 +501,7 @@ impl Theme for SweetTheme {
                     crate::properties::ThemeProperty::ColorMenuHovered => Some(
                         self.variables
                             .get_color("bg-secondary")
-                            .unwrap_or(Color::from_rgb8(24, 27, 40)),
+                            .unwrap_or(Color::from_rgb8(30, 34, 51)),
                     ),
                     _ => None,
                 },

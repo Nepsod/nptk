@@ -17,11 +17,16 @@ use nptk_core::window::{ElementState, MouseButton};
 use nptk_services::filesystem::entry::{FileEntry, FileType};
 use nptk_services::filesystem::model::{FileSystemEvent, FileSystemModel};
 use nptk_services::icon::IconRegistry;
+use nptk_services::thumbnail::{ThumbnailProvider, ThumbnailifyProvider};
+use nptk_services::thumbnail::events::ThumbnailEvent;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use tokio::sync::broadcast;
+use std::collections::HashSet;
 
 use crate::scroll_container::{ScrollContainer, ScrollDirection};
+mod thumbnail_cache;
+use thumbnail_cache::ThumbnailImageCache;
 
 /// A widget that displays a list of files.
 pub struct FileList {
@@ -62,6 +67,11 @@ impl FileList {
             IconRegistry::new().unwrap_or_else(|_| IconRegistry::default())
         );
         
+        // Create thumbnail provider
+        let provider = ThumbnailifyProvider::new();
+        let thumbnail_event_rx = provider.subscribe();
+        let thumbnail_provider: Arc<dyn ThumbnailProvider> = Arc::new(provider);
+        
         // Create content widget
         let content = FileListContent::new(
             entries.clone(),
@@ -69,6 +79,8 @@ impl FileList {
             current_path.clone(),
             fs_model.clone(),
             icon_registry.clone(),
+            thumbnail_provider.clone(),
+            thumbnail_event_rx,
         );
         
         // Create scroll container
@@ -182,9 +194,11 @@ struct FileListContent {
     current_path: StateSignal<PathBuf>,
     fs_model: Arc<FileSystemModel>,
     icon_registry: Arc<IconRegistry>,
+    thumbnail_provider: Arc<dyn ThumbnailProvider>,
     
     item_height: f32,
     text_render_context: TextRenderContext,
+    thumbnail_size: u32,
     
     // Input state
     last_click_time: Option<Instant>,
@@ -192,6 +206,15 @@ struct FileListContent {
     
     // Icon cache per entry (to avoid repeated lookups)
     icon_cache: Arc<Mutex<std::collections::HashMap<(PathBuf, u32), Option<nptk_services::icon::CachedIcon>>>>,
+    
+    // Thumbnail cache for decoded images
+    thumbnail_cache: Arc<ThumbnailImageCache>,
+    
+    // Track pending thumbnail requests to avoid duplicate requests
+    pending_thumbnails: Arc<Mutex<HashSet<PathBuf>>>,
+    
+    // Thumbnail event receiver
+    thumbnail_event_rx: Arc<Mutex<tokio::sync::broadcast::Receiver<ThumbnailEvent>>>,
 }
 
 impl FileListContent {
@@ -201,19 +224,33 @@ impl FileListContent {
         current_path: StateSignal<PathBuf>,
         fs_model: Arc<FileSystemModel>,
         icon_registry: Arc<IconRegistry>,
+        thumbnail_provider: Arc<dyn ThumbnailProvider>,
+        thumbnail_event_rx: tokio::sync::broadcast::Receiver<ThumbnailEvent>,
     ) -> Self {
         Self {
+
             entries,
             selected_path,
             current_path,
             fs_model,
             icon_registry,
+            thumbnail_provider,
             item_height: 30.0,
             text_render_context: TextRenderContext::new(),
+            thumbnail_size: 128, // Default thumbnail size
             last_click_time: None,
             last_click_index: None,
             icon_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            thumbnail_cache: Arc::new(ThumbnailImageCache::default()),
+            pending_thumbnails: Arc::new(Mutex::new(HashSet::new())),
+            thumbnail_event_rx: Arc::new(Mutex::new(thumbnail_event_rx)),
         }
+    }
+    
+    /// Set the thumbnail size for this file list.
+    pub fn with_thumbnail_size(mut self, size: u32) -> Self {
+        self.thumbnail_size = size;
+        self
     }
 }
 
@@ -235,8 +272,28 @@ impl Widget for FileListContent {
         }
     }
     
-    fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
+        
+        // Poll thumbnail events
+        if let Ok(mut rx) = self.thumbnail_event_rx.try_lock() {
+            while let Ok(event) = rx.try_recv() {
+                match event {
+                    ThumbnailEvent::ThumbnailReady { entry_path, .. } => {
+                        // Thumbnail is ready, invalidate cache and trigger redraw
+                        log::debug!("Thumbnail ready for {:?}", entry_path);
+                        let mut pending = self.pending_thumbnails.lock().unwrap();
+                        pending.remove(&entry_path);
+                        update.insert(Update::DRAW);
+                    }
+                    ThumbnailEvent::ThumbnailFailed { entry_path, error, .. } => {
+                        log::warn!("Thumbnail generation failed for {:?}: {}", entry_path, error);
+                        let mut pending = self.pending_thumbnails.lock().unwrap();
+                        pending.remove(&entry_path);
+                    }
+                }
+            }
+        }
         
         if let Some(cursor) = info.cursor_pos {
             // Check for clicks
@@ -384,22 +441,8 @@ impl Widget for FileListContent {
                 );
             }
             
-            // Get icon for this entry
+            // Try to get thumbnail first, fall back to icon
             let icon_size = 20.0;
-            let cache_key = (entry.path.clone(), icon_size as u32);
-            
-            let cached_icon = {
-                let mut cache = self.icon_cache.lock().unwrap();
-                if let Some(icon) = cache.get(&cache_key) {
-                    icon.clone()
-                } else {
-                    let icon = self.icon_registry.get_file_icon(entry, icon_size as u32);
-                    cache.insert(cache_key.clone(), icon.clone());
-                    icon
-                }
-            };
-            
-            // Draw icon or fallback
             let icon_rect = Rect::new(
                 row_rect.x0 + 5.0,
                 row_rect.y0 + 5.0,
@@ -407,100 +450,157 @@ impl Widget for FileListContent {
                 row_rect.y1 - 5.0,
             );
             
-            if let Some(icon) = cached_icon {
-                // Render icon using FileIcon widget approach
-                // For now, we'll render directly here since we're in the render method
-                // In a more sophisticated implementation, we could use child widgets
-                let icon_x = icon_rect.x0;
-                let icon_y = icon_rect.y0;
-                let icon_size_f64 = icon_rect.width().min(icon_rect.height());
-                
-                match icon {
-                    nptk_services::icon::CachedIcon::Image { data, width, height } => {
-                        use nptk_core::vg::peniko::{Blob, ImageBrush, ImageData, ImageFormat, ImageAlphaType};
-                        let image_data = ImageData {
-                            data: Blob::from(data.as_ref().clone()),
-                            format: ImageFormat::Rgba8,
-                            alpha_type: ImageAlphaType::Alpha,
-                            width,
-                            height,
-                        };
-                        let image_brush = ImageBrush::new(image_data);
-                        let scale_x = icon_size_f64 / (width as f64);
-                        let scale_y = icon_size_f64 / (height as f64);
-                        let scale = scale_x.min(scale_y);
-                        let transform = Affine::scale_non_uniform(scale, scale)
-                            .then_translate(Vec2::new(icon_x, icon_y));
-                        if let Some(scene) = graphics.as_scene_mut() {
-                            scene.draw_image(&image_brush, transform);
+            // Check if thumbnail is available
+            let mut use_thumbnail = false;
+            if let Some(thumbnail_path) = self.thumbnail_provider.get_thumbnail(entry, self.thumbnail_size) {
+                // Try to load thumbnail from cache
+                if let Ok(Some(cached_thumb)) = self.thumbnail_cache.load_or_get(&thumbnail_path, self.thumbnail_size) {
+                    // Render thumbnail
+                    use nptk_core::vg::peniko::{Blob, ImageBrush, ImageData, ImageFormat, ImageAlphaType};
+                    let image_data = ImageData {
+                        data: Blob::from(cached_thumb.data.as_ref().clone()),
+                        format: ImageFormat::Rgba8,
+                        alpha_type: ImageAlphaType::Alpha,
+                        width: cached_thumb.width,
+                        height: cached_thumb.height,
+                    };
+                    let image_brush = ImageBrush::new(image_data);
+                    let icon_x = icon_rect.x0;
+                    let icon_y = icon_rect.y0;
+                    let icon_size_f64 = icon_rect.width().min(icon_rect.height());
+                    let scale_x = icon_size_f64 / (cached_thumb.width as f64);
+                    let scale_y = icon_size_f64 / (cached_thumb.height as f64);
+                    let scale = scale_x.min(scale_y);
+                    let transform = Affine::scale_non_uniform(scale, scale)
+                        .then_translate(Vec2::new(icon_x, icon_y));
+                    if let Some(scene) = graphics.as_scene_mut() {
+                        scene.draw_image(&image_brush, transform);
+                    }
+                    use_thumbnail = true;
+                }
+            }
+            
+            // If no thumbnail, use icon
+            if !use_thumbnail {
+                // Request thumbnail generation if supported and not already pending
+                if self.thumbnail_provider.is_supported(entry) {
+                    let mut pending = self.pending_thumbnails.lock().unwrap();
+                    if !pending.contains(&entry.path) {
+                        if let Ok(()) = self.thumbnail_provider.request_thumbnail(entry, self.thumbnail_size) {
+                            pending.insert(entry.path.clone());
                         }
                     }
-                    nptk_services::icon::CachedIcon::Svg(svg_source) => {
-                        use vello_svg::usvg::{Tree, Options, ShapeRendering, TextRendering, ImageRendering};
-                        if let Ok(tree) = Tree::from_str(
-                            svg_source.as_str(),
-                            &Options {
-                                shape_rendering: ShapeRendering::GeometricPrecision,
-                                text_rendering: TextRendering::OptimizeLegibility,
-                                image_rendering: ImageRendering::OptimizeSpeed,
-                                ..Default::default()
-                            },
-                        ) {
-                            let scene = vello_svg::render_tree(&tree);
-                            let svg_size = tree.size();
-                            let scale_x = icon_size_f64 / svg_size.width() as f64;
-                            let scale_y = icon_size_f64 / svg_size.height() as f64;
+                }
+                
+                // Get icon for this entry
+                let cache_key = (entry.path.clone(), icon_size as u32);
+                
+                let cached_icon = {
+                    let mut cache = self.icon_cache.lock().unwrap();
+                    if let Some(icon) = cache.get(&cache_key) {
+                        icon.clone()
+                    } else {
+                        let icon = self.icon_registry.get_file_icon(entry, icon_size as u32);
+                        cache.insert(cache_key.clone(), icon.clone());
+                        icon
+                    }
+                };
+                
+                if let Some(icon) = cached_icon {
+                    // Render icon using FileIcon widget approach
+                    // For now, we'll render directly here since we're in the render method
+                    // In a more sophisticated implementation, we could use child widgets
+                    let icon_x = icon_rect.x0;
+                    let icon_y = icon_rect.y0;
+                    let icon_size_f64 = icon_rect.width().min(icon_rect.height());
+                    
+                    match icon {
+                        nptk_services::icon::CachedIcon::Image { data, width, height } => {
+                            use nptk_core::vg::peniko::{Blob, ImageBrush, ImageData, ImageFormat, ImageAlphaType};
+                            let image_data = ImageData {
+                                data: Blob::from(data.as_ref().clone()),
+                                format: ImageFormat::Rgba8,
+                                alpha_type: ImageAlphaType::Alpha,
+                                width,
+                                height,
+                            };
+                            let image_brush = ImageBrush::new(image_data);
+                            let scale_x = icon_size_f64 / (width as f64);
+                            let scale_y = icon_size_f64 / (height as f64);
                             let scale = scale_x.min(scale_y);
                             let transform = Affine::scale_non_uniform(scale, scale)
                                 .then_translate(Vec2::new(icon_x, icon_y));
-                            graphics.append(&scene, Some(transform));
+                            if let Some(scene) = graphics.as_scene_mut() {
+                                scene.draw_image(&image_brush, transform);
+                            }
+                        }
+                        nptk_services::icon::CachedIcon::Svg(svg_source) => {
+                            use vello_svg::usvg::{Tree, Options, ShapeRendering, TextRendering, ImageRendering};
+                            if let Ok(tree) = Tree::from_str(
+                                svg_source.as_str(),
+                                &Options {
+                                    shape_rendering: ShapeRendering::GeometricPrecision,
+                                    text_rendering: TextRendering::OptimizeLegibility,
+                                    image_rendering: ImageRendering::OptimizeSpeed,
+                                    ..Default::default()
+                                },
+                            ) {
+                                let scene = vello_svg::render_tree(&tree);
+                                let svg_size = tree.size();
+                                let scale_x = icon_size_f64 / svg_size.width() as f64;
+                                let scale_y = icon_size_f64 / svg_size.height() as f64;
+                                let scale = scale_x.min(scale_y);
+                                let transform = Affine::scale_non_uniform(scale, scale)
+                                    .then_translate(Vec2::new(icon_x, icon_y));
+                                graphics.append(&scene, Some(transform));
+                            }
+                        }
+                        nptk_services::icon::CachedIcon::Path(_) => {
+                            // Fallback to themed colored rectangle
+                            // Use text color with reduced opacity for icon fallback
+                            let icon_color = theme
+                                .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+                                .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
+                                .unwrap_or(Color::from_rgb8(150, 150, 150));
+                            
+                            let fallback_color = if entry.file_type == FileType::Directory {
+                                // Slightly different color for directories
+                                icon_color.with_alpha(0.6)
+                            } else {
+                                icon_color.with_alpha(0.4)
+                            };
+                            
+                            graphics.fill(
+                                Fill::NonZero,
+                                Affine::IDENTITY,
+                                &Brush::Solid(fallback_color),
+                                None,
+                                &icon_rect.to_path(0.1),
+                            );
                         }
                     }
-                    nptk_services::icon::CachedIcon::Path(_) => {
-                        // Fallback to themed colored rectangle
-                        // Use text color with reduced opacity for icon fallback
-                        let icon_color = theme
-                            .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
-                            .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
-                            .unwrap_or(Color::from_rgb8(150, 150, 150));
-                        
-                        let fallback_color = if entry.file_type == FileType::Directory {
-                            // Slightly different color for directories
-                            icon_color.with_alpha(0.6)
-                        } else {
-                            icon_color.with_alpha(0.4)
-                        };
-                        
-                        graphics.fill(
-                            Fill::NonZero,
-                            Affine::IDENTITY,
-                            &Brush::Solid(fallback_color),
-                            None,
-                            &icon_rect.to_path(0.1),
-                        );
-                    }
-                }
-            } else {
-                // Fallback to themed colored rectangle if no icon found
-                let icon_color = theme
-                    .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
-                    .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
-                    .unwrap_or(Color::from_rgb8(150, 150, 150));
-                
-                let fallback_color = if entry.file_type == FileType::Directory {
-                    // Slightly different color for directories
-                    icon_color.with_alpha(0.6)
                 } else {
-                    icon_color.with_alpha(0.4)
-                };
-                
-                graphics.fill(
-                    Fill::NonZero,
-                    Affine::IDENTITY,
-                    &Brush::Solid(fallback_color),
-                    None,
-                    &icon_rect.to_path(0.1),
-                );
+                    // Fallback to themed colored rectangle if no icon found
+                    let icon_color = theme
+                        .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+                        .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
+                        .unwrap_or(Color::from_rgb8(150, 150, 150));
+                    
+                    let fallback_color = if entry.file_type == FileType::Directory {
+                        // Slightly different color for directories
+                        icon_color.with_alpha(0.6)
+                    } else {
+                        icon_color.with_alpha(0.4)
+                    };
+                    
+                    graphics.fill(
+                        Fill::NonZero,
+                        Affine::IDENTITY,
+                        &Brush::Solid(fallback_color),
+                        None,
+                        &icon_rect.to_path(0.1),
+                    );
+                }
             }
             
             // Draw text with proper theme fallback
