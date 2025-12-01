@@ -317,7 +317,7 @@ impl FileListContent {
             thumbnail_event_rx: Arc::new(Mutex::new(thumbnail_event_rx)),
             icon_view_padding: 10.0,
             icon_view_spacing: 8.0,
-            icon_view_text_height: 40.0,
+            icon_view_text_height: 50.0, // Increased to accommodate 2-3 lines of wrapped text
         }
     }
     
@@ -338,7 +338,10 @@ impl FileListContent {
         let cell_width = icon_size_f + self.icon_view_spacing * 2.0;
         let available_width = viewport_width - self.icon_view_padding * 2.0;
         let columns = (available_width / cell_width).floor().max(1.0) as usize;
-        let cell_height = icon_size_f + self.icon_view_text_height + self.icon_view_spacing * 2.0;
+        // Calculate cell height: icon + spacing + text area (2-3 lines)
+        // Text area: ~37.5px for 2-3 lines, plus spacing between icon and text
+        let text_area_height = 12.0 * 1.25 * 2.5; // ~37.5px for 2-3 lines
+        let cell_height = icon_size_f + 4.0 + text_area_height + self.icon_view_spacing; // icon + gap + text + bottom spacing
         (columns, cell_width, cell_height)
     }
     
@@ -839,17 +842,87 @@ impl FileListContent {
                 layout.layout.location.y as f64 + y as f64 + cell_height as f64,
             );
             
-            // Check for hover state
+            // Calculate icon position (centered in cell)
+            let icon_x = cell_rect.x0 + (cell_width as f64 - icon_size as f64) / 2.0;
+            let icon_y = cell_rect.y0 + self.icon_view_spacing as f64;
+            let icon_rect = Rect::new(
+                icon_x,
+                icon_y,
+                icon_x + icon_size as f64,
+                icon_y + icon_size as f64,
+            );
+            
+            // https://learn.microsoft.com/en-us/windows/win32/controls/lvm-getitemrect
+            // Classic Windows approach: Calculate icon and label rectangles separately, then union them
+            // Step 1: Measure text width first (before calculating label rectangle)
+            let font_size = 12.0;
+            let max_text_width = (cell_width as f64 - 4.0) as f32; // Max width for wrapping
+            let measured_text_width = self.text_render_context.measure_text_width(
+                &mut info.font_context,
+                &entry.name,
+                font_size,
+            );
+            
+            // Step 2: Calculate label rectangle (Windows ListView_GetRects style)
+            // Label is positioned below icon, centered horizontally
+            let label_padding = 2.0; // Small padding around label
+            let label_spacing = 4.0; // Spacing between icon and label
+            let label_y_start = icon_rect.y1 + label_spacing;
+            
+            // Label width: use measured width for single-line, or max width for multi-line
+            // For multi-line, we'll use the wrapping width, but measure actual height
+            let label_width = if measured_text_width <= max_text_width {
+                measured_text_width as f64 // Single line: use measured width
+            } else {
+                max_text_width as f64 // Multi-line: use max width for wrapping
+            };
+            
+            // Label height: calculate based on whether text wraps
+            // Single line: ~14-15px, Multi-line: ~37.5px for 2-3 lines
+            let label_height = if measured_text_width <= max_text_width {
+                15.0 // Single line height
+            } else {
+                37.5 // Multi-line height (2-3 lines)
+            };
+            
+            // Center label horizontally below icon
+            let label_x = icon_rect.x0 + (icon_size as f64 - label_width) / 2.0;
+            let label_y = label_y_start;
+            
+            // Label rectangle (LVIR_LABEL)
+            let label_rect = Rect::new(
+                label_x - label_padding,
+                label_y - label_padding,
+                label_x + label_width + label_padding,
+                label_y + label_height + label_padding,
+            );
+            
+            // Step 3: Calculate selection bounds (LVIR_SELECTBOUNDS) = union of icon + label
+            // Icon rectangle (LVIR_ICON) - already calculated as icon_rect
+            // Selection bounds = union of icon_rect and label_rect
+            let select_bounds_x0 = icon_rect.x0.min(label_rect.x0);
+            let select_bounds_y0 = icon_rect.y0.min(label_rect.y0);
+            let select_bounds_x1 = icon_rect.x1.max(label_rect.x1);
+            let select_bounds_y1 = icon_rect.y1.max(label_rect.y1);
+            
+            let icon_label_rect = Rect::new(
+                select_bounds_x0,
+                select_bounds_y0,
+                select_bounds_x1,
+                select_bounds_y1,
+            );
+            
+            // Check for hover state (check icon+label area, not whole cell)
             let is_hovered = if let Some(cursor) = info.cursor_pos {
                 let cursor_x = cursor.x as f64;
                 let cursor_y = cursor.y as f64;
-                cursor_x >= cell_rect.x0 && cursor_x < cell_rect.x1 &&
-                cursor_y >= cell_rect.y0 && cursor_y < cell_rect.y1
+                cursor_x >= icon_label_rect.x0 && cursor_x < icon_label_rect.x1 &&
+                cursor_y >= icon_label_rect.y0 && cursor_y < icon_label_rect.y1
             } else {
                 false
             };
             
-            // Draw hover background (if not selected)
+            // Draw hover background (if not selected) - only on icon+label area
             if is_hovered && !selected_set.contains(&entry.path) {
                 let hover_color = theme
                     .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorMenuHovered)
@@ -857,11 +930,11 @@ impl FileListContent {
                     .unwrap_or_else(|| Color::from_rgb8(240, 240, 240));
                 
                 let hover_rect = RoundedRect::new(
-                    cell_rect.x0,
-                    cell_rect.y0,
-                    cell_rect.x1,
-                    cell_rect.y1,
-                    RoundedRectRadii::new(4.0, 4.0, 4.0, 4.0),
+                    icon_label_rect.x0,
+                    icon_label_rect.y0,
+                    icon_label_rect.x1,
+                    icon_label_rect.y1,
+                    RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0),
                 );
                 
                 graphics.fill(
@@ -873,7 +946,7 @@ impl FileListContent {
                 );
             }
             
-            // Draw selection background
+            // Draw selection background - only on icon+label area
             if selected_set.contains(&entry.path) {
                 let color = theme
                     .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackgroundSelected)
@@ -881,11 +954,11 @@ impl FileListContent {
                     .unwrap_or_else(|| Color::from_rgb8(100, 150, 255));
                 
                 let selection_rect = RoundedRect::new(
-                    cell_rect.x0,
-                    cell_rect.y0,
-                    cell_rect.x1,
-                    cell_rect.y1,
-                    RoundedRectRadii::new(4.0, 4.0, 4.0, 4.0),
+                    icon_label_rect.x0,
+                    icon_label_rect.y0,
+                    icon_label_rect.x1,
+                    icon_label_rect.y1,
+                    RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0),
                 );
                 
                 graphics.fill(
@@ -896,16 +969,6 @@ impl FileListContent {
                     &selection_rect.to_path(0.1),
                 );
             }
-            
-            // Calculate icon position (centered in cell)
-            let icon_x = cell_rect.x0 + (cell_width as f64 - icon_size as f64) / 2.0;
-            let icon_y = cell_rect.y0 + self.icon_view_spacing as f64;
-            let icon_rect = Rect::new(
-                icon_x,
-                icon_y,
-                icon_x + icon_size as f64,
-                icon_y + icon_size as f64,
-            );
             
             // Try to get thumbnail first, fall back to icon
             let mut use_thumbnail = false;
@@ -1043,29 +1106,58 @@ impl FileListContent {
                 }
             }
             
-            // Draw filename below icon (centered)
+            // Draw filename in label rectangle (centered)
             let text_color = theme
                 .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
                 .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
                 .unwrap_or(Color::BLACK);
             
-            let text_y = icon_rect.y1 + 4.0;
-            let text_width = cell_width as f32 - self.icon_view_spacing * 2.0;
-            let text_x = cell_rect.x0 + (cell_width as f64 - text_width as f64) / 2.0;
+            // Text position: center within label rectangle
+            let text_x = if measured_text_width <= max_text_width {
+                // Single line: center the text within label width
+                label_x + (label_width - measured_text_width as f64) / 2.0
+            } else {
+                // Multi-line: start at left edge of label, will wrap
+                label_x
+            };
+            let text_y = label_y;
+            
+            // Create clipping rectangle for text (use label rectangle bounds)
+            let text_clip_rect = Rect::new(
+                label_rect.x0,
+                label_rect.y0,
+                label_rect.x1,
+                label_rect.y1,
+            );
+            
+            // Apply clipping for text rendering to prevent overflow
+            use nptk_core::vg::peniko::Mix;
+            #[allow(deprecated)]
+            graphics.push_layer(Mix::Clip, 1.0, Affine::IDENTITY, &text_clip_rect.to_path(0.1));
             
             let transform = Affine::translate((text_x, text_y));
+            
+            // Render text with wrapping enabled if needed
+            let wrap_width = if measured_text_width <= max_text_width {
+                None // Single line: no wrapping
+            } else {
+                Some(max_text_width) // Multi-line: wrap at max width
+            };
             
             self.text_render_context.render_text(
                 &mut info.font_context,
                 graphics,
                 &entry.name,
                 None,
-                12.0, // Smaller font for icon view
+                font_size,
                 Brush::Solid(text_color),
                 transform,
                 true,
-                Some(text_width),
+                wrap_width,
             );
+            
+            // Pop clipping layer
+            graphics.pop_layer();
         }
     }
 }
