@@ -8,13 +8,11 @@ use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vg::kurbo::{Affine, Vec2};
 use nptk_core::vg::peniko::{Blob, ImageBrush, ImageData, ImageFormat, ImageAlphaType};
-use nptk_core::vg::Scene;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_services::icon::CachedIcon;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
-use std::sync::Arc;
 use vello_svg::usvg::Options;
 use vello_svg::usvg::{ShapeRendering, TextRendering, ImageRendering};
 

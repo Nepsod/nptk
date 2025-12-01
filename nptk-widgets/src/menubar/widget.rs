@@ -2,7 +2,7 @@ use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 // Overlay system removed for now - using direct rendering instead
 #[cfg(feature = "global-menu")]
-use super::dbus::{Bridge, BridgeEvent, MenuSnapshot, RemoteMenuNode};
+use super::dbus::{Bridge, MenuSnapshot, RemoteMenuNode};
 use crate::menu_popup::{MenuBarItem as MenuBarItemImpl, MenuPopup};
 #[cfg(feature = "global-menu")]
 use log::error;

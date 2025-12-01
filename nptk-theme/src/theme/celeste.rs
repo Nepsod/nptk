@@ -12,7 +12,7 @@ pub enum CelesteTheme {
 }
 
 #[derive(Debug, Clone)]
-struct CelesteThemeData {
+pub struct CelesteThemeData {
     globals: Globals,
     palette: ThemePalette,
     metrics: LayoutMetrics,

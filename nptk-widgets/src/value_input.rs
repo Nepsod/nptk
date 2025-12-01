@@ -10,7 +10,6 @@ use nptk_core::text_input::TextBuffer;
 use nptk_core::text_render::TextRenderContext;
 use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
-use nptk_core::vg::Scene;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, Ime, KeyCode, MouseButton, PhysicalKey};
