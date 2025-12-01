@@ -1,7 +1,6 @@
 //! Background task executor for thumbnail generation.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 use tokio::sync::{mpsc, broadcast};
 use crate::filesystem::entry::FileEntry;
 use crate::thumbnail::cache::{thumbnail_cache_path, ensure_cache_dir, is_thumbnail_fresh};

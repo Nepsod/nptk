@@ -25,8 +25,7 @@ use tokio::sync::broadcast;
 use std::collections::HashSet;
 
 use crate::scroll_container::{ScrollContainer, ScrollDirection};
-mod thumbnail_cache;
-use thumbnail_cache::ThumbnailImageCache;
+use nptk_services::thumbnail::ThumbnailImageCache;
 
 /// A widget that displays a list of files.
 pub struct FileList {

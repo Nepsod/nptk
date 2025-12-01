@@ -1,4 +1,8 @@
 //! LRU cache for decoded thumbnail images.
+//!
+//! This module provides a shared cache for decoded thumbnail images that can
+//! be used by any file-related widget (file list, file grid, compact file list, etc.)
+//! to avoid re-decoding thumbnails on every render.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -20,6 +24,10 @@ pub struct CachedThumbnail {
 /// This cache stores decoded PNG thumbnail images in memory to avoid
 /// re-decoding them on every render. The cache is keyed by thumbnail
 /// path and size.
+///
+/// This cache is designed to be shared across multiple file-related widgets
+/// (file list, file grid, compact file list, etc.) to provide efficient
+/// thumbnail rendering.
 pub struct ThumbnailImageCache {
     cache: Arc<Mutex<LruCache<(PathBuf, u32), CachedThumbnail>>>,
     max_size: usize,

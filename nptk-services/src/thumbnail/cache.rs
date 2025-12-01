@@ -5,7 +5,6 @@
 
 use std::path::{Path, PathBuf};
 use std::fs;
-use std::time::SystemTime;
 use crate::filesystem::entry::FileEntry;
 
 /// Compute the cache directory path for thumbnails of a given size.

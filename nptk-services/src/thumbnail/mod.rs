@@ -12,9 +12,11 @@ pub mod error;
 pub mod executor;
 pub mod thumbnailify_provider;
 pub mod events;
+pub mod image_cache;
 
 pub use error::ThumbnailError;
 pub use thumbnailify_provider::ThumbnailifyProvider;
+pub use image_cache::{ThumbnailImageCache, CachedThumbnail};
 
 /// Trait for thumbnail providers.
 ///
