@@ -897,43 +897,36 @@ impl FileListContent {
                 label_y + label_height + label_padding,
             );
             
-            // Step 3: Calculate selection bounds (LVIR_SELECTBOUNDS) = union of icon + label
-            // Icon rectangle (LVIR_ICON) - already calculated as icon_rect
-            // Selection bounds = union of icon_rect and label_rect
-            let select_bounds_x0 = icon_rect.x0.min(label_rect.x0);
-            let select_bounds_y0 = icon_rect.y0.min(label_rect.y0);
-            let select_bounds_x1 = icon_rect.x1.max(label_rect.x1);
-            let select_bounds_y1 = icon_rect.y1.max(label_rect.y1);
-            
-            let icon_label_rect = Rect::new(
-                select_bounds_x0,
-                select_bounds_y0,
-                select_bounds_x1,
-                select_bounds_y1,
-            );
-            
-            // Check for hover state (check icon+label area, not whole cell)
+            // Step 3: Classic Windows selection - draw icon and label separately (not a union rectangle)
+            // This creates the classic L-shaped or irregular selection that wraps around both
+            // Check for hover state (check if cursor is in icon OR label area)
             let is_hovered = if let Some(cursor) = info.cursor_pos {
                 let cursor_x = cursor.x as f64;
                 let cursor_y = cursor.y as f64;
-                cursor_x >= icon_label_rect.x0 && cursor_x < icon_label_rect.x1 &&
-                cursor_y >= icon_label_rect.y0 && cursor_y < icon_label_rect.y1
+                // Check if cursor is in icon rectangle
+                let in_icon = cursor_x >= icon_rect.x0 && cursor_x < icon_rect.x1 &&
+                              cursor_y >= icon_rect.y0 && cursor_y < icon_rect.y1;
+                // Check if cursor is in label rectangle
+                let in_label = cursor_x >= label_rect.x0 && cursor_x < label_rect.x1 &&
+                               cursor_y >= label_rect.y0 && cursor_y < label_rect.y1;
+                in_icon || in_label
             } else {
                 false
             };
             
-            // Draw hover background (if not selected) - only on icon+label area
+            // Draw hover background (if not selected) - draw icon and label separately
             if is_hovered && !selected_set.contains(&entry.path) {
                 let hover_color = theme
                     .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorMenuHovered)
                     .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorMenuHovered))
                     .unwrap_or_else(|| Color::from_rgb8(240, 240, 240));
                 
-                let hover_rect = RoundedRect::new(
-                    icon_label_rect.x0,
-                    icon_label_rect.y0,
-                    icon_label_rect.x1,
-                    icon_label_rect.y1,
+                // Draw icon hover rectangle
+                let icon_hover_rect = RoundedRect::new(
+                    icon_rect.x0,
+                    icon_rect.y0,
+                    icon_rect.x1,
+                    icon_rect.y1,
                     RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0),
                 );
                 
@@ -942,22 +935,40 @@ impl FileListContent {
                     Affine::IDENTITY,
                     &Brush::Solid(hover_color.with_alpha(0.5)),
                     None,
-                    &hover_rect.to_path(0.1),
+                    &icon_hover_rect.to_path(0.1),
+                );
+                
+                // Draw label hover rectangle
+                let label_hover_rect = RoundedRect::new(
+                    label_rect.x0,
+                    label_rect.y0,
+                    label_rect.x1,
+                    label_rect.y1,
+                    RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0),
+                );
+                
+                graphics.fill(
+                    Fill::NonZero,
+                    Affine::IDENTITY,
+                    &Brush::Solid(hover_color.with_alpha(0.5)),
+                    None,
+                    &label_hover_rect.to_path(0.1),
                 );
             }
             
-            // Draw selection background - only on icon+label area
+            // Draw selection background - draw icon and label separately (classic Windows style)
             if selected_set.contains(&entry.path) {
                 let color = theme
                     .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackgroundSelected)
                     .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorBackgroundSelected))
                     .unwrap_or_else(|| Color::from_rgb8(100, 150, 255));
                 
-                let selection_rect = RoundedRect::new(
-                    icon_label_rect.x0,
-                    icon_label_rect.y0,
-                    icon_label_rect.x1,
-                    icon_label_rect.y1,
+                // Draw icon selection rectangle
+                let icon_selection_rect = RoundedRect::new(
+                    icon_rect.x0,
+                    icon_rect.y0,
+                    icon_rect.x1,
+                    icon_rect.y1,
                     RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0),
                 );
                 
@@ -966,7 +977,24 @@ impl FileListContent {
                     Affine::IDENTITY,
                     &Brush::Solid(color.with_alpha(0.3)),
                     None,
-                    &selection_rect.to_path(0.1),
+                    &icon_selection_rect.to_path(0.1),
+                );
+                
+                // Draw label selection rectangle
+                let label_selection_rect = RoundedRect::new(
+                    label_rect.x0,
+                    label_rect.y0,
+                    label_rect.x1,
+                    label_rect.y1,
+                    RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0),
+                );
+                
+                graphics.fill(
+                    Fill::NonZero,
+                    Affine::IDENTITY,
+                    &Brush::Solid(color.with_alpha(0.3)),
+                    None,
+                    &label_selection_rect.to_path(0.1),
                 );
             }
             
