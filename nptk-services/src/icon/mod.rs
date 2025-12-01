@@ -92,7 +92,7 @@ impl IconRegistry {
         Some(cached_icon)
     }
 
-    /// Get an icon for a file entry.
+    /// Get an icon for a file entry with fallback chain.
     pub fn get_file_icon(&self, entry: &FileEntry, size: u32) -> Option<CachedIcon> {
         // Get icon name from MIME provider
         let icon_data = self.mime_provider.get_icon(entry)?;
@@ -102,22 +102,53 @@ impl IconRegistry {
             entry.metadata.mime_type
         );
         
-        // Try to get the icon
-        let icon = self.get_icon(&icon_data.name, size);
-        
-        if icon.is_none() {
-            log::debug!("IconRegistry: Icon '{}' not found, trying fallback 'text-x-generic'", icon_data.name);
-            // Fallback to generic text icon if specific icon not found
-            if icon_data.name.starts_with("text-") {
-                return self.get_icon("text-x-generic", size);
-            }
-            // Fallback to generic application icon
-            if icon_data.name.starts_with("application-") {
-                return self.get_icon("application-x-generic", size);
-            }
+        // Try specific icon first
+        if let Some(icon) = self.get_icon(&icon_data.name, size) {
+            return Some(icon);
         }
         
-        icon
+        log::debug!("IconRegistry: Icon '{}' not found, trying generic category icon", icon_data.name);
+        
+        // Try generic category icon
+        let generic_name = self.get_generic_icon_name(&icon_data.name);
+        if let Some(icon) = self.get_icon(&generic_name, size) {
+            log::debug!("IconRegistry: Found generic icon '{}'", generic_name);
+            return Some(icon);
+        }
+        
+        log::debug!("IconRegistry: Generic icon '{}' not found, trying final fallback", generic_name);
+        
+        // Final fallback: text-x-generic or unknown
+        self.get_icon("text-x-generic", size)
+            .or_else(|| self.get_icon("unknown", size))
+    }
+
+    /// Get generic icon name from specific icon name.
+    /// 
+    /// Maps specific icons to their generic category:
+    /// - text-x-toml -> text-x-generic
+    /// - application-pdf -> application-x-generic
+    /// - image-png -> image-x-generic
+    fn get_generic_icon_name(&self, icon_name: &str) -> String {
+        if icon_name.starts_with("text-") && icon_name != "text-x-generic" {
+            "text-x-generic".to_string()
+        } else if icon_name.starts_with("application-") && !icon_name.ends_with("-generic") {
+            // Try application-x-generic first, fallback to application-generic
+            if icon_name.contains("-x-") {
+                "application-x-generic".to_string()
+            } else {
+                "application-x-generic".to_string()
+            }
+        } else if icon_name.starts_with("image-") && icon_name != "image-x-generic" {
+            "image-x-generic".to_string()
+        } else if icon_name.starts_with("video-") && icon_name != "video-x-generic" {
+            "video-x-generic".to_string()
+        } else if icon_name.starts_with("audio-") && icon_name != "audio-x-generic" {
+            "audio-x-generic".to_string()
+        } else {
+            // Already generic or unknown, return as-is
+            icon_name.to_string()
+        }
     }
 
     /// Guess icon context from icon name.

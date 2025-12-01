@@ -189,13 +189,9 @@ impl FileSystemModel {
                 .unwrap_or("")
                 .to_string();
 
-            // Detect MIME type
+            // Detect MIME type using MimeDetector
             let mime_type = if file_type == FileType::File {
-                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    Some(mime_guess::from_ext(ext).first_or_text_plain().to_string())
-                } else {
-                    None
-                }
+                crate::filesystem::mime_detector::MimeDetector::detect_mime_type(&path)
             } else {
                 None
             };
@@ -391,11 +387,7 @@ impl FileSystemModel {
             .to_string();
 
         let mime_type = if file_type == FileType::File {
-            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                Some(mime_guess::from_ext(ext).first_or_text_plain().to_string())
-            } else {
-                None
-            }
+            crate::filesystem::mime_detector::MimeDetector::detect_mime_type(path)
         } else {
             None
         };
