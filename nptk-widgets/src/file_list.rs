@@ -307,9 +307,11 @@ impl Widget for FileListContent {
             (layout.layout.location.y + layout.layout.size.height) as f64,
         );
         
+        // Use theme background with proper fallback chain
         let bg_color = theme
             .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackground)
-            .unwrap_or(Color::from_rgb8(255, 255, 255));
+            .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorBackground))
+            .unwrap_or_else(|| theme.window_background());
         
         graphics.fill(
             Fill::NonZero,
@@ -340,10 +342,38 @@ impl Widget for FileListContent {
                 (y + self.item_height) as f64,
             );
             
+            // Check for hover state
+            let is_hovered = if let Some(cursor) = info.cursor_pos {
+                let cursor_x = cursor.x as f64;
+                let cursor_y = cursor.y as f64;
+                cursor_x >= row_rect.x0 && cursor_x < row_rect.x1 &&
+                cursor_y >= row_rect.y0 && cursor_y < row_rect.y1
+            } else {
+                false
+            };
+            
+            // Draw hover background (if not selected)
+            if is_hovered && Some(&entry.path) != selected.as_ref() {
+                let hover_color = theme
+                    .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorMenuHovered)
+                    .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorMenuHovered))
+                    .unwrap_or_else(|| Color::from_rgb8(240, 240, 240));
+                
+                graphics.fill(
+                    Fill::NonZero,
+                    Affine::IDENTITY,
+                    &Brush::Solid(hover_color),
+                    None,
+                    &row_rect.to_path(0.1),
+                );
+            }
+            
             // Draw selection background
             if Some(&entry.path) == selected.as_ref() {
-                let color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackgroundSelected)
-                    .unwrap_or(Color::from_rgb8(0, 120, 215)); // Default blue
+                let color = theme
+                    .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackgroundSelected)
+                    .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorBackgroundSelected))
+                    .unwrap_or_else(|| Color::from_rgb8(100, 150, 255));
                 
                 graphics.fill(
                     Fill::NonZero,
@@ -427,39 +457,56 @@ impl Widget for FileListContent {
                         }
                     }
                     nptk_services::icon::CachedIcon::Path(_) => {
-                        // Fallback to colored rectangle
-                        let icon_color = if entry.file_type == FileType::Directory {
-                            Color::from_rgb8(255, 200, 100)
+                        // Fallback to themed colored rectangle
+                        // Use text color with reduced opacity for icon fallback
+                        let icon_color = theme
+                            .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+                            .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
+                            .unwrap_or(Color::from_rgb8(150, 150, 150));
+                        
+                        let fallback_color = if entry.file_type == FileType::Directory {
+                            // Slightly different color for directories
+                            icon_color.with_alpha(0.6)
                         } else {
-                            Color::from_rgb8(200, 200, 200)
+                            icon_color.with_alpha(0.4)
                         };
+                        
                         graphics.fill(
                             Fill::NonZero,
                             Affine::IDENTITY,
-                            &Brush::Solid(icon_color),
+                            &Brush::Solid(fallback_color),
                             None,
                             &icon_rect.to_path(0.1),
                         );
                     }
                 }
             } else {
-                // Fallback to colored rectangle if no icon found
-                let icon_color = if entry.file_type == FileType::Directory {
-                    Color::from_rgb8(255, 200, 100) // Orange for folders
+                // Fallback to themed colored rectangle if no icon found
+                let icon_color = theme
+                    .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+                    .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
+                    .unwrap_or(Color::from_rgb8(150, 150, 150));
+                
+                let fallback_color = if entry.file_type == FileType::Directory {
+                    // Slightly different color for directories
+                    icon_color.with_alpha(0.6)
                 } else {
-                    Color::from_rgb8(200, 200, 200) // Gray for files
+                    icon_color.with_alpha(0.4)
                 };
+                
                 graphics.fill(
                     Fill::NonZero,
                     Affine::IDENTITY,
-                    &Brush::Solid(icon_color),
+                    &Brush::Solid(fallback_color),
                     None,
                     &icon_rect.to_path(0.1),
                 );
             }
             
-            // Draw text
-            let text_color = theme.get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+            // Draw text with proper theme fallback
+            let text_color = theme
+                .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+                .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
                 .unwrap_or(Color::BLACK);
                 
             let transform = Affine::translate((

@@ -482,6 +482,29 @@ impl Theme for SweetTheme {
                     ),
                     _ => None,
                 },
+                "FileList" | "FileListContent" => match property {
+                    crate::properties::ThemeProperty::ColorBackground => Some(
+                        self.variables
+                            .get_color("bg-primary")
+                            .unwrap_or(Color::from_rgb8(22, 25, 37)),
+                    ),
+                    crate::properties::ThemeProperty::ColorText => Some(
+                        self.variables
+                            .get_color("text-primary")
+                            .unwrap_or(Color::from_rgb8(211, 218, 227)),
+                    ),
+                    crate::properties::ThemeProperty::ColorBackgroundSelected => Some(
+                        self.variables
+                            .get_color("selection-bg")
+                            .unwrap_or(Color::from_rgb8(197, 14, 210)),
+                    ),
+                    crate::properties::ThemeProperty::ColorMenuHovered => Some(
+                        self.variables
+                            .get_color("bg-secondary")
+                            .unwrap_or(Color::from_rgb8(24, 27, 40)),
+                    ),
+                    _ => None,
+                },
                 _ => None,
             },
             _ => None,
@@ -779,6 +802,25 @@ impl Theme for SweetTheme {
                     (
                         ThemeProperty::ColorText,
                         self.variables.get_color("text-primary").unwrap(),
+                    ),
+                ])),
+
+                "FileList" | "FileListContent" => Some(self.create_widget_style(&[
+                    (
+                        ThemeProperty::ColorBackground,
+                        self.variables.get_color("bg-primary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorText,
+                        self.variables.get_color("text-primary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorBackgroundSelected,
+                        self.variables.get_color("selection-bg").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorMenuHovered,
+                        self.variables.get_color("bg-tertiary").unwrap(),
                     ),
                 ])),
 

@@ -150,6 +150,19 @@ impl Theme for CelesteTheme {
                     },
                     _ => None,
                 },
+                "FileList" | "FileListContent" => match property {
+                    crate::properties::ThemeProperty::ColorBackground => {
+                        Some(palette.background)
+                    },
+                    crate::properties::ThemeProperty::ColorText => Some(palette.text),
+                    crate::properties::ThemeProperty::ColorBackgroundSelected => {
+                        Some(palette.selection)
+                    },
+                    crate::properties::ThemeProperty::ColorMenuHovered => {
+                        Some(palette.background_elevated)
+                    },
+                    _ => None,
+                },
                 _ => None,
             },
             _ => None,
