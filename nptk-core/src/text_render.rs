@@ -234,6 +234,52 @@ impl TextRenderContext {
         total_width
     }
 
+    /// Measure text layout and get line count when wrapped to a specific width
+    pub fn measure_text_layout(&self, font_cx: &mut FontContext, text: &str, font_size: f32, max_width: Option<f32>) -> (f32, usize) {
+        if text.is_empty() {
+            return (0.0, 0);
+        }
+
+        // Create a text layout using Parley to get accurate measurements
+        let display_scale = 1.0;
+        let mut parley_font_cx = font_cx.create_parley_font_context();
+        let mut temp_layout_cx = LayoutContext::<[u8; 4]>::new();
+        let mut builder =
+            temp_layout_cx.ranged_builder(&mut parley_font_cx, text, display_scale, true);
+
+        // Set font size
+        builder.push_default(StyleProperty::FontSize(font_size));
+
+        let mut layout = builder.build(text);
+
+        // Perform layout operations with optional width constraint for wrapping
+        if let Some(width) = max_width {
+            layout.break_all_lines(Some(width));
+        } else {
+            layout.break_all_lines(None);
+        }
+        layout.align(None, Alignment::Start, Default::default());
+
+        // Count lines and calculate max width
+        let mut line_count = 0;
+        let mut max_line_width = 0.0f32;
+        for line in layout.lines() {
+            line_count += 1;
+            let mut line_width = 0.0f32;
+            for item in line.items() {
+                let parley::PositionedLayoutItem::GlyphRun(glyph_run) = item else {
+                    continue;
+                };
+                for glyph in glyph_run.glyphs() {
+                    line_width += glyph.advance;
+                }
+            }
+            max_line_width = max_line_width.max(line_width);
+        }
+
+        (max_line_width, line_count)
+    }
+
     /// Render a Parley layout to the scene
     pub fn render_layout(
         &self,
