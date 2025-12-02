@@ -315,8 +315,8 @@ impl FileListContent {
             thumbnail_cache: Arc::new(ThumbnailImageCache::default()),
             pending_thumbnails: Arc::new(Mutex::new(HashSet::new())),
             thumbnail_event_rx: Arc::new(Mutex::new(thumbnail_event_rx)),
-            icon_view_padding: 10.0,
-            icon_view_spacing: 8.0,
+            icon_view_padding: 2.0, // padding around the icons
+            icon_view_spacing: 22.0, // spacing between icons
             icon_view_text_height: 50.0, // Increased to accommodate 2-3 lines of wrapped text
         }
     }
@@ -863,39 +863,46 @@ impl FileListContent {
             let is_selected = selected_set.contains(&entry.path);
             
             // Prepare text for rendering: add break opportunities at special characters
-            // This helps Parley break long continuous names like ".org.chromium.Chromium.CXXbxG"
-            // Parley can break on spaces, dashes, and some punctuation, but we need to help with
-            // long continuous strings by inserting zero-width spaces
+            // This helps Parley break long names like ".org.chromium.Chromium.CXXbxG"
+            // We explicitly insert zero-width spaces after every "special" character,
+            // and, for completely continuous names (only letters/digits), every 10 chars.
             let (text_with_breaks, has_natural_breaks) = {
                 let name = &entry.name;
-                // Check if text has natural break points (spaces, dashes, dots, etc.)
-                let has_break_points = name.chars().any(|c| {
-                    c.is_whitespace() || 
-                    c == '-' || c == '_' || 
-                    c == '.' || c == '/' || c == '\\' ||
-                    c == ':' || c == ';' || c == ',' ||
-                    c == '(' || c == ')' || c == '[' || c == ']' ||
-                    c == '{' || c == '}'
-                });
-                
-                if has_break_points {
-                    // Text already has breakable characters, use as-is
-                    (name.clone(), true)
-                } else {
-                    // Very long name with no special characters - insert zero-width spaces
-                    // to allow breaking anywhere (every 10 characters for readability)
-                    let chars: Vec<char> = name.chars().collect();
-                    let char_count = chars.len();
-                    let mut result = String::with_capacity(name.len() + char_count / 10);
-                    for (i, &c) in chars.iter().enumerate() {
-                        result.push(c);
-                        // Insert zero-width space every 10 characters to allow breaking
-                        if i > 0 && (i + 1) % 10 == 0 && i < char_count - 1 {
-                            result.push('\u{200B}'); // Zero-width space
+
+                // A "continuous" name has only letters/digits (no whitespace, no punctuation)
+                let is_continuous = name.chars().all(|c| c.is_alphanumeric());
+
+                let mut result = String::with_capacity(name.len() + name.len() / 8);
+                let mut segment_len: usize = 0;
+
+                for c in name.chars() {
+                    result.push(c);
+
+                    // Determine if this is a special char that should allow a break
+                    let is_special = !c.is_alphanumeric() && !c.is_whitespace();
+
+                    if is_special {
+                        // Insert a zero-width space after every special character
+                        // so wrapping can occur at that position.
+                        result.push('\u{200B}');
+                        segment_len = 0;
+                    } else if c.is_whitespace() {
+                        // Whitespace already provides a natural break; reset segment length
+                        segment_len = 0;
+                    } else {
+                        // Part of a continuous alpha-numeric run
+                        segment_len += 1;
+                        if is_continuous && segment_len >= 10 {
+                            // For very long continuous segments, insert a break opportunity
+                            result.push('\u{200B}');
+                            segment_len = 0;
                         }
                     }
-                    (result, false)
                 }
+
+                // has_natural_breaks indicates whether the original name had any non-alphanumeric chars
+                let has_natural_breaks = !is_continuous;
+                (result, has_natural_breaks)
             };
             
             // Measure text layout with wrapping to get actual line count
@@ -906,20 +913,8 @@ impl FileListContent {
                 Some(max_text_width),
             );
             
-            // Determine if we need to truncate (show first 2 lines + "...")
-            let max_display_lines = if is_selected {
-                line_count // Show all lines when selected
-            } else {
-                2 // Show only first 2 lines when not selected
-            };
-            
-            let display_text = if !is_selected && line_count > 2 {
-                // Truncate to first 2 lines and add "..."
-                // We'll need to approximate where to cut - for now, render full text but clip
-                text_with_breaks.clone()
-            } else {
-                text_with_breaks.clone()
-            };
+            // Use text_with_breaks for rendering (will be limited to 2 lines when not selected)
+            let display_text = text_with_breaks;
             
             // Step 2: Calculate label rectangle (Windows ListView_GetRects style)
             // Label is positioned below icon, centered horizontally
@@ -927,19 +922,28 @@ impl FileListContent {
             let label_spacing = 4.0; // Spacing between icon and label
             let label_y_start = icon_rect.y1 + label_spacing;
             
-            // Calculate actual label dimensions based on line count
-            let actual_line_count = if is_selected { line_count } else { line_count.min(2) };
-            let label_height = (actual_line_count as f64 * line_height as f64).max(line_height as f64); // At least one line
+            // Calculate actual label dimensions based on displayed line count (truncated when not selected)
+            // IMPORTANT: When not selected and text has more than 2 lines, we only show 2 lines.
+            let displayed_line_count = if is_selected { 
+                line_count 
+            } else { 
+                line_count.min(2) // Show only 2 lines when not selected
+            };
+            // Calculate label height based on displayed lines (not full line_count).
+            // Add a small extra margin per line so descenders/ascenders and the ellipsis are not clipped.
+            let per_line_height = line_height as f64 + 2.0;
+            let label_height = (displayed_line_count as f64 * per_line_height).max(per_line_height); // At least one visible line
             
-            // Label width: use measured width for single-line, or max width for multi-line
-            // Special case: if very long name with no breaks and single line, expand to show more
+            // Label width: use measured width of the longest line to keep the text block centered under the icon.
+            // Special case: if very long name with no breaks and single line, expand to show more (but cap it).
             let label_width = if line_count == 1 && !has_natural_breaks && measured_width > max_text_width {
-                // Very long name with no special characters - expand to show more, but cap at reasonable size
+                // Very long name with no special characters - expand to show more, but cap at reasonable size.
                 (measured_width as f64).min(max_text_width as f64 * 1.5) // Allow 50% expansion
             } else if line_count == 1 {
                 measured_width as f64 // Single line: use measured width
             } else {
-                max_text_width as f64 // Multi-line: use max width for wrapping
+                // Multi-line: use the measured longest line width, but never exceed wrap width.
+                (measured_width as f64).min(max_text_width as f64)
             };
             
             // Center label horizontally below icon
@@ -1208,24 +1212,9 @@ impl FileListContent {
             let text_y = label_y;
             
             // Create clipping rectangle for text (use label rectangle bounds)
-            // If not selected and has more than 2 lines, clip to show only first 2 lines + "..."
-            let text_clip_rect = if !is_selected && line_count > 2 {
-                // Clip to show only first 2 lines
-                let clip_height = (2.0 * line_height as f64) + label_padding * 2.0;
-                Rect::new(
-                    label_rect.x0,
-                    label_rect.y0,
-                    label_rect.x1,
-                    label_rect.y0 + clip_height,
-                )
-            } else {
-                Rect::new(
-                    label_rect.x0,
-                    label_rect.y0,
-                    label_rect.x1,
-                    label_rect.y1,
-                )
-            };
+            // The label_rect is already calculated based on displayed_line_count (2 lines when not selected)
+            // So we just use it directly to prevent any overflow
+            let text_clip_rect = label_rect;
             
             // Apply clipping for text rendering to prevent overflow
             use nptk_core::vg::peniko::Mix;
@@ -1234,14 +1223,21 @@ impl FileListContent {
             
             let transform = Affine::translate((text_x, text_y));
             
-            // Render text with wrapping enabled
-            let wrap_width = if line_count == 1 {
-                None // Single line: no wrapping needed
+            // Render text with wrapping enabled (always enable wrapping for safety).
+            // We rely on max_lines + clipping to limit what is visible.
+            let wrap_width = Some(max_text_width);
+            
+            // Render text with optional line limit (2 lines when not selected)
+            // This applies to ALL names, regardless of whether they have special characters or not.
+            // When not selected: show maximum 2 lines, hide the rest.
+            // When selected: show all lines.
+            let max_lines = if !is_selected && line_count > 2 {
+                Some(2) // Limit to 2 lines when not selected (for both special char names and continuous names)
             } else {
-                Some(max_text_width) // Multi-line: wrap at max width
+                None // Show all lines when selected or if 2 or fewer lines
             };
             
-            self.text_render_context.render_text(
+            self.text_render_context.render_text_with_max_lines(
                 &mut info.font_context,
                 graphics,
                 &display_text,
@@ -1251,11 +1247,16 @@ impl FileListContent {
                 transform,
                 true,
                 wrap_width,
+                max_lines,
             );
             
-            // If not selected and text was truncated, draw "..." indicator
+            // If not selected and text was truncated (more than 2 lines), draw "..." indicator.
+            // This applies to all names (with or without special characters).
             if !is_selected && line_count > 2 {
-                let ellipsis_y = label_y + (2.0 * line_height as f64);
+                // Position "..." at the end of the visible text block (second line when truncated).
+                // We place it slightly above the bottom of the second line's band so it stays fully visible.
+                let visible_lines = displayed_line_count as f64;
+                let ellipsis_y = label_y + (visible_lines - 0.4) * per_line_height;
                 let ellipsis_x = label_x + label_width - 15.0; // Position "..." near right edge
                 let ellipsis_transform = Affine::translate((ellipsis_x, ellipsis_y));
                 self.text_render_context.render_text(

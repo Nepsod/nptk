@@ -114,6 +114,92 @@ impl TextRenderContext {
         Ok(())
     }
 
+    /// Render text with optional line limit (for truncation)
+    pub fn render_text_with_max_lines(
+        &mut self,
+        font_cx: &mut FontContext,
+        graphics: &mut dyn Graphics,
+        text: &str,
+        font: Option<QueryFont>,
+        font_size: f32,
+        color: Brush,
+        transform: Affine,
+        hint: bool,
+        max_width: Option<f32>,
+        max_lines: Option<usize>,
+    ) {
+        if text.is_empty() {
+            return;
+        }
+
+        // Extract Scene from Graphics for Parley rendering
+        if let Some(scene) = graphics.as_scene_mut() {
+            // Try Parley first, but fall back to simple rendering if it fails
+            if let Err(_e) = self.try_render_with_parley_max_lines(
+                font_cx,
+                scene,
+                text,
+                font.clone(),
+                font_size,
+                color.clone(),
+                transform,
+                hint,
+                max_width,
+                max_lines,
+            ) {
+                log::debug!("Parley rendering failed, using simple fallback");
+                self.render_simple_fallback(
+                    font_cx, scene, text, font, font_size, color, transform,
+                );
+            }
+        } else {
+            log::warn!("Graphics backend does not support text rendering via Parley");
+        }
+    }
+
+    /// Try to render with Parley with line limit
+    fn try_render_with_parley_max_lines(
+        &mut self,
+        _font_cx: &mut FontContext,
+        scene: &mut Scene,
+        text: &str,
+        _font: Option<QueryFont>,
+        font_size: f32,
+        color: Brush,
+        transform: Affine,
+        hint: bool,
+        max_width: Option<f32>,
+        max_lines: Option<usize>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Use our existing font context but ensure it has system fonts loaded
+        let display_scale = 1.0;
+        let mut parley_font_cx = _font_cx.create_parley_font_context();
+        let mut builder =
+            self.layout_cx
+                .ranged_builder(&mut parley_font_cx, text, display_scale, true);
+
+        // Set font size
+        builder.push_default(StyleProperty::FontSize(font_size));
+
+        let mut layout = builder.build(text);
+
+        // Perform layout operations with optional width constraint for wrapping
+        if let Some(width) = max_width {
+            layout.break_all_lines(Some(width));
+        } else {
+            layout.break_all_lines(None);
+        }
+        layout.align(None, Alignment::Start, Default::default());
+
+        // Create brushes array
+        let brushes = vec![color];
+
+        // Render the text using Parley's layout with line limit
+        self.render_layout_simple_with_max_lines(scene, &layout, &brushes, transform, hint, max_lines);
+
+        Ok(())
+    }
+
     /// Simple fallback rendering method
     fn render_simple_fallback(
         &self,
@@ -143,8 +229,30 @@ impl TextRenderContext {
         transform: Affine,
         hint: bool,
     ) {
+        self.render_layout_simple_with_max_lines(scene, layout, brushes, transform, hint, None)
+    }
+
+    /// Render layout with optional line limit
+    fn render_layout_simple_with_max_lines(
+        &self,
+        scene: &mut Scene,
+        layout: &Layout<[u8; 4]>,
+        brushes: &[Brush],
+        transform: Affine,
+        hint: bool,
+        max_lines: Option<usize>,
+    ) {
         let _total_glyphs = 0;
+        let mut line_index = 0;
         for line in layout.lines() {
+            // Stop rendering if we've reached the max lines
+            // CRITICAL: This must break BEFORE rendering the line to prevent overflow
+            if let Some(max) = max_lines {
+                if line_index >= max {
+                    // We've reached the max lines, stop rendering
+                    break;
+                }
+            }
             for item in line.items() {
                 let parley::PositionedLayoutItem::GlyphRun(glyph_run) = item else {
                     continue;
@@ -191,6 +299,7 @@ impl TextRenderContext {
                         );
                 }
             }
+            line_index += 1;
         }
     }
 

@@ -66,7 +66,7 @@ impl MimeIconProvider {
                     } else {
                         // Try application-{subtype} first, fallback to application-x-{subtype}
                         format!("application-{}", sub_type)
-                    }
+                }
                 } else {
                     // For other types, use the simple replacement rule
                     format!("{}-{}", main_type, sub_type)
