@@ -29,6 +29,18 @@ impl Application for FileListGridIconsApp {
 
 #[tokio::main]
 async fn main() {
+    // Check for environment variable to determine view mode
+    let view_mode = std::env::var("NPTK_FILE_VIEW_MODE")
+        .unwrap_or_default()
+        .to_lowercase();
+    
+    if view_mode == "icon" {
+        println!("Running File List in Grid Icons mode");
+        FileListGridIconsApp.run(());
+    } else {
+        println!("Running File List in List mode");
+        FileListApp.run(());
+    }
     // FileListApp.run(());
-    FileListGridIconsApp.run(());
+    // FileListGridIconsApp.run(());
 }
