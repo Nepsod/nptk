@@ -797,8 +797,8 @@ impl FileListContent {
         layout: &LayoutNode,
         info: &mut AppInfo,
     ) {
-        let entries = self.entries.get();
-        let selected_paths = self.selected_paths.get();
+        let entries = self.entries.get().clone();
+        let selected_paths = self.selected_paths.get().clone();
         let selected_set: HashSet<&PathBuf> = selected_paths.iter().collect();
         let entry_count = entries.len();
         
@@ -833,447 +833,496 @@ impl FileListContent {
             icon_size,
         );
         
+        // Pass 1: Render unselected items
         for (i, entry) in entries.iter().enumerate() {
-            let (x, y) = self.get_icon_position(i, columns, cell_width, cell_height);
-            let cell_rect = Rect::new(
-                layout.layout.location.x as f64 + x as f64,
-                layout.layout.location.y as f64 + y as f64,
-                layout.layout.location.x as f64 + x as f64 + cell_width as f64,
-                layout.layout.location.y as f64 + y as f64 + cell_height as f64,
-            );
-            
-            // Calculate icon position (centered in cell)
-            let icon_x = cell_rect.x0 + (cell_width as f64 - icon_size as f64) / 2.0;
-            let icon_y = cell_rect.y0 + self.icon_view_spacing as f64;
-            let icon_rect = Rect::new(
-                icon_x,
-                icon_y,
-                icon_x + icon_size as f64,
-                icon_y + icon_size as f64,
-            );
-            
-            // https://learn.microsoft.com/en-us/windows/win32/controls/lvm-getitemrect
-            // Classic Windows approach: Calculate icon and label rectangles separately, then union them
-            // Step 1: Measure text layout to get actual line count and width
-            let font_size = 12.0;
-            let max_text_width = (cell_width as f64 - 4.0) as f32; // Max width for wrapping
-            let line_height = font_size * 1.2; // Approximate line height (12px font * 1.2 = ~14.4px)
-            
-            // Check if file is selected to determine display mode
-            let is_selected = selected_set.contains(&entry.path);
-            
-            // Prepare text for rendering: add break opportunities at special characters
-            // This helps Parley break long names like ".org.chromium.Chromium.CXXbxG"
-            // We explicitly insert zero-width spaces after every "special" character,
-            // and, for completely continuous names (only letters/digits), every 10 chars.
-            let (text_with_breaks, has_natural_breaks) = {
-                let name = &entry.name;
+            if !selected_set.contains(&entry.path) {
+                self.render_icon_item(
+                    graphics, theme, layout, info, 
+                    i, entry, columns, cell_width, cell_height, icon_size, 
+                    false
+                );
+            }
+        }
 
-                // A "continuous" name has only letters/digits (no whitespace, no punctuation)
-                let is_continuous = name.chars().all(|c| c.is_alphanumeric());
+        // Pass 2: Render selected items (to draw on top)
+        for (i, entry) in entries.iter().enumerate() {
+            if selected_set.contains(&entry.path) {
+                self.render_icon_item(
+                    graphics, theme, layout, info, 
+                    i, entry, columns, cell_width, cell_height, icon_size, 
+                    true
+                );
+            }
+        }
+    }
 
-                let mut result = String::with_capacity(name.len() + name.len() / 8);
-                let mut segment_len: usize = 0;
+    #[allow(clippy::too_many_arguments)]
+    fn render_icon_item(
+        &mut self,
+        graphics: &mut dyn Graphics,
+        theme: &mut dyn Theme,
+        layout: &LayoutNode,
+        info: &mut AppInfo,
+        i: usize,
+        entry: &FileEntry,
+        columns: usize,
+        cell_width: f32,
+        cell_height: f32,
+        icon_size: u32,
+        is_selected: bool,
+    ) {
+        let (x, y) = self.get_icon_position(i, columns, cell_width, cell_height);
+        let cell_rect = Rect::new(
+            layout.layout.location.x as f64 + x as f64,
+            layout.layout.location.y as f64 + y as f64,
+            layout.layout.location.x as f64 + x as f64 + cell_width as f64,
+            layout.layout.location.y as f64 + y as f64 + cell_height as f64,
+        );
+        
+        // Calculate icon position (centered in cell)
+        let icon_x = cell_rect.x0 + (cell_width as f64 - icon_size as f64) / 2.0;
+        let icon_y = cell_rect.y0 + self.icon_view_spacing as f64;
+        let icon_rect = Rect::new(
+            icon_x,
+            icon_y,
+            icon_x + icon_size as f64,
+            icon_y + icon_size as f64,
+        );
+        
+        // https://learn.microsoft.com/en-us/windows/win32/controls/lvm-getitemrect
+        // Classic Windows approach: Calculate icon and label rectangles separately, then union them
+        // Step 1: Measure text layout to get actual line count and width
+        let font_size = 12.0;
+        let max_text_width = (cell_width as f64 - 4.0) as f32; // Max width for wrapping
+        let line_height = font_size * 1.2; // Approximate line height (12px font * 1.2 = ~14.4px)
+        
+        // Prepare text for rendering: add break opportunities at special characters
+        // This helps Parley break long names like ".org.chromium.Chromium.CXXbxG"
+        // We explicitly insert zero-width spaces after every "special" character,
+        // and, for completely continuous names (only letters/digits), every 10 chars.
+        let (text_with_breaks, has_natural_breaks) = {
+            let name = &entry.name;
 
-                for c in name.chars() {
-                    result.push(c);
+            // A "continuous" name has only letters/digits (no whitespace, no punctuation)
+            let is_continuous = name.chars().all(|c| c.is_alphanumeric());
 
-                    // Determine if this is a special char that should allow a break
-                    let is_special = !c.is_alphanumeric() && !c.is_whitespace();
+            let mut result = String::with_capacity(name.len() + name.len() / 8);
+            let mut segment_len: usize = 0;
 
-                    if is_special {
-                        // Insert a zero-width space after every special character
-                        // so wrapping can occur at that position.
+            for c in name.chars() {
+                result.push(c);
+
+                // Determine if this is a special char that should allow a break
+                let is_special = !c.is_alphanumeric() && !c.is_whitespace();
+
+                if is_special {
+                    // Insert a zero-width space after every special character
+                    // so wrapping can occur at that position.
+                    result.push('\u{200B}');
+                    segment_len = 0;
+                } else if c.is_whitespace() {
+                    // Whitespace already provides a natural break; reset segment length
+                    segment_len = 0;
+                } else {
+                    // Part of a continuous alpha-numeric run
+                    segment_len += 1;
+                    if is_continuous && segment_len >= 10 {
+                        // For very long continuous segments, insert a break opportunity
                         result.push('\u{200B}');
                         segment_len = 0;
-                    } else if c.is_whitespace() {
-                        // Whitespace already provides a natural break; reset segment length
-                        segment_len = 0;
-                    } else {
-                        // Part of a continuous alpha-numeric run
-                        segment_len += 1;
-                        if is_continuous && segment_len >= 10 {
-                            // For very long continuous segments, insert a break opportunity
-                            result.push('\u{200B}');
-                            segment_len = 0;
-                        }
                     }
                 }
+            }
 
-                // has_natural_breaks indicates whether the original name had any non-alphanumeric chars
-                let has_natural_breaks = !is_continuous;
-                (result, has_natural_breaks)
-            };
+            // has_natural_breaks indicates whether the original name had any non-alphanumeric chars
+            let has_natural_breaks = !is_continuous;
+            (result, has_natural_breaks)
+        };
+        
+        // Measure text layout with wrapping to get actual line count
+        let (measured_width, line_count) = self.text_render_context.measure_text_layout(
+            &mut info.font_context,
+            &text_with_breaks,
+            font_size,
+            Some(max_text_width),
+        );
+        
+        // Use text_with_breaks for rendering (will be limited to 2 lines when not selected)
+        let display_text = text_with_breaks;
+        
+        // Step 2: Calculate label rectangle (Windows ListView_GetRects style)
+        // Label is positioned below icon, centered horizontally
+        let label_padding = 2.0; // Small padding around label
+        let label_spacing = 4.0; // Spacing between icon and label
+        let label_y_start = icon_rect.y1 + label_spacing;
+        
+        // Calculate actual label dimensions based on displayed line count (truncated when not selected)
+        // IMPORTANT: When not selected and text has more than 2 lines, we only show 2 lines.
+        let displayed_line_count = if is_selected { 
+            line_count 
+        } else { 
+            line_count.min(2) // Show only 2 lines when not selected
+        };
+        // Calculate label height based on displayed lines (not full line_count).
+        // Add a small extra margin per line so descenders/ascenders and the ellipsis are not clipped.
+        let per_line_height = line_height as f64 + 2.0;
+        let label_height = (displayed_line_count as f64 * per_line_height).max(per_line_height); // At least one visible line
+        
+        // Label width: use measured width of the longest line to keep the text block centered.
+        // Never let the label be wider than the cell; otherwise it will overlap neighbouring cells.
+        let max_label_width = (cell_width as f64 - 2.0 * label_padding as f64).max(0.0);
+        let base_width = measured_width as f64;
+        let label_width = if line_count == 1 && !has_natural_breaks && measured_width > max_text_width {
+            // Very long name with no special characters - expand slightly, but cap at cell width.
+            (base_width.min(max_text_width as f64 * 1.5)).min(max_label_width)
+        } else {
+            // Single or multi-line: longest line width, clamped to both wrap width and cell width.
+            base_width.min(max_text_width as f64).min(max_label_width)
+        };
+        
+        // Center label horizontally within the cell (so it's aligned with the icon and cell).
+        let label_x = cell_rect.x0 + (cell_width as f64 - label_width) / 2.0;
+        let label_y = label_y_start;
+        
+        // Label rectangle (LVIR_LABEL)
+        let label_rect = Rect::new(
+            label_x - label_padding,
+            label_y - label_padding,
+            label_x + label_width + label_padding,
+            label_y + label_height + label_padding,
+        );
+        
+        // Step 3: Classic Windows selection - draw icon and label separately (not a union rectangle)
+        // This creates the classic L-shaped or irregular selection that wraps around both
+        // Check for hover state (check if cursor is in icon OR label area)
+        let is_hovered = if let Some(cursor) = info.cursor_pos {
+            let cursor_x = cursor.x as f64;
+            let cursor_y = cursor.y as f64;
+            // Check if cursor is in icon rectangle
+            let in_icon = cursor_x >= icon_rect.x0 && cursor_x < icon_rect.x1 &&
+                            cursor_y >= icon_rect.y0 && cursor_y < icon_rect.y1;
+            // Check if cursor is in label rectangle
+            let in_label = cursor_x >= label_rect.x0 && cursor_x < label_rect.x1 &&
+                            cursor_y >= label_rect.y0 && cursor_y < label_rect.y1;
+            in_icon || in_label
+        } else {
+            false
+        };
+        
+        // Draw hover background (if not selected) - draw icon and label separately
+        if is_hovered && !is_selected {
+            let hover_color = theme
+                .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorMenuHovered)
+                .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorMenuHovered))
+                .unwrap_or_else(|| Color::from_rgb8(240, 240, 240));
             
-            // Measure text layout with wrapping to get actual line count
-            let (measured_width, line_count) = self.text_render_context.measure_text_layout(
-                &mut info.font_context,
-                &text_with_breaks,
-                font_size,
-                Some(max_text_width),
+            // Draw icon hover rectangle
+            let icon_hover_rect = RoundedRect::new(
+                icon_rect.x0,
+                icon_rect.y0,
+                icon_rect.x1,
+                icon_rect.y1,
+                RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0),
             );
             
-            // Use text_with_breaks for rendering (will be limited to 2 lines when not selected)
-            let display_text = text_with_breaks;
-            
-            // Step 2: Calculate label rectangle (Windows ListView_GetRects style)
-            // Label is positioned below icon, centered horizontally
-            let label_padding = 2.0; // Small padding around label
-            let label_spacing = 4.0; // Spacing between icon and label
-            let label_y_start = icon_rect.y1 + label_spacing;
-            
-            // Calculate actual label dimensions based on displayed line count (truncated when not selected)
-            // IMPORTANT: When not selected and text has more than 2 lines, we only show 2 lines.
-            let displayed_line_count = if is_selected { 
-                line_count 
-            } else { 
-                line_count.min(2) // Show only 2 lines when not selected
-            };
-            // Calculate label height based on displayed lines (not full line_count).
-            // Add a small extra margin per line so descenders/ascenders and the ellipsis are not clipped.
-            let per_line_height = line_height as f64 + 2.0;
-            let label_height = (displayed_line_count as f64 * per_line_height).max(per_line_height); // At least one visible line
-            
-            // Label width: use measured width of the longest line to keep the text block centered under the icon.
-            // Special case: if very long name with no breaks and single line, expand to show more (but cap it).
-            let label_width = if line_count == 1 && !has_natural_breaks && measured_width > max_text_width {
-                // Very long name with no special characters - expand to show more, but cap at reasonable size.
-                (measured_width as f64).min(max_text_width as f64 * 1.5) // Allow 50% expansion
-            } else if line_count == 1 {
-                measured_width as f64 // Single line: use measured width
-            } else {
-                // Multi-line: use the measured longest line width, but never exceed wrap width.
-                (measured_width as f64).min(max_text_width as f64)
-            };
-            
-            // Center label horizontally below icon
-            let label_x = icon_rect.x0 + (icon_size as f64 - label_width) / 2.0;
-            let label_y = label_y_start;
-            
-            // Label rectangle (LVIR_LABEL)
-            let label_rect = Rect::new(
-                label_x - label_padding,
-                label_y - label_padding,
-                label_x + label_width + label_padding,
-                label_y + label_height + label_padding,
+            graphics.fill(
+                Fill::NonZero,
+                Affine::IDENTITY,
+                &Brush::Solid(hover_color.with_alpha(0.5)),
+                None,
+                &icon_hover_rect.to_path(0.1),
             );
             
-            // Step 3: Classic Windows selection - draw icon and label separately (not a union rectangle)
-            // This creates the classic L-shaped or irregular selection that wraps around both
-            // Check for hover state (check if cursor is in icon OR label area)
-            let is_hovered = if let Some(cursor) = info.cursor_pos {
-                let cursor_x = cursor.x as f64;
-                let cursor_y = cursor.y as f64;
-                // Check if cursor is in icon rectangle
-                let in_icon = cursor_x >= icon_rect.x0 && cursor_x < icon_rect.x1 &&
-                              cursor_y >= icon_rect.y0 && cursor_y < icon_rect.y1;
-                // Check if cursor is in label rectangle
-                let in_label = cursor_x >= label_rect.x0 && cursor_x < label_rect.x1 &&
-                               cursor_y >= label_rect.y0 && cursor_y < label_rect.y1;
-                in_icon || in_label
-            } else {
-                false
-            };
+            // Draw label hover rectangle
+            let label_hover_rect = RoundedRect::new(
+                label_rect.x0,
+                label_rect.y0,
+                label_rect.x1,
+                label_rect.y1,
+                RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0),
+            );
             
-            // Draw hover background (if not selected) - draw icon and label separately
-            if is_hovered && !selected_set.contains(&entry.path) {
-                let hover_color = theme
-                    .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorMenuHovered)
-                    .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorMenuHovered))
-                    .unwrap_or_else(|| Color::from_rgb8(240, 240, 240));
-                
-                // Draw icon hover rectangle
-                let icon_hover_rect = RoundedRect::new(
-                    icon_rect.x0,
-                    icon_rect.y0,
-                    icon_rect.x1,
-                    icon_rect.y1,
-                    RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0),
-                );
-                
-                graphics.fill(
-                    Fill::NonZero,
-                    Affine::IDENTITY,
-                    &Brush::Solid(hover_color.with_alpha(0.5)),
-                    None,
-                    &icon_hover_rect.to_path(0.1),
-                );
-                
-                // Draw label hover rectangle
-                let label_hover_rect = RoundedRect::new(
-                    label_rect.x0,
-                    label_rect.y0,
-                    label_rect.x1,
-                    label_rect.y1,
-                    RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0),
-                );
-                
-                graphics.fill(
-                    Fill::NonZero,
-                    Affine::IDENTITY,
-                    &Brush::Solid(hover_color.with_alpha(0.5)),
-                    None,
-                    &label_hover_rect.to_path(0.1),
-                );
+            graphics.fill(
+                Fill::NonZero,
+                Affine::IDENTITY,
+                &Brush::Solid(hover_color.with_alpha(0.5)),
+                None,
+                &label_hover_rect.to_path(0.1),
+            );
+        }
+        
+        // Draw selection background - draw icon and label separately (classic Windows style)
+        if is_selected {
+            let color = theme
+                .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackgroundSelected)
+                .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorBackgroundSelected))
+                .unwrap_or_else(|| Color::from_rgb8(100, 150, 255));
+            
+            // Draw icon selection rectangle
+            let icon_selection_rect = RoundedRect::new(
+                icon_rect.x0,
+                icon_rect.y0,
+                icon_rect.x1,
+                icon_rect.y1,
+                RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0),
+            );
+            
+            graphics.fill(
+                Fill::NonZero,
+                Affine::IDENTITY,
+                &Brush::Solid(color.with_alpha(0.3)),
+                None,
+                &icon_selection_rect.to_path(0.1),
+            );
+            
+            // Draw label selection rectangle
+            let label_selection_rect = RoundedRect::new(
+                label_rect.x0,
+                label_rect.y0,
+                label_rect.x1,
+                label_rect.y1,
+                RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0),
+            );
+            
+            graphics.fill(
+                Fill::NonZero,
+                Affine::IDENTITY,
+                &Brush::Solid(color.with_alpha(0.3)),
+                None,
+                &label_selection_rect.to_path(0.1),
+            );
+        }
+        
+        // Try to get thumbnail first, fall back to icon
+        let mut use_thumbnail = false;
+        if let Some(thumbnail_path) = self.thumbnail_provider.get_thumbnail(entry, icon_size) {
+            if let Ok(Some(cached_thumb)) = self.thumbnail_cache.load_or_get(&thumbnail_path, icon_size) {
+                use nptk_core::vg::peniko::{Blob, ImageBrush, ImageData, ImageFormat, ImageAlphaType};
+                let image_data = ImageData {
+                    data: Blob::from(cached_thumb.data.as_ref().clone()),
+                    format: ImageFormat::Rgba8,
+                    alpha_type: ImageAlphaType::Alpha,
+                    width: cached_thumb.width,
+                    height: cached_thumb.height,
+                };
+                let image_brush = ImageBrush::new(image_data);
+                let scale_x = icon_size as f64 / (cached_thumb.width as f64);
+                let scale_y = icon_size as f64 / (cached_thumb.height as f64);
+                let scale = scale_x.min(scale_y);
+                let transform = Affine::scale_non_uniform(scale, scale)
+                    .then_translate(Vec2::new(icon_x, icon_y));
+                if let Some(scene) = graphics.as_scene_mut() {
+                    scene.draw_image(&image_brush, transform);
+                }
+                use_thumbnail = true;
             }
-            
-            // Draw selection background - draw icon and label separately (classic Windows style)
-            if selected_set.contains(&entry.path) {
-                let color = theme
-                    .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackgroundSelected)
-                    .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorBackgroundSelected))
-                    .unwrap_or_else(|| Color::from_rgb8(100, 150, 255));
-                
-                // Draw icon selection rectangle
-                let icon_selection_rect = RoundedRect::new(
-                    icon_rect.x0,
-                    icon_rect.y0,
-                    icon_rect.x1,
-                    icon_rect.y1,
-                    RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0),
-                );
-                
-                graphics.fill(
-                    Fill::NonZero,
-                    Affine::IDENTITY,
-                    &Brush::Solid(color.with_alpha(0.3)),
-                    None,
-                    &icon_selection_rect.to_path(0.1),
-                );
-                
-                // Draw label selection rectangle
-                let label_selection_rect = RoundedRect::new(
-                    label_rect.x0,
-                    label_rect.y0,
-                    label_rect.x1,
-                    label_rect.y1,
-                    RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0),
-                );
-                
-                graphics.fill(
-                    Fill::NonZero,
-                    Affine::IDENTITY,
-                    &Brush::Solid(color.with_alpha(0.3)),
-                    None,
-                    &label_selection_rect.to_path(0.1),
-                );
-            }
-            
-            // Try to get thumbnail first, fall back to icon
-            let mut use_thumbnail = false;
-            if let Some(thumbnail_path) = self.thumbnail_provider.get_thumbnail(entry, icon_size) {
-                if let Ok(Some(cached_thumb)) = self.thumbnail_cache.load_or_get(&thumbnail_path, icon_size) {
-                    use nptk_core::vg::peniko::{Blob, ImageBrush, ImageData, ImageFormat, ImageAlphaType};
-                    let image_data = ImageData {
-                        data: Blob::from(cached_thumb.data.as_ref().clone()),
-                        format: ImageFormat::Rgba8,
-                        alpha_type: ImageAlphaType::Alpha,
-                        width: cached_thumb.width,
-                        height: cached_thumb.height,
-                    };
-                    let image_brush = ImageBrush::new(image_data);
-                    let scale_x = icon_size as f64 / (cached_thumb.width as f64);
-                    let scale_y = icon_size as f64 / (cached_thumb.height as f64);
-                    let scale = scale_x.min(scale_y);
-                    let transform = Affine::scale_non_uniform(scale, scale)
-                        .then_translate(Vec2::new(icon_x, icon_y));
-                    if let Some(scene) = graphics.as_scene_mut() {
-                        scene.draw_image(&image_brush, transform);
+        }
+        
+        // If no thumbnail, use icon
+        if !use_thumbnail {
+            // Request thumbnail generation if supported
+            if self.thumbnail_provider.is_supported(entry) {
+                let mut pending = self.pending_thumbnails.lock().unwrap();
+                if !pending.contains(&entry.path) {
+                    if let Ok(()) = self.thumbnail_provider.request_thumbnail(entry, icon_size) {
+                        pending.insert(entry.path.clone());
                     }
-                    use_thumbnail = true;
                 }
             }
             
-            // If no thumbnail, use icon
-            if !use_thumbnail {
-                // Request thumbnail generation if supported
-                if self.thumbnail_provider.is_supported(entry) {
-                    let mut pending = self.pending_thumbnails.lock().unwrap();
-                    if !pending.contains(&entry.path) {
-                        if let Ok(()) = self.thumbnail_provider.request_thumbnail(entry, icon_size) {
-                            pending.insert(entry.path.clone());
+            // Get icon for this entry
+            let cache_key = (entry.path.clone(), icon_size);
+            let cached_icon = {
+                let mut cache = self.icon_cache.lock().unwrap();
+                if let Some(icon) = cache.get(&cache_key) {
+                    icon.clone()
+                } else {
+                    let icon = self.icon_registry.get_file_icon(entry, icon_size);
+                    cache.insert(cache_key.clone(), icon.clone());
+                    icon
+                }
+            };
+            
+            if let Some(icon) = cached_icon {
+                match icon {
+                    nptk_services::icon::CachedIcon::Image { data, width, height } => {
+                        use nptk_core::vg::peniko::{Blob, ImageBrush, ImageData, ImageFormat, ImageAlphaType};
+                        let image_data = ImageData {
+                            data: Blob::from(data.as_ref().clone()),
+                            format: ImageFormat::Rgba8,
+                            alpha_type: ImageAlphaType::Alpha,
+                            width,
+                            height,
+                        };
+                        let image_brush = ImageBrush::new(image_data);
+                        let scale_x = icon_size as f64 / (width as f64);
+                        let scale_y = icon_size as f64 / (height as f64);
+                        let scale = scale_x.min(scale_y);
+                        let transform = Affine::scale_non_uniform(scale, scale)
+                            .then_translate(Vec2::new(icon_x, icon_y));
+                        if let Some(scene) = graphics.as_scene_mut() {
+                            scene.draw_image(&image_brush, transform);
                         }
                     }
-                }
-                
-                // Get icon for this entry
-                let cache_key = (entry.path.clone(), icon_size);
-                let cached_icon = {
-                    let mut cache = self.icon_cache.lock().unwrap();
-                    if let Some(icon) = cache.get(&cache_key) {
-                        icon.clone()
-                    } else {
-                        let icon = self.icon_registry.get_file_icon(entry, icon_size);
-                        cache.insert(cache_key.clone(), icon.clone());
-                        icon
-                    }
-                };
-                
-                if let Some(icon) = cached_icon {
-                    match icon {
-                        nptk_services::icon::CachedIcon::Image { data, width, height } => {
-                            use nptk_core::vg::peniko::{Blob, ImageBrush, ImageData, ImageFormat, ImageAlphaType};
-                            let image_data = ImageData {
-                                data: Blob::from(data.as_ref().clone()),
-                                format: ImageFormat::Rgba8,
-                                alpha_type: ImageAlphaType::Alpha,
-                                width,
-                                height,
-                            };
-                            let image_brush = ImageBrush::new(image_data);
-                            let scale_x = icon_size as f64 / (width as f64);
-                            let scale_y = icon_size as f64 / (height as f64);
+                    nptk_services::icon::CachedIcon::Svg(svg_source) => {
+                        use vello_svg::usvg::{Tree, Options, ShapeRendering, TextRendering, ImageRendering};
+                        if let Ok(tree) = Tree::from_str(
+                            svg_source.as_str(),
+                            &Options {
+                                shape_rendering: ShapeRendering::GeometricPrecision,
+                                text_rendering: TextRendering::OptimizeLegibility,
+                                image_rendering: ImageRendering::OptimizeSpeed,
+                                ..Default::default()
+                            },
+                        ) {
+                            let scene = vello_svg::render_tree(&tree);
+                            let svg_size = tree.size();
+                            let scale_x = icon_size as f64 / svg_size.width() as f64;
+                            let scale_y = icon_size as f64 / svg_size.height() as f64;
                             let scale = scale_x.min(scale_y);
                             let transform = Affine::scale_non_uniform(scale, scale)
                                 .then_translate(Vec2::new(icon_x, icon_y));
-                            if let Some(scene) = graphics.as_scene_mut() {
-                                scene.draw_image(&image_brush, transform);
-                            }
-                        }
-                        nptk_services::icon::CachedIcon::Svg(svg_source) => {
-                            use vello_svg::usvg::{Tree, Options, ShapeRendering, TextRendering, ImageRendering};
-                            if let Ok(tree) = Tree::from_str(
-                                svg_source.as_str(),
-                                &Options {
-                                    shape_rendering: ShapeRendering::GeometricPrecision,
-                                    text_rendering: TextRendering::OptimizeLegibility,
-                                    image_rendering: ImageRendering::OptimizeSpeed,
-                                    ..Default::default()
-                                },
-                            ) {
-                                let scene = vello_svg::render_tree(&tree);
-                                let svg_size = tree.size();
-                                let scale_x = icon_size as f64 / svg_size.width() as f64;
-                                let scale_y = icon_size as f64 / svg_size.height() as f64;
-                                let scale = scale_x.min(scale_y);
-                                let transform = Affine::scale_non_uniform(scale, scale)
-                                    .then_translate(Vec2::new(icon_x, icon_y));
-                                graphics.append(&scene, Some(transform));
-                            }
-                        }
-                        nptk_services::icon::CachedIcon::Path(_) => {
-                            let icon_color = theme
-                                .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
-                                .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
-                                .unwrap_or(Color::from_rgb8(150, 150, 150));
-                            
-                            let fallback_color = if entry.file_type == FileType::Directory {
-                                icon_color.with_alpha(0.6)
-                            } else {
-                                icon_color.with_alpha(0.4)
-                            };
-                            
-                            graphics.fill(
-                                Fill::NonZero,
-                                Affine::IDENTITY,
-                                &Brush::Solid(fallback_color),
-                                None,
-                                &icon_rect.to_path(0.1),
-                            );
+                            graphics.append(&scene, Some(transform));
                         }
                     }
-                } else {
-                    // Fallback to colored rectangle
-                    let icon_color = theme
-                        .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
-                        .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
-                        .unwrap_or(Color::from_rgb8(150, 150, 150));
-                    
-                    let fallback_color = if entry.file_type == FileType::Directory {
-                        icon_color.with_alpha(0.6)
-                    } else {
-                        icon_color.with_alpha(0.4)
-                    };
-                    
-                    graphics.fill(
-                        Fill::NonZero,
-                        Affine::IDENTITY,
-                        &Brush::Solid(fallback_color),
-                        None,
-                        &icon_rect.to_path(0.1),
-                    );
+                    nptk_services::icon::CachedIcon::Path(_) => {
+                        let icon_color = theme
+                            .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+                            .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
+                            .unwrap_or(Color::from_rgb8(150, 150, 150));
+                        
+                        let fallback_color = if entry.file_type == FileType::Directory {
+                            icon_color.with_alpha(0.6)
+                        } else {
+                            icon_color.with_alpha(0.4)
+                        };
+                        
+                        graphics.fill(
+                            Fill::NonZero,
+                            Affine::IDENTITY,
+                            &Brush::Solid(fallback_color),
+                            None,
+                            &icon_rect.to_path(0.1),
+                        );
+                    }
                 }
+            } else {
+                // Fallback to colored rectangle
+                let icon_color = theme
+                    .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+                    .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
+                    .unwrap_or(Color::from_rgb8(150, 150, 150));
+                
+                let fallback_color = if entry.file_type == FileType::Directory {
+                    icon_color.with_alpha(0.6)
+                } else {
+                    icon_color.with_alpha(0.4)
+                };
+                
+                graphics.fill(
+                    Fill::NonZero,
+                    Affine::IDENTITY,
+                    &Brush::Solid(fallback_color),
+                    None,
+                    &icon_rect.to_path(0.1),
+                );
             }
-            
-            // Draw filename in label rectangle
-            let text_color = theme
-                .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
-                .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
-                .unwrap_or(Color::BLACK);
-            
-            // Text position: center single-line text, left-align multi-line
-            let text_x = if line_count == 1 {
-                // Single line: center the text within label width
-                label_x + (label_width - measured_width as f64) / 2.0
-            } else {
-                // Multi-line: start at left edge of label, will wrap
-                label_x
-            };
-            let text_y = label_y;
-            
-            // Create clipping rectangle for text (use label rectangle bounds)
-            // The label_rect is already calculated based on displayed_line_count (2 lines when not selected)
-            // So we just use it directly to prevent any overflow
-            let text_clip_rect = label_rect;
-            
-            // Apply clipping for text rendering to prevent overflow
-            use nptk_core::vg::peniko::Mix;
-            #[allow(deprecated)]
-            graphics.push_layer(Mix::Clip, 1.0, Affine::IDENTITY, &text_clip_rect.to_path(0.1));
-            
-            let transform = Affine::translate((text_x, text_y));
-            
-            // Render text with wrapping enabled (always enable wrapping for safety).
-            // We rely on max_lines + clipping to limit what is visible.
-            let wrap_width = Some(max_text_width);
-            
-            // Render text with optional line limit (2 lines when not selected)
-            // This applies to ALL names, regardless of whether they have special characters or not.
-            // When not selected: show maximum 2 lines, hide the rest.
-            // When selected: show all lines.
-            let max_lines = if !is_selected && line_count > 2 {
-                Some(2) // Limit to 2 lines when not selected (for both special char names and continuous names)
-            } else {
-                None // Show all lines when selected or if 2 or fewer lines
-            };
-            
-            self.text_render_context.render_text_with_max_lines(
+        }
+        
+        // Draw filename in label rectangle
+        let text_color = theme
+            .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+            .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
+            .unwrap_or(Color::BLACK);
+        
+        // Text position: Start at the left edge of the max_text_width area.
+        // We use max_text_width as the wrap width, and ask Parley to center align.
+        // So we must position the "box" we are drawing into at the center of the cell.
+        let text_x = cell_rect.x0 + (cell_width as f64 - max_text_width as f64) / 2.0;
+        let text_y = label_y;
+        
+        // Clipping:
+        // - Unselected: Clip to cell bounds (minus padding) to prevent overlap.
+        // - Selected: Clip horizontally to cell, but extend bottom to allow full text visibility.
+        let text_clip_rect = if is_selected {
+            Rect::new(
+                cell_rect.x0 + self.icon_view_padding as f64,
+                cell_rect.y0 + self.icon_view_padding as f64,
+                cell_rect.x1 - self.icon_view_padding as f64,
+                label_rect.y1 + self.icon_view_padding as f64, // Extend to full label height
+            )
+        } else {
+            Rect::new(
+                cell_rect.x0 + self.icon_view_padding as f64,
+                cell_rect.y0 + self.icon_view_padding as f64,
+                cell_rect.x1 - self.icon_view_padding as f64,
+                cell_rect.y1 - self.icon_view_padding as f64,
+            )
+        };
+        
+        // Apply clipping for text rendering to prevent overflow
+        use nptk_core::vg::peniko::Mix;
+        #[allow(deprecated)]
+        graphics.push_layer(Mix::Clip, 1.0, Affine::IDENTITY, &text_clip_rect.to_path(0.1));
+        
+        let transform = Affine::translate((text_x, text_y));
+        
+        // Render text with wrapping enabled.
+        // We use max_text_width as the wrap_width. This ensures long filenames wrap at the cell boundary.
+        let wrap_width = Some(max_text_width);
+        
+        // Render text with optional line limit.
+        // Dolphin-like behavior:
+        // - Not Selected: Limit to 2 lines.
+        // - Selected: Show all lines (unlimited).
+        let max_lines = if !is_selected {
+            Some(2) 
+        } else {
+            None 
+        };
+        
+        // Always center align.
+        // Parley will center the text within wrap_width (which is max_text_width).
+        // Since we positioned text_x at the start of max_text_width area, the text will be visually centered in the cell.
+        let center_align = true;
+
+        self.text_render_context.render_text_with_max_lines(
+            &mut info.font_context,
+            graphics,
+            &display_text,
+            None,
+            font_size,
+            Brush::Solid(text_color),
+            transform,
+            true,
+            wrap_width,
+            max_lines,
+            center_align, 
+        );
+        
+        // If not selected and text was truncated (more than 2 lines), draw "..." indicator.
+        // This applies to all names (with or without special characters).
+        if !is_selected && line_count > 2 {
+            // Position "..." at the end of the visible text block (second line when truncated).
+            // We place it slightly above the bottom of the second line's band so it stays fully visible.
+            let visible_lines = displayed_line_count as f64;
+            let ellipsis_y = label_y + (visible_lines - 0.4) * per_line_height;
+            let ellipsis_x = label_x + label_width - 15.0; // Position "..." near right edge
+            let ellipsis_transform = Affine::translate((ellipsis_x, ellipsis_y));
+            self.text_render_context.render_text(
                 &mut info.font_context,
                 graphics,
-                &display_text,
+                "...",
                 None,
                 font_size,
                 Brush::Solid(text_color),
-                transform,
+                ellipsis_transform,
                 true,
-                wrap_width,
-                max_lines,
+                None,
             );
-            
-            // If not selected and text was truncated (more than 2 lines), draw "..." indicator.
-            // This applies to all names (with or without special characters).
-            if !is_selected && line_count > 2 {
-                // Position "..." at the end of the visible text block (second line when truncated).
-                // We place it slightly above the bottom of the second line's band so it stays fully visible.
-                let visible_lines = displayed_line_count as f64;
-                let ellipsis_y = label_y + (visible_lines - 0.4) * per_line_height;
-                let ellipsis_x = label_x + label_width - 15.0; // Position "..." near right edge
-                let ellipsis_transform = Affine::translate((ellipsis_x, ellipsis_y));
-                self.text_render_context.render_text(
-                    &mut info.font_context,
-                    graphics,
-                    "...",
-                    None,
-                    font_size,
-                    Brush::Solid(text_color),
-                    ellipsis_transform,
-                    true,
-                    None,
-                );
-            }
-            
-            // Pop clipping layer
-            graphics.pop_layer();
         }
+        
+        // Pop clipping layer
+        graphics.pop_layer();
     }
 }

@@ -103,7 +103,7 @@ impl TextRenderContext {
         } else {
             layout.break_all_lines(None);
         }
-        layout.align(None, Alignment::Start, Default::default());
+        layout.align(max_width, Alignment::Start, Default::default());
 
         // Create brushes array
         let brushes = vec![color];
@@ -127,6 +127,7 @@ impl TextRenderContext {
         hint: bool,
         max_width: Option<f32>,
         max_lines: Option<usize>,
+        center_align: bool,
     ) {
         if text.is_empty() {
             return;
@@ -146,6 +147,7 @@ impl TextRenderContext {
                 hint,
                 max_width,
                 max_lines,
+                center_align,
             ) {
                 log::debug!("Parley rendering failed, using simple fallback");
                 self.render_simple_fallback(
@@ -170,6 +172,7 @@ impl TextRenderContext {
         hint: bool,
         max_width: Option<f32>,
         max_lines: Option<usize>,
+        center_align: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // Use our existing font context but ensure it has system fonts loaded
         let display_scale = 1.0;
@@ -189,7 +192,13 @@ impl TextRenderContext {
         } else {
             layout.break_all_lines(None);
         }
-        layout.align(None, Alignment::Start, Default::default());
+        // Align lines horizontally (Start by default, Center when requested).
+        let align = if center_align {
+            Alignment::Center
+        } else {
+            Alignment::Start
+        };
+        layout.align(max_width, align, Default::default());
 
         // Create brushes array
         let brushes = vec![color];
