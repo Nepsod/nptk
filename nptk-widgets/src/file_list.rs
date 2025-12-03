@@ -34,6 +34,8 @@ pub enum FileListViewMode {
     List,
     /// Large icon view (grid layout with icons and labels below)
     Icon,
+    /// Compact view (Tiles view: Icon left, Text right, grid layout)
+    Compact,
 }
 
 /// A widget that displays a list of files.
@@ -631,6 +633,12 @@ impl Widget for FileListContent {
             let (columns, _, cell_height) = self.calculate_icon_view_layout(1000.0, icon_size); // Use large width for calculation
             let rows = (count as f32 / columns as f32).ceil();
             (rows * cell_height + self.icon_view_padding * 2.0).max(100.0)
+        } else if view_mode == FileListViewMode::Compact {
+            let (columns, _, cell_height, spacing) = self.calculate_compact_view_layout(1000.0);
+            let rows = (count as f32 / columns as f32).ceil();
+            // Height = rows * cell + (rows - 1) * spacing + padding
+            // Approx: rows * (cell + spacing) - spacing + padding
+            (rows * (cell_height + spacing) - spacing + self.icon_view_padding * 2.0).max(100.0)
         } else {
             (count as f32 * self.item_height).max(100.0)
         };
@@ -690,6 +698,28 @@ impl Widget for FileListContent {
                     let row = (local_y / cell_height).floor() as usize;
                     let idx = row * columns + col;
                     if idx < entries.len() { Some(idx) } else { None }
+                } else if view_mode == FileListViewMode::Compact {
+                    // For compact view
+                    let (columns, cell_width, cell_height, spacing) = self.calculate_compact_view_layout(
+                        layout.layout.size.width,
+                    );
+                    // Account for spacing in hit testing
+                    // x = padding + col * (width + spacing)
+                    // col = (x - padding) / (width + spacing)
+                    let col = ((local_x - self.icon_view_padding) / (cell_width + spacing)).floor() as usize;
+                    let row = ((local_y - self.icon_view_padding) / (cell_height + spacing)).floor() as usize;
+                    
+                    // Check if within cell bounds (exclude spacing gap)
+                    let cell_x = self.icon_view_padding + col as f32 * (cell_width + spacing);
+                    let cell_y = self.icon_view_padding + row as f32 * (cell_height + spacing);
+                    
+                    if local_x >= cell_x && local_x < cell_x + cell_width &&
+                       local_y >= cell_y && local_y < cell_y + cell_height {
+                        let idx = row * columns + col;
+                        if idx < entries.len() { Some(idx) } else { None }
+                    } else {
+                        None
+                    }
                 } else {
                     // For list view, use row-based calculation
                     let idx = (local_y / self.item_height) as usize;
@@ -783,8 +813,10 @@ impl Widget for FileListContent {
         
         if view_mode == FileListViewMode::Icon {
             self.render_icon_view(graphics, theme, layout, info);
+        } else if view_mode == FileListViewMode::Compact {
+            self.render_compact_view(graphics, theme, layout, info);
         } else {
-            self.render_list_view(graphics, theme, layout, info            );
+            self.render_list_view(graphics, theme, layout, info);
         }
     }
 }
@@ -1339,5 +1371,308 @@ impl FileListContent {
         
         // Pop clipping layer
         graphics.pop_layer();
+    }
+
+    fn calculate_compact_view_layout(&self, width: f32) -> (usize, f32, f32, f32) {
+        let cell_width = 250.0; // Fixed width for compact tiles
+        let cell_height = 60.0; // Fixed height for compact tiles
+        let spacing = 10.0;     // Spacing between tiles
+        
+        let available_width = width - self.icon_view_padding * 2.0;
+        // Calculate columns considering spacing: width = cols * cell + (cols - 1) * spacing
+        // width + spacing = cols * (cell + spacing)
+        // cols = (width + spacing) / (cell + spacing)
+        let columns = ((available_width + spacing) / (cell_width + spacing)).floor() as usize;
+        let columns = columns.max(1);
+        
+        (columns, cell_width, cell_height, spacing)
+    }
+
+    fn render_compact_view(
+        &mut self,
+        graphics: &mut dyn Graphics,
+        theme: &mut dyn Theme,
+        layout: &LayoutNode,
+        info: &mut AppInfo,
+    ) {
+        let entries = self.entries.get().clone();
+        let selected_paths = self.selected_paths.get().clone();
+        let selected_set: HashSet<&PathBuf> = selected_paths.iter().collect();
+        
+        let (columns, cell_width, cell_height, spacing) = self.calculate_compact_view_layout(layout.layout.size.width);
+        
+        for (i, entry) in entries.iter().enumerate() {
+            let row = i / columns;
+            let col = i % columns;
+            
+            let x = self.icon_view_padding + col as f32 * (cell_width + spacing);
+            let y = self.icon_view_padding + row as f32 * (cell_height + spacing);
+            
+            let cell_rect = Rect::new(
+                x as f64,
+                y as f64,
+                (x + cell_width) as f64,
+                (y + cell_height) as f64,
+            );
+            
+            let is_selected = selected_set.contains(&entry.path);
+            
+            // Check for hover state
+            let is_hovered = if let Some(cursor) = info.cursor_pos {
+                let cursor_x = cursor.x as f64;
+                let cursor_y = cursor.y as f64;
+                cursor_x >= cell_rect.x0 && cursor_x < cell_rect.x1 &&
+                cursor_y >= cell_rect.y0 && cursor_y < cell_rect.y1
+            } else {
+                false
+            };
+            
+            // Define Icon and Label areas
+            let icon_size = 32.0f32;
+            let icon_padding = 8.0f32;
+            let icon_x = cell_rect.x0 + icon_padding as f64;
+            let icon_y = cell_rect.y0 + (cell_height as f64 - icon_size as f64) / 2.0;
+            let icon_rect = Rect::new(icon_x, icon_y, icon_x + icon_size as f64, icon_y + icon_size as f64);
+            
+            let text_x = icon_x + icon_size as f64 + 10.0;
+            let text_y = cell_rect.y0 + 12.0;
+            let max_text_width = cell_width - (icon_size + icon_padding * 2.0 + 10.0);
+            
+            // Measure text to determine label width
+            let font_size = 14.0;
+            let (text_width, line_count) = self.text_render_context.measure_text_layout(
+                &mut info.font_context,
+                &entry.name,
+                font_size,
+                Some(max_text_width as f32),
+            );
+            
+            // Limit to 2 lines for height calculation if needed, but measure_text_layout returns actual lines
+            // We only display 2 lines max in render_text_with_max_lines
+            let display_lines = line_count.min(2);
+            let text_height = display_lines as f32 * (font_size * 1.2); // Approx height
+            
+            // Label rect (tight fit around text)
+            let label_padding_x = 4.0;
+            let label_padding_y = 2.0;
+            let label_rect = Rect::new(
+                text_x - label_padding_x,
+                text_y - label_padding_y,
+                text_x + text_width as f64 + label_padding_x,
+                text_y + text_height as f64 + label_padding_y
+            );
+
+            // 1. Draw Label Background (Selection/Hover)
+            if is_selected || is_hovered {
+                let color_prop = if is_selected {
+                    nptk_theme::properties::ThemeProperty::ColorBackgroundSelected
+                } else {
+                    nptk_theme::properties::ThemeProperty::ColorMenuHovered
+                };
+                
+                let color = theme
+                    .get_property(self.widget_id(), &color_prop)
+                    .or_else(|| theme.get_default_property(&color_prop))
+                    .unwrap_or_else(|| if is_selected { Color::from_rgb8(100, 150, 255) } else { Color::from_rgb8(240, 240, 240) });
+                
+                let alpha = if is_selected { 0.7 } else { 0.5 };
+                
+                let label_bg_rect = RoundedRect::from_rect(label_rect, RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0));
+                
+                graphics.fill(
+                    Fill::NonZero,
+                    Affine::IDENTITY,
+                    &Brush::Solid(color.with_alpha(alpha)),
+                    None,
+                    &label_bg_rect.to_path(0.1),
+                );
+            }
+
+            // 2. Draw Icon
+            // Try to get thumbnail first, fall back to icon
+            let mut use_thumbnail = false;
+            let thumb_size = 48; 
+            
+            if let Some(thumbnail_path) = self.thumbnail_provider.get_thumbnail(entry, thumb_size) {
+                if let Ok(Some(cached_thumb)) = self.thumbnail_cache.load_or_get(&thumbnail_path, thumb_size) {
+                    use nptk_core::vg::peniko::{Blob, ImageBrush, ImageData, ImageFormat, ImageAlphaType};
+                    let image_data = ImageData {
+                        data: Blob::from(cached_thumb.data.as_ref().clone()),
+                        format: ImageFormat::Rgba8,
+                        alpha_type: ImageAlphaType::Alpha,
+                        width: cached_thumb.width,
+                        height: cached_thumb.height,
+                    };
+                    let image_brush = ImageBrush::new(image_data);
+                    let scale_x = icon_size as f64 / (cached_thumb.width as f64);
+                    let scale_y = icon_size as f64 / (cached_thumb.height as f64);
+                    let scale = scale_x.min(scale_y);
+                    let transform = Affine::scale_non_uniform(scale, scale)
+                        .then_translate(Vec2::new(icon_x, icon_y));
+                    if let Some(scene) = graphics.as_scene_mut() {
+                        scene.draw_image(&image_brush, transform);
+                    }
+                    use_thumbnail = true;
+                }
+            }
+            
+            if !use_thumbnail {
+                // Request thumbnail generation if supported
+                if self.thumbnail_provider.is_supported(entry) {
+                    let mut pending = self.pending_thumbnails.lock().unwrap();
+                    if !pending.contains(&entry.path) {
+                        if let Ok(()) = self.thumbnail_provider.request_thumbnail(entry, thumb_size) {
+                            pending.insert(entry.path.clone());
+                        }
+                    }
+                }
+                
+                // Get icon for this entry
+                let cache_key = (entry.path.clone(), thumb_size);
+                let cached_icon = {
+                    let mut cache = self.icon_cache.lock().unwrap();
+                    if let Some(icon) = cache.get(&cache_key) {
+                        icon.clone()
+                    } else {
+                        let icon = self.icon_registry.get_file_icon(entry, thumb_size);
+                        cache.insert(cache_key.clone(), icon.clone());
+                        icon
+                    }
+                };
+                
+                if let Some(icon) = cached_icon {
+                    match icon {
+                        nptk_services::icon::CachedIcon::Image { data, width, height } => {
+                            use nptk_core::vg::peniko::{Blob, ImageBrush, ImageData, ImageFormat, ImageAlphaType};
+                            let image_data = ImageData {
+                                data: Blob::from(data.as_ref().clone()),
+                                format: ImageFormat::Rgba8,
+                                alpha_type: ImageAlphaType::Alpha,
+                                width,
+                                height,
+                            };
+                            let image_brush = ImageBrush::new(image_data);
+                            let scale_x = icon_size as f64 / (width as f64);
+                            let scale_y = icon_size as f64 / (height as f64);
+                            let scale = scale_x.min(scale_y);
+                            let transform = Affine::scale_non_uniform(scale, scale)
+                                .then_translate(Vec2::new(icon_x, icon_y));
+                            if let Some(scene) = graphics.as_scene_mut() {
+                                scene.draw_image(&image_brush, transform);
+                            }
+                        }
+                        nptk_services::icon::CachedIcon::Svg(svg_source) => {
+                            use vello_svg::usvg::{Tree, Options, ShapeRendering, TextRendering, ImageRendering};
+                            if let Ok(tree) = Tree::from_str(
+                                svg_source.as_str(),
+                                &Options {
+                                    shape_rendering: ShapeRendering::GeometricPrecision,
+                                    text_rendering: TextRendering::OptimizeLegibility,
+                                    image_rendering: ImageRendering::OptimizeSpeed,
+                                    ..Default::default()
+                                },
+                            ) {
+                                let scene = vello_svg::render_tree(&tree);
+                                let svg_size = tree.size();
+                                let scale_x = icon_size as f64 / svg_size.width() as f64;
+                                let scale_y = icon_size as f64 / svg_size.height() as f64;
+                                let scale = scale_x.min(scale_y);
+                                let transform = Affine::scale_non_uniform(scale, scale)
+                                    .then_translate(Vec2::new(icon_x, icon_y));
+                                graphics.append(&scene, Some(transform));
+                            }
+                        }
+                        nptk_services::icon::CachedIcon::Path(_) => {
+                            let icon_color = theme
+                                .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+                                .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
+                                .unwrap_or(Color::from_rgb8(150, 150, 150));
+                            
+                            let fallback_color = if entry.file_type == FileType::Directory {
+                                icon_color.with_alpha(0.6)
+                            } else {
+                                icon_color.with_alpha(0.4)
+                            };
+                            
+                            graphics.fill(
+                                Fill::NonZero,
+                                Affine::IDENTITY,
+                                &Brush::Solid(fallback_color),
+                                None,
+                                &icon_rect.to_path(0.1),
+                            );
+                        }
+                    }
+                } else {
+                    // Fallback
+                    let icon_color = theme
+                        .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+                        .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
+                        .unwrap_or(Color::from_rgb8(150, 150, 150));
+                    
+                    let fallback_color = if entry.file_type == FileType::Directory {
+                        icon_color.with_alpha(0.6)
+                    } else {
+                        icon_color.with_alpha(0.4)
+                    };
+                    
+                    graphics.fill(
+                        Fill::NonZero,
+                        Affine::IDENTITY,
+                        &Brush::Solid(fallback_color),
+                        None,
+                        &icon_rect.to_path(0.1),
+                    );
+                }
+            }
+
+            // 3. Draw Icon Overlay (Selection/Hover)
+            if is_selected || is_hovered {
+                let color_prop = if is_selected {
+                    nptk_theme::properties::ThemeProperty::ColorBackgroundSelected
+                } else {
+                    nptk_theme::properties::ThemeProperty::ColorMenuHovered
+                };
+                
+                let color = theme
+                    .get_property(self.widget_id(), &color_prop)
+                    .or_else(|| theme.get_default_property(&color_prop))
+                    .unwrap_or_else(|| if is_selected { Color::from_rgb8(100, 150, 255) } else { Color::from_rgb8(240, 240, 240) });
+                
+                let alpha = if is_selected { 0.5 } else { 0.3 };
+                
+                let icon_overlay_rect = RoundedRect::from_rect(icon_rect, RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0));
+                
+                graphics.fill(
+                    Fill::NonZero,
+                    Affine::IDENTITY,
+                    &Brush::Solid(color.with_alpha(alpha)),
+                    None,
+                    &icon_overlay_rect.to_path(0.1),
+                );
+            }
+            
+            // 4. Draw Label Text
+            let text_color = theme
+                .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
+                .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
+                .unwrap_or(Color::BLACK);
+            
+            let transform = Affine::translate((text_x, text_y));
+            
+            self.text_render_context.render_text_with_max_lines(
+                &mut info.font_context,
+                graphics,
+                &entry.name,
+                None,
+                font_size,
+                Brush::Solid(text_color),
+                transform,
+                true,
+                Some(max_text_width as f32),
+                Some(2), // Max 2 lines
+                false, // Left align
+            );
+        }
     }
 }

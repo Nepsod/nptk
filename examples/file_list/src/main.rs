@@ -27,6 +27,18 @@ impl Application for FileListGridIconsApp {
     }
 }
 
+struct FileListCompactApp;
+
+impl Application for FileListCompactApp {
+    type Theme = SystemTheme;
+    type State = ();
+
+    fn build(_: AppContext, _: Self::State) -> impl Widget {
+        let current_dir = std::env::current_dir().unwrap_or(PathBuf::from("."));
+        FileList::new(current_dir)
+            .with_view_mode(FileListViewMode::Compact)
+    }
+}
 #[tokio::main]
 async fn main() {
     // Check for environment variable to determine view mode
@@ -37,10 +49,14 @@ async fn main() {
     if view_mode == "icon" {
         println!("Running File List in Grid Icons mode");
         FileListGridIconsApp.run(());
-    } else {
+    } else if view_mode == "list" {
         println!("Running File List in List mode");
         FileListApp.run(());
+    } else if view_mode == "compact" {
+        println!("Running File List in Compact mode");
+        FileListCompactApp.run(());
+    } else {
+        println!("Running File List in default List mode");
+        FileListApp.run(());
     }
-    // FileListApp.run(());
-    // FileListGridIconsApp.run(());
 }
