@@ -938,19 +938,12 @@ impl Widget for FileListContent {
                     };
 
                     if let Some(target_path) = target_path {
-                        // Debug: Log key events
-        for (_, key_event) in &info.keys {
-            if key_event.state == ElementState::Pressed {
-                println!("Key Pressed: {:?} (Logical: {:?})", key_event.physical_key, key_event.logical_key);
-            }
-        }
-
-        let ctrl_pressed = info.modifiers.control_key();
-        let shift_pressed = info.modifiers.shift_key();
+                        let ctrl_pressed = info.modifiers.control_key();
+                        let shift_pressed = info.modifiers.shift_key();
                         
                         for (_, btn, el) in &info.buttons {
                             if *btn == MouseButton::Left && *el == ElementState::Pressed {
-                                println!("Item Click: index={:?}, Ctrl={}, Shift={}", index, info.modifiers.control_key(), info.modifiers.shift_key());
+                                // println!("Item Click: index={:?}, Ctrl={}, Shift={}", index, info.modifiers.control_key(), info.modifiers.shift_key());
                                 let mut selected = self.selected_paths.get().clone();
                                 let is_currently_selected = selected.contains(&target_path);
                                 
@@ -1010,7 +1003,7 @@ impl Widget for FileListContent {
                         // Clicked on empty space
                         for (_, btn, el) in &info.buttons {
                             if *btn == MouseButton::Left && *el == ElementState::Pressed {
-                                println!("Empty Space Click (Index Valid but Target None): Ctrl={}", info.modifiers.control_key());
+                                // println!("Empty Space Click (Index Valid but Target None): Ctrl={}", info.modifiers.control_key());
                                 // Start dragging
                                 self.drag_start = Some(Point::new(local_x as f64, local_y as f64));
                                 self.current_drag_pos = Some(Point::new(local_x as f64, local_y as f64));
@@ -1028,7 +1021,7 @@ impl Widget for FileListContent {
                     // Index is None (empty space)
                     for (_, btn, el) in &info.buttons {
                         if *btn == MouseButton::Left && *el == ElementState::Pressed {
-                            println!("Empty Space Click (Index None): Ctrl={}", info.modifiers.control_key());
+                            // println!("Empty Space Click (Index None): Ctrl={}", info.modifiers.control_key());
                             // Start dragging
                             self.drag_start = Some(Point::new(local_x as f64, local_y as f64));
                             self.current_drag_pos = Some(Point::new(local_x as f64, local_y as f64));

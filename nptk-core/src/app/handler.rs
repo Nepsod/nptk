@@ -346,10 +346,47 @@ where
                                 (physical, text)
                             };
                             
-                            let logical_key = text
-                                .as_ref()
-                                .map(|value| Key::Character(value.clone().into()))
-                                .unwrap_or_else(|| Key::Unidentified(NativeKey::Unidentified));
+                                let logical_key = text
+                                    .as_ref()
+                                    .map(|value| Key::Character(value.clone().into()))
+                                    .unwrap_or_else(|| {
+                                        // Map physical keys to logical keys for non-text keys
+                                        use winit::keyboard::{Key, NamedKey};
+                                        match physical_key {
+                                            PhysicalKey::Code(KeyCode::Escape) => Key::Named(NamedKey::Escape),
+                                            PhysicalKey::Code(KeyCode::Tab) => Key::Named(NamedKey::Tab),
+                                            PhysicalKey::Code(KeyCode::Backspace) => Key::Named(NamedKey::Backspace),
+                                            PhysicalKey::Code(KeyCode::Enter) => Key::Named(NamedKey::Enter),
+                                            PhysicalKey::Code(KeyCode::Space) => Key::Named(NamedKey::Space),
+                                            PhysicalKey::Code(KeyCode::Delete) => Key::Named(NamedKey::Delete),
+                                            PhysicalKey::Code(KeyCode::Insert) => Key::Named(NamedKey::Insert),
+                                            PhysicalKey::Code(KeyCode::Home) => Key::Named(NamedKey::Home),
+                                            PhysicalKey::Code(KeyCode::End) => Key::Named(NamedKey::End),
+                                            PhysicalKey::Code(KeyCode::PageUp) => Key::Named(NamedKey::PageUp),
+                                            PhysicalKey::Code(KeyCode::PageDown) => Key::Named(NamedKey::PageDown),
+                                            PhysicalKey::Code(KeyCode::ArrowUp) => Key::Named(NamedKey::ArrowUp),
+                                            PhysicalKey::Code(KeyCode::ArrowDown) => Key::Named(NamedKey::ArrowDown),
+                                            PhysicalKey::Code(KeyCode::ArrowLeft) => Key::Named(NamedKey::ArrowLeft),
+                                            PhysicalKey::Code(KeyCode::ArrowRight) => Key::Named(NamedKey::ArrowRight),
+                                            PhysicalKey::Code(KeyCode::F1) => Key::Named(NamedKey::F1),
+                                            PhysicalKey::Code(KeyCode::F2) => Key::Named(NamedKey::F2),
+                                            PhysicalKey::Code(KeyCode::F3) => Key::Named(NamedKey::F3),
+                                            PhysicalKey::Code(KeyCode::F4) => Key::Named(NamedKey::F4),
+                                            PhysicalKey::Code(KeyCode::F5) => Key::Named(NamedKey::F5),
+                                            PhysicalKey::Code(KeyCode::F6) => Key::Named(NamedKey::F6),
+                                            PhysicalKey::Code(KeyCode::F7) => Key::Named(NamedKey::F7),
+                                            PhysicalKey::Code(KeyCode::F8) => Key::Named(NamedKey::F8),
+                                            PhysicalKey::Code(KeyCode::F9) => Key::Named(NamedKey::F9),
+                                            PhysicalKey::Code(KeyCode::F10) => Key::Named(NamedKey::F10),
+                                            PhysicalKey::Code(KeyCode::F11) => Key::Named(NamedKey::F11),
+                                            PhysicalKey::Code(KeyCode::F12) => Key::Named(NamedKey::F12),
+                                            PhysicalKey::Code(KeyCode::ShiftLeft) | PhysicalKey::Code(KeyCode::ShiftRight) => Key::Named(NamedKey::Shift),
+                                            PhysicalKey::Code(KeyCode::ControlLeft) | PhysicalKey::Code(KeyCode::ControlRight) => Key::Named(NamedKey::Control),
+                                            PhysicalKey::Code(KeyCode::AltLeft) | PhysicalKey::Code(KeyCode::AltRight) => Key::Named(NamedKey::Alt),
+                                            PhysicalKey::Code(KeyCode::SuperLeft) | PhysicalKey::Code(KeyCode::SuperRight) => Key::Named(NamedKey::Super),
+                                            _ => Key::Unidentified(NativeKey::Unidentified),
+                                        }
+                                    });
 
                             let app_event = AppKeyEvent {
                                 physical_key,
