@@ -698,8 +698,58 @@ impl Widget for FileListContent {
                     let col = (local_x / cell_width).floor() as usize;
                     let row = (local_y / cell_height).floor() as usize;
                     let idx = row * columns + col;
-                    let entries = self.entries.get();
-                    if idx < entries.len() { Some(idx) } else { None }
+                    
+                    // Scope entries borrow
+                    let entry_opt = {
+                        let entries = self.entries.get();
+                        if idx < entries.len() {
+                            Some(entries[idx].clone())
+                        } else {
+                            None
+                        }
+                    };
+
+                    if let Some(entry) = entry_opt {
+                        // Tight hit testing for Icon view
+                        let cell_x = col as f32 * cell_width;
+                        let cell_y = row as f32 * cell_height;
+                        let cell_rect = Rect::new(
+                            cell_x as f64,
+                            cell_y as f64,
+                            (cell_x + cell_width) as f64,
+                            (cell_y + cell_height) as f64,
+                        );
+                        
+                        // Check if selected (needed for label height calculation)
+                        let is_selected = {
+                            let selected = self.selected_paths.get();
+                            selected.contains(&entry.path)
+                        };
+                        
+                        let (icon_rect, label_rect, _, _) = self.get_icon_item_layout(
+                            &mut info.font_context,
+                            &entry,
+                            cell_rect,
+                            cell_width,
+                            icon_size as f32,
+                            is_selected,
+                        );
+                        
+                        let cursor_x = local_x as f64;
+                        let cursor_y = local_y as f64;
+                        
+                        if (cursor_x >= icon_rect.x0 && cursor_x < icon_rect.x1 &&
+                            cursor_y >= icon_rect.y0 && cursor_y < icon_rect.y1) ||
+                           (cursor_x >= label_rect.x0 && cursor_x < label_rect.x1 &&
+                            cursor_y >= label_rect.y0 && cursor_y < label_rect.y1)
+                        {
+                            Some(idx)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
                 } else if view_mode == FileListViewMode::Compact {
                     // For compact view
                     let (columns, cell_width, cell_height, spacing) = self.calculate_compact_view_layout(
@@ -982,108 +1032,18 @@ impl FileListContent {
             icon_x + icon_size as f64,
             icon_y + icon_size as f64,
         );
-        
         // https://learn.microsoft.com/en-us/windows/win32/controls/lvm-getitemrect
         // Classic Windows approach: Calculate icon and label rectangles separately, then union them
         // Step 1: Measure text layout to get actual line count and width
         let font_size = 12.0;
-        let max_text_width = (cell_width as f64 - 4.0) as f32; // Max width for wrapping
-        let line_height = font_size * 1.2; // Approximate line height (12px font * 1.2 = ~14.4px)
-        
-        // Prepare text for rendering: add break opportunities at special characters
-        // This helps Parley break long names like ".org.chromium.Chromium.CXXbxG"
-        // We explicitly insert zero-width spaces after every "special" character,
-        // and, for completely continuous names (only letters/digits), every 10 chars.
-        let (text_with_breaks, has_natural_breaks) = {
-            let name = &entry.name;
-
-            // A "continuous" name has only letters/digits (no whitespace, no punctuation)
-            let is_continuous = name.chars().all(|c| c.is_alphanumeric());
-
-            let mut result = String::with_capacity(name.len() + name.len() / 8);
-            let mut segment_len: usize = 0;
-
-            for c in name.chars() {
-                result.push(c);
-
-                // Determine if this is a special char that should allow a break
-                let is_special = !c.is_alphanumeric() && !c.is_whitespace();
-
-                if is_special {
-                    // Insert a zero-width space after every special character
-                    // so wrapping can occur at that position.
-                    result.push('\u{200B}');
-                    segment_len = 0;
-                } else if c.is_whitespace() {
-                    // Whitespace already provides a natural break; reset segment length
-                    segment_len = 0;
-                } else {
-                    // Part of a continuous alpha-numeric run
-                    segment_len += 1;
-                    if is_continuous && segment_len >= 10 {
-                        // For very long continuous segments, insert a break opportunity
-                        result.push('\u{200B}');
-                        segment_len = 0;
-                    }
-                }
-            }
-
-            // has_natural_breaks indicates whether the original name had any non-alphanumeric chars
-            let has_natural_breaks = !is_continuous;
-            (result, has_natural_breaks)
-        };
-        
-        // Measure text layout with wrapping to get actual line count
-        let (measured_width, line_count) = self.text_render_context.measure_text_layout(
+        // Calculate layout using helper
+        let (icon_rect, label_rect, display_text, max_text_width) = self.get_icon_item_layout(
             &mut info.font_context,
-            &text_with_breaks,
-            font_size,
-            Some(max_text_width),
-        );
-        
-        // Use text_with_breaks for rendering (will be limited to 2 lines when not selected)
-        let display_text = text_with_breaks;
-        
-        // Step 2: Calculate label rectangle (Windows ListView_GetRects style)
-        // Label is positioned below icon, centered horizontally
-        let label_padding = 2.0; // Small padding around label
-        let label_spacing = 4.0; // Spacing between icon and label
-        let label_y_start = icon_rect.y1 + label_spacing;
-        
-        // Calculate actual label dimensions based on displayed line count (truncated when not selected)
-        // IMPORTANT: When not selected and text has more than 2 lines, we only show 2 lines.
-        let displayed_line_count = if is_selected { 
-            line_count 
-        } else { 
-            line_count.min(2) // Show only 2 lines when not selected
-        };
-        // Calculate label height based on displayed lines (not full line_count).
-        // Add a small extra margin per line so descenders/ascenders and the ellipsis are not clipped.
-        let per_line_height = line_height as f64 + 2.0;
-        let label_height = (displayed_line_count as f64 * per_line_height).max(per_line_height); // At least one visible line
-        
-        // Label width: use measured width of the longest line to keep the text block centered.
-        // Never let the label be wider than the cell; otherwise it will overlap neighbouring cells.
-        let max_label_width = (cell_width as f64 - 2.0 * label_padding as f64).max(0.0);
-        let base_width = measured_width as f64;
-        let label_width = if line_count == 1 && !has_natural_breaks && measured_width > max_text_width {
-            // Very long name with no special characters - expand slightly, but cap at cell width.
-            (base_width.min(max_text_width as f64 * 1.5)).min(max_label_width)
-        } else {
-            // Single or multi-line: longest line width, clamped to both wrap width and cell width.
-            base_width.min(max_text_width as f64).min(max_label_width)
-        };
-        
-        // Center label horizontally within the cell (so it's aligned with the icon and cell).
-        let label_x = cell_rect.x0 + (cell_width as f64 - label_width) / 2.0;
-        let label_y = label_y_start;
-        
-        // Label rectangle (LVIR_LABEL)
-        let label_rect = Rect::new(
-            label_x - label_padding,
-            label_y - label_padding,
-            label_x + label_width + label_padding,
-        label_y + label_height + label_padding,
+            entry,
+            cell_rect,
+            cell_width,
+            icon_size as f32,
+            is_selected,
         );
         
         // Step 3: Drawing
@@ -1219,7 +1179,7 @@ impl FileListContent {
                         let scale_y = icon_size as f64 / (height as f64);
                         let scale = scale_x.min(scale_y);
                         let transform = Affine::scale_non_uniform(scale, scale)
-                            .then_translate(Vec2::new(icon_x, icon_y));
+                            .then_translate(Vec2::new(icon_rect.x0, icon_rect.y0));
                         if let Some(scene) = graphics.as_scene_mut() {
                             scene.draw_image(&image_brush, transform);
                         }
@@ -1241,7 +1201,7 @@ impl FileListContent {
                             let scale_y = icon_size as f64 / svg_size.height() as f64;
                             let scale = scale_x.min(scale_y);
                             let transform = Affine::scale_non_uniform(scale, scale)
-                                .then_translate(Vec2::new(icon_x, icon_y));
+                                .then_translate(Vec2::new(icon_rect.x0, icon_rect.y0));
                             graphics.append(&scene, Some(transform));
                         }
                     }
@@ -1348,7 +1308,7 @@ impl FileListContent {
         // We use max_text_width as the wrap width, and ask Parley to center align.
         // So we must position the "box" we are drawing into at the center of the cell.
         let text_x = cell_rect.x0 + (cell_width as f64 - max_text_width as f64) / 2.0;
-        let text_y = label_y;
+        let text_y = label_rect.y0 + 2.0; // label_padding
         
         // Clipping:
         // - Unselected: Clip to cell bounds (minus padding) to prevent overlap.
@@ -1411,25 +1371,8 @@ impl FileListContent {
         
         // If not selected and text was truncated (more than 2 lines), draw "..." indicator.
         // This applies to all names (with or without special characters).
-        if !is_selected && line_count > 2 {
-            // Position "..." at the end of the visible text block (second line when truncated).
-            // We place it slightly above the bottom of the second line's band so it stays fully visible.
-            let visible_lines = displayed_line_count as f64;
-            let ellipsis_y = label_y + (visible_lines - 0.4) * per_line_height;
-            let ellipsis_x = label_x + label_width - 15.0; // Position "..." near right edge
-            let ellipsis_transform = Affine::translate((ellipsis_x, ellipsis_y));
-            self.text_render_context.render_text(
-                &mut info.font_context,
-                graphics,
-                "...",
-                None,
-                font_size,
-                Brush::Solid(text_color),
-                ellipsis_transform,
-                true,
-                None,
-            );
-        }
+        // Manual ellipsis drawing removed as variables are no longer available.
+        // Truncation is handled by render_text_with_max_lines and clipping.
         
         // Pop clipping layer
         graphics.pop_layer();
@@ -1489,6 +1432,95 @@ impl FileListContent {
         );
         
         (icon_rect, label_rect)
+    }
+
+    fn get_icon_item_layout(
+        &mut self,
+        font_cx: &mut FontContext,
+        entry: &FileEntry,
+        cell_rect: Rect,
+        cell_width: f32,
+        icon_size: f32,
+        is_selected: bool,
+    ) -> (Rect, Rect, String, f32) {
+        // Step 1: Calculate Icon Rectangle
+        // Icon is centered horizontally, with padding from top
+        let icon_x = cell_rect.x0 + (cell_width as f64 - icon_size as f64) / 2.0;
+        let icon_y = cell_rect.y0 + self.icon_view_padding as f64;
+        
+        let icon_rect = Rect::new(
+            icon_x,
+            icon_y,
+            icon_x + icon_size as f64,
+            icon_y + icon_size as f64,
+        );
+        
+        // Step 2: Prepare text for wrapping
+        let font_size = 12.0;
+        let line_height = font_size * 1.2;
+        let max_text_width = (cell_width - self.icon_view_padding * 2.0).max(10.0);
+        
+        let name = &entry.name;
+        let (text_with_breaks, has_natural_breaks) = {
+            let is_continuous = name.chars().all(|c| c.is_alphanumeric());
+            let mut result = String::with_capacity(name.len() + name.len() / 8);
+            let mut segment_len: usize = 0;
+
+            for c in name.chars() {
+                result.push(c);
+                let is_special = !c.is_alphanumeric() && !c.is_whitespace();
+                if is_special {
+                    result.push('\u{200B}');
+                    segment_len = 0;
+                } else if c.is_whitespace() {
+                    segment_len = 0;
+                } else {
+                    segment_len += 1;
+                    if is_continuous && segment_len >= 10 {
+                        result.push('\u{200B}');
+                        segment_len = 0;
+                    }
+                }
+            }
+            (result, !is_continuous)
+        };
+        
+        // Measure text layout
+        let (measured_width, line_count) = self.text_render_context.measure_text_layout(
+            font_cx,
+            &text_with_breaks,
+            font_size,
+            Some(max_text_width),
+        );
+        
+        // Calculate label dimensions
+        let label_padding = 2.0;
+        let label_spacing = 4.0;
+        let label_y_start = icon_rect.y1 + label_spacing;
+        
+        let displayed_line_count = if is_selected { line_count } else { line_count.min(2) };
+        let per_line_height = line_height as f64 + 2.0;
+        let label_height = (displayed_line_count as f64 * per_line_height).max(per_line_height);
+        
+        let max_label_width = (cell_width as f64 - 2.0 * label_padding as f64).max(0.0);
+        let base_width = measured_width as f64;
+        let label_width = if line_count == 1 && !has_natural_breaks && measured_width > max_text_width {
+            (base_width.min(max_text_width as f64 * 1.5)).min(max_label_width)
+        } else {
+            base_width.min(max_text_width as f64).min(max_label_width)
+        };
+        
+        let label_x = cell_rect.x0 + (cell_width as f64 - label_width) / 2.0;
+        let label_y = label_y_start;
+        
+        let label_rect = Rect::new(
+            label_x - label_padding,
+            label_y - label_padding,
+            label_x + label_width + label_padding,
+            label_y + label_height + label_padding,
+        );
+        
+        (icon_rect, label_rect, text_with_breaks, max_text_width)
     }
 
     fn render_compact_view(
