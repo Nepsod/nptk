@@ -10,7 +10,7 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::text_render::TextRenderContext;
-use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Shape, Vec2};
+use nptk_core::vg::kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke, Vec2};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
@@ -281,6 +281,11 @@ struct FileListContent {
     // Thumbnail event receiver
     thumbnail_event_rx: Arc<Mutex<tokio::sync::broadcast::Receiver<ThumbnailEvent>>>,
     
+    // Drag selection state
+    drag_start: Option<Point>,
+    current_drag_pos: Option<Point>,
+    is_dragging: bool,
+    
     // Icon view constants
     icon_view_padding: f32,
     icon_view_spacing: f32,
@@ -318,6 +323,11 @@ impl FileListContent {
             thumbnail_cache: Arc::new(ThumbnailImageCache::default()),
             pending_thumbnails: Arc::new(Mutex::new(HashSet::new())),
             thumbnail_event_rx: Arc::new(Mutex::new(thumbnail_event_rx)),
+            
+            drag_start: None,
+            current_drag_pos: None,
+            is_dragging: false,
+            
             icon_view_padding: 2.0, // padding around the icons
             icon_view_spacing: 22.0, // spacing between icons
             icon_view_text_height: 50.0, // Increased to accommodate 2-3 lines of wrapped text
@@ -618,6 +628,89 @@ impl FileListContent {
             );
         }
     }
+
+    fn update_drag_selection(&mut self, selection_rect: Rect, toggle: bool, layout_width: f32) {
+        let entries = self.entries.get();
+        let view_mode = *self.view_mode.get();
+        let icon_size = *self.icon_size.get();
+        
+        let mut new_selection = if toggle {
+            self.selected_paths.get().clone()
+        } else {
+            Vec::new()
+        };
+        
+        // Helper to check intersection
+        let check_intersection = |item_rect: Rect| -> bool {
+            let intersection = selection_rect.intersect(item_rect);
+            intersection.width() > 0.0 && intersection.height() > 0.0
+        };
+
+        if view_mode == FileListViewMode::Icon {
+            let (columns, cell_width, cell_height) = self.calculate_icon_view_layout(layout_width, icon_size);
+            
+            for (i, entry) in entries.iter().enumerate() {
+                let (x, y) = self.get_icon_position(i, columns, cell_width, cell_height);
+                // We use the full cell rect for intersection to make it easier to select
+                let cell_rect = Rect::new(
+                    x as f64, 
+                    y as f64, 
+                    (x + cell_width) as f64, 
+                    (y + cell_height) as f64
+                );
+                
+                if check_intersection(cell_rect) {
+                    if !new_selection.contains(&entry.path) {
+                        new_selection.push(entry.path.clone());
+                    }
+                } else if !toggle {
+                     // If not toggling, we strictly set selection to what's in the rect
+                     // So if it was selected but not in rect, it's removed (already handled by init empty Vec)
+                }
+            }
+        } else if view_mode == FileListViewMode::Compact {
+            let (columns, cell_width, cell_height, spacing) = self.calculate_compact_view_layout(layout_width);
+            
+            for (i, entry) in entries.iter().enumerate() {
+                let col = i % columns;
+                let row = i / columns;
+                let x = self.icon_view_padding + col as f32 * (cell_width + spacing);
+                let y = self.icon_view_padding + row as f32 * (cell_height + spacing);
+                
+                let cell_rect = Rect::new(
+                    x as f64,
+                    y as f64,
+                    (x + cell_width) as f64,
+                    (y + cell_height) as f64
+                );
+                
+                if check_intersection(cell_rect) {
+                    if !new_selection.contains(&entry.path) {
+                        new_selection.push(entry.path.clone());
+                    }
+                }
+            }
+        } else {
+             // List view
+             for (i, entry) in entries.iter().enumerate() {
+                 let y = i as f32 * self.item_height;
+                 let row_rect = Rect::new(
+                     0.0,
+                     y as f64,
+                     layout_width as f64,
+                     (y + self.item_height) as f64
+                 );
+                 
+                 if check_intersection(row_rect) {
+                     if !new_selection.contains(&entry.path) {
+                         new_selection.push(entry.path.clone());
+                     }
+                 }
+             }
+        }
+        
+        self.selected_paths.set(new_selection);
+    }
 }
 
 impl Widget for FileListContent {
@@ -845,11 +938,19 @@ impl Widget for FileListContent {
                     };
 
                     if let Some(target_path) = target_path {
-                        let ctrl_pressed = info.modifiers.control_key();
-                        let shift_pressed = info.modifiers.shift_key();
+                        // Debug: Log key events
+        for (_, key_event) in &info.keys {
+            if key_event.state == ElementState::Pressed {
+                println!("Key Pressed: {:?} (Logical: {:?})", key_event.physical_key, key_event.logical_key);
+            }
+        }
+
+        let ctrl_pressed = info.modifiers.control_key();
+        let shift_pressed = info.modifiers.shift_key();
                         
                         for (_, btn, el) in &info.buttons {
                             if *btn == MouseButton::Left && *el == ElementState::Pressed {
+                                println!("Item Click: index={:?}, Ctrl={}, Shift={}", index, info.modifiers.control_key(), info.modifiers.shift_key());
                                 let mut selected = self.selected_paths.get().clone();
                                 let is_currently_selected = selected.contains(&target_path);
                                 
@@ -905,6 +1006,89 @@ impl Widget for FileListContent {
                                 self.last_click_index = Some(index);
                             }
                         }
+                    } else {
+                        // Clicked on empty space
+                        for (_, btn, el) in &info.buttons {
+                            if *btn == MouseButton::Left && *el == ElementState::Pressed {
+                                println!("Empty Space Click (Index Valid but Target None): Ctrl={}", info.modifiers.control_key());
+                                // Start dragging
+                                self.drag_start = Some(Point::new(local_x as f64, local_y as f64));
+                                self.current_drag_pos = Some(Point::new(local_x as f64, local_y as f64));
+                                self.is_dragging = false; // Will become true on move
+                                
+                                // Clear selection if Ctrl is not pressed
+                                if !info.modifiers.control_key() {
+                                    self.selected_paths.set(Vec::new());
+                                    update.insert(Update::DRAW);
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Index is None (empty space)
+                    for (_, btn, el) in &info.buttons {
+                        if *btn == MouseButton::Left && *el == ElementState::Pressed {
+                            println!("Empty Space Click (Index None): Ctrl={}", info.modifiers.control_key());
+                            // Start dragging
+                            self.drag_start = Some(Point::new(local_x as f64, local_y as f64));
+                            self.current_drag_pos = Some(Point::new(local_x as f64, local_y as f64));
+                            self.is_dragging = false;
+                            
+                            if !info.modifiers.control_key() {
+                                self.selected_paths.set(Vec::new());
+                                update.insert(Update::DRAW);
+                            }
+                        }
+                    }
+                }
+                
+                // Handle Dragging
+                if let Some(start_pos) = self.drag_start {
+                    // Check if mouse released
+                    let mut released = false;
+                    for (_, btn, el) in &info.buttons {
+                        if *btn == MouseButton::Left && *el == ElementState::Released {
+                            released = true;
+                            break;
+                        }
+                    }
+                    
+                    if released {
+                        self.drag_start = None;
+                        self.current_drag_pos = None;
+                        self.is_dragging = false;
+                        update.insert(Update::DRAW);
+                    } else {
+                        // Update drag position
+                        let current_pos = Point::new(local_x as f64, local_y as f64);
+                        self.current_drag_pos = Some(current_pos);
+                        
+                        // Check if we moved enough to consider it a drag
+                        if !self.is_dragging {
+                            let dx = current_pos.x - start_pos.x;
+                            let dy = current_pos.y - start_pos.y;
+                            if dx.abs() > 5.0 || dy.abs() > 5.0 {
+                                self.is_dragging = true;
+                            }
+                        }
+                        
+                        if self.is_dragging {
+                            // Calculate selection rect
+                            let min_x = start_pos.x.min(current_pos.x);
+                            let min_y = start_pos.y.min(current_pos.y);
+                            let max_x = start_pos.x.max(current_pos.x);
+                            let max_y = start_pos.y.max(current_pos.y);
+                            
+                            let selection_rect = Rect::new(min_x, min_y, max_x, max_y);
+                            
+                            // Update selection
+                            self.update_drag_selection(
+                                selection_rect, 
+                                info.modifiers.control_key(),
+                                layout.layout.size.width
+                            );
+                            update.insert(Update::DRAW);
+                        }
                     }
                 }
             }
@@ -929,6 +1113,41 @@ impl Widget for FileListContent {
             self.render_compact_view(graphics, theme, layout, info);
         } else {
             self.render_list_view(graphics, theme, layout, info);
+        }
+        
+        // Draw drag selection rectangle
+        if self.is_dragging {
+            if let (Some(start), Some(current)) = (self.drag_start, self.current_drag_pos) {
+                let min_x = start.x.min(current.x);
+                let min_y = start.y.min(current.y);
+                let max_x = start.x.max(current.x);
+                let max_y = start.y.max(current.y);
+                
+                let rect = Rect::new(min_x, min_y, max_x, max_y);
+                
+                let selection_color = theme
+                    .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackgroundSelected)
+                    .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorBackgroundSelected))
+                    .unwrap_or_else(|| Color::from_rgb8(100, 150, 255));
+                    
+                // Draw selection fill
+                graphics.fill(
+                    Fill::NonZero,
+                    Affine::translate((layout.layout.location.x as f64, layout.layout.location.y as f64)),
+                    &Brush::Solid(selection_color.with_alpha(0.2)),
+                    None,
+                    &rect.to_path(0.1),
+                );
+                
+                // Draw selection border
+                graphics.stroke(
+                    &Stroke::new(1.0),
+                    Affine::translate((layout.layout.location.x as f64, layout.layout.location.y as f64)),
+                    &Brush::Solid(selection_color.with_alpha(0.8)),
+                    None,
+                    &rect.to_path(0.1),
+                );
+            }
         }
     }
 }

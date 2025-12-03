@@ -285,21 +285,24 @@ where
                             self.update_wayland_modifiers_state();
 
                             // Use XKB for keycode decoding if available, otherwise fall back to hardcoded mapping
-                            let (physical_key, text) = if self.xkb_keymap.is_ready() {
-                                // Wayland keycodes are evdev scancodes + 8, which matches XKB keycodes
-                                use xkbcommon_dl::xkb_key_direction;
-                                let direction = match element_state {
-                                    ElementState::Pressed => xkb_key_direction::XKB_KEY_DOWN,
-                                    ElementState::Released => xkb_key_direction::XKB_KEY_UP,
-                                };
-                                let keysym = self.xkb_keymap.keycode_to_keysym(keycode, direction);
-                                log::debug!("XKB keycode {} (direction={:?}) -> keysym {:?}", keycode, direction, keysym);
-                                let utf8_text = if element_state == ElementState::Pressed {
+                                let (physical_key, text) = if self.xkb_keymap.is_ready() {
+                                    // Wayland keycodes are evdev scancodes + 8, which matches XKB keycodes
                                     use xkbcommon_dl::xkb_key_direction;
-                                    self.xkb_keymap.keycode_to_utf8(keycode, xkb_key_direction::XKB_KEY_DOWN)
-                                } else {
-                                    None
-                                };
+                                    let direction = match element_state {
+                                        ElementState::Pressed => xkb_key_direction::XKB_KEY_DOWN,
+                                        ElementState::Released => xkb_key_direction::XKB_KEY_UP,
+                                    };
+                                    // If we assume keycode is raw evdev (because we removed the -8 in normalize),
+                                    // then we must ADD 8 for XKB lookup, as XKB expects evdev+8.
+                                    let xkb_keycode = keycode + 8;
+                                    let keysym = self.xkb_keymap.keycode_to_keysym(xkb_keycode, direction);
+                                    log::debug!("XKB keycode {} (direction={:?}) -> keysym {:?}", xkb_keycode, direction, keysym);
+                                    let utf8_text = if element_state == ElementState::Pressed {
+                                        use xkbcommon_dl::xkb_key_direction;
+                                        self.xkb_keymap.keycode_to_utf8(xkb_keycode, xkb_key_direction::XKB_KEY_DOWN)
+                                    } else {
+                                        None
+                                    };
                                 
                                 let physical = if let Some(ks) = keysym {
                                     // Special case: keycode 68 with keysym 0xFFBF (65471) is likely F10
@@ -436,11 +439,12 @@ where
 
     #[cfg(all(target_os = "linux", feature = "wayland"))]
     fn normalize_wayland_keycode(keycode: u32) -> u32 {
-        if keycode >= 8 {
-            keycode - 8
-        } else {
-            keycode
-        }
+        // The user's compositor seems to be sending raw evdev codes (e.g. 29 for Ctrl)
+        // instead of XKB codes (e.g. 37 for Ctrl).
+        // Standard behavior is keycode - 8, but here we need identity.
+        // However, to be safe(r), let's try to detect if we need to offset.
+        // But for now, let's assume raw evdev based on the 'Ctrl=y' (29->21) symptom.
+        keycode
     }
 
     #[cfg(all(target_os = "linux", feature = "wayland"))]
