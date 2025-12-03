@@ -989,11 +989,12 @@ impl FileListContent {
             label_x - label_padding,
             label_y - label_padding,
             label_x + label_width + label_padding,
-            label_y + label_height + label_padding,
+        label_y + label_height + label_padding,
         );
         
-        // Step 3: Classic Windows selection - draw icon and label separately (not a union rectangle)
-        // This creates the classic L-shaped or irregular selection that wraps around both
+        // Step 3: Drawing
+        
+        // 1. Draw Label Backgrounds (Hover/Selection) - behind text
         // Check for hover state (check if cursor is in icon OR label area)
         let is_hovered = if let Some(cursor) = info.cursor_pos {
             let cursor_x = cursor.x as f64;
@@ -1009,29 +1010,11 @@ impl FileListContent {
             false
         };
         
-        // Draw hover background (if not selected) - draw icon and label separately
         if is_hovered && !is_selected {
             let hover_color = theme
                 .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorMenuHovered)
                 .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorMenuHovered))
                 .unwrap_or_else(|| Color::from_rgb8(240, 240, 240));
-            
-            // Draw icon hover rectangle
-            let icon_hover_rect = RoundedRect::new(
-                icon_rect.x0,
-                icon_rect.y0,
-                icon_rect.x1,
-                icon_rect.y1,
-                RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0),
-            );
-            
-            graphics.fill(
-                Fill::NonZero,
-                Affine::IDENTITY,
-                &Brush::Solid(hover_color.with_alpha(0.5)),
-                None,
-                &icon_hover_rect.to_path(0.1),
-            );
             
             // Draw label hover rectangle
             let label_hover_rect = RoundedRect::new(
@@ -1045,35 +1028,17 @@ impl FileListContent {
             graphics.fill(
                 Fill::NonZero,
                 Affine::IDENTITY,
-                &Brush::Solid(hover_color.with_alpha(0.5)),
+                &Brush::Solid(hover_color),
                 None,
                 &label_hover_rect.to_path(0.1),
             );
         }
         
-        // Draw selection background - draw icon and label separately (classic Windows style)
         if is_selected {
             let color = theme
                 .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackgroundSelected)
                 .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorBackgroundSelected))
                 .unwrap_or_else(|| Color::from_rgb8(100, 150, 255));
-            
-            // Draw icon selection rectangle
-            let icon_selection_rect = RoundedRect::new(
-                icon_rect.x0,
-                icon_rect.y0,
-                icon_rect.x1,
-                icon_rect.y1,
-                RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0),
-            );
-            
-            graphics.fill(
-                Fill::NonZero,
-                Affine::IDENTITY,
-                &Brush::Solid(color.with_alpha(0.3)),
-                None,
-                &icon_selection_rect.to_path(0.1),
-            );
             
             // Draw label selection rectangle
             let label_selection_rect = RoundedRect::new(
@@ -1087,12 +1052,13 @@ impl FileListContent {
             graphics.fill(
                 Fill::NonZero,
                 Affine::IDENTITY,
-                &Brush::Solid(color.with_alpha(0.3)),
+                &Brush::Solid(color.with_alpha(0.9)),
                 None,
                 &label_selection_rect.to_path(0.1),
             );
         }
         
+        // 2. Draw Icon
         // Try to get thumbnail first, fall back to icon
         let mut use_thumbnail = false;
         if let Some(thumbnail_path) = self.thumbnail_provider.get_thumbnail(entry, icon_size) {
@@ -1227,6 +1193,55 @@ impl FileListContent {
                     &icon_rect.to_path(0.1),
                 );
             }
+        }
+
+        // 3. Draw Icon Overlays (Hover/Selection) - on top of icon (tint)
+        if is_hovered && !is_selected {
+            let hover_color = theme
+                .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorMenuHovered)
+                .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorMenuHovered))
+                .unwrap_or_else(|| Color::from_rgb8(240, 240, 240));
+            
+            // Draw icon hover rectangle (overlay)
+            let icon_hover_rect = RoundedRect::new(
+                icon_rect.x0,
+                icon_rect.y0,
+                icon_rect.x1,
+                icon_rect.y1,
+                RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0),
+            );
+            
+            graphics.fill(
+                Fill::NonZero,
+                Affine::IDENTITY,
+                &Brush::Solid(hover_color.with_alpha(0.5)), // Tint alpha
+                None,
+                &icon_hover_rect.to_path(0.1),
+            );
+        }
+
+        if is_selected {
+            let color = theme
+                .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackgroundSelected)
+                .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorBackgroundSelected))
+                .unwrap_or_else(|| Color::from_rgb8(100, 150, 255));
+            
+            // Draw icon selection rectangle (overlay)
+            let icon_selection_rect = RoundedRect::new(
+                icon_rect.x0,
+                icon_rect.y0,
+                icon_rect.x1,
+                icon_rect.y1,
+                RoundedRectRadii::new(3.0, 3.0, 3.0, 3.0),
+            );
+            
+            graphics.fill(
+                Fill::NonZero,
+                Affine::IDENTITY,
+                &Brush::Solid(color.with_alpha(0.5)), // Tint alpha
+                None,
+                &icon_selection_rect.to_path(0.1),
+            );
         }
         
         // Draw filename in label rectangle
