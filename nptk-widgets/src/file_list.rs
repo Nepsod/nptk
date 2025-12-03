@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
+use nptk_core::app::font_ctx::FontContext;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
@@ -683,7 +684,7 @@ impl Widget for FileListContent {
             if local_x >= 0.0 && local_x < layout.layout.size.width &&
                local_y >= 0.0 && local_y < layout.layout.size.height 
             {
-                let entries = self.entries.get();
+                // let entries = self.entries.get(); // Removed to avoid holding borrow
                 let view_mode = *self.view_mode.get();
                 
                 // Calculate index based on view mode
@@ -697,6 +698,7 @@ impl Widget for FileListContent {
                     let col = (local_x / cell_width).floor() as usize;
                     let row = (local_y / cell_height).floor() as usize;
                     let idx = row * columns + col;
+                    let entries = self.entries.get();
                     if idx < entries.len() { Some(idx) } else { None }
                 } else if view_mode == FileListViewMode::Compact {
                     // For compact view
@@ -716,82 +718,142 @@ impl Widget for FileListContent {
                     if local_x >= cell_x && local_x < cell_x + cell_width &&
                        local_y >= cell_y && local_y < cell_y + cell_height {
                         let idx = row * columns + col;
-                        if idx < entries.len() { Some(idx) } else { None }
+                        
+                        // Scope the borrow of entries to clone the needed entry
+                        let entry_opt = {
+                            let entries = self.entries.get();
+                            if idx < entries.len() {
+                                Some(entries[idx].clone())
+                            } else {
+                                None
+                            }
+                        };
+
+                        if let Some(entry) = entry_opt { 
+                            // Tight hit testing
+                            let cell_rect = Rect::new(
+                                cell_x as f64,
+                                cell_y as f64,
+                                (cell_x + cell_width) as f64,
+                                (cell_y + cell_height) as f64,
+                            );
+                            
+                            let (icon_rect, label_rect) = self.get_compact_item_layout(
+                                &mut info.font_context,
+                                &entry,
+                                cell_rect,
+                                cell_height,
+                                cell_width,
+                            );
+                            
+                            let cursor_x = local_x as f64;
+                            let cursor_y = local_y as f64;
+                            
+                            if (cursor_x >= icon_rect.x0 && cursor_x < icon_rect.x1 &&
+                                cursor_y >= icon_rect.y0 && cursor_y < icon_rect.y1) ||
+                               (cursor_x >= label_rect.x0 && cursor_x < label_rect.x1 &&
+                                cursor_y >= label_rect.y0 && cursor_y < label_rect.y1)
+                            {
+                                Some(idx)
+                            } else {
+                                None
+                            }
+                        } else { 
+                            None 
+                        }
                     } else {
                         None
                     }
                 } else {
                     // For list view, use row-based calculation
                     let idx = (local_y / self.item_height) as usize;
+                    let entries = self.entries.get();
                     if idx < entries.len() { Some(idx) } else { None }
                 };
                 
                 if let Some(index) = index {
-                    let entry = &entries[index];
-                    let ctrl_pressed = info.modifiers.control_key();
-                    let shift_pressed = info.modifiers.shift_key();
-                    
-                    for (_, btn, el) in &info.buttons {
-                        if *btn == MouseButton::Left && *el == ElementState::Pressed {
-                            let mut selected = self.selected_paths.get().clone();
-                            let is_currently_selected = selected.contains(&entry.path);
+                    // Extract data needed for selection logic to avoid holding entries borrow
+                    let (target_path, range_paths, file_type) = {
+                        let entries = self.entries.get();
+                        if index < entries.len() {
+                            let entry = &entries[index];
+                            let target = entry.path.clone();
+                            let ftype = entry.file_type;
                             
-                            if shift_pressed {
-                                // Shift+Click: Select range from anchor to clicked index
+                            let range = if info.modifiers.shift_key() {
                                 let anchor = self.anchor_index.unwrap_or(0);
                                 let start = anchor.min(index);
                                 let end = anchor.max(index);
-                                let range_paths: Vec<PathBuf> = entries[start..=end]
-                                    .iter()
-                                    .map(|e| e.path.clone())
-                                    .collect();
-                                
-                                // Merge with existing selection if Ctrl is also pressed
-                                if ctrl_pressed {
-                                    let mut selected_set: HashSet<PathBuf> = selected.iter().cloned().collect();
-                                    for path in range_paths {
-                                        selected_set.insert(path);
-                                    }
-                                    selected = selected_set.into_iter().collect();
-                                } else {
-                                    selected = range_paths;
-                                }
-                            } else if ctrl_pressed {
-                                // Ctrl+Click: Toggle selection
-                                if is_currently_selected {
-                                    selected.retain(|p| p != &entry.path);
-                                } else {
-                                    selected.push(entry.path.clone());
-                                }
-                                self.anchor_index = Some(index);
+                                Some(entries[start..=end].iter().map(|e| e.path.clone()).collect::<Vec<_>>())
                             } else {
-                                // Single Click: Clear and select only this item
-                                selected = vec![entry.path.clone()];
-                                self.anchor_index = Some(index);
-                            }
-                            
-                            self.selected_paths.set(selected);
-                            update.insert(Update::DRAW);
-                            
-                            // Check double click
-                            let now = Instant::now();
-                            if let Some(last_time) = self.last_click_time {
-                                if let Some(last_index) = self.last_click_index {
-                                    if last_index == index && now.duration_since(last_time) < Duration::from_millis(500) {
-                                        // Double click
-                                        if entry.file_type == FileType::Directory {
-                                            // Navigate
-                                            self.current_path.set(entry.path.clone());
-                                            let _ = self.fs_model.refresh(&entry.path);
-                                            self.selected_paths.set(Vec::new());
-                                            update.insert(Update::LAYOUT);
+                                None
+                            };
+                            (Some(target), range, Some(ftype))
+                        } else {
+                            (None, None, None)
+                        }
+                    };
+
+                    if let Some(target_path) = target_path {
+                        let ctrl_pressed = info.modifiers.control_key();
+                        let shift_pressed = info.modifiers.shift_key();
+                        
+                        for (_, btn, el) in &info.buttons {
+                            if *btn == MouseButton::Left && *el == ElementState::Pressed {
+                                let mut selected = self.selected_paths.get().clone();
+                                let is_currently_selected = selected.contains(&target_path);
+                                
+                                if let Some(range_paths) = &range_paths {
+                                    // Shift+Click: Select range
+                                    // Merge with existing selection if Ctrl is also pressed
+                                    if ctrl_pressed {
+                                        let mut selected_set: HashSet<PathBuf> = selected.iter().cloned().collect();
+                                        for path in range_paths {
+                                            selected_set.insert(path.clone());
+                                        }
+                                        selected = selected_set.into_iter().collect();
+                                    } else {
+                                        selected = range_paths.clone();
+                                    }
+                                } else if ctrl_pressed {
+                                    // Ctrl+Click: Toggle selection
+                                    if is_currently_selected {
+                                        selected.retain(|p| p != &target_path);
+                                    } else {
+                                        selected.push(target_path.clone());
+                                    }
+                                    self.anchor_index = Some(index);
+                                } else {
+                                    // Single Click: Clear and select only this item
+                                    selected = vec![target_path.clone()];
+                                    self.anchor_index = Some(index);
+                                }
+                                
+                                self.selected_paths.set(selected);
+                                update.insert(Update::DRAW);
+                                
+                                // Check double click
+                                let now = Instant::now();
+                                if let Some(last_time) = self.last_click_time {
+                                    if let Some(last_index) = self.last_click_index {
+                                        if last_index == index && now.duration_since(last_time) < Duration::from_millis(500) {
+                                            // Double click
+                                            if let Some(ftype) = file_type {
+                                                if ftype == FileType::Directory {
+                                                    // Navigate
+                                                    self.current_path.set(target_path.clone());
+                                                    let _ = self.fs_model.refresh(&target_path);
+                                                    self.selected_paths.set(Vec::new());
+                                                    update.insert(Update::LAYOUT);
+                                                }
+                                            }
                                         }
                                     }
                                 }
+                                
+                                self.last_click_time = Some(now);
+                                self.last_click_index = Some(index);
                             }
-                            
-                            self.last_click_time = Some(now);
-                            self.last_click_index = Some(index);
                         }
                     }
                 }
@@ -1379,13 +1441,54 @@ impl FileListContent {
         let spacing = 10.0;     // Spacing between tiles
         
         let available_width = width - self.icon_view_padding * 2.0;
-        // Calculate columns considering spacing: width = cols * cell + (cols - 1) * spacing
-        // width + spacing = cols * (cell + spacing)
-        // cols = (width + spacing) / (cell + spacing)
         let columns = ((available_width + spacing) / (cell_width + spacing)).floor() as usize;
         let columns = columns.max(1);
         
         (columns, cell_width, cell_height, spacing)
+    }
+
+    fn get_compact_item_layout(
+        &mut self,
+        font_cx: &mut FontContext,
+        entry: &FileEntry,
+        cell_rect: Rect,
+        cell_height: f32,
+        cell_width: f32,
+    ) -> (Rect, Rect) {
+        // Define Icon area
+        let icon_size = 32.0f32;
+        let icon_padding = 8.0f32;
+        let icon_x = cell_rect.x0 + icon_padding as f64;
+        let icon_y = cell_rect.y0 + (cell_height as f64 - icon_size as f64) / 2.0;
+        let icon_rect = Rect::new(icon_x, icon_y, icon_x + icon_size as f64, icon_y + icon_size as f64);
+        
+        let text_x = icon_x + icon_size as f64 + 10.0;
+        let text_y = cell_rect.y0 + 12.0;
+        let max_text_width = cell_width - (icon_size + icon_padding * 2.0 + 10.0);
+        
+        // Measure text to determine label width
+        let font_size = 14.0;
+        let (text_width, line_count) = self.text_render_context.measure_text_layout(
+            font_cx,
+            &entry.name,
+            font_size,
+            Some(max_text_width as f32),
+        );
+        
+        let display_lines = line_count.min(2);
+        let text_height = display_lines as f32 * (font_size * 1.2); // Approx height
+        
+        // Label rect (tight fit around text)
+        let label_padding_x = 4.0;
+        let label_padding_y = 2.0;
+        let label_rect = Rect::new(
+            text_x - label_padding_x,
+            text_y - label_padding_y,
+            text_x + text_width as f64 + label_padding_x,
+            text_y + text_height as f64 + label_padding_y
+        );
+        
+        (icon_rect, label_rect)
     }
 
     fn render_compact_view(
@@ -1417,50 +1520,33 @@ impl FileListContent {
             
             let is_selected = selected_set.contains(&entry.path);
             
+            // Calculate layout
+            let (icon_rect, label_rect) = self.get_compact_item_layout(
+                &mut info.font_context,
+                entry,
+                cell_rect,
+                cell_height,
+                cell_width,
+            );
+            
             // Check for hover state
             let is_hovered = if let Some(cursor) = info.cursor_pos {
                 let cursor_x = cursor.x as f64;
                 let cursor_y = cursor.y as f64;
-                cursor_x >= cell_rect.x0 && cursor_x < cell_rect.x1 &&
-                cursor_y >= cell_rect.y0 && cursor_y < cell_rect.y1
+                // Tight hit testing for hover visual
+                (cursor_x >= icon_rect.x0 && cursor_x < icon_rect.x1 &&
+                 cursor_y >= icon_rect.y0 && cursor_y < icon_rect.y1) ||
+                (cursor_x >= label_rect.x0 && cursor_x < label_rect.x1 &&
+                 cursor_y >= label_rect.y0 && cursor_y < label_rect.y1)
             } else {
                 false
             };
             
-            // Define Icon and Label areas
-            let icon_size = 32.0f32;
-            let icon_padding = 8.0f32;
-            let icon_x = cell_rect.x0 + icon_padding as f64;
-            let icon_y = cell_rect.y0 + (cell_height as f64 - icon_size as f64) / 2.0;
-            let icon_rect = Rect::new(icon_x, icon_y, icon_x + icon_size as f64, icon_y + icon_size as f64);
-            
-            let text_x = icon_x + icon_size as f64 + 10.0;
-            let text_y = cell_rect.y0 + 12.0;
-            let max_text_width = cell_width - (icon_size + icon_padding * 2.0 + 10.0);
-            
-            // Measure text to determine label width
+            // Extract layout properties for rendering
+            let icon_x = icon_rect.x0;
+            let icon_y = icon_rect.y0;
+            let icon_size = icon_rect.width() as f32;
             let font_size = 14.0;
-            let (text_width, line_count) = self.text_render_context.measure_text_layout(
-                &mut info.font_context,
-                &entry.name,
-                font_size,
-                Some(max_text_width as f32),
-            );
-            
-            // Limit to 2 lines for height calculation if needed, but measure_text_layout returns actual lines
-            // We only display 2 lines max in render_text_with_max_lines
-            let display_lines = line_count.min(2);
-            let text_height = display_lines as f32 * (font_size * 1.2); // Approx height
-            
-            // Label rect (tight fit around text)
-            let label_padding_x = 4.0;
-            let label_padding_y = 2.0;
-            let label_rect = Rect::new(
-                text_x - label_padding_x,
-                text_y - label_padding_y,
-                text_x + text_width as f64 + label_padding_x,
-                text_y + text_height as f64 + label_padding_y
-            );
 
             // 1. Draw Label Background (Selection/Hover)
             if is_selected || is_hovered {
@@ -1657,6 +1743,11 @@ impl FileListContent {
                 .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
                 .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
                 .unwrap_or(Color::BLACK);
+            
+            // Use label_rect to position text (reverse padding)
+            let text_x = label_rect.x0 + 4.0; // label_padding_x
+            let text_y = label_rect.y0 + 2.0; // label_padding_y
+            let max_text_width = cell_width - (32.0 + 8.0 * 2.0 + 10.0); // Re-calculate or pass it? Re-calc is cheap.
             
             let transform = Affine::translate((text_x, text_y));
             
