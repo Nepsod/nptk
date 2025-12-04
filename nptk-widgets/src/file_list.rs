@@ -29,7 +29,7 @@ use crate::scroll_container::{ScrollContainer, ScrollDirection};
 use nptk_services::thumbnail::ThumbnailImageCache;
 
 /// View mode for the file list.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FileListViewMode {
     /// List view (icon + text in rows)
     List,
@@ -286,10 +286,25 @@ struct FileListContent {
     current_drag_pos: Option<Point>,
     is_dragging: bool,
     
+    // Layout cache to avoid expensive recalculations on every frame
+    // Key: (path, view_mode, cell_width/icon_size)
+    layout_cache: std::collections::HashMap<(PathBuf, FileListViewMode, u32), (Rect, Rect)>,
+    cache_invalidated: bool,
+    
     // Icon view constants
     icon_view_padding: f32,
     icon_view_spacing: f32,
     icon_view_text_height: f32,
+    
+    // SVG Scene cache to avoid re-parsing SVGs every frame
+    // Key: SVG source string (or hash of it)
+    // Value: (Scene, width, height)
+    svg_scene_cache: std::collections::HashMap<String, (nptk_core::vg::Scene, f64, f64)>,
+    
+    // Text scene cache to avoid re-rendering text with Parley every frame
+    // Key: (text, max_width_u32, font_size_u32) - using u32 for hash stability
+    // Value: Scene with rendered text glyphs
+    text_scene_cache: std::collections::HashMap<(String, u32, u32), nptk_core::vg::Scene>,
 }
 
 impl FileListContent {
@@ -328,9 +343,15 @@ impl FileListContent {
             current_drag_pos: None,
             is_dragging: false,
             
+            layout_cache: std::collections::HashMap::new(),
+            cache_invalidated: false,
+            
             icon_view_padding: 2.0, // padding around the icons
             icon_view_spacing: 22.0, // spacing between icons
             icon_view_text_height: 50.0, // Increased to accommodate 2-3 lines of wrapped text
+            
+            svg_scene_cache: std::collections::HashMap::new(),
+            text_scene_cache: std::collections::HashMap::new(),
         }
     }
     
@@ -368,129 +389,139 @@ impl FileListContent {
     }
     
     fn render_list_view(
-        &mut self,
-        graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
-        layout: &LayoutNode,
-        info: &mut AppInfo,
-    ) {
-        let entries = self.entries.get();
-        let selected_paths = self.selected_paths.get();
-        let selected_set: HashSet<&PathBuf> = selected_paths.iter().collect();
-        let entry_count = entries.len();
-        
-        // Draw background
-        let bg_rect = Rect::new(
+    &mut self,
+    graphics: &mut dyn Graphics,
+    theme: &mut dyn Theme,
+    layout: &LayoutNode,
+    info: &mut AppInfo,
+) {
+    let entries = self.entries.get();
+    let selected_paths = self.selected_paths.get();
+    let selected_set: HashSet<&PathBuf> = selected_paths.iter().collect();
+    let entry_count = entries.len();
+    
+    // Draw background
+    let bg_rect = Rect::new(
+        layout.layout.location.x as f64,
+        layout.layout.location.y as f64,
+        (layout.layout.location.x + layout.layout.size.width) as f64,
+        (layout.layout.location.y + layout.layout.size.height) as f64,
+    );
+    
+    let bg_color = theme
+        .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackground)
+        .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorBackground))
+        .unwrap_or_else(|| theme.window_background());
+    
+    graphics.fill(
+        Fill::NonZero,
+        Affine::IDENTITY,
+        &Brush::Solid(bg_color),
+        None,
+        &bg_rect.to_path(0.1),
+    );
+    
+    if entry_count == 0 {
+        return;
+    }
+    
+    // VIEWPORT CULLING: Calculate visible range
+    // VIEWPORT CULLING: Calculate visible range relative to window
+    let viewport_start_y = (-layout.layout.location.y).max(0.0);
+    let viewport_end_y = info.size.y as f32 - layout.layout.location.y;
+    
+    let start_index = (viewport_start_y / self.item_height).floor().max(0.0) as usize;
+    let end_index = ((viewport_end_y / self.item_height).ceil() as usize + 1).min(entry_count);
+    
+    // Only render visible items
+    for i in start_index..end_index {
+        let entry = &entries[i];
+        let y = layout.layout.location.y + i as f32 * self.item_height;
+        let row_rect = Rect::new(
             layout.layout.location.x as f64,
-            layout.layout.location.y as f64,
+            y as f64,
             (layout.layout.location.x + layout.layout.size.width) as f64,
-            (layout.layout.location.y + layout.layout.size.height) as f64,
+            (y + self.item_height) as f64,
         );
         
-        let bg_color = theme
-            .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackground)
-            .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorBackground))
-            .unwrap_or_else(|| theme.window_background());
+        // Check for hover state
+        let is_hovered = if let Some(cursor) = info.cursor_pos {
+            let cursor_x = cursor.x as f64;
+            let cursor_y = cursor.y as f64;
+            cursor_x >= row_rect.x0 && cursor_x < row_rect.x1 &&
+            cursor_y >= row_rect.y0 && cursor_y < row_rect.y1
+        } else {
+            false
+        };
         
-        graphics.fill(
-            Fill::NonZero,
-            Affine::IDENTITY,
-            &Brush::Solid(bg_color),
-            None,
-            &bg_rect.to_path(0.1),
-        );
-        
-        if entry_count == 0 {
-            return;
+        // Draw hover background (if not selected)
+        if is_hovered && !selected_set.contains(&entry.path) {
+            let hover_color = theme
+                .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorMenuHovered)
+                .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorMenuHovered))
+                .unwrap_or_else(|| Color::from_rgb8(240, 240, 240));
+            
+            graphics.fill(
+                Fill::NonZero,
+                Affine::IDENTITY,
+                &Brush::Solid(hover_color),
+                None,
+                &row_rect.to_path(0.1),
+            );
         }
         
-        for (i, entry) in entries.iter().enumerate() {
-            let y = layout.layout.location.y + i as f32 * self.item_height;
-            let row_rect = Rect::new(
-                layout.layout.location.x as f64,
-                y as f64,
-                (layout.layout.location.x + layout.layout.size.width) as f64,
-                (y + self.item_height) as f64,
+        // Draw selection background
+        if selected_set.contains(&entry.path) {
+            let color = theme
+                .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackgroundSelected)
+                .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorBackgroundSelected))
+                .unwrap_or_else(|| Color::from_rgb8(100, 150, 255));
+            
+            graphics.fill(
+                Fill::NonZero,
+                Affine::IDENTITY,
+                &Brush::Solid(color.with_alpha(0.3)),
+                None,
+                &row_rect.to_path(0.1),
             );
-            
-            // Check for hover state
-            let is_hovered = if let Some(cursor) = info.cursor_pos {
-                let cursor_x = cursor.x as f64;
-                let cursor_y = cursor.y as f64;
-                cursor_x >= row_rect.x0 && cursor_x < row_rect.x1 &&
-                cursor_y >= row_rect.y0 && cursor_y < row_rect.y1
-            } else {
-                false
-            };
-            
-            // Draw hover background (if not selected)
-            if is_hovered && !selected_set.contains(&entry.path) {
-                let hover_color = theme
-                    .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorMenuHovered)
-                    .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorMenuHovered))
-                    .unwrap_or_else(|| Color::from_rgb8(240, 240, 240));
-                
-                graphics.fill(
-                    Fill::NonZero,
-                    Affine::IDENTITY,
-                    &Brush::Solid(hover_color),
-                    None,
-                    &row_rect.to_path(0.1),
-                );
-            }
-            
-            // Draw selection background
-            if selected_set.contains(&entry.path) {
-                let color = theme
-                    .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackgroundSelected)
-                    .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorBackgroundSelected))
-                    .unwrap_or_else(|| Color::from_rgb8(100, 150, 255));
-                
-                graphics.fill(
-                    Fill::NonZero,
-                    Affine::IDENTITY,
-                    &Brush::Solid(color.with_alpha(0.3)),
-                    None,
-                    &row_rect.to_path(0.1),
-                );
-            }
-            
-            // Try to get thumbnail first, fall back to icon
-            let icon_size = 20.0;
-            let icon_rect = Rect::new(
-                row_rect.x0 + 5.0,
-                row_rect.y0 + 5.0,
-                row_rect.x0 + 25.0,
-                row_rect.y1 - 5.0,
-            );
-            
-            // Check if thumbnail is available
-            let mut use_thumbnail = false;
-            if let Some(thumbnail_path) = self.thumbnail_provider.get_thumbnail(entry, self.thumbnail_size) {
-                if let Ok(Some(cached_thumb)) = self.thumbnail_cache.load_or_get(&thumbnail_path, self.thumbnail_size) {
-                    use nptk_core::vg::peniko::{Blob, ImageBrush, ImageData, ImageFormat, ImageAlphaType};
-                    let image_data = ImageData {
-                        data: Blob::from(cached_thumb.data.as_ref().clone()),
-                        format: ImageFormat::Rgba8,
-                        alpha_type: ImageAlphaType::Alpha,
-                        width: cached_thumb.width,
-                        height: cached_thumb.height,
-                    };
-                    let image_brush = ImageBrush::new(image_data);
-                    let icon_x = icon_rect.x0;
-                    let icon_y = icon_rect.y0;
-                    let icon_size_f64 = icon_rect.width().min(icon_rect.height());
-                    let scale_x = icon_size_f64 / (cached_thumb.width as f64);
-                    let scale_y = icon_size_f64 / (cached_thumb.height as f64);
-                    let scale = scale_x.min(scale_y);
-                    let transform = Affine::scale_non_uniform(scale, scale)
-                        .then_translate(Vec2::new(icon_x, icon_y));
-                    if let Some(scene) = graphics.as_scene_mut() {
-                        scene.draw_image(&image_brush, transform);
-                    }
-                    use_thumbnail = true;
+        }
+        
+        // Try to get thumbnail first, fall back to icon
+        let icon_size = 20.0;
+        let icon_rect = Rect::new(
+            row_rect.x0 + 5.0,
+            row_rect.y0 + 5.0,
+            row_rect.x0 + 25.0,
+            row_rect.y1 - 5.0,
+        );
+        
+        // Check if thumbnail is available
+        let mut use_thumbnail = false;
+        if let Some(thumbnail_path) = self.thumbnail_provider.get_thumbnail(entry, self.thumbnail_size) {
+            if let Ok(Some(cached_thumb)) = self.thumbnail_cache.load_or_get(&thumbnail_path, self.thumbnail_size) {
+                use nptk_core::vg::peniko::{Blob, ImageBrush, ImageData, ImageFormat, ImageAlphaType};
+                let image_data = ImageData {
+                    data: Blob::from(cached_thumb.data.as_ref().clone()),
+                    format: ImageFormat::Rgba8,
+                    alpha_type: ImageAlphaType::Alpha,
+                    width: cached_thumb.width,
+                    height: cached_thumb.height,
+                };
+                let image_brush = ImageBrush::new(image_data);
+                let icon_x = icon_rect.x0;
+                let icon_y = icon_rect.y0;
+                let icon_size_f64 = icon_rect.width().min(icon_rect.height());
+                let scale_x = icon_size_f64 / (cached_thumb.width as f64);
+                let scale_y = icon_size_f64 / (cached_thumb.height as f64);
+                let scale = scale_x.min(scale_y);
+                let transform = Affine::scale_non_uniform(scale, scale)
+                    .then_translate(Vec2::new(icon_x, icon_y));
+                if let Some(scene) = graphics.as_scene_mut() {
+                    scene.draw_image(&image_brush, transform);
                 }
+                use_thumbnail = true;
             }
+        }
             
             // If no thumbnail, use icon
             if !use_thumbnail {
@@ -881,13 +912,16 @@ impl Widget for FileListContent {
                                 (cell_y + cell_height) as f64,
                             );
                             
-                            let (icon_rect, label_rect) = self.get_compact_item_layout(
+                            let (mut icon_rect, mut label_rect) = self.get_compact_item_layout(
                                 &mut info.font_context,
                                 &entry,
-                                cell_rect,
                                 cell_height,
                                 cell_width,
                             );
+                            
+                            // Translate relative layout to absolute position
+                            icon_rect = icon_rect + Vec2::new(cell_x as f64, cell_y as f64);
+                            label_rect = label_rect + Vec2::new(cell_x as f64, cell_y as f64);
                             
                             let cursor_x = local_x as f64;
                             let cursor_y = local_y as f64;
@@ -1098,6 +1132,14 @@ impl Widget for FileListContent {
         info: &mut AppInfo,
         _context: AppContext,
     ) {
+        // DEBUG: Log render calls to investigate frequency
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static RENDER_COUNTER: AtomicU64 = AtomicU64::new(0);
+        let count = RENDER_COUNTER.fetch_add(1, Ordering::Relaxed);
+        if count % 60 == 0 {  // Log every 60 frames
+            println!("FileList render called {} times", count);
+        }
+        
         let view_mode = *self.view_mode.get();
         
         if view_mode == FileListViewMode::Icon {
@@ -1147,70 +1189,97 @@ impl Widget for FileListContent {
 
 impl FileListContent {
     fn render_icon_view(
-        &mut self,
-        graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
-        layout: &LayoutNode,
-        info: &mut AppInfo,
-    ) {
-        let entries = self.entries.get().clone();
-        let selected_paths = self.selected_paths.get().clone();
-        let selected_set: HashSet<&PathBuf> = selected_paths.iter().collect();
-        let entry_count = entries.len();
-        
-        // Draw background
-        let bg_rect = Rect::new(
-            layout.layout.location.x as f64,
-            layout.layout.location.y as f64,
-            (layout.layout.location.x + layout.layout.size.width) as f64,
-            (layout.layout.location.y + layout.layout.size.height) as f64,
-        );
-        
-        let bg_color = theme
-            .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackground)
-            .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorBackground))
-            .unwrap_or_else(|| theme.window_background());
-        
-        graphics.fill(
-            Fill::NonZero,
-            Affine::IDENTITY,
-            &Brush::Solid(bg_color),
-            None,
-            &bg_rect.to_path(0.1),
-        );
-        
-        if entry_count == 0 {
-            return;
-        }
-        
-        let icon_size = *self.icon_size.get();
-        let (columns, cell_width, cell_height) = self.calculate_icon_view_layout(
-            layout.layout.size.width,
-            icon_size,
-        );
-        
-        // Pass 1: Render unselected items
-        for (i, entry) in entries.iter().enumerate() {
-            if !selected_set.contains(&entry.path) {
-                self.render_icon_item(
-                    graphics, theme, layout, info, 
-                    i, entry, columns, cell_width, cell_height, icon_size, 
-                    false
-                );
-            }
-        }
-
-        // Pass 2: Render selected items (to draw on top)
-        for (i, entry) in entries.iter().enumerate() {
-            if selected_set.contains(&entry.path) {
-                self.render_icon_item(
-                    graphics, theme, layout, info, 
-                    i, entry, columns, cell_width, cell_height, icon_size, 
-                    true
-                );
-            }
-        }
+    &mut self,
+    graphics: &mut dyn Graphics,
+    theme: &mut dyn Theme,
+    layout: &LayoutNode,
+    info: &mut AppInfo,
+) {
+    let entries = self.entries.get();
+    let selected_paths = self.selected_paths.get();
+    let selected_set: HashSet<&PathBuf> = selected_paths.iter().collect();
+    let entry_count = entries.len();
+    
+    // Draw background
+    let bg_rect = Rect::new(
+        layout.layout.location.x as f64,
+        layout.layout.location.y as f64,
+        (layout.layout.location.x + layout.layout.size.width) as f64,
+        (layout.layout.location.y + layout.layout.size.height) as f64,
+    );
+    
+    let bg_color = theme
+        .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorBackground)
+        .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorBackground))
+        .unwrap_or_else(|| theme.window_background());
+    
+    graphics.fill(
+        Fill::NonZero,
+        Affine::IDENTITY,
+        &Brush::Solid(bg_color),
+        None,
+        &bg_rect.to_path(0.1),
+    );
+    
+    if entry_count == 0 {
+        return;
     }
+    
+    let icon_size = *self.icon_size.get();
+    let (columns, cell_width, cell_height) = self.calculate_icon_view_layout(
+        layout.layout.size.width,
+        icon_size,
+    );
+    
+    // VIEWPORT CULLING: Calculate visible range relative to window
+    let viewport_start_y = (-layout.layout.location.y).max(0.0);
+    let viewport_end_y = info.size.y as f32 - layout.layout.location.y;
+    
+    let start_row = (viewport_start_y / cell_height).floor().max(0.0) as usize;
+    let end_row = (viewport_end_y / cell_height).ceil() as usize + 1;
+    
+    let start_index = start_row * columns;
+    let end_index = (end_row * columns).min(entry_count);
+
+    // Collect indices of unselected and selected items in visible range
+    let unselected_indices: Vec<usize> = (start_index..end_index)
+        .filter(|&i| !selected_set.contains(&entries[i].path))
+        .collect();
+    let selected_indices: Vec<usize> = (start_index..end_index)
+        .filter(|&i| selected_set.contains(&entries[i].path))
+        .collect();
+
+    // Collect visible entries to avoid borrow checker issues
+    let visible_entries: Vec<FileEntry> = (start_index..end_index)
+        .map(|i| entries[i].clone())
+        .collect();
+    
+    // Drop the signal references to release the borrow
+    drop(entries);
+    drop(selected_paths);
+
+    // Pass 1: Render unselected items in visible range
+    for (_idx, i) in unselected_indices.iter().enumerate() {
+        let entry_idx = i - start_index;
+        let entry = &visible_entries[entry_idx];
+        self.render_icon_item(
+            graphics, theme, layout, info, 
+            *i, entry, columns, cell_width, cell_height, icon_size, 
+            false
+        );
+    }
+
+    // Pass 2: Render selected items in visible range (to draw on top)
+    for (_idx, i) in selected_indices.iter().enumerate() {
+        let entry_idx = i - start_index;
+        let entry = &visible_entries[entry_idx];
+        self.render_icon_item(
+            graphics, theme, layout, info, 
+            *i, entry, columns, cell_width, cell_height, icon_size, 
+            true
+        );
+    }
+}
 
     #[allow(clippy::too_many_arguments)]
     fn render_icon_item(
@@ -1237,7 +1306,7 @@ impl FileListContent {
         
         // Calculate icon position (centered in cell)
         let icon_x = cell_rect.x0 + (cell_width as f64 - icon_size as f64) / 2.0;
-        let icon_y = cell_rect.y0 + self.icon_view_spacing as f64;
+        let icon_y = cell_rect.y0 + 4.0; // Small top padding
         let icon_rect = Rect::new(
             icon_x,
             icon_y,
@@ -1606,23 +1675,28 @@ impl FileListContent {
         &mut self,
         font_cx: &mut FontContext,
         entry: &FileEntry,
-        cell_rect: Rect,
         cell_height: f32,
         cell_width: f32,
     ) -> (Rect, Rect) {
-        // Define Icon area
+        // Check cache first
+        let cache_key = (entry.path.clone(), FileListViewMode::Compact, cell_width as u32);
+        if let Some(cached) = self.layout_cache.get(&cache_key) {
+            return *cached;
+        }
+        
+        // Define Icon area (relative to 0,0)
         let icon_size = 32.0f32;
         let icon_padding = 8.0f32;
-        let icon_x = cell_rect.x0 + icon_padding as f64;
-        let icon_y = cell_rect.y0 + (cell_height as f64 - icon_size as f64) / 2.0;
+        let icon_x = icon_padding as f64;
+        let icon_y = (cell_height as f64 - icon_size as f64) / 2.0;
         let icon_rect = Rect::new(icon_x, icon_y, icon_x + icon_size as f64, icon_y + icon_size as f64);
         
         let text_x = icon_x + icon_size as f64 + 10.0;
-        let text_y = cell_rect.y0 + 12.0;
-        let max_text_width = cell_width - (icon_size + icon_padding * 2.0 + 10.0);
+        let text_y = 12.0; // Relative to top of cell
+        let max_text_width = (cell_width - (icon_padding + icon_size + 10.0 + 8.0)) as usize;
+        let font_size = 14.0;
         
         // Measure text to determine label width
-        let font_size = 14.0;
         let (text_width, line_count) = self.text_render_context.measure_text_layout(
             font_cx,
             &entry.name,
@@ -1643,7 +1717,11 @@ impl FileListContent {
             text_y + text_height as f64 + label_padding_y
         );
         
-        (icon_rect, label_rect)
+        // Cache the result
+        let result = (icon_rect, label_rect);
+        self.layout_cache.insert(cache_key, result);
+        
+        result
     }
 
     fn get_icon_item_layout(
@@ -1742,46 +1820,70 @@ impl FileListContent {
         layout: &LayoutNode,
         info: &mut AppInfo,
     ) {
-        let entries = self.entries.get().clone();
-        let selected_paths = self.selected_paths.get().clone();
-        let selected_set: HashSet<&PathBuf> = selected_paths.iter().collect();
+        use std::time::Instant;
+        let start = Instant::now();
+        
+        let entries = self.entries.get();
+        let selected_paths = self.selected_paths.get();
+        let selected_set: HashSet<PathBuf> = selected_paths.iter().cloned().collect();
         
         let (columns, cell_width, cell_height, spacing) = self.calculate_compact_view_layout(layout.layout.size.width);
         
-        for (i, entry) in entries.iter().enumerate() {
+        // VIEWPORT CULLING: Calculate visible range relative to window
+        // layout.layout.location.y includes the scroll offset (negative when scrolled down)
+        // and the widget's position in the window.
+        let viewport_start_y = (-layout.layout.location.y).max(0.0);
+        let viewport_end_y = info.size.y as f32 - layout.layout.location.y;
+        
+        let row_height = cell_height + spacing;
+        let start_row = (viewport_start_y / row_height).floor().max(0.0) as usize;
+        let end_row = (viewport_end_y / row_height).ceil() as usize + 1;
+        
+        let start_index = start_row * columns;
+        let end_index = (end_row * columns).min(entries.len());
+        
+        // Collect visible entries to avoid borrow checker issues
+        let visible_entries: Vec<(usize, FileEntry)> = (start_index..end_index)
+            .map(|i| (i, entries[i].clone()))
+            .collect();
+        
+        // Drop the signal references to release the borrow
+        drop(entries);
+        drop(selected_paths);
+        
+        
+        // Timing accumulators for profiling
+        let mut icon_time = std::time::Duration::ZERO;
+        let mut text_time = std::time::Duration::ZERO;
+        
+        // Only render visible items
+        for (i, entry) in &visible_entries {
             let row = i / columns;
             let col = i % columns;
-            
-            let x = self.icon_view_padding + col as f32 * (cell_width + spacing);
-            let y = self.icon_view_padding + row as f32 * (cell_height + spacing);
-            
-            let cell_rect = Rect::new(
-                x as f64,
-                y as f64,
-                (x + cell_width) as f64,
-                (y + cell_height) as f64,
-            );
+            let x = layout.layout.location.x + self.icon_view_padding + col as f32 * (cell_width + spacing);
+            let y = layout.layout.location.y + self.icon_view_padding + row as f32 * (cell_height + spacing);
             
             let is_selected = selected_set.contains(&entry.path);
             
             // Calculate layout
-            let (icon_rect, label_rect) = self.get_compact_item_layout(
+            let (mut icon_rect, mut label_rect) = self.get_compact_item_layout(
                 &mut info.font_context,
-                entry,
-                cell_rect,
+                &entry,
                 cell_height,
                 cell_width,
             );
+            
+            // Translate relative layout to absolute position
+            icon_rect = icon_rect + Vec2::new(x as f64, y as f64);
+            label_rect = label_rect + Vec2::new(x as f64, y as f64);
             
             // Check for hover state
             let is_hovered = if let Some(cursor) = info.cursor_pos {
                 let cursor_x = cursor.x as f64;
                 let cursor_y = cursor.y as f64;
-                // Tight hit testing for hover visual
-                (cursor_x >= icon_rect.x0 && cursor_x < icon_rect.x1 &&
-                 cursor_y >= icon_rect.y0 && cursor_y < icon_rect.y1) ||
-                (cursor_x >= label_rect.x0 && cursor_x < label_rect.x1 &&
-                 cursor_y >= label_rect.y0 && cursor_y < label_rect.y1)
+                // Check against the full cell rect for hover
+                cursor_x >= x as f64 && cursor_x < (x + cell_width) as f64 &&
+                cursor_y >= y as f64 && cursor_y < (y + cell_height) as f64
             } else {
                 false
             };
@@ -1819,11 +1921,12 @@ impl FileListContent {
             }
 
             // 2. Draw Icon
+            let icon_start = std::time::Instant::now();
             // Try to get thumbnail first, fall back to icon
             let mut use_thumbnail = false;
             let thumb_size = 48; 
             
-            if let Some(thumbnail_path) = self.thumbnail_provider.get_thumbnail(entry, thumb_size) {
+            if let Some(thumbnail_path) = self.thumbnail_provider.get_thumbnail(&entry, thumb_size) {
                 if let Ok(Some(cached_thumb)) = self.thumbnail_cache.load_or_get(&thumbnail_path, thumb_size) {
                     use nptk_core::vg::peniko::{Blob, ImageBrush, ImageData, ImageFormat, ImageAlphaType};
                     let image_data = ImageData {
@@ -1848,10 +1951,10 @@ impl FileListContent {
             
             if !use_thumbnail {
                 // Request thumbnail generation if supported
-                if self.thumbnail_provider.is_supported(entry) {
+                if self.thumbnail_provider.is_supported(&entry) {
                     let mut pending = self.pending_thumbnails.lock().unwrap();
                     if !pending.contains(&entry.path) {
-                        if let Ok(()) = self.thumbnail_provider.request_thumbnail(entry, thumb_size) {
+                        if let Ok(()) = self.thumbnail_provider.request_thumbnail(&entry, thumb_size) {
                             pending.insert(entry.path.clone());
                         }
                     }
@@ -1864,7 +1967,7 @@ impl FileListContent {
                     if let Some(icon) = cache.get(&cache_key) {
                         icon.clone()
                     } else {
-                        let icon = self.icon_registry.get_file_icon(entry, thumb_size);
+                        let icon = self.icon_registry.get_file_icon(&entry, thumb_size);
                         cache.insert(cache_key.clone(), icon.clone());
                         icon
                     }
@@ -1893,24 +1996,44 @@ impl FileListContent {
                         }
                         nptk_services::icon::CachedIcon::Svg(svg_source) => {
                             use vello_svg::usvg::{Tree, Options, ShapeRendering, TextRendering, ImageRendering};
-                            if let Ok(tree) = Tree::from_str(
-                                svg_source.as_str(),
-                                &Options {
-                                    shape_rendering: ShapeRendering::GeometricPrecision,
-                                    text_rendering: TextRendering::OptimizeLegibility,
-                                    image_rendering: ImageRendering::OptimizeSpeed,
-                                    ..Default::default()
-                                },
-                            ) {
-                                let scene = vello_svg::render_tree(&tree);
-                                let svg_size = tree.size();
-                                let scale_x = icon_size as f64 / svg_size.width() as f64;
-                                let scale_y = icon_size as f64 / svg_size.height() as f64;
-                                let scale = scale_x.min(scale_y);
-                                let transform = Affine::scale_non_uniform(scale, scale)
-                                    .then_translate(Vec2::new(icon_x, icon_y));
-                                graphics.append(&scene, Some(transform));
-                            }
+                            
+                            // Check scene cache first
+                            let cached_entry = self.svg_scene_cache.get(svg_source.as_str()).cloned();
+                            
+                            let (scene, svg_width, svg_height) = if let Some(entry) = cached_entry {
+                                entry
+                            } else {
+                                // Parse and render if not in cache
+                                if let Ok(tree) = Tree::from_str(
+                                    svg_source.as_str(),
+                                    &Options {
+                                        shape_rendering: ShapeRendering::GeometricPrecision,
+                                        text_rendering: TextRendering::OptimizeLegibility,
+                                        image_rendering: ImageRendering::OptimizeSpeed,
+                                        ..Default::default()
+                                    },
+                                ) {
+                                    let scene = vello_svg::render_tree(&tree);
+                                    let size = tree.size();
+                                    let width = size.width() as f64;
+                                    let height = size.height() as f64;
+                                    
+                                    self.svg_scene_cache.insert(
+                                        svg_source.as_str().to_string(), 
+                                        (scene.clone(), width, height)
+                                    );
+                                    (scene, width, height)
+                                } else {
+                                    (nptk_core::vg::Scene::new(), 48.0, 48.0)
+                                }
+                            };
+                            
+                            let scale_x = icon_size as f64 / svg_width;
+                            let scale_y = icon_size as f64 / svg_height;
+                            let scale = scale_x.min(scale_y);
+                            let transform = Affine::scale_non_uniform(scale, scale)
+                                .then_translate(Vec2::new(icon_x, icon_y));
+                            graphics.append(&scene, Some(transform));
                         }
                         nptk_services::icon::CachedIcon::Path(_) => {
                             let icon_color = theme
@@ -1982,7 +2105,10 @@ impl FileListContent {
                 );
             }
             
+            icon_time += icon_start.elapsed();
+            
             // 4. Draw Label Text
+            let text_start = std::time::Instant::now();
             let text_color = theme
                 .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
                 .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
@@ -1995,6 +2121,9 @@ impl FileListContent {
             
             let transform = Affine::translate((text_x, text_y));
             
+            // NOTE: Text rendering is the performance bottleneck (~23ms per frame)
+            // Both render_text() and render_text_with_max_lines() use expensive Parley layouts
+            // Future optimization: implement text layout caching
             self.text_render_context.render_text_with_max_lines(
                 &mut info.font_context,
                 graphics,
@@ -2007,6 +2136,23 @@ impl FileListContent {
                 Some(max_text_width as f32),
                 Some(2), // Max 2 lines
                 false, // Left align
+            );
+            
+            text_time += text_start.elapsed();
+        }
+        
+        let total_duration = start.elapsed();
+        
+        // DEBUG: Log timing every 60 frames
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static FRAME_COUNT: AtomicU64 = AtomicU64::new(0);
+        let frame = FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
+        if frame % 60 == 0 {
+            println!("Compact render total: {:?}, visible_count={}, icon_time={:?}, text_time={:?}", 
+                total_duration,
+                visible_entries.len(),
+                icon_time,
+                text_time
             );
         }
     }
