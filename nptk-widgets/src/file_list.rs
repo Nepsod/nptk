@@ -288,7 +288,8 @@ struct FileListContent {
     
     // Layout cache to avoid expensive recalculations on every frame
     // Key: (path, view_mode, cell_width/icon_size)
-    layout_cache: std::collections::HashMap<(PathBuf, FileListViewMode, u32), (Rect, Rect)>,
+    // Value: (icon_rect, label_rect, display_text, max_text_width)
+    layout_cache: std::collections::HashMap<(PathBuf, FileListViewMode, u32), (Rect, Rect, String, f32)>,
     cache_invalidated: bool,
     
     // Icon view constants
@@ -300,11 +301,6 @@ struct FileListContent {
     // Key: SVG source string (or hash of it)
     // Value: (Scene, width, height)
     svg_scene_cache: std::collections::HashMap<String, (nptk_core::vg::Scene, f64, f64)>,
-    
-    // Text scene cache to avoid re-rendering text with Parley every frame
-    // Key: (text, max_width_u32, font_size_u32) - using u32 for hash stability
-    // Value: Scene with rendered text glyphs
-    text_scene_cache: std::collections::HashMap<(String, u32, u32), nptk_core::vg::Scene>,
 }
 
 impl FileListContent {
@@ -351,7 +347,6 @@ impl FileListContent {
             icon_view_text_height: 50.0, // Increased to accommodate 2-3 lines of wrapped text
             
             svg_scene_cache: std::collections::HashMap::new(),
-            text_scene_cache: std::collections::HashMap::new(),
         }
     }
     
@@ -395,6 +390,9 @@ impl FileListContent {
     layout: &LayoutNode,
     info: &mut AppInfo,
 ) {
+    use std::time::Instant;
+    let start = Instant::now();
+    
     let entries = self.entries.get();
     let selected_paths = self.selected_paths.get();
     let selected_set: HashSet<&PathBuf> = selected_paths.iter().collect();
@@ -435,6 +433,7 @@ impl FileListContent {
     
     // Only render visible items
     for i in start_index..end_index {
+        let layout_start = Instant::now();
         let entry = &entries[i];
         let y = layout.layout.location.y + i as f32 * self.item_height;
         let row_rect = Rect::new(
@@ -572,25 +571,39 @@ impl FileListContent {
                             }
                         }
                         nptk_services::icon::CachedIcon::Svg(svg_source) => {
-                            use vello_svg::usvg::{Tree, Options, ShapeRendering, TextRendering, ImageRendering};
-                            if let Ok(tree) = Tree::from_str(
-                                svg_source.as_str(),
-                                &Options {
-                                    shape_rendering: ShapeRendering::GeometricPrecision,
-                                    text_rendering: TextRendering::OptimizeLegibility,
-                                    image_rendering: ImageRendering::OptimizeSpeed,
-                                    ..Default::default()
-                                },
-                            ) {
-                                let scene = vello_svg::render_tree(&tree);
-                                let svg_size = tree.size();
-                                let scale_x = icon_size_f64 / svg_size.width() as f64;
-                                let scale_y = icon_size_f64 / svg_size.height() as f64;
-                                let scale = scale_x.min(scale_y);
-                                let transform = Affine::scale_non_uniform(scale, scale)
-                                    .then_translate(Vec2::new(icon_x, icon_y));
-                                graphics.append(&scene, Some(transform));
-                            }
+                            // Check SVG scene cache first
+                            let cached_scene = self.svg_scene_cache.get(svg_source.as_str()).cloned();
+                            let (scene, svg_width, svg_height) = if let Some((scene, w, h)) = cached_scene {
+                                (scene, w, h)
+                            } else {
+                                // Cache miss - parse and render SVG
+                                use vello_svg::usvg::{Tree, Options, ShapeRendering, TextRendering, ImageRendering};
+                                if let Ok(tree) = Tree::from_str(
+                                    svg_source.as_str(),
+                                    &Options {
+                                        shape_rendering: ShapeRendering::GeometricPrecision,
+                                        text_rendering: TextRendering::OptimizeLegibility,
+                                        image_rendering: ImageRendering::OptimizeSpeed,
+                                        ..Default::default()
+                                    },
+                                ) {
+                                    let scene = vello_svg::render_tree(&tree);
+                                    let svg_size = tree.size();
+                                    let w = svg_size.width() as f64;
+                                    let h = svg_size.height() as f64;
+                                    self.svg_scene_cache.insert(svg_source.as_str().to_string(), (scene.clone(), w, h));
+                                    (scene, w, h)
+                                } else {
+                                    (nptk_core::vg::Scene::new(), 1.0, 1.0)
+                                }
+                            };
+                            
+                            let scale_x = icon_size_f64 / svg_width;
+                            let scale_y = icon_size_f64 / svg_height;
+                            let scale = scale_x.min(scale_y);
+                            let transform = Affine::scale_non_uniform(scale, scale)
+                                .then_translate(Vec2::new(icon_x, icon_y));
+                            graphics.append(&scene, Some(transform));
                         }
                         nptk_services::icon::CachedIcon::Path(_) => {
                             let icon_color = theme
@@ -656,6 +669,19 @@ impl FileListContent {
                 transform,
                 true,
                 Some(row_rect.width() as f32 - 40.0),
+            );
+        }
+        
+        let total_duration = start.elapsed();
+        
+        // DEBUG: Log timing every 60 frames
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static FRAME_COUNT: AtomicU64 = AtomicU64::new(0);
+        let frame = FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
+        if frame % 60 == 0 {
+            println!("List render total: {:?}, visible_count={}",
+                total_duration,
+                end_index - start_index
             );
         }
     }
@@ -1195,6 +1221,9 @@ impl FileListContent {
     layout: &LayoutNode,
     info: &mut AppInfo,
 ) {
+    use std::time::Instant;
+    let start = Instant::now();
+    
     let entries = self.entries.get();
     let selected_paths = self.selected_paths.get();
     let selected_set: HashSet<&PathBuf> = selected_paths.iter().collect();
@@ -1241,6 +1270,10 @@ impl FileListContent {
     let start_index = start_row * columns;
     let end_index = (end_row * columns).min(entry_count);
 
+    // Timing accumulators
+    let mut layout_time = std::time::Duration::ZERO;
+    let mut render_time = std::time::Duration::ZERO;
+
     // Collect indices of unselected and selected items in visible range
     let unselected_indices: Vec<usize> = (start_index..end_index)
         .filter(|&i| !selected_set.contains(&entries[i].path))
@@ -1260,6 +1293,7 @@ impl FileListContent {
 
     // Pass 1: Render unselected items in visible range
     for (_idx, i) in unselected_indices.iter().enumerate() {
+        let layout_start = Instant::now();
         let entry_idx = i - start_index;
         let entry = &visible_entries[entry_idx];
         self.render_icon_item(
@@ -1267,16 +1301,34 @@ impl FileListContent {
             *i, entry, columns, cell_width, cell_height, icon_size, 
             false
         );
+        layout_time += layout_start.elapsed();
     }
 
     // Pass 2: Render selected items in visible range (to draw on top)
     for (_idx, i) in selected_indices.iter().enumerate() {
+        let layout_start = Instant::now();
         let entry_idx = i - start_index;
         let entry = &visible_entries[entry_idx];
         self.render_icon_item(
             graphics, theme, layout, info, 
             *i, entry, columns, cell_width, cell_height, icon_size, 
             true
+        );
+        layout_time += layout_start.elapsed();
+    }
+
+    let total_duration = start.elapsed();
+    
+    // DEBUG: Log timing every 60 frames
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static FRAME_COUNT: AtomicU64 = AtomicU64::new(0);
+    let frame = FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
+    if frame % 60 == 0 {
+        println!("Icon render total: {:?}, visible_count={}, layout_time={:?}, render_time={:?}",
+            total_duration,
+            end_index - start_index,
+            layout_time,
+            render_time
         );
     }
 }
@@ -1296,6 +1348,9 @@ impl FileListContent {
         icon_size: u32,
         is_selected: bool,
     ) {
+        use std::time::Instant;
+        let render_start = Instant::now();
+
         let (x, y) = self.get_icon_position(i, columns, cell_width, cell_height);
         let cell_rect = Rect::new(
             layout.layout.location.x as f64 + x as f64,
@@ -1680,8 +1735,8 @@ impl FileListContent {
     ) -> (Rect, Rect) {
         // Check cache first
         let cache_key = (entry.path.clone(), FileListViewMode::Compact, cell_width as u32);
-        if let Some(cached) = self.layout_cache.get(&cache_key) {
-            return *cached;
+        if let Some((icon_rect, label_rect, _, _)) = self.layout_cache.get(&cache_key) {
+            return (*icon_rect, *label_rect);
         }
         
         // Define Icon area (relative to 0,0)
@@ -1717,9 +1772,9 @@ impl FileListContent {
             text_y + text_height as f64 + label_padding_y
         );
         
-        // Cache the result
+        // Cache the result (with empty string and 0.0 for unused fields)
         let result = (icon_rect, label_rect);
-        self.layout_cache.insert(cache_key, result);
+        self.layout_cache.insert(cache_key, (icon_rect, label_rect, String::new(), 0.0));
         
         result
     }
@@ -1733,6 +1788,41 @@ impl FileListContent {
         icon_size: f32,
         is_selected: bool,
     ) -> (Rect, Rect, String, f32) {
+        // Create cache key
+        let cache_key = (
+            entry.path.clone(),
+            FileListViewMode::Icon,
+            (cell_width * 100.0) as u32, // Use cell_width as key component
+        );
+        
+        // Check cache first
+        if let Some((icon_rect, label_rect, display_text, max_text_width)) = self.layout_cache.get(&cache_key) {
+            // Translate cached rects to current cell position
+            let cached_icon_x = icon_rect.x0;
+            let cached_icon_y = icon_rect.y0;
+            let target_icon_x = cell_rect.x0 + (cell_width as f64 - icon_size as f64) / 2.0;
+            let target_icon_y = cell_rect.y0 + self.icon_view_padding as f64;
+            
+            let dx = target_icon_x - cached_icon_x;
+            let dy = target_icon_y - cached_icon_y;
+            
+            let translated_icon_rect = Rect::new(
+                icon_rect.x0 + dx,
+                icon_rect.y0 + dy,
+                icon_rect.x1 + dx,
+                icon_rect.y1 + dy,
+            );
+            let translated_label_rect = Rect::new(
+                label_rect.x0 + dx,
+                label_rect.y0 + dy,
+                label_rect.x1 + dx,
+                label_rect.y1 + dy,
+            );
+            
+            return (translated_icon_rect, translated_label_rect, display_text.clone(), *max_text_width);
+        }
+        
+        // Cache miss - calculate layout
         // Step 1: Calculate Icon Rectangle
         // Icon is centered horizontally, with padding from top
         let icon_x = cell_rect.x0 + (cell_width as f64 - icon_size as f64) / 2.0;
@@ -1810,6 +1900,9 @@ impl FileListContent {
             label_y + label_height + label_padding,
         );
         
+        // Store in cache
+        self.layout_cache.insert(cache_key, (icon_rect, label_rect, text_with_breaks.clone(), max_text_width));
+        
         (icon_rect, label_rect, text_with_breaks, max_text_width)
     }
 
@@ -1820,9 +1913,6 @@ impl FileListContent {
         layout: &LayoutNode,
         info: &mut AppInfo,
     ) {
-        use std::time::Instant;
-        let start = Instant::now();
-        
         let entries = self.entries.get();
         let selected_paths = self.selected_paths.get();
         let selected_set: HashSet<PathBuf> = selected_paths.iter().cloned().collect();
@@ -1850,11 +1940,6 @@ impl FileListContent {
         // Drop the signal references to release the borrow
         drop(entries);
         drop(selected_paths);
-        
-        
-        // Timing accumulators for profiling
-        let mut icon_time = std::time::Duration::ZERO;
-        let mut text_time = std::time::Duration::ZERO;
         
         // Only render visible items
         for (i, entry) in &visible_entries {
@@ -1921,7 +2006,6 @@ impl FileListContent {
             }
 
             // 2. Draw Icon
-            let icon_start = std::time::Instant::now();
             // Try to get thumbnail first, fall back to icon
             let mut use_thumbnail = false;
             let thumb_size = 48; 
@@ -2105,10 +2189,7 @@ impl FileListContent {
                 );
             }
             
-            icon_time += icon_start.elapsed();
-            
             // 4. Draw Label Text
-            let text_start = std::time::Instant::now();
             let text_color = theme
                 .get_property(self.widget_id(), &nptk_theme::properties::ThemeProperty::ColorText)
                 .or_else(|| theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText))
@@ -2136,23 +2217,6 @@ impl FileListContent {
                 Some(max_text_width as f32),
                 Some(2), // Max 2 lines
                 false, // Left align
-            );
-            
-            text_time += text_start.elapsed();
-        }
-        
-        let total_duration = start.elapsed();
-        
-        // DEBUG: Log timing every 60 frames
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static FRAME_COUNT: AtomicU64 = AtomicU64::new(0);
-        let frame = FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
-        if frame % 60 == 0 {
-            println!("Compact render total: {:?}, visible_count={}, icon_time={:?}, text_time={:?}", 
-                total_duration,
-                visible_entries.len(),
-                icon_time,
-                text_time
             );
         }
     }

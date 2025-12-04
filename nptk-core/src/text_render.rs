@@ -17,6 +17,9 @@ pub struct BrushIndex(pub usize);
 /// Text rendering context that manages layout contexts
 pub struct TextRenderContext {
     layout_cx: LayoutContext,
+    /// Cache for text layouts to avoid expensive rebuilding
+    /// Key: (text, max_width_u32, font_size_u32, max_lines, center_align)
+    layout_cache: std::collections::HashMap<(String, u32, u32, Option<usize>, bool), Layout<[u8; 4]>>,
 }
 
 impl TextRenderContext {
@@ -24,6 +27,7 @@ impl TextRenderContext {
     pub fn new() -> Self {
         Self {
             layout_cx: LayoutContext::new(),
+            layout_cache: std::collections::HashMap::new(),
         }
     }
 
@@ -85,25 +89,44 @@ impl TextRenderContext {
         hint: bool,
         max_width: Option<f32>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // Use our existing font context but ensure it has system fonts loaded
-        let display_scale = 1.0;
-        let mut parley_font_cx = _font_cx.create_parley_font_context();
-        let mut builder =
-            self.layout_cx
-                .ranged_builder(&mut parley_font_cx, text, display_scale, true);
-
-        // Set font size
-        builder.push_default(StyleProperty::FontSize(font_size));
-
-        let mut layout = builder.build(text);
-
-        // Perform layout operations with optional width constraint for wrapping
-        if let Some(width) = max_width {
-            layout.break_all_lines(Some(width));
+        // Create cache key (same format as render_text_with_max_lines)
+        let cache_key = (
+            text.to_string(),
+            max_width.map(|w| w as u32).unwrap_or(0),
+            font_size as u32,
+            None, // max_lines = None for render_text
+            false, // center_align = false for render_text
+        );
+        
+        // Check cache first
+        let layout = if let Some(cached_layout) = self.layout_cache.get(&cache_key) {
+            // Cache hit - clone the layout (cheap, Arc-based internally)
+            cached_layout.clone()
         } else {
-            layout.break_all_lines(None);
-        }
-        layout.align(max_width, Alignment::Start, Default::default());
+            // Cache miss - build layout
+            let display_scale = 1.0;
+            let mut parley_font_cx = _font_cx.create_parley_font_context();
+            let mut builder =
+                self.layout_cx
+                    .ranged_builder(&mut parley_font_cx, text, display_scale, true);
+
+            // Set font size
+            builder.push_default(StyleProperty::FontSize(font_size));
+
+            let mut layout = builder.build(text);
+
+            // Perform layout operations with optional width constraint for wrapping
+            if let Some(width) = max_width {
+                layout.break_all_lines(Some(width));
+            } else {
+                layout.break_all_lines(None);
+            }
+            layout.align(max_width, Alignment::Start, Default::default());
+            
+            // Store in cache
+            self.layout_cache.insert(cache_key, layout.clone());
+            layout
+        };
 
         // Create brushes array
         let brushes = vec![color];
@@ -174,31 +197,50 @@ impl TextRenderContext {
         max_lines: Option<usize>,
         center_align: bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // Use our existing font context but ensure it has system fonts loaded
-        let display_scale = 1.0;
-        let mut parley_font_cx = _font_cx.create_parley_font_context();
-        let mut builder =
-            self.layout_cx
-                .ranged_builder(&mut parley_font_cx, text, display_scale, true);
-
-        // Set font size
-        builder.push_default(StyleProperty::FontSize(font_size));
-
-        let mut layout = builder.build(text);
-
-        // Perform layout operations with optional width constraint for wrapping
-        if let Some(width) = max_width {
-            layout.break_all_lines(Some(width));
+        // Create cache key
+        let cache_key = (
+            text.to_string(),
+            max_width.map(|w| w as u32).unwrap_or(0),
+            font_size as u32,
+            max_lines,
+            center_align,
+        );
+        
+        // Check cache first
+        let layout = if let Some(cached_layout) = self.layout_cache.get(&cache_key) {
+            // Cache hit - clone the layout (cheap, Arc-based internally)
+            cached_layout.clone()
         } else {
-            layout.break_all_lines(None);
-        }
-        // Align lines horizontally (Start by default, Center when requested).
-        let align = if center_align {
-            Alignment::Center
-        } else {
-            Alignment::Start
+            // Cache miss - build layout
+            let display_scale = 1.0;
+            let mut parley_font_cx = _font_cx.create_parley_font_context();
+            let mut builder =
+                self.layout_cx
+                    .ranged_builder(&mut parley_font_cx, text, display_scale, true);
+
+            // Set font size
+            builder.push_default(StyleProperty::FontSize(font_size));
+
+            let mut layout = builder.build(text);
+
+            // Perform layout operations with optional width constraint for wrapping
+            if let Some(width) = max_width {
+                layout.break_all_lines(Some(width));
+            } else {
+                layout.break_all_lines(None);
+            }
+            // Align lines horizontally (Start by default, Center when requested)
+            let align = if center_align {
+                Alignment::Center
+            } else {
+                Alignment::Start
+            };
+            layout.align(max_width, align, Default::default());
+            
+            // Store in cache
+            self.layout_cache.insert(cache_key, layout.clone());
+            layout
         };
-        layout.align(max_width, align, Default::default());
 
         // Create brushes array
         let brushes = vec![color];
