@@ -679,10 +679,6 @@ impl FileListContent {
         static FRAME_COUNT: AtomicU64 = AtomicU64::new(0);
         let frame = FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
         if frame % 60 == 0 {
-            println!("List render total: {:?}, visible_count={}",
-                total_duration,
-                end_index - start_index
-            );
         }
     }
 
@@ -1162,8 +1158,8 @@ impl Widget for FileListContent {
         use std::sync::atomic::{AtomicU64, Ordering};
         static RENDER_COUNTER: AtomicU64 = AtomicU64::new(0);
         let count = RENDER_COUNTER.fetch_add(1, Ordering::Relaxed);
-        if count % 60 == 0 {  // Log every 60 frames
-            println!("FileList render called {} times", count);
+        if count % 60 == 0 {
+            // println!("FileList render called {} times", count);
         }
         
         let view_mode = *self.view_mode.get();
