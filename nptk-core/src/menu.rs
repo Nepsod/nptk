@@ -79,6 +79,8 @@ use vello::kurbo::{RoundedRect, RoundedRectRadii};
 
 /// Renders the context menu.
 /// Returns the bounds of the rendered menu for hit testing.
+/// Renders the context menu.
+/// Returns the bounds of the rendered menu for hit testing.
 pub fn render_context_menu(
     graphics: &mut dyn Graphics,
     menu: &ContextMenu,
@@ -86,31 +88,14 @@ pub fn render_context_menu(
     theme: &mut dyn Theme,
     text_render: &mut TextRenderContext,
     font_cx: &mut FontContext,
+    cursor_pos: Option<Point>,
 ) -> Rect {
-    let item_height = 24.0;
-    let padding = 4.0;
-    let min_width = 120.0;
-    let max_width = 400.0;
-    
-    // Calculate width based on content
-    let mut max_text_width: f64 = 0.0;
-    for item in &menu.items {
-        match item {
-            ContextMenuItem::Action { label, .. } | ContextMenuItem::SubMenu { label, .. } => {
-                let text_width = label.len() as f64 * 8.0; // Estimate
-                max_text_width = max_text_width.max(text_width);
-            }
-            _ => {}
-        }
-    }
-    let width = (max_text_width + 40.0).max(min_width).min(max_width);
-    let height = menu.items.len() as f64 * item_height + padding * 2.0;
-
+    let (width, height) = calculate_menu_layout(menu);
     let x = position.x as f64;
     let y = position.y as f64;
     let rect = Rect::new(x, y, x + width, y + height);
 
-    let menu_id = WidgetId::new("nptk-widgets", "MenuPopup"); // Use MenuPopup ID to match theme
+    let menu_id = WidgetId::new("nptk-widgets", "MenuPopup");
 
     // Colors
     let bg_color = theme.get_property(menu_id.clone(), &ThemeProperty::ColorBackground)
@@ -119,6 +104,8 @@ pub fn render_context_menu(
         .unwrap_or(Color::from_rgb8(200, 200, 200));
     let text_color = theme.get_property(menu_id.clone(), &ThemeProperty::ColorText)
         .unwrap_or(Color::from_rgb8(0, 0, 0));
+    let hovered_color = theme.get_property(menu_id.clone(), &ThemeProperty::ColorMenuHovered)
+        .unwrap_or(Color::from_rgb8(230, 230, 230)); // Default hover color
     
     // Shadow
     let shadow_rect = RoundedRect::new(x + 2.0, y + 2.0, x + width + 2.0, y + height + 2.0, RoundedRectRadii::new(4.0, 4.0, 4.0, 4.0));
@@ -148,11 +135,52 @@ pub fn render_context_menu(
     );
 
     // Draw items
+    let item_height = 24.0;
+    let padding = 4.0;
     let mut current_y = y + padding;
 
-    for item in &menu.items {
+    // Determine hovered item index
+    let hovered_index = if let Some(cursor) = cursor_pos {
+        if rect.contains(cursor) {
+            let relative_y = cursor.y - y - padding;
+            if relative_y >= 0.0 {
+                Some((relative_y / item_height) as usize)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    for (i, item) in menu.items.iter().enumerate() {
         let item_rect = Rect::new(x, current_y, x + width, current_y + item_height);
         
+        // Draw hover background
+        if Some(i) == hovered_index {
+             match item {
+                ContextMenuItem::Separator => {}, // Don't highlight separators
+                _ => {
+                    let item_rounded = RoundedRect::new(
+                        item_rect.x0 + 2.0,
+                        item_rect.y0,
+                        item_rect.x1 - 2.0,
+                        item_rect.y1,
+                        RoundedRectRadii::new(2.0, 2.0, 2.0, 2.0),
+                    );
+                    graphics.fill(
+                        vello::peniko::Fill::NonZero,
+                        Affine::IDENTITY,
+                        &Brush::Solid(hovered_color),
+                        None,
+                        &shape_to_path(&item_rounded)
+                    );
+                }
+             }
+        }
+
         match item {
             ContextMenuItem::Action { label, .. } => {
                 // Render text
@@ -230,12 +258,30 @@ pub fn render_context_menu(
     rect
 }
 
-pub fn get_menu_rect(menu: &ContextMenu, position: Point) -> Rect {
-    let item_height = 30.0;
-    let width = 200.0;
-    let padding = 5.0;
+fn calculate_menu_layout(menu: &ContextMenu) -> (f64, f64) {
+    let item_height = 24.0;
+    let padding = 4.0;
+    let min_width = 120.0;
+    let max_width = 400.0;
+    
+    // Calculate width based on content
+    let mut max_text_width: f64 = 0.0;
+    for item in &menu.items {
+        match item {
+            ContextMenuItem::Action { label, .. } | ContextMenuItem::SubMenu { label, .. } => {
+                let text_width = label.len() as f64 * 8.0; // Estimate
+                max_text_width = max_text_width.max(text_width);
+            }
+            _ => {}
+        }
+    }
+    let width = (max_text_width + 40.0).max(min_width).min(max_width);
     let height = menu.items.len() as f64 * item_height + padding * 2.0;
+    (width, height)
+}
 
+pub fn get_menu_rect(menu: &ContextMenu, position: Point) -> Rect {
+    let (width, height) = calculate_menu_layout(menu);
     let x = position.x as f64;
     let y = position.y as f64;
     Rect::new(x, y, x + width, y + height)
@@ -247,8 +293,8 @@ pub fn handle_click(menu: &ContextMenu, position: Point, cursor: Point) -> Optio
         return None;
     }
 
-    let item_height = 30.0;
-    let padding = 5.0;
+    let item_height = 24.0;
+    let padding = 4.0;
     let relative_y = cursor.y - position.y - padding;
     
     if relative_y < 0.0 {

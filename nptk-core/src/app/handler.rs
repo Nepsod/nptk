@@ -1309,6 +1309,7 @@ where
         let context = self.context();
         if let Some((menu, position)) = context.menu_manager.get_active_menu() {
             if let Some(mut graphics) = graphics_from_scene(&mut self.scene) {
+                let cursor_pos = self.info.cursor_pos.map(|p| vello::kurbo::Point::new(p.x, p.y));
                 crate::menu::render_context_menu(
                     &mut *graphics,
                     &menu,
@@ -1316,6 +1317,7 @@ where
                     &mut self.config.theme,
                     &mut self.text_render,
                     &mut self.info.font_context,
+                    cursor_pos,
                 );
             }
         }
