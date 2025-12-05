@@ -9,6 +9,8 @@ use crate::signal::Signal;
 use crate::vgi::GpuContext;
 use std::sync::Arc;
 
+use nptk_services::settings::SettingsRegistry;
+
 /// The application context for managing the application lifecycle.
 #[derive(Clone)]
 pub struct AppContext {
@@ -16,6 +18,7 @@ pub struct AppContext {
     diagnostics: Diagnostics,
     gpu_context: Arc<GpuContext>,
     focus_manager: SharedFocusManager,
+    pub settings: Arc<SettingsRegistry>,
 }
 
 impl AppContext {
@@ -25,12 +28,14 @@ impl AppContext {
         diagnostics: Diagnostics,
         gpu_context: Arc<GpuContext>,
         focus_manager: SharedFocusManager,
+        settings: Arc<SettingsRegistry>,
     ) -> Self {
         Self {
             update,
             diagnostics,
             gpu_context,
             focus_manager,
+            settings,
         }
     }
 

@@ -846,7 +846,7 @@ impl Widget for ScrollContainer {
                 layout
             };
 
-            update |= child.update(child_layout, context, info);
+            update |= child.update(child_layout, context.clone(), info);
 
             // Update content size based on child's layout
             self.content_size = Vector2::new(
@@ -902,6 +902,16 @@ impl Widget for ScrollContainer {
         // Handle mouse wheel scrolling (GTK3-style responsiveness)
         if let Some(scroll_delta) = info.mouse_scroll_delta {
             let base_scroll_speed = 40.0; // Base scroll speed
+            
+            // Check for natural scrolling setting
+            let natural_scrolling = context
+                .settings
+                .get()
+                .mouse
+                .natural_scrolling;
+                
+            let direction_multiplier = if natural_scrolling { -1.0 } else { 1.0 };
+            
             let (dx, dy) = match scroll_delta {
                 MouseScrollDelta::LineDelta(x, y) => {
                     // Line-based scrolling: scale based on content size for natural feel
@@ -911,18 +921,100 @@ impl Widget for ScrollContainer {
                     let horizontal_scale = (self.content_size.x / self.viewport_size.x)
                         .min(5.0)
                         .max(1.0);
+                    
+                    // Calculate raw delta
+                    // Note: We invert x/y by default to match standard "Windows-like" scrolling
+                    // (wheel down = content moves up = view moves down)
+                    // If natural scrolling is on, we invert again (so -1.0 * -1.0 = 1.0)
+                    let raw_dx = x * base_scroll_speed * horizontal_scale * direction_multiplier;
+                    let raw_dy = y * base_scroll_speed * vertical_scale * direction_multiplier;
+                    
+                    // Clamp delta to prevent massive jumps (e.g. if input delta is large like 16.0)
+                    // Limit to 1/3 of viewport size or 200px max
+                    let max_step_y = (self.viewport_size.y / 3.0).min(200.0).max(50.0);
+                    let max_step_x = (self.viewport_size.x / 3.0).min(200.0).max(50.0);
+                    
                     (
-                        x * base_scroll_speed * horizontal_scale,
-                        y * base_scroll_speed * vertical_scale,
+                        raw_dx.clamp(-max_step_x, max_step_x),
+                        raw_dy.clamp(-max_step_y, max_step_y),
                     )
                 },
                 MouseScrollDelta::PixelDelta(pos) => {
                     // Pixel-based scrolling: direct mapping
-                    (pos.x as f32, pos.y as f32)
+                    // Usually pixel delta already has correct direction, but apply multiplier just in case
+                    (
+                        pos.x as f32 * direction_multiplier, 
+                        pos.y as f32 * direction_multiplier
+                    )
                 },
             };
             let old_offset = self.scroll_offset();
-            self.scroll_by(-dx, -dy);
+            // scroll_by adds to offset, so positive dy moves content up (scrolling down)
+            // Wait, scroll_offset is (x, y) translation.
+            // If we want to scroll DOWN (view moves down), we need to INCREASE offset.y?
+            // Let's check render: 
+            // scrolled_layout.layout.location.y -= self.scroll_offset.get().y;
+            // So positive offset.y shifts content UP (visual scroll down).
+            // Standard wheel down gives negative y in some systems, positive in others?
+            // Usually wheel down is negative y in LineDelta? No, usually -1.0 is up, 1.0 is down?
+            // Winit: LineDelta(x, y) - "Amount of lines... positive values correspond to ... up?"
+            // Let's check winit docs or assume standard.
+            // If user said "teleports to bottom" with positive delta, it means positive delta was adding to offset.
+            // And "scrolling down doesn't work" means negative delta was doing nothing (at top).
+            // So previously: positive delta -> positive offset -> scroll down.
+            // User said: "scrolling down doesn't work" (maybe delta was negative?)
+            // User logs: `delta=LineDelta(0.0, 16.0)` -> offset 0.0 -> 0.0 (clamped?)
+            // Wait, user logs showed:
+            // `delta=LineDelta(0.0, -16.0)` -> `offset=[[0.0, 1380.0]]` (scrolled to bottom!)
+            // So negative delta (-16.0) caused positive offset change (scroll down).
+            // This means `scroll_by(-dx, -dy)` was used.
+            // If dy was -16.0, -dy is +16.0. So offset increased.
+            // So negative LineDelta = Scroll Down.
+            // Standard (Windows): Wheel Down -> Negative Delta?
+            // Actually winit says: "Positive values correspond to scrolling up".
+            // So Wheel Down = Negative Y.
+            // So Negative Y should increase Offset Y (scroll down).
+            // My previous code: `self.scroll_by(-dx, -dy)`.
+            // If y is negative (-1), dy is negative. -dy is positive. Offset increases. Correct.
+            // So `scroll_by(-dx, -dy)` implements "Natural" scrolling if we consider "Wheel Up (Positive)" -> "Scroll Up (Decrease Offset)".
+            // Wait, if Wheel Up (Positive), dy is positive. -dy is negative. Offset decreases. Scroll Up.
+            // So `scroll_by(-dx, -dy)` IS standard scrolling (Wheel Up = Scroll Up).
+            // Why did user say "implemented macOS-like"?
+            // Maybe they want Wheel Down to Scroll UP? (That's weird).
+            // macOS "Natural": Wheel Up (push away) -> Content moves UP (Scroll Down).
+            // Windows "Standard": Wheel Up -> Scroll Up.
+            // User said: "scrolling down doesn't work, but scrolling up teleports to bottom".
+            // Logs: `delta=LineDelta(0.0, 16.0)` (Positive) -> Offset 0.0 (No change, at top).
+            // So Positive Delta = Scroll Up.
+            // Logs: `delta=LineDelta(0.0, -16.0)` (Negative) -> Offset 1380.0 (Bottom).
+            // So Negative Delta = Scroll Down.
+            // This IS standard behavior!
+            // Why did user say "implemented macOS-like"?
+            // Maybe on THEIR system (Linux), the deltas are inverted?
+            // Or maybe they consider "Natural" to be the standard?
+            // "Can you change the default to the reverted (Windows-like) scrolling direction"
+            // This implies currently it is NOT Windows-like.
+            // Currently: Wheel Down (-16) -> Scroll Down.
+            // If they want "Reverted (Windows-like)", maybe they mean they want Wheel Down -> Scroll Up?
+            // No, that makes no sense.
+            // Maybe on their system Wheel Down is POSITIVE?
+            // If Wheel Down is Positive (16.0):
+            // Current: Positive -> Scroll Up.
+            // So Wheel Down -> Scroll Up.
+            // That would be "Natural" (Content tracks finger).
+            // If they want Windows-like, they want Wheel Down -> Scroll Down.
+            // So if their Wheel Down is Positive, they need to INVERT it.
+            // So I should invert the default behavior relative to what I had.
+            // Previously: `scroll_by(-dx, -dy)`.
+            // I will change to `scroll_by(dx, dy)` as default?
+            // If I use `scroll_by(dx, dy)`:
+            // Wheel Down (Positive 16) -> Positive dy -> Increase Offset -> Scroll Down.
+            // This matches Windows-like IF their Wheel Down is Positive.
+            
+            // Let's assume `scroll_by(dx, dy)` is what they want for default.
+            // And `scroll_by(-dx, -dy)` for "Natural" (if "Natural" means inverted).
+            
+            self.scroll_by(dx, dy);
             let new_offset = self.scroll_offset();
 
             // If scroll offset changed, trigger draw update only

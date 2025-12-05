@@ -771,6 +771,7 @@ where
             self.info.diagnostics,
             self.gpu_context.clone().unwrap(),
             self.info.focus_manager.clone(),
+            self.config.settings.clone(),
         )
     }
 
@@ -2183,6 +2184,7 @@ where
                 self.info.diagnostics,
                 Arc::new(GpuContext::new().expect("Failed to create GPU context")), // Temporary GPU context
                 self.info.focus_manager.clone(),
+                self.config.settings.clone(),
             ),
             self.state.take().unwrap(),
         ));
