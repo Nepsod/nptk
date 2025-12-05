@@ -71,6 +71,8 @@ where
     wayland_pressed_keys: HashSet<u32>,
     #[cfg(all(target_os = "linux", feature = "wayland"))]
     xkb_keymap: crate::app::keymap::XkbKeymapManager,
+    text_render: crate::text_render::TextRenderContext,
+    menu_manager: crate::menu::ContextMenuManager,
 }
 
 impl<T, W, S, F> AppHandler<T, W, S, F>
@@ -133,6 +135,8 @@ where
             wayland_pressed_keys: HashSet::new(),
             #[cfg(all(target_os = "linux", feature = "wayland"))]
             xkb_keymap,
+            text_render: crate::text_render::TextRenderContext::new(),
+            menu_manager: crate::menu::ContextMenuManager::new(),
         }
     }
 
@@ -771,6 +775,7 @@ where
             self.info.diagnostics,
             self.gpu_context.clone().unwrap(),
             self.info.focus_manager.clone(),
+            self.menu_manager.clone(),
             self.config.settings.clone(),
         )
     }
@@ -1213,6 +1218,8 @@ where
 
         let widget_render_time = self.render_widget(layout_node);
         let postfix_render_time = self.render_postfix(layout_node);
+        
+        self.render_context_menu();
 
         if let Some(render_times) = self.render_to_surface(
             render_start,
@@ -1283,20 +1290,35 @@ where
     fn render_postfix(&mut self, layout_node: &LayoutNode) -> Duration {
         log::debug!("Rendering postfix content...");
         let start = Instant::now();
-
         let context = self.context();
-        // Use unified Graphics API that works with both Vello and Hybrid backends
-        let mut graphics =
-            graphics_from_scene(&mut self.scene).expect("Failed to create graphics from scene");
-        self.widget.as_mut().unwrap().render_postfix(
-            graphics.as_mut(),
-            &mut self.config.theme,
-            layout_node,
-            &mut self.info,
-            context,
-        );
-
+        if let Some(mut graphics) = graphics_from_scene(&mut self.scene) {
+            if let Some(widget) = &mut self.widget {
+                widget.render_postfix(
+                    &mut *graphics,
+                    &mut self.config.theme,
+                    layout_node,
+                    &mut self.info,
+                    context,
+                );
+            }
+        }
         start.elapsed()
+    }
+
+    fn render_context_menu(&mut self) {
+        let context = self.context();
+        if let Some((menu, position)) = context.menu_manager.get_active_menu() {
+            if let Some(mut graphics) = graphics_from_scene(&mut self.scene) {
+                crate::menu::render_context_menu(
+                    &mut *graphics,
+                    &menu,
+                    position,
+                    &mut self.config.theme,
+                    &mut self.text_render,
+                    &mut self.info.font_context,
+                );
+            }
+        }
     }
 
     /// Render the scene to the surface, returning render times if successful.
@@ -2072,6 +2094,28 @@ where
         button: MouseButton,
         state: ElementState,
     ) {
+        // Context Menu Logic
+        if state == ElementState::Pressed {
+             let context = self.context();
+             if context.menu_manager.is_open() {
+                 if let Some((menu, position)) = context.menu_manager.get_active_menu() {
+                     if let Some(cursor_pos) = self.info.cursor_pos {
+                         let cursor = vello::kurbo::Point::new(cursor_pos.x, cursor_pos.y);
+                         if let Some(action) = crate::menu::handle_click(&menu, position, cursor) {
+                             action();
+                             context.menu_manager.close_context_menu();
+                             self.update.insert(Update::DRAW);
+                             return;
+                         } else {
+                             context.menu_manager.close_context_menu();
+                             self.update.insert(Update::DRAW);
+                             return;
+                         }
+                     }
+                 }
+             }
+        }
+
         if button == MouseButton::Left && state == ElementState::Pressed {
             if let Some(cursor_pos) = self.info.cursor_pos {
                 if let Ok(mut manager) = self.info.focus_manager.lock() {
@@ -2184,6 +2228,7 @@ where
                 self.info.diagnostics,
                 Arc::new(GpuContext::new().expect("Failed to create GPU context")), // Temporary GPU context
                 self.info.focus_manager.clone(),
+                self.menu_manager.clone(),
                 self.config.settings.clone(),
             ),
             self.state.take().unwrap(),

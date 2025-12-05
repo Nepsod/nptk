@@ -302,6 +302,11 @@ pub trait Widget {
 
     /// Return the widget id.
     fn widget_id(&self) -> WidgetId;
+
+    /// Return the context menu for this widget, if any.
+    fn context_menu(&self) -> Option<crate::menu::ContextMenu> {
+        None
+    }
 }
 
 /// An extension trait for widgets with a single child widget.

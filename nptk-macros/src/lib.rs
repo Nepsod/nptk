@@ -24,3 +24,19 @@ pub fn svg_icon(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 pub fn static_asset(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     proc_macro::TokenStream::from(assets::static_asset(proc_macro2::TokenStream::from(input)))
 }
+
+mod context_menu;
+
+/// Create a context menu.
+///
+/// Example:
+/// ```rust,ignore
+/// context_menu! {
+///     "Copy" => println!("Copy"),
+///     "Paste" => println!("Paste"),
+/// }
+/// ```
+#[proc_macro]
+pub fn context_menu(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    proc_macro::TokenStream::from(context_menu::context_menu(proc_macro2::TokenStream::from(input)))
+}

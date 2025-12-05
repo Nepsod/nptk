@@ -60,6 +60,8 @@ pub mod text_render;
 /// including scene management, renderer management, and widget drawing APIs.
 pub mod vgi;
 
+pub mod menu;
+
 /// Contains platform abstraction for windowing and input.
 ///
 /// This module provides platform detection and windowing surface implementations

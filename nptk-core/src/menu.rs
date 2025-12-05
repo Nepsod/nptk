@@ -1,0 +1,267 @@
+use std::sync::{Arc, Mutex};
+use vello::kurbo::Point;
+
+/// A context menu containing a list of items.
+#[derive(Clone)]
+pub struct ContextMenu {
+    pub items: Vec<ContextMenuItem>,
+}
+
+/// An item in a context menu.
+#[derive(Clone)]
+pub enum ContextMenuItem {
+    /// A clickable action item.
+    Action {
+        label: String,
+        action: Arc<dyn Fn() + Send + Sync>,
+    },
+    /// A visual separator.
+    Separator,
+    /// A submenu.
+    SubMenu {
+        label: String,
+        items: Vec<ContextMenuItem>,
+    },
+}
+
+/// Manages the state of the active context menu.
+#[derive(Clone, Default)]
+pub struct ContextMenuManager {
+    state: Arc<Mutex<ContextMenuState>>,
+}
+
+#[derive(Default)]
+struct ContextMenuState {
+    active_menu: Option<ContextMenu>,
+    position: Point,
+}
+
+impl ContextMenuManager {
+    pub fn new() -> Self {
+        Self {
+            state: Arc::new(Mutex::new(ContextMenuState::default())),
+        }
+    }
+
+    pub fn show_context_menu(&self, menu: ContextMenu, position: Point) {
+        let mut state = self.state.lock().unwrap();
+        state.active_menu = Some(menu);
+        state.position = position;
+    }
+
+    pub fn close_context_menu(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.active_menu = None;
+    }
+
+    pub fn get_active_menu(&self) -> Option<(ContextMenu, Point)> {
+        let state = self.state.lock().unwrap();
+        state.active_menu.clone().map(|menu| (menu, state.position))
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.state.lock().unwrap().active_menu.is_some()
+    }
+}
+
+use vello::kurbo::{Affine, Rect};
+use vello::peniko::{Brush, Color};
+use nptk_theme::theme::Theme;
+use crate::vgi::Graphics;
+
+use crate::app::font_ctx::FontContext;
+use crate::text_render::TextRenderContext;
+
+use nptk_theme::properties::ThemeProperty;
+use nptk_theme::id::WidgetId;
+use crate::vgi::shape_to_path;
+use vello::kurbo::{RoundedRect, RoundedRectRadii};
+
+/// Renders the context menu.
+/// Returns the bounds of the rendered menu for hit testing.
+pub fn render_context_menu(
+    graphics: &mut dyn Graphics,
+    menu: &ContextMenu,
+    position: Point,
+    theme: &mut dyn Theme,
+    text_render: &mut TextRenderContext,
+    font_cx: &mut FontContext,
+) -> Rect {
+    let item_height = 24.0;
+    let padding = 4.0;
+    let min_width = 120.0;
+    let max_width = 400.0;
+    
+    // Calculate width based on content
+    let mut max_text_width: f64 = 0.0;
+    for item in &menu.items {
+        match item {
+            ContextMenuItem::Action { label, .. } | ContextMenuItem::SubMenu { label, .. } => {
+                let text_width = label.len() as f64 * 8.0; // Estimate
+                max_text_width = max_text_width.max(text_width);
+            }
+            _ => {}
+        }
+    }
+    let width = (max_text_width + 40.0).max(min_width).min(max_width);
+    let height = menu.items.len() as f64 * item_height + padding * 2.0;
+
+    let x = position.x as f64;
+    let y = position.y as f64;
+    let rect = Rect::new(x, y, x + width, y + height);
+
+    let menu_id = WidgetId::new("nptk-widgets", "MenuPopup"); // Use MenuPopup ID to match theme
+
+    // Colors
+    let bg_color = theme.get_property(menu_id.clone(), &ThemeProperty::ColorBackground)
+        .unwrap_or(Color::from_rgb8(255, 255, 255));
+    let border_color = theme.get_property(menu_id.clone(), &ThemeProperty::ColorBorder)
+        .unwrap_or(Color::from_rgb8(200, 200, 200));
+    let text_color = theme.get_property(menu_id.clone(), &ThemeProperty::ColorText)
+        .unwrap_or(Color::from_rgb8(0, 0, 0));
+    
+    // Shadow
+    let shadow_rect = RoundedRect::new(x + 2.0, y + 2.0, x + width + 2.0, y + height + 2.0, RoundedRectRadii::new(4.0, 4.0, 4.0, 4.0));
+    graphics.fill(
+        vello::peniko::Fill::NonZero,
+        Affine::IDENTITY,
+        &Brush::Solid(Color::new([0.0, 0.0, 0.0, 0.2])),
+        None,
+        &shape_to_path(&shadow_rect)
+    );
+
+    // Main background
+    let rounded_rect = RoundedRect::new(x, y, x + width, y + height, RoundedRectRadii::new(4.0, 4.0, 4.0, 4.0));
+    graphics.fill(
+        vello::peniko::Fill::NonZero,
+        Affine::IDENTITY,
+        &Brush::Solid(bg_color),
+        None,
+        &shape_to_path(&rounded_rect)
+    );
+    graphics.stroke(
+        &vello::kurbo::Stroke::new(1.0),
+        Affine::IDENTITY,
+        &Brush::Solid(border_color),
+        None,
+        &shape_to_path(&rounded_rect)
+    );
+
+    // Draw items
+    let mut current_y = y + padding;
+
+    for item in &menu.items {
+        let item_rect = Rect::new(x, current_y, x + width, current_y + item_height);
+        
+        match item {
+            ContextMenuItem::Action { label, .. } => {
+                // Render text
+                text_render.render_text(
+                    font_cx,
+                    graphics,
+                    label,
+                    None,
+                    14.0,
+                    Brush::Solid(text_color),
+                    Affine::translate((x + 10.0, current_y + 4.0)), // Top-left of text box
+                    true,
+                    Some(width as f32 - 20.0),
+                );
+            }
+            ContextMenuItem::Separator => {
+                let sep_y = current_y + item_height / 2.0;
+                let line = vello::kurbo::Line::new(
+                    (x + 8.0, sep_y),
+                    (x + width - 8.0, sep_y)
+                );
+                graphics.stroke(
+                    &vello::kurbo::Stroke::new(1.0),
+                    Affine::IDENTITY,
+                    &Brush::Solid(Color::from_rgb8(200, 200, 200)),
+                    None,
+                    &shape_to_path(&line)
+                );
+            }
+            ContextMenuItem::SubMenu { label, .. } => {
+                // Render label
+                text_render.render_text(
+                    font_cx,
+                    graphics,
+                    label,
+                    None,
+                    14.0,
+                    Brush::Solid(text_color),
+                    Affine::translate((x + 10.0, current_y + 4.0)),
+                    true,
+                    Some(width as f32 - 30.0),
+                );
+                
+                // Draw arrow
+                let arrow_x = x + width - 12.0;
+                let arrow_y = current_y + (item_height / 2.0);
+                let arrow_size = 3.0;
+                let arrow_stroke = vello::kurbo::Stroke::new(1.0);
+                
+                graphics.stroke(
+                    &arrow_stroke,
+                    Affine::IDENTITY,
+                    &Brush::Solid(Color::from_rgb8(100, 100, 100)),
+                    None,
+                    &shape_to_path(&vello::kurbo::Line::new(
+                        Point::new(arrow_x - arrow_size, arrow_y - arrow_size),
+                        Point::new(arrow_x, arrow_y),
+                    ))
+                );
+                graphics.stroke(
+                    &arrow_stroke,
+                    Affine::IDENTITY,
+                    &Brush::Solid(Color::from_rgb8(100, 100, 100)),
+                    None,
+                    &shape_to_path(&vello::kurbo::Line::new(
+                        Point::new(arrow_x, arrow_y),
+                        Point::new(arrow_x - arrow_size, arrow_y + arrow_size),
+                    ))
+                );
+            }
+        }
+        current_y += item_height;
+    }
+
+    rect
+}
+
+pub fn get_menu_rect(menu: &ContextMenu, position: Point) -> Rect {
+    let item_height = 30.0;
+    let width = 200.0;
+    let padding = 5.0;
+    let height = menu.items.len() as f64 * item_height + padding * 2.0;
+
+    let x = position.x as f64;
+    let y = position.y as f64;
+    Rect::new(x, y, x + width, y + height)
+}
+
+pub fn handle_click(menu: &ContextMenu, position: Point, cursor: Point) -> Option<Arc<dyn Fn() + Send + Sync>> {
+    let rect = get_menu_rect(menu, position);
+    if !rect.contains(cursor) {
+        return None;
+    }
+
+    let item_height = 30.0;
+    let padding = 5.0;
+    let relative_y = cursor.y - position.y - padding;
+    
+    if relative_y < 0.0 {
+        return None;
+    }
+
+    let index = (relative_y / item_height) as usize;
+    if index < menu.items.len() {
+        match &menu.items[index] {
+            ContextMenuItem::Action { action, .. } => Some(action.clone()),
+            _ => None,
+        }
+    } else {
+        None
+    }
+}

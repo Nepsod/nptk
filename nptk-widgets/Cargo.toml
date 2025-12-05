@@ -15,6 +15,7 @@ vello_svg = { version = "0.8.0", default-features = false }
 nptk-theme = { workspace = true }
 nptk-services = { workspace = true }
 nptk-core = { workspace = true, features = ["vg"] }
+nptk-macros = { workspace = true }
 bytemuck = { workspace = true }
 nalgebra = { workspace = true }
 log = { workspace = true }

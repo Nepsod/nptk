@@ -24,6 +24,7 @@ use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use tokio::sync::broadcast;
 use std::collections::HashSet;
+use nptk_macros::context_menu;
 
 use crate::scroll_container::{ScrollContainer, ScrollDirection};
 use nptk_services::thumbnail::ThumbnailImageCache;
@@ -998,6 +999,18 @@ impl Widget for FileListContent {
                         let shift_pressed = info.modifiers.shift_key();
                         
                         for (_, btn, el) in &info.buttons {
+                            if *btn == MouseButton::Right && *el == ElementState::Pressed {
+                                let menu = context_menu! {
+                                    "Open" => println!("Open"),
+                                    "Delete" => println!("Delete"),
+                                };
+                                if let Some(cursor_pos) = info.cursor_pos {
+                                    let cursor = Point::new(cursor_pos.x, cursor_pos.y);
+                                    context.menu_manager.show_context_menu(menu, cursor);
+                                    update.insert(Update::DRAW);
+                                }
+                            }
+
                             if *btn == MouseButton::Left && *el == ElementState::Pressed {
                                 // println!("Item Click: index={:?}, Ctrl={}, Shift={}", index, info.modifiers.control_key(), info.modifiers.shift_key());
                                 let mut selected = self.selected_paths.get().clone();
