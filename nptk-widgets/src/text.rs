@@ -130,11 +130,6 @@ impl Widget for Text {
             None
         };
 
-        if text.contains("popup") {
-            println!("Text::render for popup: '{}' at {:?} size {:?} color {:?} max_width {:?}", 
-                *text, layout_node.layout.location, layout_node.layout.size, color, max_width);
-        }
-
         self.text_render_context.render_text(
             &mut info.font_context,
             graphics,

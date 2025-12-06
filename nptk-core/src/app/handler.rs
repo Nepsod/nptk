@@ -17,7 +17,7 @@ use taffy::{
     AvailableSpace, Dimension, NodeId, PrintTree, Size, Style, TaffyResult, TaffyTree,
     TraversePartialTree,
 };
-use vello::wgpu::{CommandEncoderDescriptor, TextureViewDescriptor};
+use vello::wgpu::{CommandEncoderDescriptor, TextureFormat, TextureViewDescriptor};
 use vello::{AaConfig, AaSupport, RenderParams};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
@@ -80,11 +80,18 @@ where
     menu_manager: crate::menu::ContextMenuManager,
     popup_manager: crate::app::popup::PopupManager,
     popup_windows: std::collections::HashMap<WindowId, PopupWindow<T>>,
+    /// Native Wayland popups (indexed by surface key u32)
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    wayland_popups: std::collections::HashMap<u32, PopupWindow<T>>,
+    /// Counter for generating unique Wayland popup IDs
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    wayland_popup_id_counter: u32,
     settings: Arc<SettingsRegistry>,
 }
 
 struct PopupWindow<T: Theme + Clone> {
-    window: Arc<Window>,
+    /// Winit window (only for X11/Winit-based popups, None for native Wayland)
+    window: Option<Arc<Window>>,
     renderer: Renderer,
     scene: Scene,
     surface: Surface,
@@ -159,6 +166,10 @@ where
             menu_manager: crate::menu::ContextMenuManager::new(),
             popup_manager: crate::app::popup::PopupManager::new(),
             popup_windows: std::collections::HashMap::new(),
+            #[cfg(all(target_os = "linux", feature = "wayland"))]
+            wayland_popups: std::collections::HashMap::new(),
+            #[cfg(all(target_os = "linux", feature = "wayland"))]
+            wayland_popup_id_counter: 0,
             settings,
         }
     }
@@ -2264,30 +2275,11 @@ where
     fn process_popup_requests(&mut self, event_loop: &ActiveEventLoop) {
         let requests = self.popup_manager.drain_requests();
         if !requests.is_empty() {
-            println!("Processing {} popup requests", requests.len());
+            log::debug!("Processing {} popup requests", requests.len());
         }
         for req in requests {
-            println!("Creating popup window: {}", req.title);
-            
-            let mut attrs = Window::default_attributes()
-                .with_title(req.title.clone())
-                .with_inner_size(winit::dpi::PhysicalSize::new(req.size.0, req.size.1));
-            
-            if let Some((x, y)) = req.position {
-                attrs = attrs.with_position(winit::dpi::PhysicalPosition::new(x, y));
-            }
+            log::debug!("Creating popup window: {}", req.title);
 
-            let window = match event_loop.create_window(attrs) {
-                Ok(w) => Arc::new(w),
-                Err(e) => {
-                    log::error!("Failed to create popup window: {}", e);
-                    continue;
-                }
-            };
-
-            // Create renderer and surface for new window
-            let mut scene = Scene::new(self.config.render.backend.clone(), req.size.0, req.size.1);
-            
             let gpu_context = match self.gpu_context.as_ref() {
                 Some(ctx) => ctx,
                 None => {
@@ -2296,15 +2288,6 @@ where
                 }
             };
 
-            let mut surface = crate::platform::create_surface_blocking(
-                crate::platform::Platform::detect(), // Detect platform automatically
-                Some(window.clone()),
-                req.size.0,
-                req.size.1,
-                &req.title,
-                Some(gpu_context),
-            ).expect("Failed to create surface");
-
             let devices = gpu_context.enumerate_devices();
             if devices.is_empty() {
                 log::error!("No GPU devices available");
@@ -2312,17 +2295,78 @@ where
             }
             let device_handle = (self.config.render.device_selector)(devices);
 
+            let platform = crate::platform::Platform::detect();
+
+            // Create window and surface based on platform
+            let (window, mut surface) = match platform {
+                #[cfg(all(target_os = "linux", feature = "wayland"))]
+                crate::platform::Platform::Wayland => {
+                    // Native Wayland: create only the Wayland surface, no Winit window
+                    let surface = crate::platform::create_surface_blocking(
+                        crate::platform::Platform::Wayland,
+                        None, // No Winit window for native Wayland
+                        req.size.0,
+                        req.size.1,
+                        &req.title,
+                        Some(gpu_context),
+                    ).expect("Failed to create Wayland surface");
+                    (None, surface)
+                }
+                _ => {
+                    // X11/Other: create Winit window and Winit surface
+                    let mut attrs = Window::default_attributes()
+                        .with_title(req.title.clone())
+                        .with_inner_size(winit::dpi::PhysicalSize::new(req.size.0, req.size.1));
+
+                    if let Some((x, y)) = req.position {
+                        attrs = attrs.with_position(winit::dpi::PhysicalPosition::new(x, y));
+                    }
+
+                    let window = match event_loop.create_window(attrs) {
+                        Ok(w) => Arc::new(w),
+                        Err(e) => {
+                            log::error!("Failed to create popup window: {}", e);
+                            continue;
+                        }
+                    };
+
+                    let surface = crate::platform::create_surface_blocking(
+                        crate::platform::Platform::Winit,
+                        Some(window.clone()),
+                        req.size.0,
+                        req.size.1,
+                        &req.title,
+                        Some(gpu_context),
+                    ).expect("Failed to create Winit surface");
+
+                    (Some(window), surface)
+                }
+            };
+
             // Configure the surface before rendering
-            if let crate::vgi::Surface::Winit(ref mut winit_surface) = surface {
-                if let Err(e) = winit_surface.configure(
-                    &device_handle.device,
-                    &device_handle.adapter,
-                    req.size.0,
-                    req.size.1,
-                    self.config.render.present_mode.into(),
-                ) {
-                    log::error!("Failed to configure popup surface: {}", e);
-                    continue;
+            match &mut surface {
+                crate::vgi::Surface::Winit(ref mut winit_surface) => {
+                    if let Err(e) = winit_surface.configure(
+                        &device_handle.device,
+                        &device_handle.adapter,
+                        req.size.0,
+                        req.size.1,
+                        self.config.render.present_mode.into(),
+                    ) {
+                        log::error!("Failed to configure popup Winit surface: {}", e);
+                        continue;
+                    }
+                }
+                #[cfg(all(target_os = "linux", feature = "wayland"))]
+                crate::vgi::Surface::Wayland(ref mut wayland_surface) => {
+                    if let Err(e) = wayland_surface.configure_surface(
+                        &device_handle.device,
+                        TextureFormat::Bgra8Unorm,
+                        self.config.render.present_mode.into(),
+                    ) {
+                        log::error!("Failed to configure popup Wayland surface: {}", e);
+                        continue;
+                    }
                 }
             }
 
@@ -2364,6 +2408,8 @@ where
                 ..Default::default()
             };
 
+            let scene = Scene::new(self.config.render.backend.clone(), req.size.0, req.size.1);
+
             let popup = PopupWindow {
                 window: window.clone(),
                 renderer,
@@ -2376,8 +2422,138 @@ where
                 config: self.config.clone(),
             };
 
-            self.popup_windows.insert(window.id(), popup);
-            window.request_redraw();
+            // For Winit windows, we index by window ID
+            // For native Wayland, we use a separate collection
+            if let Some(ref win) = window {
+                self.popup_windows.insert(win.id(), popup);
+                win.request_redraw();
+            } else {
+                // For Wayland popups, use the wayland_popups collection
+                #[cfg(all(target_os = "linux", feature = "wayland"))]
+                {
+                    let popup_id = self.wayland_popup_id_counter;
+                    self.wayland_popup_id_counter = self.wayland_popup_id_counter.wrapping_add(1);
+                    self.wayland_popups.insert(popup_id, popup);
+                    log::debug!("Created native Wayland popup with ID: {}", popup_id);
+                }
+            }
+        }
+    }
+
+    /// Render all native Wayland popups
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    fn render_wayland_popups(&mut self) {
+        use crate::app::AppContext;
+        use crate::vgi::graphics_from_scene;
+
+        if self.wayland_popups.is_empty() {
+            return;
+        }
+
+        let gpu_context = match self.gpu_context.as_ref() {
+            Some(ctx) => ctx.clone(),
+            None => return,
+        };
+
+        let devices = gpu_context.enumerate_devices();
+        if devices.is_empty() {
+            return;
+        }
+        let device_handle = (self.config.render.device_selector)(devices);
+
+        for (_popup_id, popup) in self.wayland_popups.iter_mut() {
+            let width = popup.config.window.size.x as u32;
+            let height = popup.config.window.size.y as u32;
+
+            // 1. Layout
+            let style = popup.widget.layout_style();
+            let _ = popup.taffy.set_children(popup.root_node, &[]);
+            
+            // Use helper to build full layout tree
+            if let Err(e) = layout_widget_tree(&mut popup.taffy, popup.root_node, &style) {
+                eprintln!("Failed to build popup layout tree: {}", e);
+                continue;
+            }
+            
+            let _ = popup.taffy.compute_layout(popup.root_node, Size::MAX_CONTENT);
+
+            // 2. Render to Scene
+            let mut builder = Scene::new(popup.config.render.backend.clone(), width, height);
+            {
+                let mut graphics = match graphics_from_scene(&mut builder) {
+                    Some(g) => g,
+                    None => continue,
+                };
+                
+                let child_count = popup.taffy.child_count(popup.root_node);
+                if child_count > 0 {
+                    let widget_node = popup.taffy.child_at_index(popup.root_node, 0).unwrap();
+                    match collect_layout_tree(&popup.taffy, widget_node, &style, 0.0, 0.0) {
+                        Ok(layout_node) => {
+                            let context = AppContext::new(
+                                self.update.clone(),
+                                self.info.diagnostics.clone(),
+                                gpu_context.clone(),
+                                self.info.focus_manager.clone(),
+                                self.menu_manager.clone(),
+                                self.popup_manager.clone(),
+                                self.settings.clone(),
+                            );
+
+                            popup.widget.render(graphics.as_mut(), &mut popup.config.theme, &layout_node, &mut popup.info, context);
+                        },
+                        Err(e) => eprintln!("Failed to collect popup layout: {}", e),
+                    }
+                }
+            }
+
+            // Render to surface
+            let render_view = match popup.surface.create_render_view(&device_handle.device, width, height) {
+                Ok(view) => view,
+                Err(e) => {
+                    log::error!("Failed to create render view for Wayland popup: {}", e);
+                    continue;
+                }
+            };
+
+            if let Err(e) = popup.renderer.render_to_view(
+                &device_handle.device,
+                &device_handle.queue,
+                &builder,
+                &render_view,
+                &RenderParams {
+                    base_color: popup.config.theme.window_background(),
+                    width,
+                    height,
+                    antialiasing_method: popup.config.render.antialiasing,
+                },
+            ) {
+                log::error!("Failed to render Wayland popup scene: {}", e);
+                continue;
+            }
+
+            // Blit to surface
+            let mut encoder = device_handle.device.create_command_encoder(&CommandEncoderDescriptor {
+                label: Some("Wayland Popup Blit Encoder"),
+            });
+
+            let surface_texture = match popup.surface.get_current_texture() {
+                Ok(t) => t,
+                Err(e) => {
+                    log::error!("Failed to get Wayland popup surface texture: {}", e);
+                    continue;
+                }
+            };
+
+            let surface_view = surface_texture.texture.create_view(&TextureViewDescriptor::default());
+
+            if let Err(e) = popup.surface.blit_render_view(&device_handle.device, &mut encoder, &render_view, &surface_view) {
+                log::error!("Failed to blit Wayland popup surface: {}", e);
+                continue;
+            }
+
+            device_handle.queue.submit(Some(encoder.finish()));
+            surface_texture.present();
         }
     }
 }
@@ -2413,6 +2589,11 @@ where
             }
         }
         self.process_popup_requests(event_loop);
+        
+        // Render native Wayland popups
+        #[cfg(all(target_os = "linux", feature = "wayland"))]
+        self.render_wayland_popups();
+        
         self.update(event_loop);
     }
 
@@ -2474,13 +2655,10 @@ where
                 // Use helper to collect full layout tree
                 // The first child of root_node corresponds to the widget itself
                 let child_count = popup.taffy.child_count(popup.root_node);
-                println!("Popup render: root has {} children", child_count);
-
                 if child_count > 0 {
                     let widget_node = popup.taffy.child_at_index(popup.root_node, 0).unwrap();
                     match collect_layout_tree(&popup.taffy, widget_node, &style, 0.0, 0.0) {
                         Ok(layout_node) => {
-                            println!("Popup render: layout collected, size: {:?}", layout_node.layout.size);
                             let context = AppContext::new(
                                 self.update.clone(),
                                 self.info.diagnostics.clone(),
@@ -2496,81 +2674,70 @@ where
                         Err(e) => eprintln!("Failed to collect popup layout: {}", e),
                     }
                 } else {
-                    println!("Popup render: No children in root node!");
+                    log::warn!("Popup render: No children in root node!");
                 }
-                
-                // Check if scene has content
-                // Note: Scene doesn't expose is_empty() directly on the struct in all versions, 
-                // but we can assume if we added items it's not empty.
-                // Let's try to print something about it if possible, or just rely on previous logs.
-                println!("Popup render: Scene encoding check complete");
-            }        
-                    // 3. Render to Surface
-                    println!("Popup render: gpu_context available: {}", self.gpu_context.is_some());
-                    if let Some(gpu_context) = &self.gpu_context {
-                        let devices = gpu_context.enumerate_devices();
-                        println!("Popup render: devices count: {}", devices.len());
-                        if !devices.is_empty() {
-                            let device_handle = (self.config.render.device_selector)(devices);
-                            
-                            // Create render view
-                            println!("Popup render: creating render view {} x {}", width, height);
-                            let render_view = match popup.surface.create_render_view(&device_handle.device, width, height) {
-                                Ok(view) => {
-                                    println!("Popup render: render view created successfully");
-                                    view
-                                },
-                                Err(e) => {
-                                    eprintln!("Failed to create render view for popup: {}", e);
-                                    return;
-                                }
-                            };
+            }
 
-                            // Render scene to view
-                            println!("Popup render: Calling render_to_view");
-                            if let Err(e) = popup.renderer.render_to_view(
-                                &device_handle.device,
-                                &device_handle.queue,
-                                &builder,
-                                &render_view,
-                                &RenderParams {
-                                    base_color: popup.config.theme.window_background(),
-                                    width,
-                                    height,
-                                    antialiasing_method: popup.config.render.antialiasing,
-                                },
-                            ) {
-                                log::error!("Failed to render popup scene: {}", e);
-                                return;
-                            }
-                            println!("Popup render: render_to_view succeeded");
-
-                            // Blit to surface
-                            let mut encoder = device_handle.device.create_command_encoder(&CommandEncoderDescriptor {
-                                label: Some("Popup Surface Blit Encoder"),
-                            });
-
-                            let surface_texture = match popup.surface.get_current_texture() {
-                                Ok(t) => t,
-                                Err(e) => {
-                                    log::error!("Failed to get popup surface texture: {}", e);
-                                    return;
-                                }
-                            };
-
-                            let surface_view = surface_texture.texture.create_view(&TextureViewDescriptor::default());
-
-                            if let Err(e) = popup.surface.blit_render_view(&device_handle.device, &mut encoder, &render_view, &surface_view) {
-                                log::error!("Failed to blit popup surface: {}", e);
-                                return;
-                            }
-
-                            device_handle.queue.submit(Some(encoder.finish()));
-                            surface_texture.present();
-                        }
-                    }
+            // 3. Render to Surface
+            if let Some(gpu_context) = &self.gpu_context {
+                let devices = gpu_context.enumerate_devices();
+                if !devices.is_empty() {
+                    let device_handle = (self.config.render.device_selector)(devices);
                     
-                    popup.window.pre_present_notify();
+                    // Create render view
+                    let render_view = match popup.surface.create_render_view(&device_handle.device, width, height) {
+                        Ok(view) => view,
+                        Err(e) => {
+                            log::error!("Failed to create render view for popup: {}", e);
+                            return;
+                        }
+                    };
+
+                    // Render scene to view
+                    if let Err(e) = popup.renderer.render_to_view(
+                        &device_handle.device,
+                        &device_handle.queue,
+                        &builder,
+                        &render_view,
+                        &RenderParams {
+                            base_color: popup.config.theme.window_background(),
+                            width,
+                            height,
+                            antialiasing_method: popup.config.render.antialiasing,
+                        },
+                    ) {
+                        log::error!("Failed to render popup scene: {}", e);
+                        return;
+                    }
+
+                    // Blit to surface
+                    let mut encoder = device_handle.device.create_command_encoder(&CommandEncoderDescriptor {
+                        label: Some("Popup Surface Blit Encoder"),
+                    });
+
+                    let surface_texture = match popup.surface.get_current_texture() {
+                        Ok(t) => t,
+                        Err(e) => {
+                            log::error!("Failed to get popup surface texture: {}", e);
+                            return;
+                        }
+                    };
+
+                    let surface_view = surface_texture.texture.create_view(&TextureViewDescriptor::default());
+
+                    if let Err(e) = popup.surface.blit_render_view(&device_handle.device, &mut encoder, &render_view, &surface_view) {
+                        log::error!("Failed to blit popup surface: {}", e);
+                        return;
+                    }
+
+                    device_handle.queue.submit(Some(encoder.finish()));
+                    surface_texture.present();
+                }
+            }
+                    
+            if let Some(ref win) = popup.window {
+                win.pre_present_notify();
+            }
                 }
                 WindowEvent::CloseRequested => {
                     self.popup_windows.remove(&window_id);
@@ -2586,7 +2753,9 @@ where
                         ..Default::default()
                     });
                     popup.config.window.size = Vector2::new(size.width as f64, size.height as f64);
-                    popup.window.request_redraw();
+                    if let Some(ref win) = popup.window {
+                        win.request_redraw();
+                    }
                 }
                 _ => {}
             }
