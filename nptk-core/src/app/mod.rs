@@ -34,6 +34,7 @@ pub mod focus;
 pub mod keymap;
 
 /// Contains the overlay and popup management system.
+pub mod popup;
 
 /// The main application interface.
 ///
@@ -42,7 +43,7 @@ pub trait Application: Sized {
     /// The theme of the application and its widgets.
     ///
     /// See [nptk_theme::theme] for built-in themes.
-    type Theme: Theme + Default;
+    type Theme: Theme + Default + Clone;
 
     /// The global state of the application.
     type State;

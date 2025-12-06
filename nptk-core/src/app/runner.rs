@@ -17,7 +17,7 @@ pub struct MayRunner<T: Theme> {
     font_ctx: FontContext,
 }
 
-impl<T: Theme> MayRunner<T> {
+impl<T: Theme + Clone> MayRunner<T> {
     /// Create a new App with the given [MayConfig].
     pub fn new(config: MayConfig<T>) -> Self {
         Self::initialize_task_runner(&config);
@@ -152,8 +152,9 @@ impl<T: Theme> MayRunner<T> {
         F: Fn(AppContext, S) -> W,
     {
         // Run the event loop - handle errors gracefully
+        let settings = config.settings.clone();
         if let Err(err) = event_loop.run_app(&mut AppHandler::new(
-            attrs, config, builder, state, font_ctx, update, plugins,
+            attrs, config, builder, state, font_ctx, update, plugins, settings,
         )) {
             // Log the error but don't panic - window destruction errors are often harmless
             if err.to_string().contains("BadWindow") || err.to_string().contains("invalid Window") {

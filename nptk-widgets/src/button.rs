@@ -277,15 +277,17 @@ impl Widget for Button {
 
                             // actually fire the event if the button is released
                             ElementState::Released => {
-                                self.state = ButtonState::Released;
-                                // Only fire on release if repeat is NOT enabled
-                                // (If repeat is enabled, we already fired on press and during hold)
-                                if !self.repeat_enabled {
-                                    update |= *self.on_pressed.get();
-                                } else {
-                                    // Reset repeat state
-                                    self.press_start_time = None;
-                                    self.last_repeat_time = None;
+                                if self.state == ButtonState::Pressed {
+                                    self.state = ButtonState::Released;
+
+                                    // Only fire on release if repeat is NOT enabled
+                                    // (If repeat is enabled, we already fired on press and during hold)
+                                    if !self.repeat_enabled {
+                                        update |= *self.on_pressed.get();
+                                    } else {
+                                        // If repeat IS enabled, we stop the repeat timer
+                                        // (This is handled by the fact that state is no longer Pressed)
+                                    }
                                 }
                             },
                         }

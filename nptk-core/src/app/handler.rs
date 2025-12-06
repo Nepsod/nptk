@@ -6,8 +6,12 @@ use std::time::{Duration, Instant};
 
 use crate::vgi::graphics_from_scene;
 use crate::vgi::{DeviceHandle, GpuContext};
-use crate::vgi::{Renderer, RendererOptions, Scene, Surface, SurfaceTrait};
-use crate::platform::Platform;
+use crate::vgi::{Renderer, Surface, Scene, RendererOptions, SurfaceTrait, RendererTrait};
+use crate::layout::{LayoutNode, LayoutStyle};
+use taffy::prelude::*;
+use crate::app::context::AppContext;
+use nptk_services::settings::SettingsRegistry;
+use crate::config::PresentMode;
 use nalgebra::Vector2;
 use taffy::{
     AvailableSpace, Dimension, NodeId, PrintTree, Size, Style, TaffyResult, TaffyTree,
@@ -21,14 +25,15 @@ use winit::event_loop::ActiveEventLoop;
 use winit::event_loop::ControlFlow;
 use winit::window::{Window, WindowAttributes, WindowId};
 
-use crate::app::context::AppContext;
 use crate::app::font_ctx::FontContext;
+use crate::layout::StyleNode;
+use crate::platform::Platform;
+use taffy::style::Display;
 #[cfg(target_os = "linux")]
 use crate::app::info::WindowIdentity;
 use crate::app::info::{AppInfo, AppKeyEvent};
 use crate::app::update::{Update, UpdateManager};
 use crate::config::MayConfig;
-use crate::layout::{Display, LayoutNode, StyleNode};
 use crate::plugin::PluginManager;
 #[cfg(all(target_os = "linux", feature = "wayland"))]
 use crate::platform::wayland::events::{InputEvent, KeyboardEvent, PointerEvent};
@@ -44,7 +49,7 @@ use winit::keyboard::{Key, KeyCode, ModifiersState, NativeKey, NativeKeyCode, Ph
 /// The core application handler. You should use [MayApp](crate::app::MayApp) instead for running applications.
 pub struct AppHandler<T, W, S, F>
 where
-    T: Theme,
+    T: Theme + Clone,
     W: Widget,
     F: Fn(AppContext, S) -> W,
 {
@@ -73,11 +78,25 @@ where
     xkb_keymap: crate::app::keymap::XkbKeymapManager,
     text_render: crate::text_render::TextRenderContext,
     menu_manager: crate::menu::ContextMenuManager,
+    popup_manager: crate::app::popup::PopupManager,
+    popup_windows: std::collections::HashMap<WindowId, PopupWindow<T>>,
+    settings: Arc<SettingsRegistry>,
 }
 
+struct PopupWindow<T: Theme + Clone> {
+    window: Arc<Window>,
+    renderer: Renderer,
+    scene: Scene,
+    surface: Surface,
+    taffy: TaffyTree,
+    root_node: NodeId,
+    widget: Box<dyn Widget>,
+    info: AppInfo,
+    config: MayConfig<T>, // Each window needs its own config copy/ref for theme access
+}
 impl<T, W, S, F> AppHandler<T, W, S, F>
 where
-    T: Theme,
+    T: Theme + Clone,
     W: Widget,
     F: Fn(AppContext, S) -> W,
 {
@@ -90,6 +109,7 @@ where
         font_context: FontContext,
         update: UpdateManager,
         plugins: PluginManager<T>,
+        settings: Arc<SettingsRegistry>,
     ) -> Self {
         let mut taffy = TaffyTree::with_capacity(16);
 
@@ -137,6 +157,9 @@ where
             xkb_keymap,
             text_render: crate::text_render::TextRenderContext::new(),
             menu_manager: crate::menu::ContextMenuManager::new(),
+            popup_manager: crate::app::popup::PopupManager::new(),
+            popup_windows: std::collections::HashMap::new(),
+            settings,
         }
     }
 
@@ -772,11 +795,12 @@ where
     pub fn context(&self) -> AppContext {
         AppContext::new(
             self.update.clone(),
-            self.info.diagnostics,
+            self.info.diagnostics.clone(),
             self.gpu_context.clone().unwrap(),
             self.info.focus_manager.clone(),
             self.menu_manager.clone(),
-            self.config.settings.clone(),
+            self.popup_manager.clone(),
+            self.settings.clone(),
         )
     }
 
@@ -1659,7 +1683,7 @@ struct RenderTimes {
 
 impl<T, W, S, F> AppHandler<T, W, S, F>
 where
-    T: Theme,
+    T: Theme + Clone,
     W: Widget,
     F: Fn(AppContext, S) -> W,
 {
@@ -2227,20 +2251,140 @@ where
         self.widget = Some((self.builder)(
             AppContext::new(
                 self.update.clone(),
-                self.info.diagnostics,
+                self.info.diagnostics.clone(),
                 Arc::new(GpuContext::new().expect("Failed to create GPU context")), // Temporary GPU context
                 self.info.focus_manager.clone(),
                 self.menu_manager.clone(),
+                self.popup_manager.clone(),
                 self.config.settings.clone(),
             ),
             self.state.take().unwrap(),
         ));
     }
+    fn process_popup_requests(&mut self, event_loop: &ActiveEventLoop) {
+        let requests = self.popup_manager.drain_requests();
+        if !requests.is_empty() {
+            println!("Processing {} popup requests", requests.len());
+        }
+        for req in requests {
+            println!("Creating popup window: {}", req.title);
+            
+            let mut attrs = Window::default_attributes()
+                .with_title(req.title.clone())
+                .with_inner_size(winit::dpi::PhysicalSize::new(req.size.0, req.size.1));
+            
+            if let Some((x, y)) = req.position {
+                attrs = attrs.with_position(winit::dpi::PhysicalPosition::new(x, y));
+            }
+
+            let window = match event_loop.create_window(attrs) {
+                Ok(w) => Arc::new(w),
+                Err(e) => {
+                    log::error!("Failed to create popup window: {}", e);
+                    continue;
+                }
+            };
+
+            // Create renderer and surface for new window
+            let mut scene = Scene::new(self.config.render.backend.clone(), req.size.0, req.size.1);
+            
+            let gpu_context = match self.gpu_context.as_ref() {
+                Some(ctx) => ctx,
+                None => {
+                    log::error!("GPU context not initialized");
+                    continue;
+                }
+            };
+
+            let mut surface = crate::platform::create_surface_blocking(
+                crate::platform::Platform::detect(), // Detect platform automatically
+                Some(window.clone()),
+                req.size.0,
+                req.size.1,
+                &req.title,
+                Some(gpu_context),
+            ).expect("Failed to create surface");
+
+            let devices = gpu_context.enumerate_devices();
+            if devices.is_empty() {
+                log::error!("No GPU devices available");
+                continue;
+            }
+            let device_handle = (self.config.render.device_selector)(devices);
+
+            // Configure the surface before rendering
+            if let crate::vgi::Surface::Winit(ref mut winit_surface) = surface {
+                if let Err(e) = winit_surface.configure(
+                    &device_handle.device,
+                    &device_handle.adapter,
+                    req.size.0,
+                    req.size.1,
+                    self.config.render.present_mode.into(),
+                ) {
+                    log::error!("Failed to configure popup surface: {}", e);
+                    continue;
+                }
+            }
+
+            let renderer_options = RendererOptions {
+                antialiasing_support: vello::AaSupport::all(),
+                num_init_threads: None,
+            };
+
+            let renderer = match Renderer::new(
+                &device_handle.device,
+                self.config.render.backend.clone(),
+                renderer_options,
+                req.size.0,
+                req.size.1,
+            ) {
+                Ok(r) => r,
+                Err(e) => {
+                    log::error!("Failed to create renderer for popup: {}", e);
+                    continue;
+                }
+            };
+
+            // Setup Taffy
+            let mut taffy = TaffyTree::new();
+            let root_node = taffy.new_leaf(Style {
+                size: Size {
+                    width: Dimension::length(req.size.0 as f32),
+                    height: Dimension::length(req.size.1 as f32),
+                },
+                ..Default::default()
+            }).unwrap();
+
+            // Create AppInfo for this window
+            let info = AppInfo {
+                diagnostics: self.info.diagnostics.clone(),
+                font_context: self.info.font_context.clone(),
+                size: Vector2::new(req.size.0 as f64, req.size.1 as f64),
+                focus_manager: self.info.focus_manager.clone(),
+                ..Default::default()
+            };
+
+            let popup = PopupWindow {
+                window: window.clone(),
+                renderer,
+                scene,
+                surface,
+                taffy,
+                root_node,
+                widget: req.widget,
+                info,
+                config: self.config.clone(),
+            };
+
+            self.popup_windows.insert(window.id(), popup);
+            window.request_redraw();
+        }
+    }
 }
 
 impl<T, W, S, F> ApplicationHandler for AppHandler<T, W, S, F>
 where
-    T: Theme,
+    T: Theme + Clone,
     W: Widget,
     F: Fn(AppContext, S) -> W,
 {
@@ -2268,6 +2412,7 @@ where
                 }
             }
         }
+        self.process_popup_requests(event_loop);
         self.update(event_loop);
     }
 
@@ -2298,6 +2443,152 @@ where
         if let Some(window) = &self.window {
             if window.id() == window_id {
                 self.handle_window_event(event, event_loop);
+                return;
+            }
+        }
+
+        // Check popup windows
+        if let Some(popup) = self.popup_windows.get_mut(&window_id) {
+            match event {
+                WindowEvent::RedrawRequested => {
+                    // Render popup
+                    let width = popup.config.window.size.x as u32;
+                    let height = popup.config.window.size.y as u32;
+
+                    // 1. Layout
+            let style = popup.widget.layout_style();
+            let _ = popup.taffy.set_children(popup.root_node, &[]);
+            
+            // Use helper to build full layout tree
+            if let Err(e) = layout_widget_tree(&mut popup.taffy, popup.root_node, &style) {
+                eprintln!("Failed to build popup layout tree: {}", e);
+            }
+            
+            let _ = popup.taffy.compute_layout(popup.root_node, Size::MAX_CONTENT);
+            
+            // 2. Render to Scene
+            let mut builder = Scene::new(popup.config.render.backend.clone(), width, height);
+            {
+                let mut graphics = graphics_from_scene(&mut builder).unwrap();
+                
+                // Use helper to collect full layout tree
+                // The first child of root_node corresponds to the widget itself
+                let child_count = popup.taffy.child_count(popup.root_node);
+                println!("Popup render: root has {} children", child_count);
+
+                if child_count > 0 {
+                    let widget_node = popup.taffy.child_at_index(popup.root_node, 0).unwrap();
+                    match collect_layout_tree(&popup.taffy, widget_node, &style, 0.0, 0.0) {
+                        Ok(layout_node) => {
+                            println!("Popup render: layout collected, size: {:?}", layout_node.layout.size);
+                            let context = AppContext::new(
+                                self.update.clone(),
+                                self.info.diagnostics.clone(),
+                                self.gpu_context.as_ref().unwrap().clone(),
+                                self.info.focus_manager.clone(),
+                                self.menu_manager.clone(),
+                                self.popup_manager.clone(),
+                                self.settings.clone(),
+                            );
+
+                            popup.widget.render(graphics.as_mut(), &mut popup.config.theme, &layout_node, &mut popup.info, context);
+                        },
+                        Err(e) => eprintln!("Failed to collect popup layout: {}", e),
+                    }
+                } else {
+                    println!("Popup render: No children in root node!");
+                }
+                
+                // Check if scene has content
+                // Note: Scene doesn't expose is_empty() directly on the struct in all versions, 
+                // but we can assume if we added items it's not empty.
+                // Let's try to print something about it if possible, or just rely on previous logs.
+                println!("Popup render: Scene encoding check complete");
+            }        
+                    // 3. Render to Surface
+                    println!("Popup render: gpu_context available: {}", self.gpu_context.is_some());
+                    if let Some(gpu_context) = &self.gpu_context {
+                        let devices = gpu_context.enumerate_devices();
+                        println!("Popup render: devices count: {}", devices.len());
+                        if !devices.is_empty() {
+                            let device_handle = (self.config.render.device_selector)(devices);
+                            
+                            // Create render view
+                            println!("Popup render: creating render view {} x {}", width, height);
+                            let render_view = match popup.surface.create_render_view(&device_handle.device, width, height) {
+                                Ok(view) => {
+                                    println!("Popup render: render view created successfully");
+                                    view
+                                },
+                                Err(e) => {
+                                    eprintln!("Failed to create render view for popup: {}", e);
+                                    return;
+                                }
+                            };
+
+                            // Render scene to view
+                            println!("Popup render: Calling render_to_view");
+                            if let Err(e) = popup.renderer.render_to_view(
+                                &device_handle.device,
+                                &device_handle.queue,
+                                &builder,
+                                &render_view,
+                                &RenderParams {
+                                    base_color: popup.config.theme.window_background(),
+                                    width,
+                                    height,
+                                    antialiasing_method: popup.config.render.antialiasing,
+                                },
+                            ) {
+                                log::error!("Failed to render popup scene: {}", e);
+                                return;
+                            }
+                            println!("Popup render: render_to_view succeeded");
+
+                            // Blit to surface
+                            let mut encoder = device_handle.device.create_command_encoder(&CommandEncoderDescriptor {
+                                label: Some("Popup Surface Blit Encoder"),
+                            });
+
+                            let surface_texture = match popup.surface.get_current_texture() {
+                                Ok(t) => t,
+                                Err(e) => {
+                                    log::error!("Failed to get popup surface texture: {}", e);
+                                    return;
+                                }
+                            };
+
+                            let surface_view = surface_texture.texture.create_view(&TextureViewDescriptor::default());
+
+                            if let Err(e) = popup.surface.blit_render_view(&device_handle.device, &mut encoder, &render_view, &surface_view) {
+                                log::error!("Failed to blit popup surface: {}", e);
+                                return;
+                            }
+
+                            device_handle.queue.submit(Some(encoder.finish()));
+                            surface_texture.present();
+                        }
+                    }
+                    
+                    popup.window.pre_present_notify();
+                }
+                WindowEvent::CloseRequested => {
+                    self.popup_windows.remove(&window_id);
+                }
+                WindowEvent::Resized(size) => {
+                    let _ = popup.surface.resize(size.width, size.height);
+                    popup.renderer.update_render_target_size(size.width, size.height);
+                    let _ = popup.taffy.set_style(popup.root_node, Style {
+                        size: Size {
+                            width: Dimension::length(size.width as f32),
+                            height: Dimension::length(size.height as f32),
+                        },
+                        ..Default::default()
+                    });
+                    popup.config.window.size = Vector2::new(size.width as f64, size.height as f64);
+                    popup.window.request_redraw();
+                }
+                _ => {}
             }
         }
     }
@@ -2325,4 +2616,61 @@ where
 
         self.info.reset();
     }
+}
+
+/// Helper function to recursively build Taffy layout tree from StyleNode tree
+fn layout_widget_tree(taffy: &mut TaffyTree, parent: NodeId, style: &StyleNode) -> TaffyResult<()> {
+    if style.style.display == Display::None {
+        return Ok(());
+    }
+
+    let node = taffy.new_leaf(style.style.clone().into())?;
+    taffy.add_child(parent, node)?;
+
+    for child in &style.children {
+        if child.style.display != Display::None {
+            layout_widget_tree(taffy, node, child)?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Helper function to recursively collect computed layout from Taffy tree
+fn collect_layout_tree(taffy: &TaffyTree, node: NodeId, style: &StyleNode, parent_x: f32, parent_y: f32) -> TaffyResult<LayoutNode> {
+    let mut children = Vec::new();
+    let taffy_child_count = taffy.child_count(node);
+    
+    // Get the relative layout from Taffy
+    let relative_layout = *taffy.get_final_layout(node);
+    
+    // Convert relative position to absolute
+    let absolute_x = parent_x + relative_layout.location.x;
+    let absolute_y = parent_y + relative_layout.location.y;
+    
+    // Create absolute layout
+    let mut absolute_layout = relative_layout;
+    absolute_layout.location.x = absolute_x;
+    absolute_layout.location.y = absolute_y;
+    
+    let child_content_x = absolute_x;
+    let child_content_y = absolute_y;
+
+    let mut taffy_index = 0;
+    for child_style in &style.children {
+        if child_style.style.display == Display::None {
+            continue;
+        }
+        
+        if taffy_index < taffy_child_count {
+            let child_node = taffy.child_at_index(node, taffy_index)?;
+            children.push(collect_layout_tree(taffy, child_node, child_style, child_content_x, child_content_y)?);
+            taffy_index += 1;
+        }
+    }
+    
+    Ok(LayoutNode {
+        layout: absolute_layout,
+        children,
+    })
 }

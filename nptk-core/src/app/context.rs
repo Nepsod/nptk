@@ -8,6 +8,7 @@ use crate::signal::state::StateSignal;
 use crate::signal::Signal;
 use crate::vgi::GpuContext;
 use crate::menu::ContextMenuManager;
+use crate::app::popup::PopupManager;
 use std::sync::Arc;
 
 use nptk_services::settings::SettingsRegistry;
@@ -20,6 +21,7 @@ pub struct AppContext {
     gpu_context: Arc<GpuContext>,
     focus_manager: SharedFocusManager,
     pub menu_manager: ContextMenuManager,
+    pub popup_manager: PopupManager,
     pub settings: Arc<SettingsRegistry>,
 }
 
@@ -31,6 +33,7 @@ impl AppContext {
         gpu_context: Arc<GpuContext>,
         focus_manager: SharedFocusManager,
         menu_manager: ContextMenuManager,
+        popup_manager: PopupManager,
         settings: Arc<SettingsRegistry>,
     ) -> Self {
         Self {
@@ -39,6 +42,7 @@ impl AppContext {
             gpu_context,
             focus_manager,
             menu_manager,
+            popup_manager,
             settings,
         }
     }
