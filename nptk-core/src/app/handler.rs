@@ -100,6 +100,8 @@ struct PopupWindow<T: Theme + Clone> {
     widget: Box<dyn Widget>,
     info: AppInfo,
     config: MayConfig<T>, // Each window needs its own config copy/ref for theme access
+    /// Scale factor for HiDPI (1.0 for X11/Winit, 2.0 or higher for Wayland HiDPI)
+    scale_factor: f32,
 }
 impl<T, W, S, F> AppHandler<T, W, S, F>
 where
@@ -2389,7 +2391,18 @@ where
                 }
             };
 
-            // Setup Taffy
+            // Determine actual render dimensions (scaled for Wayland HiDPI)
+            // Layout stays at logical size, buffer is at physical size
+            #[cfg(all(target_os = "linux", feature = "wayland"))]
+            let (render_width, render_height, popup_scale_factor) = if matches!(platform, crate::platform::Platform::Wayland) {
+                (req.size.0 * 1, req.size.1 * 1, 1.0)
+            } else {
+                (req.size.0, req.size.1, 1.0)
+            };
+            #[cfg(not(all(target_os = "linux", feature = "wayland")))]
+            let (render_width, render_height, popup_scale_factor) = (req.size.0, req.size.1, 1.0f32);
+
+            // Setup Taffy - use LOGICAL size for layout
             let mut taffy = TaffyTree::new();
             let root_node = taffy.new_leaf(Style {
                 size: Size {
@@ -2399,7 +2412,7 @@ where
                 ..Default::default()
             }).unwrap();
 
-            // Create AppInfo for this window
+            // Create AppInfo for this window - use LOGICAL size
             let info = AppInfo {
                 diagnostics: self.info.diagnostics.clone(),
                 font_context: self.info.font_context.clone(),
@@ -2408,7 +2421,8 @@ where
                 ..Default::default()
             };
 
-            let scene = Scene::new(self.config.render.backend.clone(), req.size.0, req.size.1);
+            // Scene uses PHYSICAL (scaled) size
+            let scene = Scene::new(self.config.render.backend.clone(), render_width, render_height);
 
             let popup = PopupWindow {
                 window: window.clone(),
@@ -2420,6 +2434,7 @@ where
                 widget: req.widget,
                 info,
                 config: self.config.clone(),
+                scale_factor: popup_scale_factor,
             };
 
             // For Winit windows, we index by window ID
@@ -2462,10 +2477,14 @@ where
         let device_handle = (self.config.render.device_selector)(devices);
 
         for (_popup_id, popup) in self.wayland_popups.iter_mut() {
-            let width = popup.config.window.size.x as u32;
-            let height = popup.config.window.size.y as u32;
+            // Use logical size for layout (unscaled)
+            let logical_width = popup.info.size.x as u32;
+            let logical_height = popup.info.size.y as u32;
+            // Use physical size for rendering (scaled)
+            let physical_width = (popup.info.size.x * popup.scale_factor as f64) as u32;
+            let physical_height = (popup.info.size.y * popup.scale_factor as f64) as u32;
 
-            // 1. Layout
+            // 1. Layout (at logical size)
             let style = popup.widget.layout_style();
             let _ = popup.taffy.set_children(popup.root_node, &[]);
             
@@ -2477,13 +2496,24 @@ where
             
             let _ = popup.taffy.compute_layout(popup.root_node, Size::MAX_CONTENT);
 
-            // 2. Render to Scene
-            let mut builder = Scene::new(popup.config.render.backend.clone(), width, height);
+            // 2. Render to Scene (at physical size, with scale transform)
+            let mut builder = Scene::new(popup.config.render.backend.clone(), physical_width, physical_height);
             {
                 let mut graphics = match graphics_from_scene(&mut builder) {
                     Some(g) => g,
                     None => continue,
                 };
+
+                // Push a layer with scale transform for HiDPI
+                let scale_transform = vello::kurbo::Affine::scale(popup.scale_factor as f64);
+                let full_rect = vello::kurbo::Rect::new(0.0, 0.0, physical_width as f64, physical_height as f64);
+                use vello::kurbo::Shape;
+                graphics.push_layer(
+                    vello::peniko::Mix::Normal,
+                    1.0,
+                    scale_transform,
+                    &full_rect.to_path(0.1),
+                );
                 
                 let child_count = popup.taffy.child_count(popup.root_node);
                 if child_count > 0 {
@@ -2505,10 +2535,13 @@ where
                         Err(e) => eprintln!("Failed to collect popup layout: {}", e),
                     }
                 }
+
+                // Pop the scale layer
+                graphics.pop_layer();
             }
 
             // Render to surface
-            let render_view = match popup.surface.create_render_view(&device_handle.device, width, height) {
+            let render_view = match popup.surface.create_render_view(&device_handle.device, physical_width, physical_height) {
                 Ok(view) => view,
                 Err(e) => {
                     log::error!("Failed to create render view for Wayland popup: {}", e);
@@ -2523,8 +2556,8 @@ where
                 &render_view,
                 &RenderParams {
                     base_color: popup.config.theme.window_background(),
-                    width,
-                    height,
+                    width: physical_width,
+                    height: physical_height,
                     antialiasing_method: popup.config.render.antialiasing,
                 },
             ) {
