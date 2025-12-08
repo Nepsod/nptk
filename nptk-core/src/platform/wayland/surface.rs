@@ -555,6 +555,16 @@ impl WaylandSurface {
 impl Drop for WaylandSurface {
     fn drop(&mut self) {
         self.client.unregister_surface(self.inner.surface_key());
+
+        // Proactively destroy Wayland objects so the compositor closes the popup.
+        // Destroy toplevel first, then xdg_surface, then wl_surface.
+        // Ignore errors; the protocol objects may already be gone.
+        #[allow(unused_must_use)]
+        {
+            self.inner.xdg_toplevel.destroy();
+            self.inner.xdg_surface.destroy();
+            self.inner.wl_surface.destroy();
+        }
     }
 }
 

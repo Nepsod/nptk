@@ -2476,7 +2476,67 @@ where
         }
         let device_handle = (self.config.render.device_selector)(devices);
 
-        for (_popup_id, popup) in self.wayland_popups.iter_mut() {
+        let mut to_remove: Vec<u32> = Vec::new();
+
+        for (popup_id, popup) in self.wayland_popups.iter_mut() {
+            // Drive Wayland events so we notice compositor-side closes.
+            if popup.surface.needs_event_dispatch() {
+                if let Err(err) = popup.surface.dispatch_events() {
+                    log::info!(
+                        "Wayland popup requested close (id={}): {}",
+                        popup_id,
+                        err
+                    );
+                    to_remove.push(*popup_id);
+                    continue;
+                }
+
+                // If dispatch succeeded but the surface requested close, remove it.
+                if let crate::vgi::Surface::Wayland(ref wayland_surface) = popup.surface {
+                    if wayland_surface.should_close() {
+                        log::info!(
+                            "Wayland popup requested close after dispatch (id={})",
+                            popup_id
+                        );
+                        to_remove.push(*popup_id);
+                        continue;
+                    }
+                }
+            }
+
+            // Reconfigure popup surface if the compositor requested it (or if not yet configured).
+            if let crate::vgi::Surface::Wayland(ref mut wayland_surface) = popup.surface {
+                if wayland_surface.requires_reconfigure() || !wayland_surface.is_configured() {
+                    let (new_w, new_h) = wayland_surface.size();
+                    if let Err(e) = wayland_surface.configure_surface(
+                        &device_handle.device,
+                        wayland_surface.format(),
+                        self.config.render.present_mode.into(),
+                    ) {
+                        log::error!(
+                            "Failed to reconfigure Wayland popup surface (id={}): {}",
+                            popup_id,
+                            e
+                        );
+                        to_remove.push(*popup_id);
+                        continue;
+                    }
+
+                    // Update logical sizes to match new compositor-requested dimensions.
+                    popup.info.size = Vector2::new(new_w as f64, new_h as f64);
+                    let _ = popup.taffy.set_style(
+                        popup.root_node,
+                        Style {
+                            size: Size {
+                                width: Dimension::length(new_w as f32),
+                                height: Dimension::length(new_h as f32),
+                            },
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
+
             // Use logical size for layout (unscaled)
             let logical_width = popup.info.size.x as u32;
             let logical_height = popup.info.size.y as u32;
@@ -2588,6 +2648,10 @@ where
             device_handle.queue.submit(Some(encoder.finish()));
             surface_texture.present();
         }
+
+        for popup_id in to_remove {
+            self.wayland_popups.remove(&popup_id);
+        }
     }
 }
 
@@ -2659,6 +2723,21 @@ where
                 self.handle_window_event(event, event_loop);
                 return;
             }
+        }
+
+        // Handle popup CloseRequested before borrowing the popup to avoid borrow conflict
+        if matches!(event, WindowEvent::CloseRequested) {
+            log::debug!("CloseRequested event received for window: {:?}", window_id);
+            if self.popup_windows.contains_key(&window_id) {
+                log::info!("Closing popup window: {:?}", window_id);
+                self.popup_windows.remove(&window_id);
+                return;
+            }
+        }
+
+        // Debug: Log popup window events that aren't handled by main window
+        if self.popup_windows.contains_key(&window_id) {
+            log::debug!("Popup window event: {:?} for window: {:?}", event, window_id);
         }
 
         // Check popup windows
@@ -2771,9 +2850,6 @@ where
             if let Some(ref win) = popup.window {
                 win.pre_present_notify();
             }
-                }
-                WindowEvent::CloseRequested => {
-                    self.popup_windows.remove(&window_id);
                 }
                 WindowEvent::Resized(size) => {
                     let _ = popup.surface.resize(size.width, size.height);
