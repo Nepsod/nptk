@@ -1000,17 +1000,17 @@ impl Widget for FileListContent {
         if let Some(cursor) = info.cursor_pos {
             let local_y = cursor.y as f32 - layout.layout.location.y;
             let local_x = cursor.x as f32 - layout.layout.location.x;
-            
-            // Check bounds
-            if local_x >= 0.0 && local_x < layout.layout.size.width &&
-               local_y >= 0.0 && local_y < layout.layout.size.height 
-            {
-                // let entries = self.entries.get(); // Removed to avoid holding borrow
+            let in_bounds = local_x >= 0.0 && local_x < layout.layout.size.width &&
+                local_y >= 0.0 && local_y < layout.layout.size.height;
+
+            let mut index: Option<usize> = None;
+            let mut target_path: Option<PathBuf> = None;
+            let mut range_paths: Option<Vec<PathBuf>> = None;
+            let mut file_type: Option<FileType> = None;
+
+            if in_bounds {
                 let view_mode = *self.view_mode.get();
-                
-                // Calculate index based on view mode
-                let index = if view_mode == FileListViewMode::Icon {
-                    // For icon view, calculate grid position
+                index = if view_mode == FileListViewMode::Icon {
                     let icon_size = *self.icon_size.get();
                     let (columns, cell_width, cell_height) = self.calculate_icon_view_layout(
                         layout.layout.size.width,
@@ -1020,7 +1020,6 @@ impl Widget for FileListContent {
                     let row = (local_y / cell_height).floor() as usize;
                     let idx = row * columns + col;
                     
-                    // Scope entries borrow
                     let entry_opt = {
                         let entries = self.entries.get();
                         if idx < entries.len() {
@@ -1031,7 +1030,6 @@ impl Widget for FileListContent {
                     };
 
                     if let Some(entry) = entry_opt {
-                        // Tight hit testing for Icon view
                         let cell_x = col as f32 * cell_width;
                         let cell_y = row as f32 * cell_height;
                         let cell_rect = Rect::new(
@@ -1040,13 +1038,10 @@ impl Widget for FileListContent {
                             (cell_x + cell_width) as f64,
                             (cell_y + cell_height) as f64,
                         );
-                        
-                        // Check if selected (needed for label height calculation)
                         let is_selected = {
                             let selected = self.selected_paths.get();
                             selected.contains(&entry.path)
                         };
-                        
                         let (icon_rect, label_rect, _, _) = self.get_icon_item_layout(
                             &mut info.font_context,
                             &entry,
@@ -1072,17 +1067,12 @@ impl Widget for FileListContent {
                         None
                     }
                 } else if view_mode == FileListViewMode::Compact {
-                    // For compact view
                     let (columns, cell_width, cell_height, spacing) = self.calculate_compact_view_layout(
                         layout.layout.size.width,
                     );
-                    // Account for spacing in hit testing
-                    // x = padding + col * (width + spacing)
-                    // col = (x - padding) / (width + spacing)
                     let col = ((local_x - self.icon_view_padding) / (cell_width + spacing)).floor() as usize;
                     let row = ((local_y - self.icon_view_padding) / (cell_height + spacing)).floor() as usize;
                     
-                    // Check if within cell bounds (exclude spacing gap)
                     let cell_x = self.icon_view_padding + col as f32 * (cell_width + spacing);
                     let cell_y = self.icon_view_padding + row as f32 * (cell_height + spacing);
                     
@@ -1090,7 +1080,6 @@ impl Widget for FileListContent {
                        local_y >= cell_y && local_y < cell_y + cell_height {
                         let idx = row * columns + col;
                         
-                        // Scope the borrow of entries to clone the needed entry
                         let entry_opt = {
                             let entries = self.entries.get();
                             if idx < entries.len() {
@@ -1101,22 +1090,12 @@ impl Widget for FileListContent {
                         };
 
                         if let Some(entry) = entry_opt { 
-                            // Tight hit testing
-                            let cell_rect = Rect::new(
-                                cell_x as f64,
-                                cell_y as f64,
-                                (cell_x + cell_width) as f64,
-                                (cell_y + cell_height) as f64,
-                            );
-                            
                             let (mut icon_rect, mut label_rect) = self.get_compact_item_layout(
                                 &mut info.font_context,
                                 &entry,
                                 cell_height,
                                 cell_width,
                             );
-                            
-                            // Translate relative layout to absolute position
                             icon_rect = icon_rect + Vec2::new(cell_x as f64, cell_y as f64);
                             label_rect = label_rect + Vec2::new(cell_x as f64, cell_y as f64);
                             
@@ -1139,166 +1118,128 @@ impl Widget for FileListContent {
                         None
                     }
                 } else {
-                    // For list view, use row-based calculation
                     let idx = (local_y / self.item_height) as usize;
                     let entries = self.entries.get();
                     if idx < entries.len() { Some(idx) } else { None }
                 };
                 
                 if let Some(index) = index {
-                    // Extract data needed for selection logic to avoid holding entries borrow
-                    let (target_path, range_paths, file_type) = {
-                        let entries = self.entries.get();
-                        if index < entries.len() {
-                            let entry = &entries[index];
-                            let target = entry.path.clone();
-                            let ftype = entry.file_type;
-                            
-                            let range = if info.modifiers.shift_key() {
-                                let anchor = self.anchor_index.unwrap_or(0);
-                                let start = anchor.min(index);
-                                let end = anchor.max(index);
-                                Some(entries[start..=end].iter().map(|e| e.path.clone()).collect::<Vec<_>>())
-                            } else {
-                                None
-                            };
-                            (Some(target), range, Some(ftype))
-                        } else {
-                            (None, None, None)
-                        }
-                    };
-
-                    if let Some(target_path) = target_path {
-                        let ctrl_pressed = info.modifiers.control_key();
-                        let shift_pressed = info.modifiers.shift_key();
+                    let entries = self.entries.get();
+                    if index < entries.len() {
+                        let entry = &entries[index];
+                        target_path = Some(entry.path.clone());
+                        file_type = Some(entry.file_type);
                         
-                        for (_, btn, el) in &info.buttons {
-                            if *btn == MouseButton::Right && *el == ElementState::Pressed {
-                                // Ensure selection reflects the item we right-clicked.
-                                let mut current_selection = self.selected_paths.get().to_vec();
-                                if !current_selection.contains(&target_path) {
-                                    if ctrl_pressed {
-                                        current_selection.push(target_path.clone());
-                                    } else {
-                                        current_selection = vec![target_path.clone()];
-                                    }
-                                    self.selected_paths.set(current_selection.clone());
-                                    update.insert(Update::DRAW);
+                        if info.modifiers.shift_key() {
+                            let anchor = self.anchor_index.unwrap_or(0);
+                            let start = anchor.min(index);
+                            let end = anchor.max(index);
+                            range_paths = Some(entries[start..=end].iter().map(|e| e.path.clone()).collect::<Vec<_>>());
+                        }
+                    }
+                }
+
+                if let Some(target_path) = target_path {
+                    let ctrl_pressed = info.modifiers.control_key();
+                    let shift_pressed = info.modifiers.shift_key();
+                    
+                    for (_, btn, el) in &info.buttons {
+                        if *btn == MouseButton::Right && *el == ElementState::Pressed {
+                            let mut current_selection = self.selected_paths.get().to_vec();
+                            if !current_selection.contains(&target_path) {
+                                if ctrl_pressed {
+                                    current_selection.push(target_path.clone());
+                                } else {
+                                    current_selection = vec![target_path.clone()];
                                 }
-
-                                let pending = self.pending_action.clone();
-                                let paths_for_action = current_selection.clone();
-
-                                let open_label = self.open_label_for_path(&target_path);
-
-                                let menu = ContextMenu {
-                                    items: vec![
-                                        ContextMenuItem::Action {
-                                            label: open_label,
-                                            action: Arc::new(move || {
-                                                if let Ok(mut pending_lock) = pending.lock() {
-                                                    *pending_lock = Some(PendingAction {
-                                                        paths: paths_for_action.clone(),
-                                                    });
-                                                }
-                                            }),
-                                        },
-                                        ContextMenuItem::Action {
-                                            label: "Delete".to_string(),
-                                            action: Arc::new(|| {
-                                                println!("Delete");
-                                            }),
-                                        },
-                                    ],
-                                };
-                                if let Some(cursor_pos) = info.cursor_pos {
-                                    let cursor = Point::new(cursor_pos.x, cursor_pos.y);
-                                    context.menu_manager.show_context_menu(menu, cursor);
-                                    update.insert(Update::DRAW);
-                                }
+                                self.selected_paths.set(current_selection.clone());
+                                update.insert(Update::DRAW);
                             }
 
-                            if *btn == MouseButton::Left && *el == ElementState::Pressed {
-                                // println!("Item Click: index={:?}, Ctrl={}, Shift={}", index, info.modifiers.control_key(), info.modifiers.shift_key());
-                                let mut selected = self.selected_paths.get().clone();
-                                let is_currently_selected = selected.contains(&target_path);
-                                
-                                if let Some(range_paths) = &range_paths {
-                                    // Shift+Click: Select range
-                                    // Merge with existing selection if Ctrl is also pressed
-                                    if ctrl_pressed {
-                                        let mut selected_set: HashSet<PathBuf> = selected.iter().cloned().collect();
-                                        for path in range_paths {
-                                            selected_set.insert(path.clone());
-                                        }
-                                        selected = selected_set.into_iter().collect();
-                                    } else {
-                                        selected = range_paths.clone();
-                                    }
-                                } else if ctrl_pressed {
-                                    // Ctrl+Click: Toggle selection
-                                    if is_currently_selected {
-                                        selected.retain(|p| p != &target_path);
-                                    } else {
-                                        selected.push(target_path.clone());
-                                    }
-                                    self.anchor_index = Some(index);
-                                } else {
-                                    // Single Click: Clear and select only this item
-                                    selected = vec![target_path.clone()];
-                                    self.anchor_index = Some(index);
-                                }
-                                
-                                self.selected_paths.set(selected);
+                            let pending = self.pending_action.clone();
+                            let paths_for_action = current_selection.clone();
+
+                            let open_label = self.open_label_for_path(&target_path);
+
+                            let menu = ContextMenu {
+                                items: vec![
+                                    ContextMenuItem::Action {
+                                        label: open_label,
+                                        action: Arc::new(move || {
+                                            if let Ok(mut pending_lock) = pending.lock() {
+                                                *pending_lock = Some(PendingAction {
+                                                    paths: paths_for_action.clone(),
+                                                });
+                                            }
+                                        }),
+                                    },
+                                    ContextMenuItem::Action {
+                                        label: "Delete".to_string(),
+                                        action: Arc::new(|| {
+                                            println!("Delete");
+                                        }),
+                                    },
+                                ],
+                            };
+                            if let Some(cursor_pos) = info.cursor_pos {
+                                let cursor = Point::new(cursor_pos.x, cursor_pos.y);
+                                context.menu_manager.show_context_menu(menu, cursor);
                                 update.insert(Update::DRAW);
-                                
-                                // Check double click
-                                let now = Instant::now();
-                                if let Some(last_time) = self.last_click_time {
-                                    if let Some(last_index) = self.last_click_index {
-                                        if last_index == index && now.duration_since(last_time) < Duration::from_millis(500) {
-                                            // Double click
-                                            if let Some(ftype) = file_type {
-                                                if ftype == FileType::Directory {
-                                                    // Navigate
-                                                    self.current_path.set(target_path.clone());
-                                                    let _ = self.fs_model.refresh(&target_path);
-                                                    self.selected_paths.set(Vec::new());
-                                                    update.insert(Update::LAYOUT);
-                                                }
+                            }
+                        }
+
+                        if *btn == MouseButton::Left && *el == ElementState::Pressed {
+                            let mut selected = self.selected_paths.get().clone();
+                            let is_currently_selected = selected.contains(&target_path);
+                            
+                            if let Some(range_paths) = &range_paths {
+                                if ctrl_pressed {
+                                    let mut selected_set: HashSet<PathBuf> = selected.iter().cloned().collect();
+                                    for path in range_paths {
+                                        selected_set.insert(path.clone());
+                                    }
+                                    selected = selected_set.into_iter().collect();
+                                } else {
+                                    selected = range_paths.clone();
+                                }
+                            } else if ctrl_pressed {
+                                if is_currently_selected {
+                                    selected.retain(|p| p != &target_path);
+                                } else {
+                                    selected.push(target_path.clone());
+                                }
+                                self.anchor_index = Some(index.unwrap_or(0));
+                            } else {
+                                selected = vec![target_path.clone()];
+                                self.anchor_index = Some(index.unwrap_or(0));
+                            }
+                            
+                            self.selected_paths.set(selected);
+                            update.insert(Update::DRAW);
+                            
+                            let now = Instant::now();
+                            if let Some(last_time) = self.last_click_time {
+                                if let Some(last_index) = self.last_click_index {
+                                    if Some(last_index) == index && now.duration_since(last_time) < Duration::from_millis(500) {
+                                        if let Some(ftype) = file_type {
+                                            if ftype == FileType::Directory {
+                                                self.current_path.set(target_path.clone());
+                                                let _ = self.fs_model.refresh(&target_path);
+                                                self.selected_paths.set(Vec::new());
+                                                update.insert(Update::LAYOUT);
                                             }
                                         }
                                     }
                                 }
-                                
-                                self.last_click_time = Some(now);
-                                self.last_click_index = Some(index);
                             }
-                        }
-                    } else {
-                        // Clicked on empty space
-                        for (_, btn, el) in &info.buttons {
-                            if *btn == MouseButton::Left && *el == ElementState::Pressed {
-                                // println!("Empty Space Click (Index Valid but Target None): Ctrl={}", info.modifiers.control_key());
-                                // Start dragging
-                                self.drag_start = Some(Point::new(local_x as f64, local_y as f64));
-                                self.current_drag_pos = Some(Point::new(local_x as f64, local_y as f64));
-                                self.is_dragging = false; // Will become true on move
-                                
-                                // Clear selection if Ctrl is not pressed
-                                if !info.modifiers.control_key() {
-                                    self.selected_paths.set(Vec::new());
-                                    update.insert(Update::DRAW);
-                                }
-                            }
+                            
+                            self.last_click_time = Some(now);
+                            self.last_click_index = index;
                         }
                     }
                 } else {
-                    // Index is None (empty space)
                     for (_, btn, el) in &info.buttons {
                         if *btn == MouseButton::Left && *el == ElementState::Pressed {
-                            // println!("Empty Space Click (Index None): Ctrl={}", info.modifiers.control_key());
-                            // Start dragging
                             self.drag_start = Some(Point::new(local_x as f64, local_y as f64));
                             self.current_drag_pos = Some(Point::new(local_x as f64, local_y as f64));
                             self.is_dragging = false;
@@ -1310,54 +1251,49 @@ impl Widget for FileListContent {
                         }
                     }
                 }
+            }
+
+            // Drag handling outside bounds to keep tracking when cursor leaves the window.
+            if let Some(start_pos) = self.drag_start {
+                let mut released = false;
+                for (_, btn, el) in &info.buttons {
+                    if *btn == MouseButton::Left && *el == ElementState::Released {
+                        released = true;
+                        break;
+                    }
+                }
                 
-                // Handle Dragging
-                if let Some(start_pos) = self.drag_start {
-                    // Check if mouse released
-                    let mut released = false;
-                    for (_, btn, el) in &info.buttons {
-                        if *btn == MouseButton::Left && *el == ElementState::Released {
-                            released = true;
-                            break;
+                if released {
+                    self.drag_start = None;
+                    self.current_drag_pos = None;
+                    self.is_dragging = false;
+                    update.insert(Update::DRAW);
+                } else {
+                    let current_pos = Point::new(local_x as f64, local_y as f64);
+                    self.current_drag_pos = Some(current_pos);
+                    
+                    if !self.is_dragging {
+                        let dx = current_pos.x - start_pos.x;
+                        let dy = current_pos.y - start_pos.y;
+                        if dx.abs() > 5.0 || dy.abs() > 5.0 {
+                            self.is_dragging = true;
                         }
                     }
                     
-                    if released {
-                        self.drag_start = None;
-                        self.current_drag_pos = None;
-                        self.is_dragging = false;
+                    if self.is_dragging {
+                        let min_x = start_pos.x.min(current_pos.x);
+                        let min_y = start_pos.y.min(current_pos.y);
+                        let max_x = start_pos.x.max(current_pos.x);
+                        let max_y = start_pos.y.max(current_pos.y);
+                        
+                        let selection_rect = Rect::new(min_x, min_y, max_x, max_y);
+                        
+                        self.update_drag_selection(
+                            selection_rect, 
+                            info.modifiers.control_key(),
+                            layout.layout.size.width
+                        );
                         update.insert(Update::DRAW);
-                    } else {
-                        // Update drag position
-                        let current_pos = Point::new(local_x as f64, local_y as f64);
-                        self.current_drag_pos = Some(current_pos);
-                        
-                        // Check if we moved enough to consider it a drag
-                        if !self.is_dragging {
-                            let dx = current_pos.x - start_pos.x;
-                            let dy = current_pos.y - start_pos.y;
-                            if dx.abs() > 5.0 || dy.abs() > 5.0 {
-                                self.is_dragging = true;
-                            }
-                        }
-                        
-                        if self.is_dragging {
-                            // Calculate selection rect
-                            let min_x = start_pos.x.min(current_pos.x);
-                            let min_y = start_pos.y.min(current_pos.y);
-                            let max_x = start_pos.x.max(current_pos.x);
-                            let max_y = start_pos.y.max(current_pos.y);
-                            
-                            let selection_rect = Rect::new(min_x, min_y, max_x, max_y);
-                            
-                            // Update selection
-                            self.update_drag_selection(
-                                selection_rect, 
-                                info.modifiers.control_key(),
-                                layout.layout.size.width
-                            );
-                            update.insert(Update::DRAW);
-                        }
                     }
                 }
             }
