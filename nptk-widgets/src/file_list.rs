@@ -290,8 +290,9 @@ struct FileListContent {
     // Layout cache to avoid expensive recalculations on every frame
     // Key: (path, view_mode, cell_width/icon_size)
     // Value: (icon_rect, label_rect, display_text, max_text_width)
-    layout_cache: std::collections::HashMap<(PathBuf, FileListViewMode, u32), (Rect, Rect, String, f32)>,
+    layout_cache: std::collections::HashMap<(PathBuf, FileListViewMode, u32, bool), (Rect, Rect, String, f32)>,
     cache_invalidated: bool,
+    last_layout_width: f32,
     
     // Icon view constants
     icon_view_padding: f32,
@@ -342,6 +343,7 @@ impl FileListContent {
             
             layout_cache: std::collections::HashMap::new(),
             cache_invalidated: false,
+            last_layout_width: 1000.0,
             
             icon_view_padding: 2.0, // padding around the icons
             icon_view_spacing: 22.0, // spacing between icons
@@ -775,14 +777,15 @@ impl Widget for FileListContent {
     fn layout_style(&self) -> StyleNode {
         let view_mode = *self.view_mode.get();
         let count = self.entries.get().len();
+        let width = self.last_layout_width.max(1.0);
         
         let height = if view_mode == FileListViewMode::Icon {
             let icon_size = *self.icon_size.get();
-            let (columns, _, cell_height) = self.calculate_icon_view_layout(1000.0, icon_size); // Use large width for calculation
+            let (columns, _, cell_height) = self.calculate_icon_view_layout(width, icon_size);
             let rows = (count as f32 / columns as f32).ceil();
             (rows * cell_height + self.icon_view_padding * 2.0).max(100.0)
         } else if view_mode == FileListViewMode::Compact {
-            let (columns, _, cell_height, spacing) = self.calculate_compact_view_layout(1000.0);
+            let (columns, _, cell_height, spacing) = self.calculate_compact_view_layout(width);
             let rows = (count as f32 / columns as f32).ceil();
             // Height = rows * cell + (rows - 1) * spacing + padding
             // Approx: rows * (cell + spacing) - spacing + padding
@@ -802,6 +805,13 @@ impl Widget for FileListContent {
     
     fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
+        
+        // Track viewport width changes to keep height estimation accurate and invalidate cached layouts.
+        let current_width = layout.layout.size.width.max(1.0);
+        if (current_width - self.last_layout_width).abs() > f32::EPSILON {
+            self.last_layout_width = current_width;
+            self.layout_cache.clear();
+        }
         
         // Poll thumbnail events
         if let Ok(mut rx) = self.thumbnail_event_rx.try_lock() {
@@ -1743,7 +1753,7 @@ impl FileListContent {
         cell_width: f32,
     ) -> (Rect, Rect) {
         // Check cache first
-        let cache_key = (entry.path.clone(), FileListViewMode::Compact, cell_width as u32);
+        let cache_key = (entry.path.clone(), FileListViewMode::Compact, cell_width as u32, false);
         if let Some((icon_rect, label_rect, _, _)) = self.layout_cache.get(&cache_key) {
             return (*icon_rect, *label_rect);
         }
@@ -1802,6 +1812,7 @@ impl FileListContent {
             entry.path.clone(),
             FileListViewMode::Icon,
             (cell_width * 100.0) as u32, // Use cell_width as key component
+            is_selected, // selection state affects line count/label height
         );
         
         // Check cache first
