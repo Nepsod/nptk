@@ -1344,9 +1344,13 @@ where
 
     fn render_context_menu(&mut self) {
         let context = self.context();
-        if let Some((menu, position)) = context.menu_manager.get_active_menu() {
-            if let Some(mut graphics) = graphics_from_scene(&mut self.scene) {
-                let cursor_pos = self.info.cursor_pos.map(|p| vello::kurbo::Point::new(p.x, p.y));
+        let stack = context.menu_manager.get_menu_stack();
+        if stack.is_empty() {
+            return;
+        }
+        if let Some(mut graphics) = graphics_from_scene(&mut self.scene) {
+            let cursor_pos = self.info.cursor_pos.map(|p| vello::kurbo::Point::new(p.x, p.y));
+            for (menu, position) in stack {
                 crate::menu::render_context_menu(
                     &mut *graphics,
                     &menu,
@@ -2171,11 +2175,12 @@ where
     ) {
         // Context Menu Logic
         if state == ElementState::Pressed {
-             let context = self.context();
-             if context.menu_manager.is_open() {
-                 if let Some((menu, position)) = context.menu_manager.get_active_menu() {
-                     if let Some(cursor_pos) = self.info.cursor_pos {
-                         let cursor = vello::kurbo::Point::new(cursor_pos.x, cursor_pos.y);
+            let context = self.context();
+            if context.menu_manager.is_open() {
+                if let Some(cursor_pos) = self.info.cursor_pos {
+                    let cursor = vello::kurbo::Point::new(cursor_pos.x, cursor_pos.y);
+                    // Hit-test topmost menu only; close all if click outside.
+                    if let Some((menu, position)) = context.menu_manager.get_active_menu() {
                         match crate::menu::handle_click(
                             &menu,
                             position,
@@ -2190,25 +2195,27 @@ where
                                 return;
                             }
                             Some(MenuClickResult::SubMenu(sub, pos)) => {
-                                context.menu_manager.show_context_menu(sub, pos);
+                                context.menu_manager.push_submenu(sub, pos);
                                 self.update.insert(Update::DRAW);
                                 return;
                             }
                             Some(MenuClickResult::NonActionInside) => {
-                                // Keep menu open (e.g., submenu/separator)
                                 self.update.insert(Update::DRAW);
                                 return;
                             }
                             None => {
-                                // Click outside: close
                                 context.menu_manager.close_context_menu();
                                 self.update.insert(Update::DRAW);
                                 return;
                             }
                         }
-                     }
-                 }
-             }
+                    } else {
+                        context.menu_manager.close_context_menu();
+                        self.update.insert(Update::DRAW);
+                        return;
+                    }
+                }
+            }
         }
 
         if button == MouseButton::Left && state == ElementState::Pressed {

@@ -71,8 +71,7 @@ pub struct ContextMenuManager {
 
 #[derive(Default)]
 struct ContextMenuState {
-    active_menu: Option<ContextMenu>,
-    position: Point,
+    stack: Vec<(ContextMenu, Point)>,
 }
 
 impl ContextMenuManager {
@@ -84,22 +83,32 @@ impl ContextMenuManager {
 
     pub fn show_context_menu(&self, menu: ContextMenu, position: Point) {
         let mut state = self.state.lock().unwrap();
-        state.active_menu = Some(menu);
-        state.position = position;
+        state.stack.clear();
+        state.stack.push((menu, position));
+    }
+
+    pub fn push_submenu(&self, menu: ContextMenu, position: Point) {
+        let mut state = self.state.lock().unwrap();
+        state.stack.push((menu, position));
     }
 
     pub fn close_context_menu(&self) {
         let mut state = self.state.lock().unwrap();
-        state.active_menu = None;
+        state.stack.clear();
     }
 
     pub fn get_active_menu(&self) -> Option<(ContextMenu, Point)> {
         let state = self.state.lock().unwrap();
-        state.active_menu.clone().map(|menu| (menu, state.position))
+        state.stack.last().cloned()
+    }
+
+    pub fn get_menu_stack(&self) -> Vec<(ContextMenu, Point)> {
+        let state = self.state.lock().unwrap();
+        state.stack.clone()
     }
 
     pub fn is_open(&self) -> bool {
-        self.state.lock().unwrap().active_menu.is_some()
+        !self.state.lock().unwrap().stack.is_empty()
     }
 }
 
