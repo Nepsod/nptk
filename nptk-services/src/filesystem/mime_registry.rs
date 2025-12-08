@@ -132,29 +132,81 @@ impl MimeRegistry {
             .map_err(|e| anyhow::anyhow!("Failed to launch {}: {}", desktop_id, e))?;
         Ok(())
     }
+
+    /// Resolve default app and include its user-visible name.
+    pub fn resolve_with_name(&self, mime: &str) -> Option<(String, String)> {
+        let id = self.resolve(mime)?;
+        let name = self.name_or_prettify(&id);
+        Some((id, name))
+    }
+
+    /// Get the user-visible name for a desktop id.
+    pub fn name_for(&self, desktop_id: &str) -> Option<String> {
+        // Try exact match first
+        if let Some(app) = self.apps.get(desktop_id) {
+            return Some(app.name.to_string());
+        }
+        
+        // Try with .desktop suffix if not present
+        if !desktop_id.ends_with(".desktop") {
+            let with_suffix = format!("{}.desktop", desktop_id);
+            if let Some(app) = self.apps.get(&*with_suffix) {
+                return Some(app.name.to_string());
+            }
+        }
+        
+        // Try without .desktop suffix if present
+        if desktop_id.ends_with(".desktop") {
+            let without_suffix = desktop_id.strip_suffix(".desktop").unwrap_or(desktop_id);
+            if let Some(app) = self.apps.get(without_suffix) {
+                return Some(app.name.to_string());
+            }
+        }
+        
+        None
+    }
+    
+    /// Get a prettified name for a desktop ID, with fallback prettification if not found in registry.
+    pub fn name_or_prettify(&self, desktop_id: &str) -> String {
+        if let Some(name) = self.name_for(desktop_id) {
+            return name;
+        }
+        
+        // Fallback: prettify the desktop ID
+        let trimmed = desktop_id.strip_suffix(".desktop").unwrap_or(desktop_id);
+        
+        // Handle reverse domain notation (e.g., "org.kde.gwenview" -> "Gwenview")
+        let name_part = if trimmed.contains('.') {
+            // Extract the last component after the last dot
+            trimmed.split('.').last().unwrap_or(trimmed)
+        } else {
+            trimmed
+        };
+        
+        // Prettify: replace separators with spaces and title-case
+        let pretty = name_part
+            .replace(['-', '_'], " ")
+            .split_whitespace()
+            .map(|w| {
+                let mut chars = w.chars();
+                match chars.next() {
+                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                    None => String::new(),
+                }
+            })
+            .collect::<Vec<String>>()
+            .join(" ");
+        
+        if pretty.is_empty() {
+            desktop_id.to_string()
+        } else {
+            pretty
+        }
+    }
 }
 
 fn default_mimeapps_paths() -> Vec<std::path::PathBuf> {
-    let mut paths = Vec::new();
-
-    if let Some(home) = dirs::config_dir() {
-        let user = home.join("mimeapps.list");
-        if user.exists() {
-            paths.push(user);
-        }
-    }
-
-    let admin = std::path::PathBuf::from("/etc/xdg/mimeapps.list");
-    if admin.exists() {
-        paths.push(admin);
-    }
-
-    let system = std::path::PathBuf::from("/usr/share/applications/mimeapps.list");
-    if system.exists() {
-        paths.push(system);
-    }
-
-    paths
+    cosmic_mime_apps::list_paths()
 }
 
 fn read_exec_line(path: &Path) -> Option<String> {

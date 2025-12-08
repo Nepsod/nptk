@@ -11,7 +11,7 @@ impl MimeDetector {
     /// Small override table for file types that need manual mapping.
     /// Only includes special cases that neither mime_guess2 nor tree_magic_mini handle well.
     const MIME_OVERRIDES: &'static [(&'static str, &'static str)] = &[
-        ("toml", "text/x-toml"),
+        ("toml", "application/toml"),  // Use standard MIME type instead of text/x-toml
         ("rs", "text/x-rust"),
         // Add more overrides only if both extension and content detection fail
     ];

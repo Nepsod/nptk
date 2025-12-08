@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -24,12 +23,13 @@ use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use tokio::sync::broadcast;
 use std::collections::HashSet;
-use nptk_macros::context_menu;
+use nptk_core::menu::{ContextMenu, ContextMenuItem};
 
 use crate::scroll_container::{ScrollContainer, ScrollDirection};
 use nptk_services::thumbnail::ThumbnailImageCache;
 use nptk_services::filesystem::{mime_registry::MimeRegistry, MimeDetector};
 use std::process::Command;
+use std::path::{Path, PathBuf};
 
 /// View mode for the file list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -378,13 +378,12 @@ impl FileListContent {
 
     /// Open a file path using MIME resolution (no self captures; suitable for menu callbacks).
     fn launch_path(registry: MimeRegistry, path: PathBuf) {
-        // Detect MIME type
-        let mime = match MimeDetector::detect_mime_type(&path) {
-            Some(m) => m,
-            None => {
-                log::warn!("Could not detect MIME type for {:?}", path);
-                return;
-            }
+        // Detect MIME type with fallback to xdg-mime filetype.
+        let mime = MimeDetector::detect_mime_type(&path)
+            .or_else(|| Self::xdg_mime_filetype(&path));
+        let Some(mime) = mime else {
+            log::warn!("Could not detect MIME type for {:?}", path);
+            return;
         };
 
         // Resolve default app, otherwise first handler, otherwise xdg-open fallback.
@@ -411,6 +410,123 @@ impl FileListContent {
                 );
             }
         }
+    }
+
+    /// Try to obtain a user-visible app name for a path's MIME type.
+    fn open_label_for_path(&self, path: &Path) -> String {
+        // Directories keep generic label.
+        if path.is_dir() {
+            return "Open".to_string();
+        }
+
+        let mime = MimeDetector::detect_mime_type(path)
+            .or_else(|| Self::xdg_mime_filetype(path));
+        let Some(mime) = mime else {
+            return "Open".to_string();
+        };
+
+        // Try to resolve app name with the detected MIME type and alternatives
+        let mime_variants = Self::get_mime_variants(&mime);
+        for variant in &mime_variants {
+            // 1) Use registry default
+            if let Some((_, name)) = self.mime_registry.resolve_with_name(variant) {
+                return format!("Open with {}", name);
+            }
+
+            // 2) Try first handler and resolve its name
+            let handlers = self.mime_registry.list_handlers(variant);
+            if let Some(app_id) = handlers.into_iter().next() {
+                let name = self.display_name_for_appid(&app_id);
+                return format!("Open with {}", name);
+            }
+
+            // 3) Ask xdg-mime for default and resolve name
+            if let Some(app_id) = Self::xdg_default_for_mime(variant) {
+                let name = self.display_name_for_appid(&app_id);
+                return format!("Open with {}", name);
+            }
+        }
+
+        "Open".to_string()
+    }
+
+    /// Get alternative MIME type variants to try when resolving apps.
+    /// This helps when the detected MIME type doesn't match system registrations.
+    fn get_mime_variants(mime: &str) -> Vec<String> {
+        let mut variants = vec![mime.to_string()];
+        
+        // Map non-standard MIME types to standard alternatives
+        match mime {
+            "text/x-toml" => {
+                variants.push("application/toml".to_string());
+                variants.push("text/plain".to_string());
+            }
+            "application/toml" => {
+                // TOML files are often handled by text editors via text/plain
+                variants.push("text/plain".to_string());
+            }
+            "text/x-rust" => {
+                variants.push("text/plain".to_string());
+            }
+            mime if mime.starts_with("text/") => {
+                // For any text/* type, also try text/plain as fallback
+                if mime != "text/plain" {
+                    variants.push("text/plain".to_string());
+                }
+            }
+            // For application/* types that are likely text-based, try text/plain
+            mime if mime.starts_with("application/") && (
+                mime.contains("json") || 
+                mime.contains("xml") || 
+                mime.contains("yaml") ||
+                mime.contains("toml") ||
+                mime.contains("markdown")
+            ) => {
+                variants.push("text/plain".to_string());
+            }
+            _ => {}
+        }
+        
+        variants
+    }
+
+    fn xdg_mime_filetype(path: &Path) -> Option<String> {
+        let output = Command::new("xdg-mime")
+            .args(["query", "filetype", path.to_string_lossy().as_ref()])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mime = stdout.trim();
+        if mime.is_empty() {
+            None
+        } else {
+            Some(mime.to_string())
+        }
+    }
+
+    fn xdg_default_for_mime(mime: &str) -> Option<String> {
+        let output = Command::new("xdg-mime")
+            .args(["query", "default", mime])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let id = stdout.trim();
+        if id.is_empty() {
+            None
+        } else {
+            Some(id.to_string())
+        }
+    }
+
+    fn display_name_for_appid(&self, app_id: &str) -> String {
+        // Use the registry's prettification method which handles all cases
+        self.mime_registry.name_or_prettify(app_id)
     }
     
     /// Calculate icon view layout parameters.
@@ -1062,13 +1178,29 @@ impl Widget for FileListContent {
                                 let pending = self.pending_action.clone();
                                 let path_for_open = target_path.clone();
                                 let is_directory = matches!(file_type, Some(FileType::Directory));
-                                let menu = context_menu! {
-                                    "Open" => {
-                                        if let Ok(mut pending_lock) = pending.lock() {
-                                            *pending_lock = Some(PendingAction { path: path_for_open.clone(), is_directory });
-                                        }
-                                    },
-                                    "Delete" => println!("Delete"),
+
+                                let open_label = self.open_label_for_path(&path_for_open);
+
+                                let menu = ContextMenu {
+                                    items: vec![
+                                        ContextMenuItem::Action {
+                                            label: open_label,
+                                            action: Arc::new(move || {
+                                                if let Ok(mut pending_lock) = pending.lock() {
+                                                    *pending_lock = Some(PendingAction {
+                                                        path: path_for_open.clone(),
+                                                        is_directory,
+                                                    });
+                                                }
+                                            }),
+                                        },
+                                        ContextMenuItem::Action {
+                                            label: "Delete".to_string(),
+                                            action: Arc::new(|| {
+                                                println!("Delete");
+                                            }),
+                                        },
+                                    ],
                                 };
                                 if let Some(cursor_pos) = info.cursor_pos {
                                     let cursor = Point::new(cursor_pos.x, cursor_pos.y);
