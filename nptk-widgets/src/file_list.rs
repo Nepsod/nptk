@@ -28,6 +28,8 @@ use nptk_macros::context_menu;
 
 use crate::scroll_container::{ScrollContainer, ScrollDirection};
 use nptk_services::thumbnail::ThumbnailImageCache;
+use nptk_services::filesystem::{mime_registry::MimeRegistry, MimeDetector};
+use std::process::Command;
 
 /// View mode for the file list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -303,6 +305,14 @@ struct FileListContent {
     // Key: SVG source string (or hash of it)
     // Value: (Scene, width, height)
     svg_scene_cache: std::collections::HashMap<String, (nptk_core::vg::Scene, f64, f64)>,
+    mime_registry: MimeRegistry,
+    pending_action: Arc<Mutex<Option<PendingAction>>>,
+}
+
+#[derive(Clone)]
+struct PendingAction {
+    path: PathBuf,
+    is_directory: bool,
 }
 
 impl FileListContent {
@@ -350,6 +360,8 @@ impl FileListContent {
             icon_view_text_height: 50.0, // Increased to accommodate 2-3 lines of wrapped text
             
             svg_scene_cache: std::collections::HashMap::new(),
+            mime_registry: MimeRegistry::load_default(),
+            pending_action: Arc::new(Mutex::new(None)),
         }
     }
     
@@ -362,6 +374,43 @@ impl FileListContent {
     /// Check if a path is selected.
     fn is_selected(&self, path: &PathBuf) -> bool {
         self.selected_paths.get().contains(path)
+    }
+
+    /// Open a file path using MIME resolution (no self captures; suitable for menu callbacks).
+    fn launch_path(registry: MimeRegistry, path: PathBuf) {
+        // Detect MIME type
+        let mime = match MimeDetector::detect_mime_type(&path) {
+            Some(m) => m,
+            None => {
+                log::warn!("Could not detect MIME type for {:?}", path);
+                return;
+            }
+        };
+
+        // Resolve default app, otherwise first handler, otherwise xdg-open fallback.
+        let app = registry.resolve(&mime).or_else(|| {
+            let mut handlers = registry.list_handlers(&mime);
+            handlers.into_iter().next()
+        });
+
+        if let Some(app_id) = app {
+            if let Err(err) = registry.launch(&app_id, &path) {
+                log::warn!("Failed to launch app '{}': {}", app_id, err);
+            }
+            return;
+        }
+
+        // Fallback: xdg-open
+        match Command::new("xdg-open").arg(path).spawn() {
+            Ok(_) => {}
+            Err(err) => {
+                log::warn!(
+                    "No application found for MIME {} and xdg-open failed: {}",
+                    mime,
+                    err
+                );
+            }
+        }
     }
     
     /// Calculate icon view layout parameters.
@@ -1010,8 +1059,15 @@ impl Widget for FileListContent {
                         
                         for (_, btn, el) in &info.buttons {
                             if *btn == MouseButton::Right && *el == ElementState::Pressed {
+                                let pending = self.pending_action.clone();
+                                let path_for_open = target_path.clone();
+                                let is_directory = matches!(file_type, Some(FileType::Directory));
                                 let menu = context_menu! {
-                                    "Open" => println!("Open"),
+                                    "Open" => {
+                                        if let Ok(mut pending_lock) = pending.lock() {
+                                            *pending_lock = Some(PendingAction { path: path_for_open.clone(), is_directory });
+                                        }
+                                    },
                                     "Delete" => println!("Delete"),
                                 };
                                 if let Some(cursor_pos) = info.cursor_pos {
@@ -1162,6 +1218,20 @@ impl Widget for FileListContent {
                             update.insert(Update::DRAW);
                         }
                     }
+                }
+            }
+        }
+        
+        // Process any pending action set by context menu callbacks.
+        if let Ok(mut pending) = self.pending_action.lock() {
+            if let Some(action) = pending.take() {
+                if action.is_directory {
+                    self.current_path.set(action.path.clone());
+                    let _ = self.fs_model.refresh(&action.path);
+                    self.selected_paths.set(Vec::new());
+                    update.insert(Update::LAYOUT | Update::DRAW);
+                } else {
+                    FileListContent::launch_path(self.mime_registry.clone(), action.path.clone());
                 }
             }
         }

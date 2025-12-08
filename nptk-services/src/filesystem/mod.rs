@@ -11,9 +11,11 @@ pub mod model;
 pub mod icon;
 pub mod error;
 pub mod mime_detector;
+pub mod mime_registry;
 
 // Re-export public API
 pub use model::FileSystemModel;
 pub use entry::{FileEntry, FileType, FileMetadata};
 pub use mime_detector::MimeDetector;
+pub use mime_registry::MimeRegistry;
 

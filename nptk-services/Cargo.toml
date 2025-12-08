@@ -28,3 +28,5 @@ md5 = "0.7"
 urlencoding = "2.1"
 dirs = "5.0"
 lru = "0.12"
+cosmic-mime-apps = { git = "https://github.com/pop-os/cosmic-mime-apps.git" }
+mime = "0.3"
