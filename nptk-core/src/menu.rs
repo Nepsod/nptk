@@ -4,6 +4,23 @@ use vello::kurbo::Point;
 /// A context menu containing a list of items.
 #[derive(Clone)]
 pub struct ContextMenu {
+    /// Legacy flat items; treated as a single group when `groups` is None.
+    pub items: Vec<ContextMenuItem>,
+    /// Optional grouped items; when present, separators are auto-inserted between groups.
+    pub groups: Option<Vec<ContextMenuGroup>>,
+}
+
+impl ContextMenu {
+    pub fn new(items: Vec<ContextMenuItem>) -> Self {
+        Self {
+            items,
+            groups: None,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ContextMenuGroup {
     pub items: Vec<ContextMenuItem>,
 }
 
@@ -29,6 +46,21 @@ pub enum MenuClickResult {
     Action(Arc<dyn Fn() + Send + Sync>),
     SubMenu(ContextMenu, Point),
     NonActionInside,
+}
+
+fn flatten_menu_items(menu: &ContextMenu) -> Vec<ContextMenuItem> {
+    if let Some(groups) = &menu.groups {
+        let mut out = Vec::new();
+        for (i, group) in groups.iter().enumerate() {
+            if i > 0 {
+                out.push(ContextMenuItem::Separator);
+            }
+            out.extend(group.items.clone());
+        }
+        out
+    } else {
+        menu.items.clone()
+    }
 }
 
 /// Manages the state of the active context menu.
@@ -97,7 +129,8 @@ pub fn render_context_menu(
     font_cx: &mut FontContext,
     cursor_pos: Option<Point>,
 ) -> Rect {
-    let (width, height) = calculate_menu_layout(menu, text_render, font_cx);
+    let flat_items = flatten_menu_items(menu);
+    let (width, height) = calculate_layout_from_items(&flat_items, text_render, font_cx);
     let x = position.x as f64;
     let y = position.y as f64;
     let rect = Rect::new(x, y, x + width, y + height);
@@ -151,7 +184,12 @@ pub fn render_context_menu(
         if rect.contains(cursor) {
             let relative_y = cursor.y - y - padding;
             if relative_y >= 0.0 {
-                Some((relative_y / item_height) as usize)
+                let idx = (relative_y / item_height) as usize;
+                if idx < flat_items.len() {
+                    Some(idx)
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -162,7 +200,7 @@ pub fn render_context_menu(
         None
     };
 
-    for (i, item) in menu.items.iter().enumerate() {
+    for (i, item) in flat_items.iter().enumerate() {
         let item_rect = Rect::new(x, current_y, x + width, current_y + item_height);
         
         // Draw hover background
@@ -265,8 +303,8 @@ pub fn render_context_menu(
     rect
 }
 
-fn calculate_menu_layout(
-    menu: &ContextMenu,
+fn calculate_layout_from_items(
+    items: &[ContextMenuItem],
     text_render: &mut TextRenderContext,
     font_cx: &mut FontContext,
 ) -> (f64, f64) {
@@ -277,7 +315,7 @@ fn calculate_menu_layout(
     
     // Measure text using the active font context for accurate width.
     let mut max_text_width: f64 = 0.0;
-    for item in &menu.items {
+    for item in items {
         if let ContextMenuItem::Action { label, .. } | ContextMenuItem::SubMenu { label, .. } = item {
             let (text_width, _) = text_render.measure_text_layout(font_cx, label, 14.0, None);
             max_text_width = max_text_width.max(text_width as f64);
@@ -286,7 +324,7 @@ fn calculate_menu_layout(
     // Add padding and clamp.
     let estimated = (max_text_width + 40.0).max(min_width);
     let width = estimated.min(max_width);
-    let height = menu.items.len() as f64 * item_height + padding * 2.0;
+    let height = items.len() as f64 * item_height + padding * 2.0;
     (width, height)
 }
 
@@ -296,7 +334,8 @@ pub fn get_menu_rect(
     text_render: &mut TextRenderContext,
     font_cx: &mut FontContext,
 ) -> Rect {
-    let (width, height) = calculate_menu_layout(menu, text_render, font_cx);
+    let flat_items = flatten_menu_items(menu);
+    let (width, height) = calculate_layout_from_items(&flat_items, text_render, font_cx);
     let x = position.x as f64;
     let y = position.y as f64;
     Rect::new(x, y, x + width, y + height)
@@ -309,7 +348,13 @@ pub fn handle_click(
     text_render: &mut TextRenderContext,
     font_cx: &mut FontContext,
 ) -> Option<MenuClickResult> {
-    let rect = get_menu_rect(menu, position, text_render, font_cx);
+    let flat_items = flatten_menu_items(menu);
+    let rect = {
+        let (width, height) = calculate_layout_from_items(&flat_items, text_render, font_cx);
+        let x = position.x as f64;
+        let y = position.y as f64;
+        Rect::new(x, y, x + width, y + height)
+    };
     if !rect.contains(cursor) {
         return None;
     }
@@ -323,7 +368,7 @@ pub fn handle_click(
     }
 
     let index = (relative_y / item_height) as usize;
-    if index >= menu.items.len() {
+    if index >= flat_items.len() {
         return None;
     }
 
@@ -337,10 +382,10 @@ pub fn handle_click(
         item_top,
     );
 
-    match &menu.items[index] {
+    match &flat_items[index] {
         ContextMenuItem::Action { action, .. } => Some(MenuClickResult::Action(action.clone())),
         ContextMenuItem::SubMenu { items, .. } => {
-            Some(MenuClickResult::SubMenu(ContextMenu { items: items.clone() }, submenu_origin))
+            Some(MenuClickResult::SubMenu(ContextMenu { items: items.clone(), groups: None }, submenu_origin))
         }
         _ => Some(MenuClickResult::NonActionInside),
     }

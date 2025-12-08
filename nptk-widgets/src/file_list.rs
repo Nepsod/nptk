@@ -23,7 +23,7 @@ use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use tokio::sync::broadcast;
 use std::collections::HashSet;
-use nptk_core::menu::{ContextMenu, ContextMenuItem};
+use nptk_core::menu::{ContextMenu, ContextMenuGroup, ContextMenuItem};
 
 use crate::scroll_container::{ScrollContainer, ScrollDirection};
 use nptk_services::thumbnail::ThumbnailImageCache;
@@ -1217,7 +1217,7 @@ impl Widget for FileListContent {
 
                                 let open_with_items = self.build_open_with_items(&target_path, paths_for_action.clone());
 
-                                let mut menu_items = vec![
+                                let mut core_items = vec![
                                     ContextMenuItem::Action {
                                         label: open_label,
                                         action: Arc::new(move || {
@@ -1231,19 +1231,47 @@ impl Widget for FileListContent {
                                     },
                                 ];
                                 if !open_with_items.is_empty() {
-                                    menu_items.push(ContextMenuItem::SubMenu {
+                                    core_items.push(ContextMenuItem::SubMenu {
                                         label: "Open With".to_string(),
                                         items: open_with_items,
                                     });
                                 }
-                                menu_items.push(ContextMenuItem::Action {
+                                core_items.push(ContextMenuItem::Action {
                                     label: "Delete".to_string(),
                                     action: Arc::new(|| {
                                         println!("Delete");
                                     }),
                                 });
 
-                                let menu = ContextMenu { items: menu_items };
+                                // Placeholder groups for future integrations.
+                                let sharing_items = vec![
+                                    ContextMenuItem::Action {
+                                        label: "Share (placeholder)".to_string(),
+                                        action: Arc::new(|| {}),
+                                    },
+                                ];
+                                let extensions_items = vec![
+                                    ContextMenuItem::Action {
+                                        label: "Extensions (placeholder)".to_string(),
+                                        action: Arc::new(|| {}),
+                                    },
+                                ];
+                                let view_items = vec![
+                                    ContextMenuItem::Action {
+                                        label: "View options (placeholder)".to_string(),
+                                        action: Arc::new(|| {}),
+                                    },
+                                ];
+
+                                let menu = ContextMenu {
+                                    items: Vec::new(),
+                                    groups: Some(vec![
+                                        ContextMenuGroup { items: core_items },
+                                        ContextMenuGroup { items: sharing_items },
+                                        ContextMenuGroup { items: extensions_items },
+                                        ContextMenuGroup { items: view_items },
+                                    ]),
+                                };
                             if let Some(cursor_pos) = info.cursor_pos {
                                 let cursor = Point::new(cursor_pos.x, cursor_pos.y);
                                 context.menu_manager.show_context_menu(menu, cursor);
