@@ -2176,7 +2176,13 @@ where
                  if let Some((menu, position)) = context.menu_manager.get_active_menu() {
                      if let Some(cursor_pos) = self.info.cursor_pos {
                          let cursor = vello::kurbo::Point::new(cursor_pos.x, cursor_pos.y);
-                        match crate::menu::handle_click(&menu, position, cursor) {
+                        match crate::menu::handle_click(
+                            &menu,
+                            position,
+                            cursor,
+                            &mut self.text_render,
+                            &mut self.info.font_context,
+                        ) {
                             Some(MenuClickResult::Action(action)) => {
                                 action();
                                 context.menu_manager.close_context_menu();

@@ -96,7 +96,7 @@ pub fn render_context_menu(
     font_cx: &mut FontContext,
     cursor_pos: Option<Point>,
 ) -> Rect {
-    let (width, height) = calculate_menu_layout(menu);
+    let (width, height) = calculate_menu_layout(menu, text_render, font_cx);
     let x = position.x as f64;
     let y = position.y as f64;
     let rect = Rect::new(x, y, x + width, y + height);
@@ -264,39 +264,51 @@ pub fn render_context_menu(
     rect
 }
 
-fn calculate_menu_layout(menu: &ContextMenu) -> (f64, f64) {
+fn calculate_menu_layout(
+    menu: &ContextMenu,
+    text_render: &mut TextRenderContext,
+    font_cx: &mut FontContext,
+) -> (f64, f64) {
     let item_height = 24.0;
     let padding = 4.0;
     let min_width = 120.0;
     let max_width = 400.0;
     
-    // Calculate width based on content
+    // Measure text using the active font context for accurate width.
     let mut max_text_width: f64 = 0.0;
     for item in &menu.items {
-        match item {
-            ContextMenuItem::Action { label, .. } | ContextMenuItem::SubMenu { label, .. } => {
-                let text_width = label.len() as f64 * 8.0; // Estimate
-                max_text_width = max_text_width.max(text_width);
-            }
-            _ => {}
+        if let ContextMenuItem::Action { label, .. } | ContextMenuItem::SubMenu { label, .. } = item {
+            let (text_width, _) = text_render.measure_text_layout(font_cx, label, 14.0, None);
+            max_text_width = max_text_width.max(text_width as f64);
         }
     }
-    // Use a generous fallback width to avoid clipping when estimate is off.
+    // Add padding and clamp.
     let estimated = (max_text_width + 40.0).max(min_width);
     let width = estimated.min(max_width);
     let height = menu.items.len() as f64 * item_height + padding * 2.0;
     (width, height)
 }
 
-pub fn get_menu_rect(menu: &ContextMenu, position: Point) -> Rect {
-    let (width, height) = calculate_menu_layout(menu);
+pub fn get_menu_rect(
+    menu: &ContextMenu,
+    position: Point,
+    text_render: &mut TextRenderContext,
+    font_cx: &mut FontContext,
+) -> Rect {
+    let (width, height) = calculate_menu_layout(menu, text_render, font_cx);
     let x = position.x as f64;
     let y = position.y as f64;
     Rect::new(x, y, x + width, y + height)
 }
 
-pub fn handle_click(menu: &ContextMenu, position: Point, cursor: Point) -> Option<MenuClickResult> {
-    let rect = get_menu_rect(menu, position);
+pub fn handle_click(
+    menu: &ContextMenu,
+    position: Point,
+    cursor: Point,
+    text_render: &mut TextRenderContext,
+    font_cx: &mut FontContext,
+) -> Option<MenuClickResult> {
+    let rect = get_menu_rect(menu, position, text_render, font_cx);
     if !rect.contains(cursor) {
         return None;
     }
