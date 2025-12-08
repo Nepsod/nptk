@@ -311,8 +311,7 @@ struct FileListContent {
 
 #[derive(Clone)]
 struct PendingAction {
-    path: PathBuf,
-    is_directory: bool,
+    paths: Vec<PathBuf>,
 }
 
 impl FileListContent {
@@ -1175,11 +1174,22 @@ impl Widget for FileListContent {
                         
                         for (_, btn, el) in &info.buttons {
                             if *btn == MouseButton::Right && *el == ElementState::Pressed {
-                                let pending = self.pending_action.clone();
-                                let path_for_open = target_path.clone();
-                                let is_directory = matches!(file_type, Some(FileType::Directory));
+                                // Ensure selection reflects the item we right-clicked.
+                                let mut current_selection = self.selected_paths.get().to_vec();
+                                if !current_selection.contains(&target_path) {
+                                    if ctrl_pressed {
+                                        current_selection.push(target_path.clone());
+                                    } else {
+                                        current_selection = vec![target_path.clone()];
+                                    }
+                                    self.selected_paths.set(current_selection.clone());
+                                    update.insert(Update::DRAW);
+                                }
 
-                                let open_label = self.open_label_for_path(&path_for_open);
+                                let pending = self.pending_action.clone();
+                                let paths_for_action = current_selection.clone();
+
+                                let open_label = self.open_label_for_path(&target_path);
 
                                 let menu = ContextMenu {
                                     items: vec![
@@ -1188,8 +1198,7 @@ impl Widget for FileListContent {
                                             action: Arc::new(move || {
                                                 if let Ok(mut pending_lock) = pending.lock() {
                                                     *pending_lock = Some(PendingAction {
-                                                        path: path_for_open.clone(),
-                                                        is_directory,
+                                                        paths: paths_for_action.clone(),
                                                     });
                                                 }
                                             }),
@@ -1357,13 +1366,24 @@ impl Widget for FileListContent {
         // Process any pending action set by context menu callbacks.
         if let Ok(mut pending) = self.pending_action.lock() {
             if let Some(action) = pending.take() {
-                if action.is_directory {
-                    self.current_path.set(action.path.clone());
-                    let _ = self.fs_model.refresh(&action.path);
-                    self.selected_paths.set(Vec::new());
-                    update.insert(Update::LAYOUT | Update::DRAW);
+                if action.paths.len() == 1 {
+                    let path = &action.paths[0];
+                    if path.is_dir() {
+                        self.current_path.set(path.clone());
+                        let _ = self.fs_model.refresh(path);
+                        self.selected_paths.set(Vec::new());
+                        update.insert(Update::LAYOUT | Update::DRAW);
+                    } else {
+                        FileListContent::launch_path(self.mime_registry.clone(), path.clone());
+                    }
                 } else {
-                    FileListContent::launch_path(self.mime_registry.clone(), action.path.clone());
+                    // Multi-selection: launch all files, skip directories.
+                    for path in action.paths.iter() {
+                        if path.is_dir() {
+                            continue;
+                        }
+                        FileListContent::launch_path(self.mime_registry.clone(), path.clone());
+                    }
                 }
             }
         }
