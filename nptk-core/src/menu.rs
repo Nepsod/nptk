@@ -92,6 +92,11 @@ impl ContextMenuManager {
         state.stack.push((menu, position));
     }
 
+    pub fn set_stack(&self, stack: Vec<(ContextMenu, Point)>) {
+        let mut state = self.state.lock().unwrap();
+        state.stack = stack;
+    }
+
     pub fn close_context_menu(&self) {
         let mut state = self.state.lock().unwrap();
         state.stack.clear();
@@ -398,4 +403,40 @@ pub fn handle_click(
         }
         _ => Some(MenuClickResult::NonActionInside),
     }
+}
+
+/// Hover helper: if cursor is over a submenu item, return its submenu and origin.
+pub fn hover_submenu(
+    menu: &ContextMenu,
+    position: Point,
+    cursor: Point,
+    text_render: &mut TextRenderContext,
+    font_cx: &mut FontContext,
+) -> Option<(ContextMenu, Point)> {
+    let flat_items = flatten_menu_items(menu);
+    let (width, height) = calculate_layout_from_items(&flat_items, text_render, font_cx);
+    let x = position.x as f64;
+    let y = position.y as f64;
+    let rect = Rect::new(x, y, x + width, y + height);
+    if !rect.contains(cursor) {
+        return None;
+    }
+
+    let item_height = 24.0;
+    let padding = 4.0;
+    let relative_y = cursor.y - position.y - padding;
+    if relative_y < 0.0 {
+        return None;
+    }
+    let index = (relative_y / item_height) as usize;
+    if index >= flat_items.len() {
+        return None;
+    }
+
+    if let ContextMenuItem::SubMenu { items, .. } = &flat_items[index] {
+        let item_top = position.y as f64 + padding + (index as f64 * item_height);
+        let submenu_origin = Point::new(rect.x1 as f64 + 8.0, item_top);
+        return Some((ContextMenu { items: items.clone(), groups: None }, submenu_origin));
+    }
+    None
 }

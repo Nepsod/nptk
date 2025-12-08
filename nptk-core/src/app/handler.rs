@@ -1348,9 +1348,45 @@ where
         if stack.is_empty() {
             return;
         }
+        // Hover-driven submenu opening, mirroring menubar behavior.
+        if let Some(cursor_pos) = self.info.cursor_pos {
+            let cursor = vello::kurbo::Point::new(cursor_pos.x, cursor_pos.y);
+
+            // Find the deepest menu in the current stack that contains the cursor.
+            let mut deepest_idx: Option<usize> = None;
+            for (i, (menu, pos)) in stack.iter().enumerate() {
+                let rect = crate::menu::get_menu_rect(
+                    menu,
+                    *pos,
+                    &mut self.text_render,
+                    &mut self.info.font_context,
+                );
+                if rect.contains(cursor) {
+                    deepest_idx = Some(i);
+                }
+            }
+
+            if let Some(idx) = deepest_idx {
+                let (active_menu, active_pos) = stack[idx].clone();
+                let mut new_stack = stack[..=idx].to_vec();
+
+                if let Some((sub, sub_pos)) = crate::menu::hover_submenu(
+                    &active_menu,
+                    active_pos,
+                    cursor,
+                    &mut self.text_render,
+                    &mut self.info.font_context,
+                ) {
+                    new_stack.push((sub, sub_pos));
+                }
+
+                context.menu_manager.set_stack(new_stack);
+            }
+        }
+
         if let Some(mut graphics) = graphics_from_scene(&mut self.scene) {
             let cursor_pos = self.info.cursor_pos.map(|p| vello::kurbo::Point::new(p.x, p.y));
-            for (menu, position) in stack {
+            for (menu, position) in context.menu_manager.get_menu_stack() {
                 crate::menu::render_context_menu(
                     &mut *graphics,
                     &menu,
