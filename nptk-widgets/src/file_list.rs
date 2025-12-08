@@ -842,11 +842,11 @@ impl FileListContent {
         let total_duration = start.elapsed();
         
         // DEBUG: Log timing every 60 frames
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static FRAME_COUNT: AtomicU64 = AtomicU64::new(0);
-        let frame = FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
-        if frame % 60 == 0 {
-        }
+        // use std::sync::atomic::{AtomicU64, Ordering};
+        // static FRAME_COUNT: AtomicU64 = AtomicU64::new(0);
+        // let frame = FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
+        // if frame % 60 == 0 {
+        // }
     }
 
     fn update_drag_selection(&mut self, selection_rect: Rect, toggle: bool, layout_width: f32) {
@@ -1400,12 +1400,12 @@ impl Widget for FileListContent {
         _context: AppContext,
     ) {
         // DEBUG: Log render calls to investigate frequency
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static RENDER_COUNTER: AtomicU64 = AtomicU64::new(0);
-        let count = RENDER_COUNTER.fetch_add(1, Ordering::Relaxed);
-        if count % 60 == 0 {
-            // println!("FileList render called {} times", count);
-        }
+        // use std::sync::atomic::{AtomicU64, Ordering};
+        // static RENDER_COUNTER: AtomicU64 = AtomicU64::new(0);
+        // let count = RENDER_COUNTER.fetch_add(1, Ordering::Relaxed);
+        // if count % 60 == 0 {
+        //     // println!("FileList render called {} times", count);
+        // }
         
         let view_mode = *self.view_mode.get();
         
@@ -1556,21 +1556,6 @@ impl FileListContent {
             true
         );
         layout_time += layout_start.elapsed();
-    }
-
-    let total_duration = start.elapsed();
-    
-    // DEBUG: Log timing every 60 frames
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static FRAME_COUNT: AtomicU64 = AtomicU64::new(0);
-    let frame = FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
-    if frame % 60 == 0 {
-        println!("Icon render total: {:?}, visible_count={}, layout_time={:?}, render_time={:?}",
-            total_duration,
-            end_index - start_index,
-            layout_time,
-            render_time
-        );
     }
 }
 
