@@ -91,10 +91,9 @@ impl MimeRegistry {
         {
             Some(app) => app,
             None => {
-                // If the entry isn't in the registry map, fall back to xdg-open.
-                // This avoids silent failures when mimeapps.list points to an ID
-                // missing from the associations map.
-                return fallback_xdg_open(file, desktop_id);
+                // If the entry isn't in the registry map, try gtk-launch first,
+                // otherwise fall back to xdg-open to avoid silent failures.
+                return fallback_launch(desktop_id, file);
             }
         };
 
@@ -219,7 +218,14 @@ fn default_mimeapps_paths() -> Vec<std::path::PathBuf> {
 }
 
 /// Fallback launcher when a desktop entry cannot be resolved from the registry.
-fn fallback_xdg_open(file: &Path, desktop_id: &str) -> anyhow::Result<()> {
+fn fallback_launch(desktop_id: &str, file: &Path) -> anyhow::Result<()> {
+    // Try gtk-launch with the explicit desktop id first.
+    if let Ok(mut child) = Command::new("gtk-launch").arg(desktop_id).arg(file).spawn() {
+        let _ = child.wait();
+        return Ok(());
+    }
+
+    // Fall back to xdg-open to avoid total failure.
     Command::new("xdg-open")
         .arg(file)
         .spawn()

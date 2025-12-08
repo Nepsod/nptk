@@ -312,6 +312,7 @@ struct FileListContent {
 #[derive(Clone)]
 struct PendingAction {
     paths: Vec<PathBuf>,
+    app_id: Option<String>,
 }
 
 impl FileListContent {
@@ -487,6 +488,59 @@ impl FileListContent {
         }
         
         variants
+    }
+
+    /// Build "Open With" submenu items for a path and selection.
+    fn build_open_with_items(&self, path: &Path, selection: Vec<PathBuf>) -> Vec<ContextMenuItem> {
+        let mut items = Vec::new();
+
+        let mime = MimeDetector::detect_mime_type(path)
+            .or_else(|| Self::xdg_mime_filetype(path));
+        let Some(mime) = mime else {
+            return items;
+        };
+
+        let variants = Self::get_mime_variants(&mime);
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut handlers: Vec<String> = Vec::new();
+
+        for variant in variants {
+            if let Some(default_id) = self.mime_registry.resolve(&variant) {
+                if seen.insert(default_id.clone()) {
+                    handlers.push(default_id);
+                }
+            }
+            for app_id in self.mime_registry.list_handlers(&variant) {
+                if seen.insert(app_id.clone()) {
+                    handlers.push(app_id);
+                }
+            }
+            if let Some(app_id) = Self::xdg_default_for_mime(&variant) {
+                if seen.insert(app_id.clone()) {
+                    handlers.push(app_id);
+                }
+            }
+        }
+
+        for app_id in handlers {
+            let label = self.display_name_for_appid(&app_id);
+            let pending = self.pending_action.clone();
+            let paths_for_action = selection.clone();
+            let app_id_cloned = app_id.clone();
+            items.push(ContextMenuItem::Action {
+                label,
+                action: Arc::new(move || {
+                    if let Ok(mut pending_lock) = pending.lock() {
+                        *pending_lock = Some(PendingAction {
+                            paths: paths_for_action.clone(),
+                            app_id: Some(app_id_cloned.clone()),
+                        });
+                    }
+                }),
+            });
+        }
+
+        items
     }
 
     fn xdg_mime_filetype(path: &Path) -> Option<String> {
@@ -1159,28 +1213,37 @@ impl Widget for FileListContent {
                             let pending = self.pending_action.clone();
                             let paths_for_action = current_selection.clone();
 
-                            let open_label = self.open_label_for_path(&target_path);
+                                let open_label = self.open_label_for_path(&target_path);
 
-                            let menu = ContextMenu {
-                                items: vec![
+                                let open_with_items = self.build_open_with_items(&target_path, paths_for_action.clone());
+
+                                let mut menu_items = vec![
                                     ContextMenuItem::Action {
                                         label: open_label,
                                         action: Arc::new(move || {
                                             if let Ok(mut pending_lock) = pending.lock() {
                                                 *pending_lock = Some(PendingAction {
                                                     paths: paths_for_action.clone(),
+                                                    app_id: None,
                                                 });
                                             }
                                         }),
                                     },
-                                    ContextMenuItem::Action {
-                                        label: "Delete".to_string(),
-                                        action: Arc::new(|| {
-                                            println!("Delete");
-                                        }),
-                                    },
-                                ],
-                            };
+                                ];
+                                if !open_with_items.is_empty() {
+                                    menu_items.push(ContextMenuItem::SubMenu {
+                                        label: "Open With".to_string(),
+                                        items: open_with_items,
+                                    });
+                                }
+                                menu_items.push(ContextMenuItem::Action {
+                                    label: "Delete".to_string(),
+                                    action: Arc::new(|| {
+                                        println!("Delete");
+                                    }),
+                                });
+
+                                let menu = ContextMenu { items: menu_items };
                             if let Some(cursor_pos) = info.cursor_pos {
                                 let cursor = Point::new(cursor_pos.x, cursor_pos.y);
                                 context.menu_manager.show_context_menu(menu, cursor);
@@ -1302,23 +1365,31 @@ impl Widget for FileListContent {
         // Process any pending action set by context menu callbacks.
         if let Ok(mut pending) = self.pending_action.lock() {
             if let Some(action) = pending.take() {
-                if action.paths.len() == 1 {
-                    let path = &action.paths[0];
-                    if path.is_dir() {
-                        self.current_path.set(path.clone());
-                        let _ = self.fs_model.refresh(path);
-                        self.selected_paths.set(Vec::new());
-                        update.insert(Update::LAYOUT | Update::DRAW);
-                    } else {
-                        FileListContent::launch_path(self.mime_registry.clone(), path.clone());
+                if let Some(app_id) = action.app_id {
+                    for path in action.paths.iter() {
+                        if let Err(err) = self.mime_registry.launch(&app_id, path) {
+                            log::warn!("Failed to launch {} with {}: {}", path.display(), app_id, err);
+                        }
                     }
                 } else {
-                    // Multi-selection: launch all files, skip directories.
-                    for path in action.paths.iter() {
+                    if action.paths.len() == 1 {
+                        let path = &action.paths[0];
                         if path.is_dir() {
-                            continue;
+                            self.current_path.set(path.clone());
+                            let _ = self.fs_model.refresh(path);
+                            self.selected_paths.set(Vec::new());
+                            update.insert(Update::LAYOUT | Update::DRAW);
+                        } else {
+                            FileListContent::launch_path(self.mime_registry.clone(), path.clone());
                         }
-                        FileListContent::launch_path(self.mime_registry.clone(), path.clone());
+                    } else {
+                        // Multi-selection: launch all files, skip directories.
+                        for path in action.paths.iter() {
+                            if path.is_dir() {
+                                continue;
+                            }
+                            FileListContent::launch_path(self.mime_registry.clone(), path.clone());
+                        }
                     }
                 }
             }
