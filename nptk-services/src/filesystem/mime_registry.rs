@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::process::Command;
 use std::sync::Arc;
 
 use cosmic_mime_apps::{apps_for_mime, associations, List};
@@ -82,12 +83,20 @@ impl MimeRegistry {
 
     /// Launch the given desktop entry with the provided file path.
     pub fn launch(&self, desktop_id: &str, file: &Path) -> anyhow::Result<()> {
-        let app = self
+        let app = match self
             .apps
             .iter()
             .find(|(id, _)| id.as_ref() == desktop_id)
             .map(|(_, app)| app.clone())
-            .ok_or_else(|| anyhow::anyhow!("Desktop entry not found: {}", desktop_id))?;
+        {
+            Some(app) => app,
+            None => {
+                // If the entry isn't in the registry map, fall back to xdg-open.
+                // This avoids silent failures when mimeapps.list points to an ID
+                // missing from the associations map.
+                return fallback_xdg_open(file, desktop_id);
+            }
+        };
 
         let exec = read_exec_line(&app.path)
             .ok_or_else(|| anyhow::anyhow!("Missing Exec line for {}", desktop_id))?;
@@ -207,6 +216,15 @@ impl MimeRegistry {
 
 fn default_mimeapps_paths() -> Vec<std::path::PathBuf> {
     cosmic_mime_apps::list_paths()
+}
+
+/// Fallback launcher when a desktop entry cannot be resolved from the registry.
+fn fallback_xdg_open(file: &Path, desktop_id: &str) -> anyhow::Result<()> {
+    Command::new("xdg-open")
+        .arg(file)
+        .spawn()
+        .map_err(|e| anyhow::anyhow!("Desktop entry not found: {}. xdg-open failed: {}", desktop_id, e))?;
+    Ok(())
 }
 
 fn read_exec_line(path: &Path) -> Option<String> {
