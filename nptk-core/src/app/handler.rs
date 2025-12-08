@@ -1993,7 +1993,13 @@ where
                 self.request_redraw();
             },
             WindowEvent::CursorMoved { position, .. } => {
-                self.info.cursor_pos = Some(Vector2::new(position.x, position.y));
+                let scale_factor = self
+                    .window
+                    .as_ref()
+                    .map(|w| w.scale_factor())
+                    .unwrap_or(1.0);
+                let logical = position.to_logical::<f64>(scale_factor);
+                self.info.cursor_pos = Some(Vector2::new(logical.x, logical.y));
                 self.request_redraw();
             },
             WindowEvent::ModifiersChanged(modifiers) => {
@@ -2039,18 +2045,23 @@ where
 
         log::info!("Window resized to {}x{}", new_size.width, new_size.height);
 
+        // Resize the surface using physical pixels.
         if let Some(surface) = &mut self.surface {
-            // Resize the surface using the SurfaceTrait
             if let Err(e) = surface.resize(new_size.width, new_size.height) {
                 log::error!("Failed to resize surface: {}", e);
             }
         }
 
-        // Note: Hybrid backend is disabled due to wgpu version conflict,
-        // so scene recreation is not needed (Hybrid falls back to Vello)
+        // Convert to logical size for layout/hit testing.
+        let scale_factor = self
+            .window
+            .as_ref()
+            .map(|w| w.scale_factor())
+            .unwrap_or(1.0);
+        let logical_size = new_size.to_logical::<f64>(scale_factor);
 
-        self.update_window_node_size(new_size.width, new_size.height);
-        self.info.size = Vector2::new(new_size.width as f64, new_size.height as f64);
+        self.update_window_node_size(logical_size.width as u32, logical_size.height as u32);
+        self.info.size = Vector2::new(logical_size.width, logical_size.height);
         self.request_redraw();
         self.update.insert(Update::DRAW | Update::LAYOUT);
     }
@@ -2852,16 +2863,26 @@ where
             }
                 }
                 WindowEvent::Resized(size) => {
+                    // Physical size for surface/renderer
                     let _ = popup.surface.resize(size.width, size.height);
                     popup.renderer.update_render_target_size(size.width, size.height);
+
+                    // Logical size for layout/hit-testing
+                    let scale_factor = popup
+                        .window
+                        .as_ref()
+                        .map(|w| w.scale_factor())
+                        .unwrap_or(popup.scale_factor as f64);
+                    let logical = size.to_logical::<f64>(scale_factor);
+
                     let _ = popup.taffy.set_style(popup.root_node, Style {
                         size: Size {
-                            width: Dimension::length(size.width as f32),
-                            height: Dimension::length(size.height as f32),
+                            width: Dimension::length(logical.width as f32),
+                            height: Dimension::length(logical.height as f32),
                         },
                         ..Default::default()
                     });
-                    popup.config.window.size = Vector2::new(size.width as f64, size.height as f64);
+                    popup.config.window.size = Vector2::new(logical.width, logical.height);
                     if let Some(ref win) = popup.window {
                         win.request_redraw();
                     }
