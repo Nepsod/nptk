@@ -2189,6 +2189,11 @@ where
                                 self.update.insert(Update::DRAW);
                                 return;
                             }
+                            Some(MenuClickResult::SubMenu(sub, pos)) => {
+                                context.menu_manager.show_context_menu(sub, pos);
+                                self.update.insert(Update::DRAW);
+                                return;
+                            }
                             Some(MenuClickResult::NonActionInside) => {
                                 // Keep menu open (e.g., submenu/separator)
                                 self.update.insert(Update::DRAW);

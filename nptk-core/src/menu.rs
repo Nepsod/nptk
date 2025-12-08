@@ -27,6 +27,7 @@ pub enum ContextMenuItem {
 /// Result of a menu hit-test click.
 pub enum MenuClickResult {
     Action(Arc<dyn Fn() + Send + Sync>),
+    SubMenu(ContextMenu, Point),
     NonActionInside,
 }
 
@@ -322,13 +323,25 @@ pub fn handle_click(
     }
 
     let index = (relative_y / item_height) as usize;
-    if index < menu.items.len() {
-        match &menu.items[index] {
-            ContextMenuItem::Action { action, .. } => Some(MenuClickResult::Action(action.clone())),
-            // Submenus and separators keep the menu open for now.
-            _ => Some(MenuClickResult::NonActionInside),
+    if index >= menu.items.len() {
+        return None;
+    }
+
+    // Compute item rect to position submenu (if any).
+    let item_height = 24.0;
+    let padding = 4.0;
+    let item_top = position.y as f64 + padding + (index as f64 * item_height);
+    let item_bottom = item_top + item_height;
+    let submenu_origin = Point::new(
+        rect.x1 as f64 + 8.0,
+        item_top,
+    );
+
+    match &menu.items[index] {
+        ContextMenuItem::Action { action, .. } => Some(MenuClickResult::Action(action.clone())),
+        ContextMenuItem::SubMenu { items, .. } => {
+            Some(MenuClickResult::SubMenu(ContextMenu { items: items.clone() }, submenu_origin))
         }
-    } else {
-        None
+        _ => Some(MenuClickResult::NonActionInside),
     }
 }
