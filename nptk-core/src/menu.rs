@@ -24,6 +24,12 @@ pub enum ContextMenuItem {
     },
 }
 
+/// Result of a menu hit-test click.
+pub enum MenuClickResult {
+    Action(Arc<dyn Fn() + Send + Sync>),
+    NonActionInside,
+}
+
 /// Manages the state of the active context menu.
 #[derive(Clone, Default)]
 pub struct ContextMenuManager {
@@ -275,7 +281,9 @@ fn calculate_menu_layout(menu: &ContextMenu) -> (f64, f64) {
             _ => {}
         }
     }
-    let width = (max_text_width + 40.0).max(min_width).min(max_width);
+    // Use a generous fallback width to avoid clipping when estimate is off.
+    let estimated = (max_text_width + 40.0).max(min_width);
+    let width = estimated.min(max_width);
     let height = menu.items.len() as f64 * item_height + padding * 2.0;
     (width, height)
 }
@@ -287,7 +295,7 @@ pub fn get_menu_rect(menu: &ContextMenu, position: Point) -> Rect {
     Rect::new(x, y, x + width, y + height)
 }
 
-pub fn handle_click(menu: &ContextMenu, position: Point, cursor: Point) -> Option<Arc<dyn Fn() + Send + Sync>> {
+pub fn handle_click(menu: &ContextMenu, position: Point, cursor: Point) -> Option<MenuClickResult> {
     let rect = get_menu_rect(menu, position);
     if !rect.contains(cursor) {
         return None;
@@ -304,8 +312,9 @@ pub fn handle_click(menu: &ContextMenu, position: Point, cursor: Point) -> Optio
     let index = (relative_y / item_height) as usize;
     if index < menu.items.len() {
         match &menu.items[index] {
-            ContextMenuItem::Action { action, .. } => Some(action.clone()),
-            _ => None,
+            ContextMenuItem::Action { action, .. } => Some(MenuClickResult::Action(action.clone())),
+            // Submenus and separators keep the menu open for now.
+            _ => Some(MenuClickResult::NonActionInside),
         }
     } else {
         None

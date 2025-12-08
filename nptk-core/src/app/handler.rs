@@ -33,6 +33,7 @@ use crate::app::info::WindowIdentity;
 use crate::app::info::{AppInfo, AppKeyEvent};
 use crate::app::update::{Update, UpdateManager};
 use crate::config::MayConfig;
+use crate::menu::{ContextMenuManager, MenuClickResult};
 use crate::plugin::PluginManager;
 #[cfg(all(target_os = "linux", feature = "wayland"))]
 use crate::platform::wayland::events::{InputEvent, KeyboardEvent, PointerEvent};
@@ -2133,7 +2134,12 @@ where
                     return;
                 },
                 PhysicalKey::Code(KeyCode::Escape) => {
-                    // Handle ESC key for modal overlays
+                    // Close context menu if open
+                    if self.menu_manager.is_open() {
+                        self.menu_manager.close_context_menu();
+                        self.update.insert(Update::DRAW);
+                        return;
+                    }
                 },
                 _ => {},
             }
@@ -2170,16 +2176,25 @@ where
                  if let Some((menu, position)) = context.menu_manager.get_active_menu() {
                      if let Some(cursor_pos) = self.info.cursor_pos {
                          let cursor = vello::kurbo::Point::new(cursor_pos.x, cursor_pos.y);
-                         if let Some(action) = crate::menu::handle_click(&menu, position, cursor) {
-                             action();
-                             context.menu_manager.close_context_menu();
-                             self.update.insert(Update::DRAW);
-                             return;
-                         } else {
-                             context.menu_manager.close_context_menu();
-                             self.update.insert(Update::DRAW);
-                             return;
-                         }
+                        match crate::menu::handle_click(&menu, position, cursor) {
+                            Some(MenuClickResult::Action(action)) => {
+                                action();
+                                context.menu_manager.close_context_menu();
+                                self.update.insert(Update::DRAW);
+                                return;
+                            }
+                            Some(MenuClickResult::NonActionInside) => {
+                                // Keep menu open (e.g., submenu/separator)
+                                self.update.insert(Update::DRAW);
+                                return;
+                            }
+                            None => {
+                                // Click outside: close
+                                context.menu_manager.close_context_menu();
+                                self.update.insert(Update::DRAW);
+                                return;
+                            }
+                        }
                      }
                  }
              }
