@@ -2567,9 +2567,6 @@ where
                 }
             }
 
-            // Use logical size for layout (unscaled)
-            let logical_width = popup.info.size.x as u32;
-            let logical_height = popup.info.size.y as u32;
             // Use physical size for rendering (scaled)
             let physical_width = (popup.info.size.x * popup.scale_factor as f64) as u32;
             let physical_height = (popup.info.size.y * popup.scale_factor as f64) as u32;
