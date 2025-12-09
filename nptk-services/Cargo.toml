@@ -30,3 +30,4 @@ dirs = "5.0"
 lru = "0.12"
 cosmic-mime-apps = { git = "https://github.com/pop-os/cosmic-mime-apps.git" }
 mime = "0.3"
+shared-mime = { version = "0.1.0", features = ["xdg-runtime"] }

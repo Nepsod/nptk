@@ -1384,8 +1384,8 @@ where
             }
         }
 
-        if let Some(mut graphics) = graphics_from_scene(&mut self.scene) {
-            let cursor_pos = self.info.cursor_pos.map(|p| vello::kurbo::Point::new(p.x, p.y));
+            if let Some(mut graphics) = graphics_from_scene(&mut self.scene) {
+                let cursor_pos = self.info.cursor_pos.map(|p| vello::kurbo::Point::new(p.x, p.y));
             for (menu, position) in context.menu_manager.get_menu_stack() {
                 crate::menu::render_context_menu(
                     &mut *graphics,
@@ -2211,10 +2211,10 @@ where
     ) {
         // Context Menu Logic
         if state == ElementState::Pressed {
-            let context = self.context();
-            if context.menu_manager.is_open() {
-                if let Some(cursor_pos) = self.info.cursor_pos {
-                    let cursor = vello::kurbo::Point::new(cursor_pos.x, cursor_pos.y);
+             let context = self.context();
+             if context.menu_manager.is_open() {
+                     if let Some(cursor_pos) = self.info.cursor_pos {
+                         let cursor = vello::kurbo::Point::new(cursor_pos.x, cursor_pos.y);
                     // Hit-test topmost menu only; close all if click outside.
                     if let Some((menu, position)) = context.menu_manager.get_active_menu() {
                         match crate::menu::handle_click(
@@ -2225,10 +2225,10 @@ where
                             &mut self.info.font_context,
                         ) {
                             Some(MenuClickResult::Action(action)) => {
-                                action();
-                                context.menu_manager.close_context_menu();
-                                self.update.insert(Update::DRAW);
-                                return;
+                             action();
+                             context.menu_manager.close_context_menu();
+                             self.update.insert(Update::DRAW);
+                             return;
                             }
                             Some(MenuClickResult::SubMenu(sub, pos)) => {
                                 context.menu_manager.push_submenu(sub, pos);
@@ -2240,18 +2240,18 @@ where
                                 return;
                             }
                             None => {
-                                context.menu_manager.close_context_menu();
-                                self.update.insert(Update::DRAW);
-                                return;
-                            }
+                             context.menu_manager.close_context_menu();
+                             self.update.insert(Update::DRAW);
+                             return;
+                         }
                         }
                     } else {
                         context.menu_manager.close_context_menu();
                         self.update.insert(Update::DRAW);
                         return;
-                    }
-                }
-            }
+                     }
+                 }
+             }
         }
 
         if button == MouseButton::Left && state == ElementState::Pressed {
@@ -2845,32 +2845,32 @@ where
                     let height = popup.config.window.size.y as u32;
 
                     // 1. Layout
-                    let style = popup.widget.layout_style();
-                    let _ = popup.taffy.set_children(popup.root_node, &[]);
-
-                    if let Err(e) = layout_widget_tree(&mut popup.taffy, popup.root_node, &style) {
-                        eprintln!("Failed to build popup layout tree: {}", e);
-                    }
-                    let _ = popup.taffy.compute_layout(popup.root_node, Size::MAX_CONTENT);
-
-                    // 2. Render to Scene
-                    let mut builder = Scene::new(popup.config.render.backend.clone(), width, height);
-                    {
-                        let mut graphics = graphics_from_scene(&mut builder).unwrap();
-                        let child_count = popup.taffy.child_count(popup.root_node);
-                        if child_count > 0 {
-                            let widget_node = popup.taffy.child_at_index(popup.root_node, 0).unwrap();
-                            match collect_layout_tree(&popup.taffy, widget_node, &style, 0.0, 0.0) {
-                                Ok(layout_node) => {
-                                    let context = AppContext::new(
-                                        self.update.clone(),
-                                        self.info.diagnostics.clone(),
-                                        self.gpu_context.as_ref().unwrap().clone(),
-                                        self.info.focus_manager.clone(),
-                                        self.menu_manager.clone(),
-                                        self.popup_manager.clone(),
-                                        self.settings.clone(),
-                                    );
+            let style = popup.widget.layout_style();
+            let _ = popup.taffy.set_children(popup.root_node, &[]);
+            
+            if let Err(e) = layout_widget_tree(&mut popup.taffy, popup.root_node, &style) {
+                eprintln!("Failed to build popup layout tree: {}", e);
+            }
+            let _ = popup.taffy.compute_layout(popup.root_node, Size::MAX_CONTENT);
+            
+            // 2. Render to Scene
+            let mut builder = Scene::new(popup.config.render.backend.clone(), width, height);
+            {
+                let mut graphics = graphics_from_scene(&mut builder).unwrap();
+                let child_count = popup.taffy.child_count(popup.root_node);
+                if child_count > 0 {
+                    let widget_node = popup.taffy.child_at_index(popup.root_node, 0).unwrap();
+                    match collect_layout_tree(&popup.taffy, widget_node, &style, 0.0, 0.0) {
+                        Ok(layout_node) => {
+                            let context = AppContext::new(
+                                self.update.clone(),
+                                self.info.diagnostics.clone(),
+                                self.gpu_context.as_ref().unwrap().clone(),
+                                self.info.focus_manager.clone(),
+                                self.menu_manager.clone(),
+                                self.popup_manager.clone(),
+                                self.settings.clone(),
+                            );
                                     popup.widget.render(
                                         graphics.as_mut(),
                                         &mut popup.config.theme,
@@ -2879,70 +2879,70 @@ where
                                         context,
                                     );
                                 }
-                                Err(e) => eprintln!("Failed to collect popup layout: {}", e),
-                            }
-                        } else {
-                            log::warn!("Popup render: No children in root node!");
+                        Err(e) => eprintln!("Failed to collect popup layout: {}", e),
+                    }
+                } else {
+                    log::warn!("Popup render: No children in root node!");
+                }
+            }
+
+            // 3. Render to Surface
+            if let Some(gpu_context) = &self.gpu_context {
+                let devices = gpu_context.enumerate_devices();
+                if !devices.is_empty() {
+                    let device_handle = (self.config.render.device_selector)(devices);
+                    
+                    let render_view = match popup.surface.create_render_view(&device_handle.device, width, height) {
+                        Ok(view) => view,
+                        Err(e) => {
+                            log::error!("Failed to create render view for popup: {}", e);
+                            return;
                         }
+                    };
+
+                    if let Err(e) = popup.renderer.render_to_view(
+                        &device_handle.device,
+                        &device_handle.queue,
+                        &builder,
+                        &render_view,
+                        &RenderParams {
+                            base_color: popup.config.theme.window_background(),
+                            width,
+                            height,
+                            antialiasing_method: popup.config.render.antialiasing,
+                        },
+                    ) {
+                        log::error!("Failed to render popup scene: {}", e);
+                        return;
                     }
 
-                    // 3. Render to Surface
-                    if let Some(gpu_context) = &self.gpu_context {
-                        let devices = gpu_context.enumerate_devices();
-                        if !devices.is_empty() {
-                            let device_handle = (self.config.render.device_selector)(devices);
+                    let mut encoder = device_handle.device.create_command_encoder(&CommandEncoderDescriptor {
+                        label: Some("Popup Surface Blit Encoder"),
+                    });
 
-                            let render_view = match popup.surface.create_render_view(&device_handle.device, width, height) {
-                                Ok(view) => view,
-                                Err(e) => {
-                                    log::error!("Failed to create render view for popup: {}", e);
-                                    return;
-                                }
-                            };
-
-                            if let Err(e) = popup.renderer.render_to_view(
-                                &device_handle.device,
-                                &device_handle.queue,
-                                &builder,
-                                &render_view,
-                                &RenderParams {
-                                    base_color: popup.config.theme.window_background(),
-                                    width,
-                                    height,
-                                    antialiasing_method: popup.config.render.antialiasing,
-                                },
-                            ) {
-                                log::error!("Failed to render popup scene: {}", e);
-                                return;
-                            }
-
-                            let mut encoder = device_handle.device.create_command_encoder(&CommandEncoderDescriptor {
-                                label: Some("Popup Surface Blit Encoder"),
-                            });
-
-                            let surface_texture = match popup.surface.get_current_texture() {
-                                Ok(t) => t,
-                                Err(e) => {
-                                    log::error!("Failed to get popup surface texture: {}", e);
-                                    return;
-                                }
-                            };
-
-                            let surface_view = surface_texture.texture.create_view(&TextureViewDescriptor::default());
-
-                            if let Err(e) = popup.surface.blit_render_view(&device_handle.device, &mut encoder, &render_view, &surface_view) {
-                                log::error!("Failed to blit popup surface: {}", e);
-                                return;
-                            }
-
-                            device_handle.queue.submit(Some(encoder.finish()));
-                            surface_texture.present();
+                    let surface_texture = match popup.surface.get_current_texture() {
+                        Ok(t) => t,
+                        Err(e) => {
+                            log::error!("Failed to get popup surface texture: {}", e);
+                            return;
                         }
+                    };
+
+                    let surface_view = surface_texture.texture.create_view(&TextureViewDescriptor::default());
+
+                    if let Err(e) = popup.surface.blit_render_view(&device_handle.device, &mut encoder, &render_view, &surface_view) {
+                        log::error!("Failed to blit popup surface: {}", e);
+                        return;
                     }
 
-                    if let Some(ref win) = popup.window {
-                        win.pre_present_notify();
-                    }
+                    device_handle.queue.submit(Some(encoder.finish()));
+                    surface_texture.present();
+                }
+            }
+                    
+            if let Some(ref win) = popup.window {
+                win.pre_present_notify();
+            }
                 }
                 WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                     let physical = popup

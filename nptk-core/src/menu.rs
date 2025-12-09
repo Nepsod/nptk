@@ -333,7 +333,7 @@ fn calculate_layout_from_items(
         if let ContextMenuItem::Action { label, .. } | ContextMenuItem::SubMenu { label, .. } = item {
             let (text_width, _) = text_render.measure_text_layout(font_cx, label, 14.0, None);
             max_text_width = max_text_width.max(text_width as f64);
-        }
+            }
     }
     // Add padding and clamp.
     let estimated = (max_text_width + 40.0).max(min_width);
@@ -402,7 +402,7 @@ pub fn handle_click(
             Some(MenuClickResult::SubMenu(ContextMenu { items: items.clone(), groups: None }, submenu_origin))
         }
         _ => Some(MenuClickResult::NonActionInside),
-    }
+        }
 }
 
 /// Hover helper: if cursor is over a submenu item, return its submenu and origin.

@@ -94,29 +94,46 @@ impl IconRegistry {
 
     /// Get an icon for a file entry with fallback chain.
     pub fn get_file_icon(&self, entry: &FileEntry, size: u32) -> Option<CachedIcon> {
-        // Get icon name from MIME provider
+        // Get icon candidates from MIME provider
         let icon_data = self.mime_provider.get_icon(entry)?;
-        log::debug!("IconRegistry: Looking up icon '{}' for file '{}' (MIME: {:?})", 
-            icon_data.name, 
+        log::debug!("IconRegistry: Looking up icons {:?} for file '{}' (MIME: {:?})", 
+            icon_data.names, 
             entry.name,
             entry.metadata.mime_type
         );
         
-        // Try specific icon first
-        if let Some(icon) = self.get_icon(&icon_data.name, size) {
-            return Some(icon);
+        // Try specific icons in order
+        for name in &icon_data.names {
+            if let Some(icon) = self.get_icon(name, size) {
+                return Some(icon);
+            }
         }
         
-        log::debug!("IconRegistry: Icon '{}' not found, trying generic category icon", icon_data.name);
-        
-        // Try generic category icon
-        let generic_name = self.get_generic_icon_name(&icon_data.name);
-        if let Some(icon) = self.get_icon(&generic_name, size) {
-            log::debug!("IconRegistry: Found generic icon '{}'", generic_name);
-            return Some(icon);
+        // Try generic category for each candidate
+        for name in &icon_data.names {
+            let generic_name = self.get_generic_icon_name(name);
+            if let Some(icon) = self.get_icon(&generic_name, size) {
+                log::debug!("IconRegistry: Found generic icon '{}' from '{}'", generic_name, name);
+                return Some(icon);
+            }
         }
         
-        log::debug!("IconRegistry: Generic icon '{}' not found, trying final fallback", generic_name);
+        // Additional fallbacks for specific cases
+        // For media-floppy, try drive-harddisk as fallback
+        if icon_data.names.iter().any(|n| n == "media-floppy") {
+            if let Some(icon) = self.get_icon("drive-harddisk", size) {
+                log::debug!("IconRegistry: Using drive-harddisk as fallback for media-floppy");
+                return Some(icon);
+            }
+        }
+        
+        // For application-toml, try text-x-generic as fallback (TOML is text-like)
+        if icon_data.names.iter().any(|n| n == "application-toml") {
+            if let Some(icon) = self.get_icon("text-x-generic", size) {
+                log::debug!("IconRegistry: Using text-x-generic as fallback for application-toml");
+                return Some(icon);
+            }
+        }
         
         // Final fallback: text-x-generic or unknown
         self.get_icon("text-x-generic", size)
@@ -129,6 +146,7 @@ impl IconRegistry {
     /// - text-x-toml -> text-x-generic
     /// - application-pdf -> application-x-generic
     /// - image-png -> image-x-generic
+    /// - media-floppy -> drive-removable-media (fallback for floppy)
     fn get_generic_icon_name(&self, icon_name: &str) -> String {
         if icon_name.starts_with("text-") && icon_name != "text-x-generic" {
             "text-x-generic".to_string()
@@ -145,6 +163,12 @@ impl IconRegistry {
             "video-x-generic".to_string()
         } else if icon_name.starts_with("audio-") && icon_name != "audio-x-generic" {
             "audio-x-generic".to_string()
+        } else if icon_name == "media-floppy" {
+            // Fallback for floppy disk: try drive-removable-media, then drive-harddisk
+            "drive-removable-media".to_string()
+        } else if icon_name.starts_with("media-") {
+            // For other media icons, try drive-harddisk as fallback
+            "drive-harddisk".to_string()
         } else {
             // Already generic or unknown, return as-is
             icon_name.to_string()
@@ -155,6 +179,9 @@ impl IconRegistry {
     fn guess_context(&self, icon_name: &str) -> IconContext {
         if icon_name.starts_with("folder") || icon_name.contains("directory") {
             IconContext::Places
+        } else if icon_name.starts_with("media-") || icon_name.starts_with("drive-") {
+            // Media and drive icons are in Devices context
+            IconContext::Devices
         } else if icon_name.starts_with("text-") {
             IconContext::Mimetypes
         } else if icon_name.starts_with("image-") {

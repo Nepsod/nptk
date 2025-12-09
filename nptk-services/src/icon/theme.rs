@@ -31,15 +31,16 @@ pub enum IconContext {
 impl IconContext {
     /// Parse context from string.
     pub fn from_str(s: &str) -> Self {
-        match s {
-            "Actions" => Self::Actions,
-            "Apps" => Self::Apps,
-            "Devices" => Self::Devices,
-            "Emblems" => Self::Emblems,
-            "Emotes" => Self::Emotes,
-            "Mimetypes" => Self::Mimetypes,
-            "Places" => Self::Places,
-            "Status" => Self::Status,
+        let normalized = s.trim().to_ascii_lowercase();
+        match normalized.as_str() {
+            "actions" => Self::Actions,
+            "apps" | "applications" => Self::Apps,
+            "devices" => Self::Devices,
+            "emblems" => Self::Emblems,
+            "emotes" => Self::Emotes,
+            "mimetypes" | "mime-types" | "mime types" | "mime" | "mimes" => Self::Mimetypes,
+            "places" => Self::Places,
+            "status" => Self::Status,
             _ => Self::Unknown,
         }
     }

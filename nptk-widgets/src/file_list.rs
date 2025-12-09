@@ -461,8 +461,91 @@ impl Widget for PropertiesContent {
         // Try to render icon/thumbnail, fallback to text label
         let mut icon_rendered = false;
         
+        // For multiple files, try multi-file icon
+        if self.data.paths.len() > 1 {
+            // Try document-multiple or folder-multiple icons
+            let icon_names = ["document-multiple", "folder-multiple", "document", "folder"];
+            for icon_name in &icon_names {
+                if let Some(icon) = self.icon_registry.get_icon(icon_name, icon_size as u32) {
+                    let icon_x = icon_rect.x0;
+                    let icon_y = icon_rect.y0;
+                    let icon_size_f64 = icon_rect.width().min(icon_rect.height());
+                    
+                    match icon {
+                        nptk_services::icon::CachedIcon::Image { data, width, height } => {
+                            use nptk_core::vg::peniko::{Blob, ImageBrush, ImageData, ImageFormat, ImageAlphaType};
+                            let image_data = ImageData {
+                                data: Blob::from(data.as_ref().clone()),
+                                format: ImageFormat::Rgba8,
+                                alpha_type: ImageAlphaType::Alpha,
+                                width,
+                                height,
+                            };
+                            let image_brush = ImageBrush::new(image_data);
+                            let scale_x = icon_size_f64 / (width as f64);
+                            let scale_y = icon_size_f64 / (height as f64);
+                            let scale = scale_x.min(scale_y);
+                            let transform = Affine::scale_non_uniform(scale, scale)
+                                .then_translate(Vec2::new(icon_x, icon_y));
+                            if let Some(scene) = graphics.as_scene_mut() {
+                                scene.draw_image(&image_brush, transform);
+                                icon_rendered = true;
+                                break;
+                            }
+                        }
+                        nptk_services::icon::CachedIcon::Svg(svg_source) => {
+                            // Check SVG scene cache first
+                            let cached_scene = {
+                                let cache = self.svg_scene_cache.lock().unwrap();
+                                cache.get(svg_source.as_str()).cloned()
+                            };
+                            let (scene, svg_width, svg_height) = if let Some((scene, w, h)) = cached_scene {
+                                (scene, w, h)
+                            } else {
+                                // Cache miss - parse and render SVG
+                                use vello_svg::usvg::{Tree, Options, ShapeRendering, TextRendering, ImageRendering};
+                                if let Ok(tree) = Tree::from_str(
+                                    svg_source.as_str(),
+                                    &Options {
+                                        shape_rendering: ShapeRendering::GeometricPrecision,
+                                        text_rendering: TextRendering::OptimizeLegibility,
+                                        image_rendering: ImageRendering::OptimizeSpeed,
+                                        ..Default::default()
+                                    },
+                                ) {
+                                    let scene = vello_svg::render_tree(&tree);
+                                    let svg_size = tree.size();
+                                    let w = svg_size.width() as f64;
+                                    let h = svg_size.height() as f64;
+                                    {
+                                        let mut cache = self.svg_scene_cache.lock().unwrap();
+                                        cache.insert(svg_source.as_str().to_string(), (scene.clone(), w, h));
+                                    }
+                                    (scene, w, h)
+                                } else {
+                                    (nptk_core::vg::Scene::new(), 1.0, 1.0)
+                                }
+                            };
+                            
+                            let scale_x = icon_size_f64 / svg_width;
+                            let scale_y = icon_size_f64 / svg_height;
+                            let scale = scale_x.min(scale_y);
+                            let transform = Affine::scale_non_uniform(scale, scale)
+                                .then_translate(Vec2::new(icon_x, icon_y));
+                            graphics.append(&scene, Some(transform));
+                            icon_rendered = true;
+                            break;
+                        }
+                        nptk_services::icon::CachedIcon::Path(_) => {
+                            // Path icons are rendered as fallback below
+                        }
+                    }
+                }
+            }
+        }
+        
         // For single file, try thumbnail first, then icon
-        if self.data.paths.len() == 1 {
+        if !icon_rendered && self.data.paths.len() == 1 {
             let path = &self.data.paths[0];
             
             // Create FileEntry from path
@@ -986,14 +1069,24 @@ impl FileListContent {
                 .map(|s| s.to_uppercase())
                 .unwrap_or_else(|| "FILE".to_string());
 
-            let kind = MimeDetector::detect_mime_type(path)
+            let mime_type = MimeDetector::detect_mime_type(path)
                 .or_else(|| Self::xdg_mime_filetype(path))
                 .unwrap_or_else(|| "unknown".to_string());
-            rows.push(("Kind".to_string(), kind));
+            
+            let kind_display = if let Some(description) = self.lookup_mime_description(&mime_type) {
+                format!("{} ({})", description, mime_type)
+            } else {
+                mime_type.clone()
+            };
+            rows.push(("Kind".to_string(), kind_display));
             rows.push(("Name".to_string(), name.to_string()));
 
             if let Ok(meta) = fs::metadata(path) {
-                let size = meta.len();
+                let size = if meta.is_dir() {
+                    Self::calculate_directory_size(path)
+                } else {
+                    meta.len()
+                };
                 rows.push(("Size".to_string(), format_size(size, BINARY) + " (" + size.to_string().as_str() + " bytes)"));
                 if let Ok(modified) = meta.modified() {
                     rows.push((
@@ -1016,7 +1109,12 @@ impl FileListContent {
             let mut total_size: u64 = 0;
             for p in paths {
                 if let Ok(meta) = fs::metadata(p) {
-                    total_size = total_size.saturating_add(meta.len());
+                    let size = if meta.is_dir() {
+                        Self::calculate_directory_size(p)
+                    } else {
+                        meta.len()
+                    };
+                    total_size = total_size.saturating_add(size);
                 }
             }
             title = format!("{} items", count);
@@ -1065,6 +1163,207 @@ impl FileListContent {
         } else {
             Some(mime.to_string())
         }
+    }
+
+    /// Extract the first <comment> text from a mime-type block, preferring xml:lang="en".
+    fn extract_comment(mime_block: &str) -> Option<String> {
+        let mut best: Option<String> = None;
+        let mut fallback: Option<String> = None;
+        let mut search_start = 0;
+        while let Some(idx) = mime_block[search_start..].find("<comment") {
+            let comment_start = search_start + idx;
+            let tag_end = match mime_block[comment_start..].find('>') {
+                Some(i) => comment_start + i + 1,
+                None => break,
+            };
+            let end_tag = match mime_block[tag_end..].find("</comment>") {
+                Some(i) => tag_end + i,
+                None => break,
+            };
+            let tag_text = &mime_block[comment_start..tag_end];
+            let body = mime_block[tag_end..end_tag].trim();
+            if body.is_empty() {
+                search_start = end_tag + "</comment>".len();
+                continue;
+            }
+            let is_en = tag_text.contains(r#"xml:lang="en""#);
+            if is_en {
+                best = Some(body.to_string());
+                break;
+            } else if fallback.is_none() {
+                fallback = Some(body.to_string());
+            }
+            search_start = end_tag + "</comment>".len();
+        }
+        best.or(fallback)
+    }
+
+    /// Generate variant MIME types to try when resolving a description.
+    fn mime_description_variants(mime_type: &str) -> Vec<String> {
+        let mut variants = Vec::new();
+        variants.push(mime_type.to_string());
+        if let Some((major, rest)) = mime_type.split_once('/') {
+            if let Some(stripped) = rest.strip_prefix("x-") {
+                variants.push(format!("{}/{}", major, stripped));
+            }
+        }
+        match mime_type {
+            "application/toml" => variants.push("text/x-toml".to_string()),
+            "text/x-rust" => variants.push("text/rust".to_string()),
+            "application/x-shellscript" => {
+                variants.push("text/x-shellscript".to_string());
+                variants.push("text/x-sh".to_string());
+            }
+            "application/zstd" => variants.push("application/x-zstd".to_string()),
+            "application/x-rar" => variants.push("application/vnd.rar".to_string()),
+            "application/x-iso9660-image" => variants.push("application/x-iso9660-image".to_string()),
+            "text/x-log" => variants.push("text/plain".to_string()),
+            _ => {}
+        }
+        variants
+    }
+
+    /// Try to get MIME description via registry (with variants) and fall back to legacy parsing.
+    fn lookup_mime_description(&self, mime_type: &str) -> Option<String> {
+        for variant in Self::mime_description_variants(mime_type) {
+            if let Some(desc) = self.mime_registry.description(&variant) {
+                return Some(desc);
+            }
+        }
+        Self::get_mime_description(mime_type)
+    }
+
+    /// Try to get MIME description from /usr/share/mime/{major}/{minor}.xml (exact), then fall back
+    /// to scanning /usr/share/mime/packages/*.xml. Returns None if not found.
+    fn get_mime_description(mime_type: &str) -> Option<String> {
+        for variant in Self::mime_description_variants(mime_type) {
+            if let Some(desc) = Self::get_mime_description_single(&variant) {
+                return Some(desc);
+            }
+        }
+        None
+    }
+
+    /// Get description for a single MIME value.
+    fn get_mime_description_single(mime_type: &str) -> Option<String> {
+        // 1) Try exact file at /usr/share/mime/{major}/{minor}.xml
+        if let Some((major, minor)) = mime_type.split_once('/') {
+            let path = Path::new("/usr/share/mime").join(major).join(format!("{minor}.xml"));
+            if let Ok(content) = fs::read_to_string(&path) {
+                if content.contains(&format!(r#"type="{}""#, mime_type)) {
+                    if let Some(comment) = Self::extract_comment(&content) {
+                        return Some(comment);
+                    }
+                }
+            }
+        }
+
+        // 2) Fallback: scan packages XMLs for an exact mime-type match
+        let packages_dir = Path::new("/usr/share/mime/packages");
+        let entries = match fs::read_dir(packages_dir) {
+            Ok(entries) => entries,
+            Err(_) => return None,
+        };
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("xml") {
+                continue;
+            }
+            let content = match fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            let mut search_start = 0;
+            while let Some(idx) = content[search_start..].find("<mime-type") {
+                let mime_start = search_start + idx;
+                let tag_end = match content[mime_start..].find('>') {
+                    Some(i) => mime_start + i + 1,
+                    None => break,
+                };
+                let tag_text = &content[mime_start..tag_end];
+
+                // Parse type attribute
+                let type_attr = r#"type=""#;
+                let type_idx = match tag_text.find(type_attr) {
+                    Some(i) => i + type_attr.len(),
+                    None => {
+                        search_start = tag_end;
+                        continue;
+                    }
+                };
+                let rest = &tag_text[type_idx..];
+                let end_quote = match rest.find('"') {
+                    Some(i) => i,
+                    None => {
+                        search_start = tag_end;
+                        continue;
+                    }
+                };
+                let ty = &rest[..end_quote];
+                if ty != mime_type {
+                    search_start = tag_end;
+                    continue;
+                }
+
+                // Find end of this mime-type block
+                let end_tag = "</mime-type>";
+                let block_end = match content[tag_end..].find(end_tag) {
+                    Some(i) => tag_end + i + end_tag.len(),
+                    None => {
+                        search_start = tag_end;
+                        continue;
+                    }
+                };
+                let mime_block = &content[mime_start..block_end];
+                if let Some(comment) = Self::extract_comment(mime_block) {
+                    return Some(comment);
+                }
+                search_start = block_end;
+            }
+        }
+
+        None
+    }
+
+    /// Recursively calculate the total size of a directory including all files inside.
+    fn calculate_directory_size(path: &Path) -> u64 {
+        let metadata = match fs::metadata(path) {
+            Ok(m) => m,
+            Err(_) => return 0,
+        };
+
+        if !metadata.is_dir() {
+            return metadata.len();
+        }
+
+        let mut total_size = 0u64;
+        let entries = match fs::read_dir(path) {
+            Ok(entries) => entries,
+            Err(_) => return metadata.len(), // Return directory metadata size on error
+        };
+
+        for entry in entries {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+
+            let entry_path = entry.path();
+            let entry_metadata = match entry.metadata() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+
+            if entry_metadata.is_dir() {
+                total_size = total_size.saturating_add(Self::calculate_directory_size(&entry_path));
+            } else {
+                total_size = total_size.saturating_add(entry_metadata.len());
+            }
+        }
+
+        total_size
     }
 
     fn xdg_default_for_mime(mime: &str) -> Option<String> {
