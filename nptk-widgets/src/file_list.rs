@@ -23,9 +23,13 @@ use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use tokio::sync::broadcast;
 use std::collections::HashSet;
+use std::fs;
+use chrono::{DateTime, Local};
+use humansize::{format_size, BINARY};
 use nptk_core::menu::{ContextMenu, ContextMenuGroup, ContextMenuItem};
 
 use crate::scroll_container::{ScrollContainer, ScrollDirection};
+use crate::tabs_container::{TabItem, TabsContainer};
 use nptk_services::thumbnail::ThumbnailImageCache;
 use nptk_services::filesystem::{mime_registry::MimeRegistry, MimeDetector};
 use std::process::Command;
@@ -307,15 +311,179 @@ struct FileListContent {
     svg_scene_cache: std::collections::HashMap<String, (nptk_core::vg::Scene, f64, f64)>,
     mime_registry: MimeRegistry,
     pending_action: Arc<Mutex<Option<PendingAction>>>,
+    last_cursor: Option<Point>,
 }
 
 #[derive(Clone)]
 struct PendingAction {
     paths: Vec<PathBuf>,
     app_id: Option<String>,
+    properties: bool,
+}
+
+struct PropertiesData {
+    title: String,
+    icon_label: String,
+    rows: Vec<(String, String)>,
+}
+
+struct PropertiesContent {
+    data: PropertiesData,
+    text_ctx: TextRenderContext,
+}
+
+impl PropertiesContent {
+    fn new(data: PropertiesData) -> Self {
+        Self {
+            data,
+            text_ctx: TextRenderContext::new(),
+        }
+    }
+}
+
+impl Widget for PropertiesContent {
+    fn widget_id(&self) -> WidgetId {
+        WidgetId::new("nptk-widgets", "PropertiesContent")
+    }
+
+    fn layout_style(&self) -> StyleNode {
+        StyleNode {
+            style: LayoutStyle {
+                // Fill the available popup space so text is visible.
+                size: Vector2::new(Dimension::percent(1.0), Dimension::percent(1.0)),
+                ..Default::default()
+            },
+            children: vec![],
+        }
+    }
+
+    fn update(&mut self, _layout: &LayoutNode, _context: AppContext, _info: &mut AppInfo) -> Update {
+        Update::empty()
+    }
+
+    fn render(
+        &mut self,
+        graphics: &mut dyn Graphics,
+        theme: &mut dyn Theme,
+        layout: &LayoutNode,
+        info: &mut AppInfo,
+        _context: AppContext,
+    ) {
+        let bg = theme.window_background();
+        let rect = Rect::new(
+            layout.layout.location.x as f64,
+            layout.layout.location.y as f64,
+            (layout.layout.location.x + layout.layout.size.width) as f64,
+            (layout.layout.location.y + layout.layout.size.height) as f64,
+        );
+        graphics.fill(
+            Fill::NonZero,
+            Affine::IDENTITY,
+            &Brush::Solid(bg),
+            None,
+            &rect.to_path(4.0),
+        );
+
+        let text_color = theme
+            .get_default_property(&nptk_theme::properties::ThemeProperty::ColorText)
+            .unwrap_or(Color::BLACK);
+
+        let padding = 12.0;
+        let icon_size = 48.0;
+        let icon_rect = Rect::new(
+            rect.x0 + padding,
+            rect.y0 + padding,
+            rect.x0 + padding + icon_size,
+            rect.y0 + padding + icon_size,
+        );
+        // Icon placeholder
+        graphics.fill(
+            Fill::NonZero,
+            Affine::IDENTITY,
+            &Brush::Solid(Color::from_rgb8(200, 200, 200)),
+            None,
+            &icon_rect.to_path(4.0),
+        );
+        // Icon label
+        self.text_ctx.render_text(
+            &mut info.font_context,
+            graphics,
+            &self.data.icon_label,
+            None,
+            12.0,
+            Brush::Solid(Color::from_rgb8(60, 60, 60)),
+            Affine::translate((
+                icon_rect.x0 + 6.0,
+                icon_rect.y0 + icon_size / 2.0 - 6.0,
+            )),
+            true,
+            Some((icon_size - 12.0) as f32),
+        );
+
+        // Title
+        self.text_ctx.render_text(
+            &mut info.font_context,
+            graphics,
+            &self.data.title,
+            None,
+            16.0,
+            Brush::Solid(text_color),
+            Affine::translate((icon_rect.x1 + 10.0, icon_rect.y0 + 4.0)),
+            true,
+            Some((rect.width() as f32 - (icon_rect.width() as f32) - 3.0 * padding as f32).max(80.0)),
+        );
+
+        let mut y = icon_rect.y1 + 12.0;
+        let label_width = 110.0;
+        let value_x = rect.x0 + padding + label_width + 8.0;
+
+        for (label, value) in &self.data.rows {
+            self.text_ctx.render_text(
+                &mut info.font_context,
+                graphics,
+                label,
+                None,
+                13.0,
+                Brush::Solid(Color::from_rgb8(90, 90, 90)),
+                Affine::translate((rect.x0 + padding, y)),
+                true,
+                Some(label_width as f32),
+            );
+            self.text_ctx.render_text(
+                &mut info.font_context,
+                graphics,
+                value,
+                None,
+                13.0,
+                Brush::Solid(text_color),
+                Affine::translate((value_x, y)),
+                true,
+                Some((rect.width() as f32 - value_x as f32 - padding as f32).max(60.0)),
+            );
+            y += 20.0;
+        }
+    }
 }
 
 impl FileListContent {
+    /// Build properties widget wrapped in a tab container.
+    fn build_properties_widget(data: PropertiesData) -> BoxedWidget {
+        let content = PropertiesContent::new(data);
+        let tab = TabItem::new("general", "General", content);
+        let tabs = TabsContainer::new()
+            .with_layout_style(LayoutStyle {
+                size: Vector2::new(Dimension::percent(1.0), Dimension::percent(1.0)),
+                ..Default::default()
+            })
+            .with_tab(tab);
+        Box::new(tabs)
+    }
+
+    fn format_system_time(time: std::time::SystemTime) -> String {
+        let dt: DateTime<Local> = time.into();
+        dt.format("%Y-%m-%d %H:%M:%S").to_string()
+    }
+
     fn new(
         entries: StateSignal<Vec<FileEntry>>,
         selected_paths: StateSignal<Vec<PathBuf>>,
@@ -362,6 +530,7 @@ impl FileListContent {
             svg_scene_cache: std::collections::HashMap::new(),
             mime_registry: MimeRegistry::load_default(),
             pending_action: Arc::new(Mutex::new(None)),
+            last_cursor: None,
         }
     }
     
@@ -534,6 +703,7 @@ impl FileListContent {
                         *pending_lock = Some(PendingAction {
                             paths: paths_for_action.clone(),
                             app_id: Some(app_id_cloned.clone()),
+                            properties: false,
                         });
                     }
                 }),
@@ -541,6 +711,85 @@ impl FileListContent {
         }
 
         items
+    }
+
+    fn show_properties_popup(&self, paths: &[PathBuf], context: AppContext) {
+        if paths.is_empty() {
+            return;
+        }
+
+        let mut rows: Vec<(String, String)> = Vec::new();
+        let mut title = String::new();
+        let mut icon_label = String::new();
+
+        if paths.len() == 1 {
+            let path = &paths[0];
+            let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("<unnamed>");
+            title = name.to_string();
+            icon_label = path
+                .extension()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_uppercase())
+                .unwrap_or_else(|| "FILE".to_string());
+
+            let kind = MimeDetector::detect_mime_type(path)
+                .or_else(|| Self::xdg_mime_filetype(path))
+                .unwrap_or_else(|| "unknown".to_string());
+            rows.push(("Kind".to_string(), kind));
+            rows.push(("Name".to_string(), name.to_string()));
+
+            if let Ok(meta) = fs::metadata(path) {
+                let size = meta.len();
+                rows.push(("Size".to_string(), format_size(size, BINARY)));
+                if let Ok(modified) = meta.modified() {
+                    rows.push((
+                        "Modified".to_string(),
+                        Self::format_system_time(modified),
+                    ));
+                }
+                if let Ok(created) = meta.created() {
+                    rows.push((
+                        "Created".to_string(),
+                        Self::format_system_time(created),
+                    ));
+                }
+                if let Ok(accessed) = meta.accessed() {
+                    rows.push((
+                        "Accessed".to_string(),
+                        Self::format_system_time(accessed),
+                    ));
+                }
+            }
+
+            rows.push(("Location".to_string(), path.parent().map(|p| p.display().to_string()).unwrap_or_else(|| "".to_string())));
+            rows.push(("Path".to_string(), path.display().to_string()));
+        } else {
+            let count = paths.len();
+            let mut total_size: u64 = 0;
+            for p in paths {
+                if let Ok(meta) = fs::metadata(p) {
+                    total_size = total_size.saturating_add(meta.len());
+                }
+            }
+            title = format!("{} items", count);
+            icon_label = "MULTI".to_string();
+            rows.push(("Items".to_string(), count.to_string()));
+            rows.push(("Total size".to_string(), format_size(total_size, BINARY)));
+        }
+
+        let data = PropertiesData {
+            title,
+            icon_label,
+            rows,
+        };
+        let props_widget = FileListContent::build_properties_widget(data);
+        let pos = self
+            .last_cursor
+            .map(|p| (p.x as i32, p.y as i32))
+            .unwrap_or((100, 100));
+        context
+            .popup_manager
+            .create_popup_at(props_widget, "Properties", (360, 260), pos);
     }
 
     fn xdg_mime_filetype(path: &Path) -> Option<String> {
@@ -1024,6 +1273,10 @@ impl Widget for FileListContent {
     fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
         
+        if let Some(cursor) = info.cursor_pos {
+            self.last_cursor = Some(Point::new(cursor.x, cursor.y));
+        }
+
         // Track viewport width changes to keep height estimation accurate and invalidate cached layouts.
         let current_width = layout.layout.size.width.max(1.0);
         if (current_width - self.last_layout_width).abs() > f32::EPSILON {
@@ -1212,6 +1465,7 @@ impl Widget for FileListContent {
 
                             let pending = self.pending_action.clone();
                             let paths_for_action = current_selection.clone();
+                            let paths_for_open = paths_for_action.clone();
 
                                 let open_label = self.open_label_for_path(&target_path);
 
@@ -1223,8 +1477,9 @@ impl Widget for FileListContent {
                                         action: Arc::new(move || {
                                             if let Ok(mut pending_lock) = pending.lock() {
                                                 *pending_lock = Some(PendingAction {
-                                                    paths: paths_for_action.clone(),
+                                                    paths: paths_for_open.clone(),
                                                     app_id: None,
+                                                    properties: false,
                                                 });
                                             }
                                         }),
@@ -1240,6 +1495,20 @@ impl Widget for FileListContent {
                                     label: "Delete".to_string(),
                                     action: Arc::new(|| {
                                         println!("Delete");
+                                    }),
+                                });
+                                let pending_props = self.pending_action.clone();
+                                let props_paths = paths_for_action.clone();
+                                core_items.push(ContextMenuItem::Action {
+                                    label: "Properties".to_string(),
+                                    action: Arc::new(move || {
+                                        if let Ok(mut pending_lock) = pending_props.lock() {
+                                            *pending_lock = Some(PendingAction {
+                                                paths: props_paths.clone(),
+                                                app_id: None,
+                                                properties: true,
+                                            });
+                                        }
                                     }),
                                 });
 
@@ -1399,6 +1668,8 @@ impl Widget for FileListContent {
                             log::warn!("Failed to launch {} with {}: {}", path.display(), app_id, err);
                         }
                     }
+                    } else if action.properties {
+                        self.show_properties_popup(&action.paths, context);
                 } else {
                     if action.paths.len() == 1 {
                         let path = &action.paths[0];
