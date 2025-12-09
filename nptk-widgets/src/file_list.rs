@@ -325,18 +325,38 @@ struct PropertiesData {
     title: String,
     icon_label: String,
     rows: Vec<(String, String)>,
+    paths: Vec<PathBuf>,
 }
 
 struct PropertiesContent {
     data: PropertiesData,
     text_ctx: TextRenderContext,
+    icon_registry: Arc<IconRegistry>,
+    thumbnail_provider: Arc<dyn ThumbnailProvider>,
+    thumbnail_cache: Arc<ThumbnailImageCache>,
+    icon_cache: Arc<Mutex<std::collections::HashMap<(PathBuf, u32), Option<nptk_services::icon::CachedIcon>>>>,
+    svg_scene_cache: Arc<Mutex<std::collections::HashMap<String, (nptk_core::vg::Scene, f64, f64)>>>,
+    thumbnail_size: u32,
 }
 
 impl PropertiesContent {
-    fn new(data: PropertiesData) -> Self {
+    fn new(
+        data: PropertiesData,
+        icon_registry: Arc<IconRegistry>,
+        thumbnail_provider: Arc<dyn ThumbnailProvider>,
+        thumbnail_cache: Arc<ThumbnailImageCache>,
+        icon_cache: Arc<Mutex<std::collections::HashMap<(PathBuf, u32), Option<nptk_services::icon::CachedIcon>>>>,
+        svg_scene_cache: Arc<Mutex<std::collections::HashMap<String, (nptk_core::vg::Scene, f64, f64)>>>,
+    ) -> Self {
         Self {
             data,
             text_ctx: TextRenderContext::new(),
+            icon_registry,
+            thumbnail_provider,
+            thumbnail_cache,
+            icon_cache,
+            svg_scene_cache,
+            thumbnail_size: 128,
         }
     }
 }
@@ -437,29 +457,208 @@ impl Widget for PropertiesContent {
             rect.x0 + padding + icon_size,
             rect.y0 + padding + icon_size,
         );
-        // Icon placeholder
-        graphics.fill(
-            Fill::NonZero,
-            Affine::IDENTITY,
-            &Brush::Solid(Color::from_rgb8(200, 200, 200)),
-            None,
-            &icon_rect.to_path(4.0),
-        );
-        // Icon label
-        self.text_ctx.render_text(
-            &mut info.font_context,
-            graphics,
-            &self.data.icon_label,
-            None,
-            12.0,
-            Brush::Solid(Color::from_rgb8(60, 60, 60)),
-            Affine::translate((
-                icon_rect.x0 + 6.0,
-                icon_rect.y0 + icon_size / 2.0 - 6.0,
-            )),
-            true,
-            Some((icon_size - 12.0) as f32),
-        );
+        
+        // Try to render icon/thumbnail, fallback to text label
+        let mut icon_rendered = false;
+        
+        // For single file, try thumbnail first, then icon
+        if self.data.paths.len() == 1 {
+            let path = &self.data.paths[0];
+            
+            // Create FileEntry from path
+            let entry = if let Ok(metadata) = fs::metadata(path) {
+                let file_type = if metadata.is_dir() {
+                    FileType::Directory
+                } else if metadata.is_file() {
+                    FileType::File
+                } else if metadata.file_type().is_symlink() {
+                    FileType::Symlink
+                } else {
+                    FileType::Other
+                };
+                
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                
+                let mime_type = if file_type == FileType::File {
+                    MimeDetector::detect_mime_type(path)
+                } else {
+                    None
+                };
+                
+                use nptk_services::filesystem::entry::FileMetadata;
+                if let Ok(modified) = metadata.modified() {
+                    let file_metadata = FileMetadata {
+                        size: metadata.len(),
+                        modified,
+                        created: metadata.created().ok(),
+                        permissions: 0,
+                        mime_type,
+                        is_hidden: name.starts_with('.'),
+                    };
+                    
+                    Some(FileEntry::new(
+                        path.clone(),
+                        name,
+                        file_type,
+                        file_metadata,
+                        path.parent().map(|p| p.to_path_buf()),
+                    ))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            
+            // Try thumbnail first
+            if let Some(entry) = entry {
+                if let Some(thumbnail_path) = self.thumbnail_provider.get_thumbnail(&entry, self.thumbnail_size) {
+                    if let Ok(Some(cached_thumb)) = self.thumbnail_cache.load_or_get(&thumbnail_path, self.thumbnail_size) {
+                        use nptk_core::vg::peniko::{Blob, ImageBrush, ImageData, ImageFormat, ImageAlphaType};
+                        let image_data = ImageData {
+                            data: Blob::from(cached_thumb.data.as_ref().clone()),
+                            format: ImageFormat::Rgba8,
+                            alpha_type: ImageAlphaType::Alpha,
+                            width: cached_thumb.width,
+                            height: cached_thumb.height,
+                        };
+                        let image_brush = ImageBrush::new(image_data);
+                        let icon_x = icon_rect.x0;
+                        let icon_y = icon_rect.y0;
+                        let icon_size_f64 = icon_rect.width().min(icon_rect.height());
+                        let scale_x = icon_size_f64 / (cached_thumb.width as f64);
+                        let scale_y = icon_size_f64 / (cached_thumb.height as f64);
+                        let scale = scale_x.min(scale_y);
+                        let transform = Affine::scale_non_uniform(scale, scale)
+                            .then_translate(Vec2::new(icon_x, icon_y));
+                        if let Some(scene) = graphics.as_scene_mut() {
+                            scene.draw_image(&image_brush, transform);
+                            icon_rendered = true;
+                        }
+                    }
+                }
+                
+                // If no thumbnail, try icon
+                if !icon_rendered {
+                    let cache_key = (path.clone(), icon_size as u32);
+                    let cached_icon = {
+                        let mut cache = self.icon_cache.lock().unwrap();
+                        if let Some(icon) = cache.get(&cache_key) {
+                            icon.clone()
+                        } else {
+                            let icon = self.icon_registry.get_file_icon(&entry, icon_size as u32);
+                            cache.insert(cache_key.clone(), icon.clone());
+                            icon
+                        }
+                    };
+                    
+                    if let Some(icon) = cached_icon {
+                        let icon_x = icon_rect.x0;
+                        let icon_y = icon_rect.y0;
+                        let icon_size_f64 = icon_rect.width().min(icon_rect.height());
+                        
+                        match icon {
+                            nptk_services::icon::CachedIcon::Image { data, width, height } => {
+                                use nptk_core::vg::peniko::{Blob, ImageBrush, ImageData, ImageFormat, ImageAlphaType};
+                                let image_data = ImageData {
+                                    data: Blob::from(data.as_ref().clone()),
+                                    format: ImageFormat::Rgba8,
+                                    alpha_type: ImageAlphaType::Alpha,
+                                    width,
+                                    height,
+                                };
+                                let image_brush = ImageBrush::new(image_data);
+                                let scale_x = icon_size_f64 / (width as f64);
+                                let scale_y = icon_size_f64 / (height as f64);
+                                let scale = scale_x.min(scale_y);
+                                let transform = Affine::scale_non_uniform(scale, scale)
+                                    .then_translate(Vec2::new(icon_x, icon_y));
+                                if let Some(scene) = graphics.as_scene_mut() {
+                                    scene.draw_image(&image_brush, transform);
+                                    icon_rendered = true;
+                                }
+                            }
+                            nptk_services::icon::CachedIcon::Svg(svg_source) => {
+                                // Check SVG scene cache first
+                                let cached_scene = {
+                                    let cache = self.svg_scene_cache.lock().unwrap();
+                                    cache.get(svg_source.as_str()).cloned()
+                                };
+                                let (scene, svg_width, svg_height) = if let Some((scene, w, h)) = cached_scene {
+                                    (scene, w, h)
+                                } else {
+                                    // Cache miss - parse and render SVG
+                                    use vello_svg::usvg::{Tree, Options, ShapeRendering, TextRendering, ImageRendering};
+                                    if let Ok(tree) = Tree::from_str(
+                                        svg_source.as_str(),
+                                        &Options {
+                                            shape_rendering: ShapeRendering::GeometricPrecision,
+                                            text_rendering: TextRendering::OptimizeLegibility,
+                                            image_rendering: ImageRendering::OptimizeSpeed,
+                                            ..Default::default()
+                                        },
+                                    ) {
+                                        let scene = vello_svg::render_tree(&tree);
+                                        let svg_size = tree.size();
+                                        let w = svg_size.width() as f64;
+                                        let h = svg_size.height() as f64;
+                                        {
+                                            let mut cache = self.svg_scene_cache.lock().unwrap();
+                                            cache.insert(svg_source.as_str().to_string(), (scene.clone(), w, h));
+                                        }
+                                        (scene, w, h)
+                                    } else {
+                                        (nptk_core::vg::Scene::new(), 1.0, 1.0)
+                                    }
+                                };
+                                
+                                let scale_x = icon_size_f64 / svg_width;
+                                let scale_y = icon_size_f64 / svg_height;
+                                let scale = scale_x.min(scale_y);
+                                let transform = Affine::scale_non_uniform(scale, scale)
+                                    .then_translate(Vec2::new(icon_x, icon_y));
+                                graphics.append(&scene, Some(transform));
+                                icon_rendered = true;
+                            }
+                            nptk_services::icon::CachedIcon::Path(_) => {
+                                // Path icons are rendered as fallback below
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Fallback: render placeholder with text label
+        if !icon_rendered {
+            // Icon placeholder
+            graphics.fill(
+                Fill::NonZero,
+                Affine::IDENTITY,
+                &Brush::Solid(Color::from_rgb8(200, 200, 200)),
+                None,
+                &icon_rect.to_path(4.0),
+            );
+            // Icon label
+            self.text_ctx.render_text(
+                &mut info.font_context,
+                graphics,
+                &self.data.icon_label,
+                None,
+                12.0,
+                Brush::Solid(Color::from_rgb8(60, 60, 60)),
+                Affine::translate((
+                    icon_rect.x0 + 6.0,
+                    icon_rect.y0 + icon_size / 2.0 - 6.0,
+                )),
+                true,
+                Some((icon_size - 12.0) as f32),
+            );
+        }
 
         // Title
         self.text_ctx.render_text(
@@ -508,8 +707,22 @@ impl Widget for PropertiesContent {
 
 impl FileListContent {
     /// Build properties widget wrapped in a tab container.
-    fn build_properties_widget(data: PropertiesData) -> BoxedWidget {
-        let content = PropertiesContent::new(data);
+    fn build_properties_widget(
+        data: PropertiesData,
+        icon_registry: Arc<IconRegistry>,
+        thumbnail_provider: Arc<dyn ThumbnailProvider>,
+        thumbnail_cache: Arc<ThumbnailImageCache>,
+        icon_cache: Arc<Mutex<std::collections::HashMap<(PathBuf, u32), Option<nptk_services::icon::CachedIcon>>>>,
+        svg_scene_cache: Arc<Mutex<std::collections::HashMap<String, (nptk_core::vg::Scene, f64, f64)>>>,
+    ) -> BoxedWidget {
+        let content = PropertiesContent::new(
+            data,
+            icon_registry,
+            thumbnail_provider,
+            thumbnail_cache,
+            icon_cache,
+            svg_scene_cache,
+        );
         let tab = TabItem::new("general", "General", content);
         let tabs = TabsContainer::new()
             .with_layout_style(LayoutStyle {
@@ -816,8 +1029,18 @@ impl FileListContent {
             title,
             icon_label,
             rows,
+            paths: paths.to_vec(),
         };
-        let props_widget = FileListContent::build_properties_widget(data);
+        // Create a new SVG scene cache for the properties widget
+        let svg_scene_cache = Arc::new(Mutex::new(std::collections::HashMap::new()));
+        let props_widget = FileListContent::build_properties_widget(
+            data,
+            self.icon_registry.clone(),
+            self.thumbnail_provider.clone(),
+            self.thumbnail_cache.clone(),
+            self.icon_cache.clone(),
+            svg_scene_cache,
+        );
         let pos = self
             .last_cursor
             .map(|p| (p.x as i32, p.y as i32))
