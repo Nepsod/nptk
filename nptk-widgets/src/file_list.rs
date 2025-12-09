@@ -384,9 +384,50 @@ impl Widget for PropertiesContent {
             &rect.to_path(4.0),
         );
 
+        let widget_id = self.widget_id();
+        // Try to get ColorText for PropertiesContent, fallback to Text widget's ColorText
         let text_color = theme
-            .get_default_property(&nptk_theme::properties::ThemeProperty::ColorText)
-            .unwrap_or(Color::BLACK);
+            .get_property(
+                widget_id.clone(),
+                &nptk_theme::properties::ThemeProperty::ColorText,
+            )
+            .or_else(|| {
+                // Fallback to Text widget's ColorText property
+                let text_widget_id = nptk_theme::id::WidgetId::new("nptk-widgets", "Text");
+                theme.get_property(
+                    text_widget_id,
+                    &nptk_theme::properties::ThemeProperty::ColorText,
+                )
+            })
+            .or_else(|| {
+                // Fallback to Text widget's Color property
+                let text_widget_id = nptk_theme::id::WidgetId::new("nptk-widgets", "Text");
+                theme.get_property(
+                    text_widget_id,
+                    &nptk_theme::properties::ThemeProperty::Color,
+                )
+            })
+            .unwrap_or_else(|| Color::BLACK);
+
+        // Try to get ColorTextDisabled for PropertiesContent, fallback to Text widget's ColorTextDisabled
+        let label_color = theme
+            .get_property(
+                widget_id.clone(),
+                &nptk_theme::properties::ThemeProperty::ColorTextDisabled,
+            )
+            .or_else(|| {
+                // Fallback to Text widget's ColorTextDisabled property
+                let text_widget_id = nptk_theme::id::WidgetId::new("nptk-widgets", "Text");
+                theme.get_property(
+                    text_widget_id,
+                    &nptk_theme::properties::ThemeProperty::ColorTextDisabled,
+                )
+            })
+            .or_else(|| {
+                // Fallback to ColorDisabled
+                theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorDisabled)
+            })
+            .unwrap_or_else(|| Color::from_rgb8(140, 140, 140));
 
         let padding = 12.0;
         let icon_size = 48.0;
@@ -441,10 +482,10 @@ impl Widget for PropertiesContent {
             self.text_ctx.render_text(
                 &mut info.font_context,
                 graphics,
-                label,
+                &format!("{}:", label),
                 None,
                 13.0,
-                Brush::Solid(Color::from_rgb8(90, 90, 90)),
+                Brush::Solid(text_color).with_alpha(0.95),
                 Affine::translate((rect.x0 + padding, y)),
                 true,
                 Some(label_width as f32),
@@ -740,7 +781,7 @@ impl FileListContent {
 
             if let Ok(meta) = fs::metadata(path) {
                 let size = meta.len();
-                rows.push(("Size".to_string(), format_size(size, BINARY)));
+                rows.push(("Size".to_string(), format_size(size, BINARY) + " (" + size.to_string().as_str() + " bytes)"));
                 if let Ok(modified) = meta.modified() {
                     rows.push((
                         "Modified".to_string(),
@@ -751,12 +792,6 @@ impl FileListContent {
                     rows.push((
                         "Created".to_string(),
                         Self::format_system_time(created),
-                    ));
-                }
-                if let Ok(accessed) = meta.accessed() {
-                    rows.push((
-                        "Accessed".to_string(),
-                        Self::format_system_time(accessed),
                     ));
                 }
             }
