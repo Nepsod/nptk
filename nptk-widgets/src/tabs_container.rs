@@ -5,7 +5,7 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::vg::kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
-use nptk_core::vg::peniko::{Brush, Color, Fill, Mix};
+use nptk_core::vg::peniko::{Brush, Color, Fill, Gradient, Mix};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
@@ -14,6 +14,10 @@ use nptk_theme::theme::Theme;
 use nptk_core::text_render::TextRenderContext;
 use crate::text::Text;
 use std::sync::{Arc, Mutex};
+
+const TAB_CORNER_RADIUS: f64 = 3.0;
+const ACCENT_INSET: f64 = 6.0;
+const ACCENT_THICKNESS: f64 = 4.0;
 
 /// Position of tabs in the TabsContainer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -836,6 +840,117 @@ impl TabsContainer {
         )
     }
 
+    fn draw_active_tab_accent(
+        &self,
+        graphics: &mut dyn Graphics,
+        theme: &mut dyn Theme,
+        tab_bounds: Rect,
+    ) {
+        // Use a vibrant gradient color that will be visible regardless of tab background
+        // Pink -> Purple -> Blue gradient like in the screenshot
+        let band_thickness = ACCENT_THICKNESS;
+        
+        let make_gradient = |start: Point, end: Point| {
+            Brush::Gradient(
+                Gradient::new_linear(start, end).with_stops([
+                    (0.0, Color::from_rgb8(255, 100, 200)), // Bright pink
+                    (0.5, Color::from_rgb8(186, 120, 255)), // Purple
+                    (1.0, Color::from_rgb8(100, 150, 255)), // Blue
+                ]),
+            )
+        };
+
+        match self.tab_position {
+            TabPosition::Top => {
+                // Draw gradient at bottom edge of tab (facing content)
+                let grad_rect = Rect::new(
+                    (tab_bounds.x0 + ACCENT_INSET).min(tab_bounds.x1),
+                    (tab_bounds.y1 - band_thickness).max(tab_bounds.y0),
+                    (tab_bounds.x1 - ACCENT_INSET).max(tab_bounds.x0),
+                    tab_bounds.y1,
+                );
+                if grad_rect.width() > 0.0 && grad_rect.height() > 0.0 {
+                    let brush = make_gradient(
+                        Point::new(grad_rect.x0, grad_rect.y1),
+                        Point::new(grad_rect.x1, grad_rect.y1),
+                    );
+                    graphics.fill(
+                        Fill::NonZero,
+                        Affine::IDENTITY,
+                        &brush,
+                        None,
+                        &grad_rect.to_path(0.1),
+                    );
+                }
+            }
+            TabPosition::Bottom => {
+                // Draw gradient at top edge of tab (facing content)
+                let grad_rect = Rect::new(
+                    (tab_bounds.x0 + ACCENT_INSET).min(tab_bounds.x1),
+                    tab_bounds.y0,
+                    (tab_bounds.x1 - ACCENT_INSET).max(tab_bounds.x0),
+                    (tab_bounds.y0 + band_thickness).min(tab_bounds.y1),
+                );
+                if grad_rect.width() > 0.0 && grad_rect.height() > 0.0 {
+                    let brush = make_gradient(
+                        Point::new(grad_rect.x0, grad_rect.y0),
+                        Point::new(grad_rect.x1, grad_rect.y0),
+                    );
+                    graphics.fill(
+                        Fill::NonZero,
+                        Affine::IDENTITY,
+                        &brush,
+                        None,
+                        &grad_rect.to_path(0.1),
+                    );
+                }
+            }
+            TabPosition::Left => {
+                // Draw gradient at right edge of tab (facing content)
+                let grad_rect = Rect::new(
+                    (tab_bounds.x1 - band_thickness).max(tab_bounds.x0),
+                    (tab_bounds.y0 + ACCENT_INSET).min(tab_bounds.y1),
+                    tab_bounds.x1,
+                    (tab_bounds.y1 - ACCENT_INSET).max(tab_bounds.y0),
+                );
+                if grad_rect.width() > 0.0 && grad_rect.height() > 0.0 {
+                    let brush = make_gradient(
+                        Point::new(grad_rect.x1, grad_rect.y0),
+                        Point::new(grad_rect.x1, grad_rect.y1),
+                    );
+                    graphics.fill(
+                        Fill::NonZero,
+                        Affine::IDENTITY,
+                        &brush,
+                        None,
+                        &grad_rect.to_path(0.1),
+                    );
+                }
+            }
+            TabPosition::Right => {
+                // Draw gradient at left edge of tab (facing content)
+                let grad_rect = Rect::new(
+                    tab_bounds.x0,
+                    (tab_bounds.y0 + ACCENT_INSET).min(tab_bounds.y1),
+                    (tab_bounds.x0 + band_thickness).min(tab_bounds.x1),
+                    (tab_bounds.y1 - ACCENT_INSET).max(tab_bounds.y0),
+                );
+                if grad_rect.width() > 0.0 && grad_rect.height() > 0.0 {
+                    let brush = make_gradient(
+                        Point::new(grad_rect.x0, grad_rect.y0),
+                        Point::new(grad_rect.x0, grad_rect.y1),
+                    );
+                    graphics.fill(
+                        Fill::NonZero,
+                        Affine::IDENTITY,
+                        &brush,
+                        None,
+                        &grad_rect.to_path(0.1),
+                    );
+                }
+            }
+        }
+    }
 
     /// Render text on a tab
     fn render_text(
@@ -983,18 +1098,42 @@ impl Widget for TabsContainer {
 
             // Create rounded rectangle for tab (only round top corners for top tabs)
             let tab_rounded = match self.tab_position {
-                TabPosition::Top => {
-                    RoundedRect::from_rect(tab_bounds, RoundedRectRadii::new(6.0, 6.0, 0.0, 0.0))
-                },
-                TabPosition::Bottom => {
-                    RoundedRect::from_rect(tab_bounds, RoundedRectRadii::new(0.0, 0.0, 6.0, 6.0))
-                },
-                TabPosition::Left => {
-                    RoundedRect::from_rect(tab_bounds, RoundedRectRadii::new(6.0, 0.0, 0.0, 6.0))
-                },
-                TabPosition::Right => {
-                    RoundedRect::from_rect(tab_bounds, RoundedRectRadii::new(0.0, 6.0, 6.0, 0.0))
-                },
+                TabPosition::Top => RoundedRect::from_rect(
+                    tab_bounds,
+                    RoundedRectRadii::new(
+                        TAB_CORNER_RADIUS,
+                        TAB_CORNER_RADIUS,
+                        0.0,
+                        0.0,
+                    ),
+                ),
+                TabPosition::Bottom => RoundedRect::from_rect(
+                    tab_bounds,
+                    RoundedRectRadii::new(
+                        0.0,
+                        0.0,
+                        TAB_CORNER_RADIUS,
+                        TAB_CORNER_RADIUS,
+                    ),
+                ),
+                TabPosition::Left => RoundedRect::from_rect(
+                    tab_bounds,
+                    RoundedRectRadii::new(
+                        TAB_CORNER_RADIUS,
+                        0.0,
+                        0.0,
+                        TAB_CORNER_RADIUS,
+                    ),
+                ),
+                TabPosition::Right => RoundedRect::from_rect(
+                    tab_bounds,
+                    RoundedRectRadii::new(
+                        0.0,
+                        TAB_CORNER_RADIUS,
+                        TAB_CORNER_RADIUS,
+                        0.0,
+                    ),
+                ),
             };
 
             graphics.fill(
@@ -1020,6 +1159,10 @@ impl Widget for TabsContainer {
                 None,
                 &tab_rounded.to_path(0.1),
             );
+
+            if is_active {
+                self.draw_active_tab_accent(graphics, theme, tab_bounds);
+            }
 
             // Tab text with proper rendering and theme colors
             let text_color = if is_active {
