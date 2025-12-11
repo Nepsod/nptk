@@ -322,7 +322,15 @@ pub trait WidgetChildExt {
     where
         Self: Sized,
     {
-        self.set_child(child);
+        self.apply_with(|s| s.set_child(child))
+    }
+
+    /// Helper to apply a mutation and return self (reduces duplication in builders).
+    fn apply_with(mut self, f: impl FnOnce(&mut Self)) -> Self
+    where
+        Self: Sized,
+    {
+        f(&mut self);
         self
     }
 }
@@ -337,8 +345,7 @@ pub trait WidgetChildrenExt {
     where
         Self: Sized,
     {
-        self.set_children(children);
-        self
+        self.apply_with(|s| s.set_children(children))
     }
 
     /// Adds a child widget to the widget.
@@ -349,7 +356,15 @@ pub trait WidgetChildrenExt {
     where
         Self: Sized,
     {
-        self.add_child(child);
+        self.apply_with(|s| s.add_child(child))
+    }
+
+    /// Helper to apply a mutation and return self (reduces duplication in builders).
+    fn apply_with(mut self, f: impl FnOnce(&mut Self)) -> Self
+    where
+        Self: Sized,
+    {
+        f(&mut self);
         self
     }
 }
@@ -364,7 +379,15 @@ pub trait WidgetLayoutExt {
     where
         Self: Sized,
     {
-        self.set_layout_style(layout_style);
+        self.apply_with(|s| s.set_layout_style(layout_style))
+    }
+
+    /// Helper to apply a mutation and return self (reduces duplication in builders).
+    fn apply_with(mut self, f: impl FnOnce(&mut Self)) -> Self
+    where
+        Self: Sized,
+    {
+        f(&mut self);
         self
     }
 }
