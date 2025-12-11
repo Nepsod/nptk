@@ -12,6 +12,7 @@ pub mod mime_detector;
 pub mod mime_registry;
 pub mod model;
 pub mod watcher;
+pub mod io_uring;
 
 // Re-export public API
 pub use entry::{FileEntry, FileMetadata, FileType};

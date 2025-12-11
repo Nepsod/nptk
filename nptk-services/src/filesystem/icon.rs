@@ -2,8 +2,6 @@
 
 use crate::filesystem::entry::FileEntry;
 use crate::filesystem::mime_detector::MimeDetector;
-use crate::filesystem::mime_registry::MimeRegistry;
-use std::sync::Arc;
 
 /// Icon data representing an icon for a file entry.
 #[derive(Debug, Clone)]

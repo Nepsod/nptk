@@ -4,8 +4,10 @@ use crate::filesystem::cache::FileSystemCache;
 use crate::filesystem::entry::{FileEntry, FileMetadata, FileType};
 use crate::filesystem::error::FileSystemError;
 use crate::filesystem::icon::{IconProvider, MimeIconProvider};
+use crate::filesystem::io_uring;
 use crate::filesystem::watcher::{FileSystemChange, FileSystemWatcher};
 use std::path::{Path, PathBuf};
+use std::os::unix::fs::PermissionsExt;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, mpsc};
 
@@ -169,16 +171,43 @@ impl FileSystemModel {
 
         while let Some(entry) = dir.next_entry().await? {
             let path = entry.path();
-            let metadata = entry.metadata().await?;
+            let meta_res = io_uring::stat(&path).await;
 
-            let file_type = if metadata.is_dir() {
-                FileType::Directory
-            } else if metadata.is_symlink() {
-                FileType::Symlink
-            } else if metadata.is_file() {
-                FileType::File
+            let (file_type, size, modified, created, permissions) = if let Ok(metadata) = meta_res {
+                let ft = if metadata.is_dir() {
+                    FileType::Directory
+                } else if metadata.is_symlink() {
+                    FileType::Symlink
+                } else if metadata.is_file() {
+                    FileType::File
+                } else {
+                    FileType::Other
+                };
+                (
+                    ft,
+                    metadata.len(),
+                    metadata.modified()?,
+                    metadata.created().ok(),
+                    metadata.permissions().mode(),
+                )
             } else {
-                FileType::Other
+                let metadata = entry.metadata().await?;
+                let ft = if metadata.is_dir() {
+                    FileType::Directory
+                } else if metadata.is_symlink() {
+                    FileType::Symlink
+                } else if metadata.is_file() {
+                    FileType::File
+                } else {
+                    FileType::Other
+                };
+                (
+                    ft,
+                    metadata.len(),
+                    metadata.modified()?,
+                    metadata.created().ok(),
+                    metadata.permissions().mode(),
+                )
             };
 
             let name = path
@@ -195,10 +224,10 @@ impl FileSystemModel {
             };
 
             let file_metadata = FileMetadata {
-                size: metadata.len(),
-                modified: metadata.modified()?,
-                created: metadata.created().ok(),
-                permissions: 0, // TODO: Extract permissions on Unix
+                size,
+                modified,
+                created,
+                permissions,
                 mime_type,
                 is_hidden: name.starts_with('.'),
             };
@@ -365,16 +394,43 @@ impl FileSystemModel {
 
     /// Load a single entry from the filesystem.
     async fn load_entry(path: &Path) -> Result<FileEntry, FileSystemError> {
-        let metadata = tokio::fs::metadata(path).await?;
+        let meta_res = io_uring::stat(path).await;
 
-        let file_type = if metadata.is_dir() {
-            FileType::Directory
-        } else if metadata.is_symlink() {
-            FileType::Symlink
-        } else if metadata.is_file() {
-            FileType::File
+        let (file_type, size, modified, created, permissions) = if let Ok(metadata) = meta_res {
+            let ft = if metadata.is_dir() {
+                FileType::Directory
+            } else if metadata.is_symlink() {
+                FileType::Symlink
+            } else if metadata.is_file() {
+                FileType::File
+            } else {
+                FileType::Other
+            };
+            (
+                ft,
+                metadata.len(),
+                metadata.modified()?,
+                metadata.created().ok(),
+                metadata.permissions().mode(),
+            )
         } else {
-            FileType::Other
+            let metadata = tokio::fs::metadata(path).await?;
+            let ft = if metadata.is_dir() {
+                FileType::Directory
+            } else if metadata.is_symlink() {
+                FileType::Symlink
+            } else if metadata.is_file() {
+                FileType::File
+            } else {
+                FileType::Other
+            };
+            (
+                ft,
+                metadata.len(),
+                metadata.modified()?,
+                metadata.created().ok(),
+                metadata.permissions().mode(),
+            )
         };
 
         let name = path
@@ -390,10 +446,10 @@ impl FileSystemModel {
         };
 
         let file_metadata = FileMetadata {
-            size: metadata.len(),
-            modified: metadata.modified()?,
-            created: metadata.created().ok(),
-            permissions: 0,
+            size,
+            modified,
+            created,
+            permissions,
             mime_type,
             is_hidden: name.starts_with('.'),
         };
