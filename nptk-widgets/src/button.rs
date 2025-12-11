@@ -1,4 +1,5 @@
 use crate::theme_rendering::render_button_with_theme;
+use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::focus::{FocusBounds, FocusId, FocusProperties, FocusState, FocusableWidget};
 use nptk_core::app::info::AppInfo;
@@ -68,34 +69,189 @@ impl Button {
         }
     }
 
-    /// Sets the function to be called when the button is pressed.
-    pub fn with_on_pressed(mut self, on_pressed: impl Into<MaybeSignal<Update>>) -> Self {
-        self.on_pressed = on_pressed.into();
+    fn apply_with(mut self, f: impl FnOnce(&mut Self)) -> Self {
+        f(&mut self);
         self
+    }
+
+    /// Sets the function to be called when the button is pressed.
+    pub fn with_on_pressed(self, on_pressed: impl Into<MaybeSignal<Update>>) -> Self {
+        self.apply_with(|s| s.on_pressed = on_pressed.into())
     }
 
     /// Set whether the button is disabled.
-    pub fn with_disabled(mut self, disabled: bool) -> Self {
-        self.disabled = disabled;
-        self
+    pub fn with_disabled(self, disabled: bool) -> Self {
+        self.apply_with(|s| s.disabled = disabled)
     }
 
     /// Enable or disable auto-repeat when held down.
-    pub fn with_repeat(mut self, enabled: bool) -> Self {
-        self.repeat_enabled = enabled;
-        self
+    pub fn with_repeat(self, enabled: bool) -> Self {
+        self.apply_with(|s| s.repeat_enabled = enabled)
     }
 
     /// Set the initial delay before repeating starts (in milliseconds).
-    pub fn with_repeat_delay(mut self, delay_ms: u64) -> Self {
-        self.repeat_delay = Duration::from_millis(delay_ms);
-        self
+    pub fn with_repeat_delay(self, delay_ms: u64) -> Self {
+        self.apply_with(|s| s.repeat_delay = Duration::from_millis(delay_ms))
     }
 
     /// Set the interval between repeats (in milliseconds).
-    pub fn with_repeat_interval(mut self, interval_ms: u64) -> Self {
-        self.repeat_interval = Duration::from_millis(interval_ms);
-        self
+    pub fn with_repeat_interval(self, interval_ms: u64) -> Self {
+        self.apply_with(|s| s.repeat_interval = Duration::from_millis(interval_ms))
+    }
+
+    fn update_focus_state(
+        &mut self,
+        layout: &LayoutNode,
+        info: &mut AppInfo,
+        old_focus_state: FocusState,
+    ) {
+        if let Ok(mut manager) = info.focus_manager.lock() {
+            let focusable_widget = FocusableWidget {
+                id: self.focus_id,
+                properties: FocusProperties {
+                    tab_focusable: true,
+                    click_focusable: true,
+                    tab_index: 0,
+                    accepts_keyboard: true,
+                },
+                bounds: FocusBounds {
+                    x: layout.layout.location.x,
+                    y: layout.layout.location.y,
+                    width: layout.layout.size.width,
+                    height: layout.layout.size.height,
+                },
+            };
+            manager.register_widget(focusable_widget);
+
+            let new_focus_state = manager.get_focus_state(self.focus_id);
+            if matches!(new_focus_state, FocusState::Gained)
+                && !matches!(old_focus_state, FocusState::Focused)
+            {
+                self.focus_via_keyboard = manager.was_last_focus_via_keyboard();
+            } else if matches!(new_focus_state, FocusState::Lost | FocusState::None) {
+                self.focus_via_keyboard = false;
+            }
+
+            self.focus_state = new_focus_state;
+        }
+    }
+
+    fn hit_test(&self, layout: &LayoutNode, cursor: Vector2<f64>) -> bool {
+        let x = cursor.x;
+        let y = cursor.y;
+        let left = layout.layout.location.x as f64;
+        let top = layout.layout.location.y as f64;
+        let right = left + layout.layout.size.width as f64;
+        let bottom = top + layout.layout.size.height as f64;
+
+        x >= left && x <= right && y >= top && y <= bottom
+    }
+
+    fn handle_keyboard_input(&mut self, info: &AppInfo, on_press_update: Update) -> Update {
+        let mut update = Update::empty();
+
+        if matches!(self.focus_state, FocusState::Focused | FocusState::Gained) {
+            for (_, key_event) in &info.keys {
+                match key_event.state {
+                    ElementState::Pressed => match key_event.physical_key {
+                        PhysicalKey::Code(KeyCode::Space) | PhysicalKey::Code(KeyCode::Enter) => {
+                            update |= on_press_update;
+                            self.state = ButtonState::Pressed;
+                        },
+                        _ => {},
+                    },
+                    ElementState::Released => match key_event.physical_key {
+                        PhysicalKey::Code(KeyCode::Space) | PhysicalKey::Code(KeyCode::Enter) => {
+                            if self.state == ButtonState::Pressed {
+                                self.state = ButtonState::Idle;
+                            }
+                        },
+                        _ => {},
+                    },
+                }
+            }
+        }
+
+        update
+    }
+
+    fn handle_mouse_input(
+        &mut self,
+        layout: &LayoutNode,
+        info: &AppInfo,
+        on_press_update: Update,
+    ) -> Update {
+        let mut update = Update::empty();
+
+        let cursor_hit = info
+            .cursor_pos
+            .map(|cursor| self.hit_test(layout, cursor))
+            .unwrap_or(false);
+
+        if !cursor_hit {
+            self.state = ButtonState::Idle;
+            return update;
+        }
+
+        if self.state != ButtonState::Pressed {
+            self.state = ButtonState::Hovered;
+        }
+
+        for (_, btn, el) in &info.buttons {
+            if *btn != MouseButton::Left {
+                continue;
+            }
+
+            match el {
+                ElementState::Pressed => {
+                    if self.state != ButtonState::Pressed {
+                        self.state = ButtonState::Pressed;
+                        if self.repeat_enabled {
+                            update |= on_press_update;
+                            self.press_start_time = Some(Instant::now());
+                            self.last_repeat_time = None;
+                        }
+                    }
+                },
+                ElementState::Released => {
+                    if self.state == ButtonState::Pressed {
+                        self.state = ButtonState::Released;
+                        if !self.repeat_enabled {
+                            update |= on_press_update;
+                        }
+                    }
+                },
+            }
+        }
+
+        update
+    }
+
+    fn handle_repeat(&mut self, update: &mut Update) {
+        if !(self.repeat_enabled && self.state == ButtonState::Pressed) {
+            self.press_start_time = None;
+            self.last_repeat_time = None;
+            return;
+        }
+
+        let now = Instant::now();
+        if let Some(start_time) = self.press_start_time {
+            if now.duration_since(start_time) >= self.repeat_delay {
+                let should_repeat = self
+                    .last_repeat_time
+                    .map(|last| now.duration_since(last) >= self.repeat_interval)
+                    .unwrap_or(true);
+
+                if should_repeat {
+                    *update |= *self.on_pressed.get();
+                    self.last_repeat_time = Some(now);
+                }
+            }
+
+            *update |= Update::DRAW;
+        } else {
+            self.press_start_time = Some(now);
+        }
     }
 }
 
@@ -177,186 +333,28 @@ impl Widget for Button {
         let mut update = Update::empty();
         let old_state = self.state;
         let old_focus_state = self.focus_state;
+        let on_press_update = *self.on_pressed.get();
 
-        // Register this button with the focus manager
-        if let Ok(mut manager) = info.focus_manager.lock() {
-            let focusable_widget = FocusableWidget {
-                id: self.focus_id,
-                properties: FocusProperties {
-                    tab_focusable: true,
-                    click_focusable: true,
-                    tab_index: 0,
-                    accepts_keyboard: true,
-                },
-                bounds: FocusBounds {
-                    x: layout.layout.location.x,
-                    y: layout.layout.location.y,
-                    width: layout.layout.size.width,
-                    height: layout.layout.size.height,
-                },
-            };
-            manager.register_widget(focusable_widget);
+        self.update_focus_state(layout, info, old_focus_state);
 
-            // Update our focus state
-            let new_focus_state = manager.get_focus_state(self.focus_id);
-
-            // Track if focus was gained via keyboard using global state
-            if matches!(new_focus_state, FocusState::Gained)
-                && !matches!(old_focus_state, FocusState::Focused)
-            {
-                // Check if the focus manager indicates this was a keyboard focus change
-                self.focus_via_keyboard = manager.was_last_focus_via_keyboard();
-            } else if matches!(new_focus_state, FocusState::Lost | FocusState::None) {
-                self.focus_via_keyboard = false;
-            } else if matches!(new_focus_state, FocusState::Focused) {
-                // Keep the existing keyboard focus state if we're staying focused
-                // This ensures the border stays visible while navigating with Tab
-            }
-
-            self.focus_state = new_focus_state;
-        }
-
-        // Handle keyboard input when focused
-        if matches!(self.focus_state, FocusState::Focused | FocusState::Gained) {
-            for (_, key_event) in &info.keys {
-                match key_event.state {
-                    ElementState::Pressed => {
-                        match key_event.physical_key {
-                            PhysicalKey::Code(KeyCode::Space)
-                            | PhysicalKey::Code(KeyCode::Enter) => {
-                                // Trigger button press via keyboard
-                                update |= *self.on_pressed.get();
-                                self.state = ButtonState::Pressed;
-                            },
-                            _ => {},
-                        }
-                    },
-                    ElementState::Released => {
-                        match key_event.physical_key {
-                            PhysicalKey::Code(KeyCode::Space)
-                            | PhysicalKey::Code(KeyCode::Enter) => {
-                                // Reset button state after keyboard release
-                                if self.state == ButtonState::Pressed {
-                                    self.state = ButtonState::Idle;
-                                }
-                            },
-                            _ => {},
-                        }
-                    },
-                }
-            }
-        }
-
-        // check for hovering
-        if let Some(cursor) = info.cursor_pos {
-            if cursor.x as f32 >= layout.layout.location.x
-                && cursor.x as f32 <= layout.layout.location.x + layout.layout.size.width
-                && cursor.y as f32 >= layout.layout.location.y
-                && cursor.y as f32 <= layout.layout.location.y + layout.layout.size.height
-            {
-                // fixes state going to hover if the button is pressed but not yet released
-                if self.state != ButtonState::Pressed {
-                    self.state = ButtonState::Hovered;
-                }
-
-                // check for click
-                for (_, btn, el) in &info.buttons {
-                    if *btn == MouseButton::Left {
-                        match el {
-                            ElementState::Pressed => {
-                                if self.state != ButtonState::Pressed {
-                                    self.state = ButtonState::Pressed;
-                                    // If repeat is enabled, fire immediately on press too
-                                    if self.repeat_enabled {
-                                        update |= *self.on_pressed.get();
-                                        self.press_start_time = Some(Instant::now());
-                                        self.last_repeat_time = None;
-                                    }
-                                }
-                            },
-
-                            // actually fire the event if the button is released
-                            ElementState::Released => {
-                                if self.state == ButtonState::Pressed {
-                                    self.state = ButtonState::Released;
-
-                                    // Only fire on release if repeat is NOT enabled
-                                    // (If repeat is enabled, we already fired on press and during hold)
-                                    if !self.repeat_enabled {
-                                        update |= *self.on_pressed.get();
-                                    } else {
-                                        // If repeat IS enabled, we stop the repeat timer
-                                        // (This is handled by the fact that state is no longer Pressed)
-                                    }
-                                }
-                            },
-                        }
-                    }
-                }
-            } else {
-                // cursor not in area, so button is idle
-                self.state = ButtonState::Idle;
-            }
+        if !self.disabled {
+            update |= self.handle_keyboard_input(info, on_press_update);
+            update |= self.handle_mouse_input(layout, info, on_press_update);
         } else {
-            // cursor is not in window, so button is idle
             self.state = ButtonState::Idle;
+            self.press_start_time = None;
+            self.last_repeat_time = None;
         }
 
-        // update on state change, due to re-coloring
         if old_state != self.state {
             update |= Update::DRAW;
         }
 
-        // update on focus state change, due to re-coloring
         if old_focus_state != self.focus_state {
             update |= Update::DRAW;
         }
 
-        // Handle repeat logic
-        if self.repeat_enabled && self.state == ButtonState::Pressed {
-            let now = Instant::now();
-
-            if let Some(start_time) = self.press_start_time {
-                // Check if we've passed the initial delay
-                if now.duration_since(start_time) >= self.repeat_delay {
-                    // Check if we've passed the interval since last repeat
-                    let should_repeat = if let Some(last_repeat) = self.last_repeat_time {
-                        now.duration_since(last_repeat) >= self.repeat_interval
-                    } else {
-                        // First repeat after delay
-                        true
-                    };
-
-                    if should_repeat {
-                        update |= *self.on_pressed.get();
-                        self.last_repeat_time = Some(now);
-                    }
-                }
-
-                // Keep requesting updates while pressed to ensure smooth repeating
-                // We use Update::empty() here because we just need the loop to continue,
-                // but usually we need to signal that we want another frame or update cycle.
-                // In this framework, returning Update::DRAW or similar might be needed if we want to ensure
-                // we get called back efficiently. However, update() is called on events.
-                // To support timer-based updates without events, we might need a way to request a timer.
-                // For now, we'll rely on the fact that if we change something, we get updated.
-                // But if nothing changes (mouse held still), we might not get updates.
-                // We can force a redraw which usually triggers a new update cycle in many game loops,
-                // but here we should be careful.
-                // Ideally, we'd request a timer callback. Since we don't have that explicit API here yet,
-                // we can return Update::DRAW to force a continuous loop while pressed,
-                // or rely on the fact that we are modifying state.
-                // Let's try returning Update::DRAW to ensure we get called back.
-                update |= Update::DRAW;
-            } else {
-                // Should have been set when state became Pressed, but just in case
-                self.press_start_time = Some(now);
-            }
-        } else if self.state != ButtonState::Pressed {
-            // Reset repeat state when not pressed
-            self.press_start_time = None;
-            self.last_repeat_time = None;
-        }
+        self.handle_repeat(&mut update);
 
         update
     }
