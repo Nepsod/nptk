@@ -1,5 +1,5 @@
 //! Shared color mapping primitives for theme rendering.
-use peniko::Color;
+use vello::peniko::Color;
 
 use crate::id::WidgetId;
 use crate::properties::ThemeProperty;

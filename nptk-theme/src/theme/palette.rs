@@ -1,4 +1,4 @@
-use peniko::Color;
+use vello::peniko::Color;
 
 /// Shared palette description for themes.
 #[derive(Debug, Clone)]

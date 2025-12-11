@@ -30,7 +30,7 @@
 //! use nptk_theme::theme::{Theme, celeste::CelesteTheme, dark::DarkTheme};
 //! use nptk_theme::properties::ThemeProperty;
 //! use nptk_theme::id::WidgetId;
-//! use peniko::Color;
+//! use vello::peniko::Color;
 //!
 //! // Create themes
 //! let light_theme = CelesteTheme::light();
@@ -46,7 +46,7 @@
 //!
 //! ```rust
 //! use nptk_theme::theme::dark::DarkTheme;
-//! use peniko::Color;
+//! use vello::peniko::Color;
 //!
 //! let theme = DarkTheme::new();
 //!
@@ -63,7 +63,7 @@
 //! use nptk_theme::id::WidgetId;
 //! use nptk_theme::style::{DefaultStyles, Style, StyleVal};
 //! use nptk_theme::globals::Globals;
-//! use peniko::Color;
+//! use vello::peniko::Color;
 //!
 //! struct MyCustomTheme {
 //!     variables: ThemeVariables,
@@ -181,7 +181,7 @@
 //! 4. **Document Properties**: Document which properties your theme supports
 //! 5. **Test Thoroughly**: Test all widget combinations with your theme
 
-use peniko::Color;
+use vello::peniko::Color;
 
 use crate::globals::Globals;
 use crate::id::WidgetId;
@@ -277,7 +277,7 @@ mod tests {
 /// use nptk_theme::theme::Theme;
 /// use nptk_theme::properties::ThemeProperty;
 /// use nptk_theme::id::WidgetId;
-/// use peniko::Color;
+/// use vello::peniko::Color;
 ///
 /// // Type-safe property access (recommended)
 /// let color = theme.get_property(

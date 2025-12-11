@@ -1,4 +1,4 @@
-use peniko::Color;
+use vello::peniko::Color;
 
 use crate::id::WidgetId;
 use crate::theme::Theme;

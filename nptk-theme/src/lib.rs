@@ -23,7 +23,7 @@
 //! use nptk_theme::theme::dark::DarkTheme;
 //! use nptk_theme::properties::ThemeProperty;
 //! use nptk_theme::id::WidgetId;
-//! use peniko::Color;
+//! use vello::peniko::Color;
 //!
 //! // Create a theme
 //! let theme = DarkTheme::new();

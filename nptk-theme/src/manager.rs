@@ -27,7 +27,7 @@
 //! use nptk_theme::manager::{ThemeManager, ThemeVariant};
 //! use nptk_theme::properties::ThemeProperty;
 //! use nptk_theme::id::WidgetId;
-//! use peniko::Color;
+//! use vello::peniko::Color;
 //!
 //! // Create a theme manager
 //! let mut manager = ThemeManager::new();
@@ -94,7 +94,7 @@
 //! ```rust
 //! use nptk_theme::manager::ThemeManager;
 //! use nptk_theme::properties::ThemeValue;
-//! use peniko::Color;
+//! use vello::peniko::Color;
 //!
 //! let manager = ThemeManager::new();
 //!
@@ -283,7 +283,7 @@ impl ThemeManager {
     }
 
     /// Get a theme property with caching.
-    pub fn get_property(&self, id: WidgetId, property: &ThemeProperty) -> Option<peniko::Color> {
+    pub fn get_property(&self, id: WidgetId, property: &ThemeProperty) -> Option<vello::peniko::Color> {
         let cache_key = (id.clone(), property.clone());
 
         // Check cache first
@@ -331,7 +331,7 @@ impl ThemeManager {
     }
 
     /// Get a theme variable as a color.
-    pub fn get_variable_color(&self, name: &str) -> Option<peniko::Color> {
+    pub fn get_variable_color(&self, name: &str) -> Option<vello::peniko::Color> {
         self.get_variable(name).and_then(|value| value.as_color())
     }
 

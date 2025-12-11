@@ -1,4 +1,4 @@
-use peniko::Color;
+use vello::peniko::Color;
 
 use crate::globals::Globals;
 use crate::id::WidgetId;

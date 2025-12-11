@@ -6,7 +6,7 @@ use crate::config::MayConfig;
 use crate::plugin::PluginManager;
 use crate::widget::Widget;
 use nptk_theme::theme::Theme;
-use peniko::FontData;
+use vello::peniko::FontData;
 use winit::dpi::{LogicalPosition, LogicalSize, Position, Size};
 use winit::event_loop::EventLoopBuilder;
 use winit::window::WindowAttributes;

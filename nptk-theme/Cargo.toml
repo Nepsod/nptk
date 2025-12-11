@@ -12,7 +12,7 @@ homepage.workspace = true
 
 [dependencies]
 indexmap = { workspace = true }
-peniko = { workspace = true }
+vello = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 log = "0.4"

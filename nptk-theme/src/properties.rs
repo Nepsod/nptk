@@ -29,7 +29,7 @@
 //!
 //! ```rust
 //! use nptk_theme::properties::{ThemeProperty, ThemeValue};
-//! use peniko::Color;
+//! use vello::peniko::Color;
 //!
 //! // Create a theme style
 //! let mut style = ThemeStyle::new();
@@ -43,7 +43,7 @@
 //!
 //! ```rust
 //! use nptk_theme::properties::{ThemeVariables, ThemeValue};
-//! use peniko::Color;
+//! use vello::peniko::Color;
 //!
 //! // Set up theme variables
 //! let mut variables = ThemeVariables::new();
@@ -106,7 +106,7 @@
 //! 4. **Group Related Properties**: Keep related properties together
 //! 5. **Document Custom Properties**: Document any custom properties you create
 
-use peniko::{Brush, Color, Gradient};
+use vello::peniko::{Brush, Color, Gradient};
 use std::collections::HashMap;
 
 /// Type-safe theme property keys for widgets.
@@ -118,7 +118,7 @@ use std::collections::HashMap;
 ///
 /// ```rust
 /// use nptk_theme::properties::ThemeProperty;
-/// use peniko::Color;
+/// use vello::peniko::Color;
 ///
 /// // Button properties
 /// let idle_color = ThemeProperty::ColorIdle;
@@ -450,7 +450,7 @@ impl std::str::FromStr for ThemeProperty {
 ///
 /// ```rust
 /// use nptk_theme::properties::{ThemeValue, ThemeProperty};
-/// use peniko::{Color, Brush, Gradient};
+/// use vello::peniko::{Color, Brush, Gradient};
 ///
 /// // Color values
 /// let color_value = ThemeValue::Color(Color::from_rgb8(100, 150, 255));
@@ -488,7 +488,7 @@ impl std::str::FromStr for ThemeProperty {
 ///
 /// ```rust
 /// use nptk_theme::properties::ThemeValue;
-/// use peniko::Color;
+/// use vello::peniko::Color;
 ///
 /// let value = ThemeValue::Color(Color::from_rgb8(100, 150, 255));
 ///
@@ -581,7 +581,7 @@ impl ThemeValue {
 ///
 /// ```rust
 /// use nptk_theme::properties::{ThemeStyle, ThemeProperty, ThemeValue};
-/// use peniko::Color;
+/// use vello::peniko::Color;
 ///
 /// // Create a new theme style
 /// let mut style = ThemeStyle::new();
@@ -607,7 +607,7 @@ impl ThemeValue {
 ///
 /// ```rust
 /// use nptk_theme::properties::{ThemeStyle, ThemeProperty, ThemeValue};
-/// use peniko::Color;
+/// use vello::peniko::Color;
 ///
 /// // Empty style
 /// let style = ThemeStyle::new();
@@ -630,7 +630,7 @@ impl ThemeValue {
 ///
 /// ```rust
 /// use nptk_theme::properties::{ThemeStyle, ThemeProperty, ThemeValue};
-/// use peniko::Color;
+/// use vello::peniko::Color;
 ///
 /// let mut style = ThemeStyle::new();
 ///
@@ -657,7 +657,7 @@ impl ThemeValue {
 ///
 /// ```rust
 /// use nptk_theme::properties::{ThemeStyle, ThemeProperty, ThemeValue};
-/// use peniko::Color;
+/// use vello::peniko::Color;
 ///
 /// let mut base_style = ThemeStyle::new();
 /// base_style.set_color(ThemeProperty::ColorIdle, Color::from_rgb8(100, 150, 255));
@@ -795,7 +795,7 @@ impl Default for ThemeStyle {
 ///
 /// ```rust
 /// use nptk_theme::properties::{ThemeVariables, ThemeValue};
-/// use peniko::Color;
+/// use vello::peniko::Color;
 ///
 /// // Create theme variables
 /// let mut variables = ThemeVariables::new();
@@ -821,7 +821,7 @@ impl Default for ThemeStyle {
 ///
 /// ```rust
 /// use nptk_theme::properties::{ThemeVariables, ThemeValue};
-/// use peniko::{Color, Brush, Gradient};
+/// use vello::peniko::{Color, Brush, Gradient};
 ///
 /// let mut variables = ThemeVariables::new();
 ///
@@ -852,7 +852,7 @@ impl Default for ThemeStyle {
 ///
 /// ```rust
 /// use nptk_theme::properties::ThemeVariables;
-/// use peniko::Color;
+/// use vello::peniko::Color;
 ///
 /// let mut variables = ThemeVariables::new();
 ///
@@ -884,7 +884,7 @@ impl Default for ThemeStyle {
 ///
 /// ```rust
 /// use nptk_theme::properties::ThemeVariables;
-/// use peniko::Color;
+/// use vello::peniko::Color;
 ///
 /// let variables = ThemeVariables::new();
 ///
@@ -905,7 +905,7 @@ impl Default for ThemeStyle {
 ///
 /// ```rust
 /// use nptk_theme::properties::{ThemeVariables, ThemeValue, ThemeProperty};
-/// use peniko::Color;
+/// use vello::peniko::Color;
 ///
 /// let mut variables = ThemeVariables::new();
 ///

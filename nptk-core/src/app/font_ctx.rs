@@ -1,5 +1,5 @@
 use parley::fontique::{Blob, Collection, CollectionOptions, QueryFamily, QueryFont, SourceCache};
-use peniko::FontData;
+use vello::peniko::FontData;
 use std::sync::{Arc, RwLock};
 
 /// A font manager for nptk applications, powered by `fontique` with system font support.

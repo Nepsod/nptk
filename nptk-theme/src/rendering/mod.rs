@@ -66,7 +66,7 @@ pub use state::{CheckboxState, InteractionState, WidgetState};
 
 use crate::id::WidgetId;
 use crate::theme::Theme;
-use peniko::Color;
+use vello::peniko::Color;
 
 /// Trait for theme-based widget rendering.
 /// This centralizes all widget drawing logic in the theme system.

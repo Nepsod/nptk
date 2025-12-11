@@ -1,4 +1,4 @@
-use peniko::Color;
+use vello::peniko::Color;
 
 use crate::config::{ThemeConfig, ThemeSource};
 use crate::globals::Globals;

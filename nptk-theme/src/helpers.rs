@@ -27,7 +27,7 @@
 //! use nptk_theme::helpers::ThemeHelper;
 //! use nptk_theme::properties::ThemeProperty;
 //! use nptk_theme::id::WidgetId;
-//! use peniko::Color;
+//! use vello::peniko::Color;
 //!
 //! let theme = /* your theme */;
 //! let widget_id = WidgetId::new("nptk-widgets", "Button");
@@ -158,7 +158,7 @@
 //! use nptk_theme::helpers::ThemeHelper;
 //! use nptk_theme::properties::ThemeProperty;
 //! use nptk_theme::id::WidgetId;
-//! use peniko::Color;
+//! use vello::peniko::Color;
 //!
 //! let theme = /* your theme */;
 //! let widget_id = WidgetId::new("nptk-widgets", "Button");
@@ -244,7 +244,7 @@
 use crate::id::WidgetId;
 use crate::properties::ThemeProperty;
 use crate::theme::Theme;
-use peniko::Color;
+use vello::peniko::Color;
 
 /// The state of a checkbox widget (duplicated from nptk-widgets to avoid circular dependency).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -269,7 +269,7 @@ pub enum CheckboxState {
 /// use nptk_theme::helpers::ThemeHelper;
 /// use nptk_theme::properties::ThemeProperty;
 /// use nptk_theme::id::WidgetId;
-/// use peniko::Color;
+/// use vello::peniko::Color;
 ///
 /// let theme = /* your theme */;
 /// let widget_id = WidgetId::new("nptk-widgets", "Button");

@@ -1,5 +1,5 @@
 #![allow(missing_docs)]
-use peniko::Color;
+use vello::peniko::Color;
 
 /// The unified state of a widget for rendering purposes.
 /// This combines interaction state, focus state, and widget-specific states.
