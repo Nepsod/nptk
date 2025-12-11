@@ -112,6 +112,11 @@ impl Checkbox {
         }
     }
 
+    fn apply_with(mut self, f: impl FnOnce(&mut Self)) -> Self {
+        f(&mut self);
+        self
+    }
+
     /// Create a new checkbox from a boolean value (for backward compatibility).
     ///
     /// The value should be a signal, so it's mutable.
@@ -128,21 +133,18 @@ impl Checkbox {
     /// Unchecked -> Checked -> Indeterminate -> Unchecked
     ///
     /// Use this for master checkboxes that control multiple sub-items.
-    pub fn with_indeterminate_state(mut self) -> Self {
-        self.allow_indeterminate = true;
-        self
+    pub fn with_indeterminate_state(self) -> Self {
+        self.apply_with(|s| s.allow_indeterminate = true)
     }
 
     /// Sets the value of the checkbox and returns itself.
-    pub fn with_value(mut self, value: impl Into<MaybeSignal<CheckboxState>>) -> Self {
-        self.value = value.into();
-        self
+    pub fn with_value(self, value: impl Into<MaybeSignal<CheckboxState>>) -> Self {
+        self.apply_with(|s| s.value = value.into())
     }
 
     /// Sets the update value to apply on changes.
-    pub fn with_on_change(mut self, on_change: impl Into<MaybeSignal<Update>>) -> Self {
-        self.on_change = on_change.into();
-        self
+    pub fn with_on_change(self, on_change: impl Into<MaybeSignal<Update>>) -> Self {
+        self.apply_with(|s| s.on_change = on_change.into())
     }
 
     /// Lock specific states to prevent cycling from them.
@@ -155,25 +157,30 @@ impl Checkbox {
     /// # Examples
     ///
     /// ```rust
+    /// use nptk_widgets::checkbox::{Checkbox, CheckboxState};
+    ///
+    /// let mut checkbox = Checkbox::new(CheckboxState::Unchecked);
     /// // Lock only the checked state
-    /// checkbox.with_locked_states(vec![CheckboxState::Checked]);
+    /// checkbox = checkbox.with_locked_states(vec![CheckboxState::Checked]);
     ///
     /// // Lock multiple states
-    /// checkbox.with_locked_states(vec![CheckboxState::Checked, CheckboxState::Indeterminate]);
+    /// checkbox = checkbox.with_locked_states(vec![
+    ///     CheckboxState::Checked,
+    ///     CheckboxState::Indeterminate,
+    /// ]);
     ///
     /// // Lock all states (checkbox becomes completely unclickable)
-    /// checkbox.with_locked_states(vec![
+    /// checkbox = checkbox.with_locked_states(vec![
     ///     CheckboxState::Unchecked,
     ///     CheckboxState::Checked,
-    ///     CheckboxState::Indeterminate
+    ///     CheckboxState::Indeterminate,
     /// ]);
     /// ```
     pub fn with_locked_states(
-        mut self,
+        self,
         states: impl Into<MaybeSignal<Vec<CheckboxState>>>,
     ) -> Self {
-        self.locked_states = states.into();
-        self
+        self.apply_with(|s| s.locked_states = states.into())
     }
 
     /// Lock a single state to prevent cycling from it.
@@ -186,13 +193,14 @@ impl Checkbox {
     /// # Examples
     ///
     /// ```rust
+    /// use nptk_widgets::checkbox::{Checkbox, CheckboxState};
+    ///
+    /// let mut checkbox = Checkbox::new(CheckboxState::Unchecked);
     /// // Lock the checked state
-    /// checkbox.with_locked_state(CheckboxState::Checked);
+    /// checkbox = checkbox.with_locked_state(CheckboxState::Checked);
     /// ```
-    pub fn with_locked_state(mut self, state: CheckboxState) -> Self {
-        let locked_vec = vec![state];
-        self.locked_states = locked_vec.into();
-        self
+    pub fn with_locked_state(self, state: CheckboxState) -> Self {
+        self.apply_with(|s| s.locked_states = vec![state].into())
     }
 
     /// Check if the current state is locked.
@@ -247,6 +255,43 @@ impl Checkbox {
             sig.set(Vec::new());
         }
     }
+
+    fn checkbox_rect(layout_node: &LayoutNode) -> Rect {
+        Rect::new(
+            layout_node.layout.location.x as f64,
+            layout_node.layout.location.y as f64,
+            (layout_node.layout.location.x + layout_node.layout.size.width) as f64,
+            (layout_node.layout.location.y + layout_node.layout.size.height) as f64,
+        )
+    }
+
+    fn hit_test(layout_node: &LayoutNode, cursor: Vector2<f64>) -> bool {
+        let rect = Self::checkbox_rect(layout_node);
+        cursor.x >= rect.x0 && cursor.x <= rect.x1 && cursor.y >= rect.y0 && cursor.y <= rect.y1
+    }
+
+    fn current_state(&self) -> CheckboxState {
+        *self.value.get()
+    }
+
+    fn next_state(&self, current: CheckboxState) -> CheckboxState {
+        current.cycle_next_with_indeterminate(self.allow_indeterminate)
+    }
+
+    fn try_toggle(&mut self) -> bool {
+        let current_state = self.current_state();
+        if self.is_state_locked(current_state) {
+            return false;
+        }
+
+        if let Some(sig) = self.value.as_signal() {
+            let new_state = self.next_state(current_state);
+            sig.set(new_state);
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl WidgetLayoutExt for Checkbox {
@@ -264,10 +309,10 @@ impl Widget for Checkbox {
         _: &mut AppInfo,
         _: AppContext,
     ) {
-        let state = *self.value.get();
+        let state = self.current_state();
 
         // Check if current state is locked for graying out
-        let is_locked = self.is_current_state_locked();
+        let is_locked = self.is_state_locked(state);
 
         // Get colors based on state using theme helper
         let theme_checkbox_state = match state {
@@ -308,12 +353,7 @@ impl Widget for Checkbox {
             CheckboxState::Indeterminate => Some(border_color),
         };
 
-        let checkbox_rect = Rect::new(
-            layout_node.layout.location.x as f64,
-            layout_node.layout.location.y as f64,
-            (layout_node.layout.location.x + layout_node.layout.size.width) as f64,
-            (layout_node.layout.location.y + layout_node.layout.size.height) as f64,
-        );
+        let checkbox_rect = Self::checkbox_rect(layout_node);
 
         let rounded_rect =
             RoundedRect::from_rect(checkbox_rect, RoundedRectRadii::from_single_radius(3.0));
@@ -431,30 +471,19 @@ impl Widget for Checkbox {
 
     fn update(&mut self, layout: &LayoutNode, _: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
+        let on_change = *self.on_change.get();
 
-        if let Some(cursor) = &info.cursor_pos {
-            if cursor.x as f32 >= layout.layout.location.x
-                && cursor.x as f32 <= layout.layout.location.x + layout.layout.size.width
-                && cursor.y as f32 >= layout.layout.location.y
-                && cursor.y as f32 <= layout.layout.location.y + layout.layout.size.height
-            {
-                for (_, btn, el) in &info.buttons {
-                    if btn == &MouseButton::Left && *el == ElementState::Released {
-                        // Check if the current state is locked
-                        if self.is_current_state_locked() {
-                            // State is locked, don't change it
-                            return update;
-                        }
+        let cursor_hit = info
+            .cursor_pos
+            .map(|cursor| Self::hit_test(layout, cursor))
+            .unwrap_or(false);
 
-                        update |= *self.on_change.get();
+        if cursor_hit {
+            for (_, btn, el) in &info.buttons {
+                if *btn == MouseButton::Left && *el == ElementState::Released {
+                    if self.try_toggle() {
+                        update |= on_change;
                         update |= Update::DRAW;
-
-                        if let Some(sig) = self.value.as_signal() {
-                            let current_state = *sig.get();
-                            let new_state = current_state
-                                .cycle_next_with_indeterminate(self.allow_indeterminate);
-                            sig.set(new_state);
-                        }
                     }
                 }
             }
