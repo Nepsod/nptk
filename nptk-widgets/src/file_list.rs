@@ -5,16 +5,13 @@ use chrono::{DateTime, Local};
 use humansize::{format_size, BINARY};
 use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
-use nptk_core::app::font_ctx::FontContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::menu::{ContextMenu, ContextMenuGroup, ContextMenuItem};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::text_render::TextRenderContext;
-use nptk_core::vg::kurbo::{
-    Affine, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke, Vec2,
-};
+use nptk_core::vg::kurbo::{Affine, Point, Rect, Shape, Stroke, Vec2};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
@@ -76,6 +73,11 @@ pub struct FileList {
 }
 
 impl FileList {
+    fn apply_with(mut self, f: impl FnOnce(&mut Self)) -> Self {
+        f(&mut self);
+        self
+    }
+
     /// Create a new file list widget.
     pub fn new(initial_path: PathBuf) -> Self {
         let fs_model = Arc::new(FileSystemModel::new(initial_path.clone()).unwrap());
@@ -177,16 +179,12 @@ impl FileList {
 
     /// Set the view mode (builder pattern).
     pub fn with_view_mode(self, mode: FileListViewMode) -> Self {
-        let mut new_self = self;
-        new_self.view_mode.set(mode);
-        new_self
+        self.apply_with(|this| this.view_mode.set(mode))
     }
 
     /// Set the icon size (builder pattern).
     pub fn with_icon_size(self, size: u32) -> Self {
-        let mut new_self = self;
-        new_self.icon_size.set(size);
-        new_self
+        self.apply_with(|this| this.icon_size.set(size))
     }
 }
 
@@ -311,13 +309,11 @@ struct FileListContent {
         (PathBuf, FileListViewMode, u32, bool),
         (Rect, Rect, String, f32),
     >,
-    cache_invalidated: bool,
     last_layout_width: f32,
 
     // Icon view constants
     icon_view_padding: f32,
     icon_view_spacing: f32,
-    icon_view_text_height: f32,
 
     // SVG Scene cache to avoid re-parsing SVGs every frame
     // Key: SVG source string (or hash of it)
@@ -925,18 +921,17 @@ impl FileListContent {
             is_dragging: false,
 
             layout_cache: std::collections::HashMap::new(),
-            cache_invalidated: false,
             last_layout_width: 1000.0,
 
             icon_view_padding: 2.0,      // padding around the icons
             icon_view_spacing: 22.0,     // spacing between icons
-            icon_view_text_height: 50.0, // Increased to accommodate 2-3 lines of wrapped text
 
             svg_scene_cache: std::collections::HashMap::new(),
             mime_registry: MimeRegistry::load_default(),
             pending_action: Arc::new(Mutex::new(None)),
             last_cursor: None,
         }
+        .with_thumbnail_size(128)
     }
 
     /// Set the thumbnail size for this file list.
@@ -961,7 +956,7 @@ impl FileListContent {
 
         // Resolve default app, otherwise first handler, otherwise xdg-open fallback.
         let app = registry.resolve(&mime).or_else(|| {
-            let mut handlers = registry.list_handlers(&mime);
+            let handlers = registry.list_handlers(&mime);
             handlers.into_iter().next()
         });
 
@@ -1665,10 +1660,7 @@ impl Widget for FileListContent {
                             (cell_x + cell_width) as f64,
                             (cell_y + cell_height) as f64,
                         );
-                        let is_selected = {
-                            let selected = self.selected_paths.get();
-                            selected.contains(&entry.path)
-                        };
+                        let is_selected = self.is_selected(&entry.path);
                         let (icon_rect, label_rect, _, _) = self.get_icon_item_layout(
                             &mut info.font_context,
                             &entry,
@@ -1789,7 +1781,6 @@ impl Widget for FileListContent {
 
                 if let Some(target_path) = target_path {
                     let ctrl_pressed = info.modifiers.control_key();
-                    let shift_pressed = info.modifiers.shift_key();
 
                     for (_, btn, el) in &info.buttons {
                         if *btn == MouseButton::Right && *el == ElementState::Pressed {

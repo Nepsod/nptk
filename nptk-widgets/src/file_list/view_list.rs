@@ -10,7 +10,6 @@ use nptk_services::filesystem::entry::FileType;
 use nptk_theme::theme::Theme;
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::time::Instant;
 
 impl FileListContent {
     pub(super) fn render_list_view(
@@ -20,9 +19,6 @@ impl FileListContent {
         layout: &LayoutNode,
         info: &mut AppInfo,
     ) {
-        use std::time::Instant;
-        let start = Instant::now();
-
         let entries = self.entries.get();
         let selected_paths = self.selected_paths.get();
         let selected_set: HashSet<&PathBuf> = selected_paths.iter().collect();
@@ -68,7 +64,6 @@ impl FileListContent {
 
         // Only render visible items
         for i in start_index..end_index {
-            let layout_start = Instant::now();
             let entry = &entries[i];
             let y = layout.layout.location.y + i as f32 * self.item_height;
             let row_rect = Rect::new(
@@ -364,7 +359,6 @@ impl FileListContent {
             );
         }
 
-        let total_duration = start.elapsed();
 
         // DEBUG: Log timing every 60 frames
         // use std::sync::atomic::{AtomicU64, Ordering};

@@ -11,7 +11,6 @@ use nptk_services::filesystem::entry::{FileEntry, FileType};
 use nptk_theme::theme::Theme;
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::time::Instant;
 
 impl FileListContent {
     pub(super) fn calculate_icon_view_layout(
@@ -49,9 +48,6 @@ impl FileListContent {
         layout: &LayoutNode,
         info: &mut AppInfo,
     ) {
-        use std::time::Instant;
-        let start = Instant::now();
-
         let entries = self.entries.get();
         let selected_paths = self.selected_paths.get();
         let selected_set: HashSet<&PathBuf> = selected_paths.iter().collect();
@@ -101,10 +97,6 @@ impl FileListContent {
         let start_index = start_row * columns;
         let end_index = (end_row * columns).min(entry_count);
 
-        // Timing accumulators
-        let mut layout_time = std::time::Duration::ZERO;
-        let mut render_time = std::time::Duration::ZERO;
-
         // Collect indices of unselected and selected items in visible range
         let unselected_indices: Vec<usize> = (start_index..end_index)
             .filter(|&i| !selected_set.contains(&entries[i].path))
@@ -124,7 +116,6 @@ impl FileListContent {
 
         // Pass 1: Render unselected items in visible range
         for (_idx, i) in unselected_indices.iter().enumerate() {
-            let layout_start = Instant::now();
             let entry_idx = i - start_index;
             let entry = &visible_entries[entry_idx];
             self.render_icon_item(
@@ -140,12 +131,10 @@ impl FileListContent {
                 icon_size,
                 false,
             );
-            layout_time += layout_start.elapsed();
         }
 
         // Pass 2: Render selected items in visible range (to draw on top)
         for (_idx, i) in selected_indices.iter().enumerate() {
-            let layout_start = Instant::now();
             let entry_idx = i - start_index;
             let entry = &visible_entries[entry_idx];
             self.render_icon_item(
@@ -161,7 +150,6 @@ impl FileListContent {
                 icon_size,
                 true,
             );
-            layout_time += layout_start.elapsed();
         }
     }
     pub(super) fn render_icon_item(
@@ -178,9 +166,6 @@ impl FileListContent {
         icon_size: u32,
         is_selected: bool,
     ) {
-        use std::time::Instant;
-        let render_start = Instant::now();
-
         let (x, y) = self.get_icon_position(i, columns, cell_width, cell_height);
         let cell_rect = Rect::new(
             layout.layout.location.x as f64 + x as f64,
@@ -189,20 +174,7 @@ impl FileListContent {
             layout.layout.location.y as f64 + y as f64 + cell_height as f64,
         );
 
-        // Calculate icon position (centered in cell)
-        let icon_x = cell_rect.x0 + (cell_width as f64 - icon_size as f64) / 2.0;
-        let icon_y = cell_rect.y0 + 4.0; // Small top padding
-        let icon_rect = Rect::new(
-            icon_x,
-            icon_y,
-            icon_x + icon_size as f64,
-            icon_y + icon_size as f64,
-        );
-        // https://learn.microsoft.com/en-us/windows/win32/controls/lvm-getitemrect
-        // Classic Windows approach: Calculate icon and label rectangles separately, then union them
-        // Step 1: Measure text layout to get actual line count and width
         let font_size = 12.0;
-        // Calculate layout using helper
         let (icon_rect, label_rect, display_text, max_text_width) = self.get_icon_item_layout(
             &mut info.font_context,
             entry,
@@ -211,6 +183,8 @@ impl FileListContent {
             icon_size as f32,
             is_selected,
         );
+        let icon_x = icon_rect.x0;
+        let icon_y = icon_rect.y0;
 
         // Step 3: Drawing
 
