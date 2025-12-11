@@ -1,6 +1,11 @@
 use std::sync::{Arc, Mutex};
 use vello::kurbo::Point;
 
+const ITEM_HEIGHT: f64 = 24.0;
+const PADDING: f64 = 4.0;
+const MIN_WIDTH: f64 = 120.0;
+const MAX_WIDTH: f64 = 400.0;
+
 /// A context menu containing a list of items.
 #[derive(Clone)]
 pub struct ContextMenu {
@@ -46,6 +51,56 @@ pub enum MenuClickResult {
     Action(Arc<dyn Fn() + Send + Sync>),
     SubMenu(ContextMenu, Point),
     NonActionInside,
+}
+
+struct MenuGeometry {
+    items: Vec<ContextMenuItem>,
+    rect: Rect,
+}
+
+impl MenuGeometry {
+    fn new(
+        menu: &ContextMenu,
+        position: Point,
+        text_render: &mut TextRenderContext,
+        font_cx: &mut FontContext,
+    ) -> Self {
+        let items = flatten_menu_items(menu);
+        let (width, height) = calculate_layout_from_items(&items, text_render, font_cx);
+        let rect = Rect::new(
+            position.x as f64,
+            position.y as f64,
+            position.x as f64 + width,
+            position.y as f64 + height,
+        );
+        Self { items, rect }
+    }
+
+    fn hit_test_index(&self, cursor: Point) -> Option<usize> {
+        if !self.rect.contains(cursor) {
+            return None;
+        }
+        let relative_y = cursor.y - self.rect.y0 - PADDING;
+        if relative_y < 0.0 {
+            return None;
+        }
+        let idx = (relative_y / ITEM_HEIGHT) as usize;
+        if idx < self.items.len() {
+            Some(idx)
+        } else {
+            None
+        }
+    }
+
+    fn item_rect(&self, index: usize) -> Rect {
+        let y = self.rect.y0 + PADDING + (index as f64 * ITEM_HEIGHT);
+        Rect::new(self.rect.x0, y, self.rect.x1, y + ITEM_HEIGHT)
+    }
+
+    fn submenu_origin(&self, index: usize) -> Point {
+        let item_top = self.rect.y0 + PADDING + (index as f64 * ITEM_HEIGHT);
+        Point::new(self.rect.x1 + 8.0, item_top)
+    }
 }
 
 fn flatten_menu_items(menu: &ContextMenu) -> Vec<ContextMenuItem> {
@@ -143,11 +198,8 @@ pub fn render_context_menu(
     font_cx: &mut FontContext,
     cursor_pos: Option<Point>,
 ) -> Rect {
-    let flat_items = flatten_menu_items(menu);
-    let (width, height) = calculate_layout_from_items(&flat_items, text_render, font_cx);
-    let x = position.x as f64;
-    let y = position.y as f64;
-    let rect = Rect::new(x, y, x + width, y + height);
+    let geometry = MenuGeometry::new(menu, position, text_render, font_cx);
+    let rect = geometry.rect;
 
     let menu_id = WidgetId::new("nptk-widgets", "MenuPopup");
 
@@ -167,10 +219,10 @@ pub fn render_context_menu(
 
     // Shadow
     let shadow_rect = RoundedRect::new(
-        x + 2.0,
-        y + 2.0,
-        x + width + 2.0,
-        y + height + 2.0,
+        rect.x0 + 2.0,
+        rect.y0 + 2.0,
+        rect.x1 + 2.0,
+        rect.y1 + 2.0,
         RoundedRectRadii::new(4.0, 4.0, 4.0, 4.0),
     );
     graphics.fill(
@@ -183,10 +235,10 @@ pub fn render_context_menu(
 
     // Main background
     let rounded_rect = RoundedRect::new(
-        x,
-        y,
-        x + width,
-        y + height,
+        rect.x0,
+        rect.y0,
+        rect.x1,
+        rect.y1,
         RoundedRectRadii::new(4.0, 4.0, 4.0, 4.0),
     );
     graphics.fill(
@@ -205,33 +257,13 @@ pub fn render_context_menu(
     );
 
     // Draw items
-    let item_height = 24.0;
-    let padding = 4.0;
-    let mut current_y = y + padding;
+    let mut current_y = rect.y0 + PADDING;
 
     // Determine hovered item index
-    let hovered_index = if let Some(cursor) = cursor_pos {
-        if rect.contains(cursor) {
-            let relative_y = cursor.y - y - padding;
-            if relative_y >= 0.0 {
-                let idx = (relative_y / item_height) as usize;
-                if idx < flat_items.len() {
-                    Some(idx)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    let hovered_index = cursor_pos.and_then(|cursor| geometry.hit_test_index(cursor));
 
-    for (i, item) in flat_items.iter().enumerate() {
-        let item_rect = Rect::new(x, current_y, x + width, current_y + item_height);
+    for (i, item) in geometry.items.iter().enumerate() {
+        let item_rect = geometry.item_rect(i);
 
         // Draw hover background
         if Some(i) == hovered_index {
@@ -266,14 +298,15 @@ pub fn render_context_menu(
                     None,
                     14.0,
                     Brush::Solid(text_color),
-                    Affine::translate((x + 10.0, current_y + 4.0)), // Top-left of text box
+                    Affine::translate((rect.x0 + 10.0, current_y + 4.0)), // Top-left of text box
                     true,
-                    Some(width as f32 - 20.0),
+                    Some((rect.width() - 20.0) as f32),
                 );
             },
             ContextMenuItem::Separator => {
-                let sep_y = current_y + item_height / 2.0;
-                let line = vello::kurbo::Line::new((x + 8.0, sep_y), (x + width - 8.0, sep_y));
+                let sep_y = current_y + ITEM_HEIGHT / 2.0;
+                let line =
+                    vello::kurbo::Line::new((rect.x0 + 8.0, sep_y), (rect.x1 - 8.0, sep_y));
                 graphics.stroke(
                     &vello::kurbo::Stroke::new(1.0),
                     Affine::IDENTITY,
@@ -291,14 +324,14 @@ pub fn render_context_menu(
                     None,
                     14.0,
                     Brush::Solid(text_color),
-                    Affine::translate((x + 10.0, current_y + 4.0)),
+                    Affine::translate((rect.x0 + 10.0, current_y + 4.0)),
                     true,
-                    Some(width as f32 - 30.0),
+                    Some((rect.width() - 30.0) as f32),
                 );
 
                 // Draw arrow
-                let arrow_x = x + width - 12.0;
-                let arrow_y = current_y + (item_height / 2.0);
+                let arrow_x = rect.x1 - 12.0;
+                let arrow_y = current_y + (ITEM_HEIGHT / 2.0);
                 let arrow_size = 3.0;
                 let arrow_stroke = vello::kurbo::Stroke::new(1.0);
 
@@ -324,7 +357,7 @@ pub fn render_context_menu(
                 );
             },
         }
-        current_y += item_height;
+        current_y += ITEM_HEIGHT;
     }
 
     rect
@@ -335,11 +368,6 @@ fn calculate_layout_from_items(
     text_render: &mut TextRenderContext,
     font_cx: &mut FontContext,
 ) -> (f64, f64) {
-    let item_height = 24.0;
-    let padding = 4.0;
-    let min_width = 120.0;
-    let max_width = 400.0;
-
     // Measure text using the active font context for accurate width.
     let mut max_text_width: f64 = 0.0;
     for item in items {
@@ -350,9 +378,9 @@ fn calculate_layout_from_items(
         }
     }
     // Add padding and clamp.
-    let estimated = (max_text_width + 40.0).max(min_width);
-    let width = estimated.min(max_width);
-    let height = items.len() as f64 * item_height + padding * 2.0;
+    let estimated = (max_text_width + 40.0).max(MIN_WIDTH);
+    let width = estimated.min(MAX_WIDTH);
+    let height = items.len() as f64 * ITEM_HEIGHT + PADDING * 2.0;
     (width, height)
 }
 
@@ -362,11 +390,7 @@ pub fn get_menu_rect(
     text_render: &mut TextRenderContext,
     font_cx: &mut FontContext,
 ) -> Rect {
-    let flat_items = flatten_menu_items(menu);
-    let (width, height) = calculate_layout_from_items(&flat_items, text_render, font_cx);
-    let x = position.x as f64;
-    let y = position.y as f64;
-    Rect::new(x, y, x + width, y + height)
+    MenuGeometry::new(menu, position, text_render, font_cx).rect
 }
 
 pub fn handle_click(
@@ -376,38 +400,12 @@ pub fn handle_click(
     text_render: &mut TextRenderContext,
     font_cx: &mut FontContext,
 ) -> Option<MenuClickResult> {
-    let flat_items = flatten_menu_items(menu);
-    let rect = {
-        let (width, height) = calculate_layout_from_items(&flat_items, text_render, font_cx);
-        let x = position.x as f64;
-        let y = position.y as f64;
-        Rect::new(x, y, x + width, y + height)
-    };
-    if !rect.contains(cursor) {
-        return None;
-    }
+    let geometry = MenuGeometry::new(menu, position, text_render, font_cx);
+    let index = geometry.hit_test_index(cursor)?;
 
-    let item_height = 24.0;
-    let padding = 4.0;
-    let relative_y = cursor.y - position.y - padding;
+    let submenu_origin = geometry.submenu_origin(index);
 
-    if relative_y < 0.0 {
-        return None;
-    }
-
-    let index = (relative_y / item_height) as usize;
-    if index >= flat_items.len() {
-        return None;
-    }
-
-    // Compute item rect to position submenu (if any).
-    let item_height = 24.0;
-    let padding = 4.0;
-    let item_top = position.y as f64 + padding + (index as f64 * item_height);
-    let item_bottom = item_top + item_height;
-    let submenu_origin = Point::new(rect.x1 as f64 + 8.0, item_top);
-
-    match &flat_items[index] {
+    match &geometry.items[index] {
         ContextMenuItem::Action { action, .. } => Some(MenuClickResult::Action(action.clone())),
         ContextMenuItem::SubMenu { items, .. } => Some(MenuClickResult::SubMenu(
             ContextMenu {
@@ -428,29 +426,11 @@ pub fn hover_submenu(
     text_render: &mut TextRenderContext,
     font_cx: &mut FontContext,
 ) -> Option<(ContextMenu, Point)> {
-    let flat_items = flatten_menu_items(menu);
-    let (width, height) = calculate_layout_from_items(&flat_items, text_render, font_cx);
-    let x = position.x as f64;
-    let y = position.y as f64;
-    let rect = Rect::new(x, y, x + width, y + height);
-    if !rect.contains(cursor) {
-        return None;
-    }
+    let geometry = MenuGeometry::new(menu, position, text_render, font_cx);
+    let index = geometry.hit_test_index(cursor)?;
 
-    let item_height = 24.0;
-    let padding = 4.0;
-    let relative_y = cursor.y - position.y - padding;
-    if relative_y < 0.0 {
-        return None;
-    }
-    let index = (relative_y / item_height) as usize;
-    if index >= flat_items.len() {
-        return None;
-    }
-
-    if let ContextMenuItem::SubMenu { items, .. } = &flat_items[index] {
-        let item_top = position.y as f64 + padding + (index as f64 * item_height);
-        let submenu_origin = Point::new(rect.x1 as f64 + 8.0, item_top);
+    if let ContextMenuItem::SubMenu { items, .. } = &geometry.items[index] {
+        let submenu_origin = geometry.submenu_origin(index);
         return Some((
             ContextMenu {
                 items: items.clone(),
