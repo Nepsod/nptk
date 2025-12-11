@@ -934,9 +934,9 @@ impl TabsContainer {
         let make_gradient = |start: Point, end: Point| {
             Brush::Gradient(
                 Gradient::new_linear(start, end).with_stops([
-                    (0.0, Color::from_rgb8(255, 100, 200)), // Bright pink
-                    (0.5, Color::from_rgb8(186, 120, 255)), // Purple
-                    (1.0, Color::from_rgb8(100, 150, 255)), // Blue
+                    (0.0, Color::from_rgb8(255, 0, 204)), // Bright pink
+                    // (0.5, Color::from_rgb8(186, 120, 255)), // Purple
+                    (1.0198, Color::from_rgb8(51, 51, 153)), // Blue
                 ]),
             )
         };
