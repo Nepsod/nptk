@@ -40,21 +40,97 @@ impl FileIcon {
         }
     }
 
-    /// Set the icon.
-    pub fn with_icon(mut self, icon: impl Into<MaybeSignal<Option<CachedIcon>>>) -> Self {
-        self.icon = icon.into();
+    fn apply_with(mut self, f: impl FnOnce(&mut Self)) -> Self {
+        f(&mut self);
         self
     }
 
+    /// Set the icon.
+    pub fn with_icon(self, icon: impl Into<MaybeSignal<Option<CachedIcon>>>) -> Self {
+        self.apply_with(|s| s.icon = icon.into())
+    }
+
     /// Set the icon size.
-    pub fn with_size(mut self, size: f32) -> Self {
+    pub fn with_size(self, size: f32) -> Self {
+        self.apply_with(|s| s.set_size(size))
+    }
+
+    fn set_size(&mut self, size: f32) {
         self.size = size;
         self.layout_style = LayoutStyle {
             size: Vector2::new(Dimension::length(size), Dimension::length(size)),
             ..Default::default()
         }
         .into();
-        self
+    }
+
+    fn layout_origin_size(layout: &LayoutNode) -> (f64, f64, f64) {
+        let x = layout.layout.location.x as f64;
+        let y = layout.layout.location.y as f64;
+        let size = layout.layout.size.width.min(layout.layout.size.height) as f64;
+        (x, y, size)
+    }
+
+    fn render_image(
+        graphics: &mut dyn Graphics,
+        data: &[u8],
+        width: u32,
+        height: u32,
+        x: f64,
+        y: f64,
+        size: f64,
+    ) {
+        let image_data = ImageData {
+            data: Blob::from(data.to_vec()),
+            format: ImageFormat::Rgba8,
+            alpha_type: ImageAlphaType::Alpha,
+            width,
+            height,
+        };
+
+        let image_brush = ImageBrush::new(image_data);
+
+        let scale_x = size / width as f64;
+        let scale_y = size / height as f64;
+        let scale = scale_x.min(scale_y);
+
+        let transform = Affine::scale_non_uniform(scale, scale).then_translate(Vec2::new(x, y));
+
+        if let Some(scene) = graphics.as_scene_mut() {
+            scene.draw_image(&image_brush, transform);
+        }
+    }
+
+    fn render_svg(
+        graphics: &mut dyn Graphics,
+        svg_source: &str,
+        x: f64,
+        y: f64,
+        size: f64,
+    ) {
+        let options = Options {
+            shape_rendering: ShapeRendering::GeometricPrecision,
+            text_rendering: TextRendering::OptimizeLegibility,
+            image_rendering: ImageRendering::OptimizeSpeed,
+            ..Default::default()
+        };
+
+        let tree = match vello_svg::usvg::Tree::from_str(svg_source, &options) {
+            Ok(tree) => tree,
+            Err(err) => {
+                log::warn!("FileIcon: failed to parse SVG: {err}");
+                return;
+            },
+        };
+
+        let scene = vello_svg::render_tree(&tree);
+        let svg_size = tree.size();
+        let scale_x = size / svg_size.width() as f64;
+        let scale_y = size / svg_size.height() as f64;
+        let scale = scale_x.min(scale_y);
+
+        let transform = Affine::scale_non_uniform(scale, scale).then_translate(Vec2::new(x, y));
+        graphics.append(&scene, Some(transform));
     }
 }
 
@@ -82,14 +158,10 @@ impl Widget for FileIcon {
         _: &mut AppInfo,
         _: AppContext,
     ) {
-        let icon = match *self.icon.get() {
-            Some(ref icon) => icon.clone(),
-            None => return,
-        };
+        let icon_value = self.icon.get();
+        let Some(icon) = icon_value.as_ref() else { return };
 
-        let x = layout.layout.location.x as f64;
-        let y = layout.layout.location.y as f64;
-        let size = layout.layout.size.width.min(layout.layout.size.height) as f64;
+        let (x, y, size) = Self::layout_origin_size(layout);
 
         match icon {
             CachedIcon::Image {
@@ -97,60 +169,13 @@ impl Widget for FileIcon {
                 width,
                 height,
             } => {
-                // Create ImageData from raw RGBA bytes
-                let image_data = ImageData {
-                    data: Blob::from(data.as_ref().clone()),
-                    format: ImageFormat::Rgba8,
-                    alpha_type: ImageAlphaType::Alpha,
-                    width,
-                    height,
-                };
-
-                let image_brush = ImageBrush::new(image_data);
-
-                // Scale to fit the layout size
-                let scale_x = size / (width as f64);
-                let scale_y = size / (height as f64);
-                let scale = scale_x.min(scale_y);
-
-                let transform =
-                    Affine::scale_non_uniform(scale, scale).then_translate(Vec2::new(x, y));
-
-                if let Some(scene) = graphics.as_scene_mut() {
-                    scene.draw_image(&image_brush, transform);
-                }
+                Self::render_image(graphics, data.as_ref(), *width, *height, x, y, size);
             },
             CachedIcon::Svg(svg_source) => {
-                // Parse and render SVG
-                let tree = match vello_svg::usvg::Tree::from_str(
-                    svg_source.as_str(),
-                    &Options {
-                        shape_rendering: ShapeRendering::GeometricPrecision,
-                        text_rendering: TextRendering::OptimizeLegibility,
-                        image_rendering: ImageRendering::OptimizeSpeed,
-                        ..Default::default()
-                    },
-                ) {
-                    Ok(tree) => tree,
-                    Err(_) => return,
-                };
-
-                let scene = vello_svg::render_tree(&tree);
-
-                // Scale to fit the layout size
-                let svg_size = tree.size();
-                let scale_x = size / svg_size.width() as f64;
-                let scale_y = size / svg_size.height() as f64;
-                let scale = scale_x.min(scale_y);
-
-                let transform =
-                    Affine::scale_non_uniform(scale, scale).then_translate(Vec2::new(x, y));
-
-                graphics.append(&scene, Some(transform));
+                Self::render_svg(graphics, svg_source, x, y, size);
             },
             CachedIcon::Path(_) => {
-                // Path-based icons should be loaded before rendering
-                // This case shouldn't happen if the registry is used correctly
+                log::warn!("FileIcon: CachedIcon::Path encountered at render time; expected preloaded image/svg");
             },
         }
     }
