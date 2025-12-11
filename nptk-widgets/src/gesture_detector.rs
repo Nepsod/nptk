@@ -22,9 +22,71 @@ use nptk_theme::theme::Theme;
 /// It just contains the given child widget.
 pub struct GestureDetector {
     child: BoxedWidget,
-    on_press: MaybeSignal<Update>,
-    on_release: MaybeSignal<Update>,
-    on_hover: MaybeSignal<Update>,
+    callbacks: GestureCallbacks,
+}
+
+/// Bundled set of gesture callbacks used by [`GestureDetector`].
+#[derive(Clone)]
+pub struct GestureCallbacks {
+    press: MaybeSignal<Update>,
+    release: MaybeSignal<Update>,
+    hover: MaybeSignal<Update>,
+}
+
+#[allow(missing_docs)] // TODO: Add docs?
+impl GestureCallbacks {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_press(mut self, update: impl Into<MaybeSignal<Update>>) -> Self {
+        self.press = update.into();
+        self
+    }
+
+    pub fn with_release(mut self, update: impl Into<MaybeSignal<Update>>) -> Self {
+        self.release = update.into();
+        self
+    }
+
+    pub fn with_hover(mut self, update: impl Into<MaybeSignal<Update>>) -> Self {
+        self.hover = update.into();
+        self
+    }
+
+    pub fn set_press(&mut self, update: impl Into<MaybeSignal<Update>>) {
+        self.press = update.into();
+    }
+
+    pub fn set_release(&mut self, update: impl Into<MaybeSignal<Update>>) {
+        self.release = update.into();
+    }
+
+    pub fn set_hover(&mut self, update: impl Into<MaybeSignal<Update>>) {
+        self.hover = update.into();
+    }
+
+    fn trigger_press(&self) -> Update {
+        *self.press.get()
+    }
+
+    fn trigger_release(&self) -> Update {
+        *self.release.get()
+    }
+
+    fn trigger_hover(&self) -> Update {
+        *self.hover.get()
+    }
+}
+
+impl Default for GestureCallbacks {
+    fn default() -> Self {
+        Self {
+            press: MaybeSignal::value(Update::empty()),
+            release: MaybeSignal::value(Update::empty()),
+            hover: MaybeSignal::value(Update::empty()),
+        }
+    }
 }
 
 impl GestureDetector {
@@ -32,49 +94,77 @@ impl GestureDetector {
     pub fn new(child: impl Widget + 'static) -> Self {
         Self {
             child: Box::new(child),
-            on_press: MaybeSignal::value(Update::empty()),
-            on_release: MaybeSignal::value(Update::empty()),
-            on_hover: MaybeSignal::value(Update::empty()),
+            callbacks: GestureCallbacks::new(),
         }
     }
 
-    /// Sets the child widget of the [GestureDetector] and returns self.
-    pub fn with_child(mut self, child: impl Widget + 'static) -> Self {
-        self.child = Box::new(child);
+    fn apply_with(mut self, f: impl FnOnce(&mut Self)) -> Self {
+        f(&mut self);
         self
+    }
+
+    /// Sets the child widget of the [GestureDetector] and returns self.
+    pub fn with_child(self, child: impl Widget + 'static) -> Self {
+        self.apply_with(|this| this.child = Box::new(child))
     }
 
     /// Sets the `on_press` callback of the [GestureDetector] and returns self.
-    pub fn with_on_press(mut self, on_press: impl Into<MaybeSignal<Update>>) -> Self {
-        self.on_press = on_press.into();
-        self
+    pub fn with_on_press(self, on_press: impl Into<MaybeSignal<Update>>) -> Self {
+        self.apply_with(move |this| this.callbacks.set_press(on_press))
     }
 
     /// Sets the `on_release` callback of the [GestureDetector] and returns self.
-    pub fn with_on_release(mut self, on_release: impl Into<MaybeSignal<Update>>) -> Self {
-        self.on_release = on_release.into();
-        self
+    pub fn with_on_release(self, on_release: impl Into<MaybeSignal<Update>>) -> Self {
+        self.apply_with(move |this| this.callbacks.set_release(on_release))
     }
 
     /// Sets the `on_hover` callback of the [GestureDetector] and returns self.
-    pub fn with_on_hover(mut self, on_hover: impl Into<MaybeSignal<Update>>) -> Self {
-        self.on_hover = on_hover.into();
-        self
+    pub fn with_on_hover(self, on_hover: impl Into<MaybeSignal<Update>>) -> Self {
+        self.apply_with(move |this| this.callbacks.set_hover(on_hover))
+    }
+
+    /// Replace all callbacks with a bundled configuration.
+    pub fn with_callbacks(self, callbacks: GestureCallbacks) -> Self {
+        self.apply_with(|this| this.callbacks = callbacks)
     }
 
     /// Call the `on_hover` callback of the [GestureDetector].
     pub fn on_hover(&mut self) -> Update {
-        *self.on_hover.get()
+        self.callbacks.trigger_hover()
     }
 
     /// Call the `on_press` callback of the [GestureDetector].
     pub fn on_press(&mut self) -> Update {
-        *self.on_press.get()
+        self.callbacks.trigger_press()
     }
 
     /// Call the `on_release` callback of the [GestureDetector].
     pub fn on_release(&mut self) -> Update {
-        *self.on_release.get()
+        self.callbacks.trigger_release()
+    }
+
+    fn cursor_in_bounds(layout: &LayoutNode, cursor_x: f64, cursor_y: f64) -> bool {
+        cursor_x as f32 >= layout.layout.location.x
+            && cursor_x as f32 <= layout.layout.location.x + layout.layout.size.width
+            && cursor_y as f32 >= layout.layout.location.y
+            && cursor_y as f32 <= layout.layout.location.y + layout.layout.size.height
+    }
+
+    fn process_mouse_buttons(&mut self, info: &AppInfo) -> Update {
+        let mut update = Update::empty();
+        for (_, btn, el) in &info.buttons {
+            if *btn == MouseButton::Left {
+                match el {
+                    ElementState::Pressed => {
+                        update |= self.on_press();
+                    },
+                    ElementState::Released => {
+                        update |= self.on_release();
+                    },
+                }
+            }
+        }
+        update
     }
 }
 
@@ -99,27 +189,9 @@ impl Widget for GestureDetector {
         let mut update = Update::empty();
 
         if let Some(cursor) = info.cursor_pos {
-            if cursor.x as f32 >= layout.layout.location.x
-                && cursor.x as f32 <= layout.layout.location.x + layout.layout.size.width
-                && cursor.y as f32 >= layout.layout.location.y
-                && cursor.y as f32 <= layout.layout.location.y + layout.layout.size.height
-            {
+            if Self::cursor_in_bounds(layout, cursor.x, cursor.y) {
                 update |= self.on_hover();
-
-                // check for click
-                for (_, btn, el) in &info.buttons {
-                    if *btn == MouseButton::Left {
-                        match el {
-                            ElementState::Pressed => {
-                                update |= self.on_press();
-                            },
-
-                            ElementState::Released => {
-                                update |= self.on_release();
-                            },
-                        }
-                    }
-                }
+                update |= self.process_mouse_buttons(info);
             }
         }
 
