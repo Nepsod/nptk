@@ -4,7 +4,7 @@ use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
-use nptk_core::vg::kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
+use nptk_core::vg::kurbo::{Affine, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke, Vec2};
 use nptk_core::vg::peniko::{Brush, Color, Fill, Gradient, Mix};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
@@ -128,6 +128,8 @@ pub struct TabsContainer {
     pressed_tab: Option<usize>,
     /// Whether close buttons are hovered
     hovered_close: Option<usize>,
+    /// Whether close buttons are pressed
+    pressed_close: Option<usize>,
     
     // Scrolling
     scroll_offset: f32,
@@ -172,6 +174,7 @@ impl TabsContainer {
             hovered_tab: None,
             pressed_tab: None,
             hovered_close: None,
+            pressed_close: None,
             scroll_offset: 0.0,
             max_scroll: 0.0,
             dragging_tab: None,
@@ -211,6 +214,7 @@ impl TabsContainer {
             hovered_tab: None,
             pressed_tab: None,
             hovered_close: None,
+            pressed_close: None,
             scroll_offset: 0.0,
             max_scroll: 0.0,
             dragging_tab: None,
@@ -468,6 +472,11 @@ impl TabsContainer {
         if let Some(close_hovered) = self.hovered_close {
             if close_hovered >= tabs_len {
                 self.hovered_close = None;
+            }
+        }
+        if let Some(close_pressed) = self.pressed_close {
+            if close_pressed >= tabs_len {
+                self.pressed_close = None;
             }
         }
         if let Some(dragging) = self.dragging_tab {
@@ -840,6 +849,78 @@ impl TabsContainer {
         )
     }
 
+    fn draw_close_button(
+        &self,
+        graphics: &mut dyn Graphics,
+        close_bounds: Rect,
+        is_hovered: bool,
+        is_pressed: bool,
+    ) {
+        // SVG path data for the close button (X shape with rounded corners)
+        // Create SVG with appropriate fill color based on state
+        let (fill_color, opacity) = if is_pressed {
+            // Pressed: #da4453 with 0.8 opacity
+            ("#da4453", "0.8")
+        } else if is_hovered {
+            // Focused/hovered: #da4453
+            ("#da4453", "1")
+        } else {
+            // Normal: #aaaaac with 0.97058835 opacity
+            ("#aaaaac", "0.97058835")
+        };
+
+        // Normalize the path coordinates to start at (0, 0) by adjusting the viewBox
+        // Original viewBox: "265 970 18 18", path starts at ~(268.75, 972)
+        // Normalized: viewBox "0 0 18 18", path offset by (-265, -970)
+        let svg_path = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18">
+            <path d="m 3.7501,2 a 1.74961,1.74961 0 0 0 -1.21879,3.00483 l 3.9958,3.9935 -3.9958,3.9958 a 1.74961,1.74961 0 1 0 2.47403,2.47403 l 3.9958,-3.9958 3.9935,3.9958 a 1.74961,1.74961 0 1 0 2.47403,-2.47403 l -3.9935,-3.9958 3.9935,-3.9935 A 1.74961,1.74961 0 0 0 14.24988,2 a 1.74961,1.74961 0 0 0 -1.25524,0.5308 l -3.9935,3.9935 -3.9958,-3.9935 A 1.74961,1.74961 0 0 0 3.7501,2 Z" 
+               fill="{}" fill-opacity="{}" stroke-width="3" stroke-linecap="round"/>
+        </svg>"#,
+            fill_color, opacity
+        );
+
+        // Parse SVG
+        use vello_svg::usvg::{Tree, Options, ShapeRendering, TextRendering, ImageRendering};
+        let tree = match Tree::from_str(
+            &svg_path,
+            &Options {
+                shape_rendering: ShapeRendering::GeometricPrecision,
+                text_rendering: TextRendering::OptimizeLegibility,
+                image_rendering: ImageRendering::OptimizeSpeed,
+                ..Default::default()
+            },
+        ) {
+            Ok(tree) => tree,
+            Err(_) => return,
+        };
+
+        // Render the SVG scene
+        let scene = vello_svg::render_tree(&tree);
+        
+        // Calculate transform to fit the close button bounds
+        let svg_size = tree.size();
+        let svg_width = svg_size.width() as f64; // Should be 18.0
+        let svg_height = svg_size.height() as f64; // Should be 18.0
+        
+        // Target icon size (should fit within close_bounds, which is 16x16)
+        let target_size = close_bounds.width().min(close_bounds.height());
+        let scale = target_size / svg_width.max(svg_height);
+        
+        // Calculate scaled dimensions
+        let scaled_width = svg_width * scale;
+        let scaled_height = svg_height * scale;
+        
+        // Right-align inside close_bounds
+        let x = close_bounds.x1 - scaled_width;
+        let y = close_bounds.y0 + (close_bounds.height() - scaled_height) / 2.0; // center vertically
+
+        // Follow file_icon.rs pattern: scale first, then translate in screen space
+        let transform = Affine::scale(scale).then_translate(Vec2::new(x, y));
+        
+        graphics.append(&scene, Some(transform));
+    }
+
     fn draw_active_tab_accent(
         &self,
         graphics: &mut dyn Graphics,
@@ -1191,32 +1272,9 @@ impl Widget for TabsContainer {
             if tab.on_close.is_some() {
                 let close_bounds = self.get_close_button_bounds(tab_bounds);
                 let close_hovered = self.hovered_close == Some(index);
+                let close_pressed = self.pressed_close == Some(index);
 
-                let close_color = if close_hovered {
-                    Color::from_rgb8(255, 100, 100) // Red for hovered close button
-                } else {
-                    Color::from_rgb8(0, 0, 0) // Use theme text color for normal state
-                };
-
-                // Draw X for close button (draw two lines to form an X)
-                let close_center_x = close_bounds.center().x;
-                let close_center_y = close_bounds.center().y;
-                let close_size = 6.0;
-
-                // Draw the X lines
-                graphics.stroke(
-                    &Stroke::new(2.0),
-                    Affine::IDENTITY,
-                    &Brush::Solid(close_color),
-                    None,
-                    &Rect::new(
-                        close_center_x - close_size / 2.0,
-                        close_center_y - close_size / 2.0,
-                        close_center_x + close_size / 2.0,
-                        close_center_y + close_size / 2.0,
-                    )
-                    .to_path(0.1),
-                );
+                self.draw_close_button(graphics, close_bounds, close_hovered, close_pressed);
             }
         }
 
@@ -1426,6 +1484,7 @@ impl Widget for TabsContainer {
         // Check tab hover states
         self.hovered_tab = None;
         self.hovered_close = None;
+        // Note: pressed_close is only cleared on mouse release
         
         let tabs = match &self.mode {
             TabsMode::Static => &self.tabs,
@@ -1536,15 +1595,8 @@ impl Widget for TabsContainer {
 
                             // Check if clicking close button
                             if self.hovered_close == Some(hovered_tab) {
-                                let tabs = match &self.mode {
-                                    TabsMode::Static => &self.tabs,
-                                    TabsMode::Dynamic(_, _, content_store) => content_store,
-                                };
-                                if let Some(tab) = tabs.get(hovered_tab) {
-                                    if let Some(ref callback) = tab.on_close {
-                                        update |= callback();
-                                    }
-                                }
+                                self.pressed_close = Some(hovered_tab);
+                                update |= Update::DRAW;
                             } else {
                                 // Start dragging for reorder - use pre-calculated bounds
                                 if let Some(cursor_pos) = cursor_pos_for_drag {
@@ -1567,7 +1619,22 @@ impl Widget for TabsContainer {
                         }
                     },
                     ElementState::Released => {
+                        // Check if releasing on close button
+                        if let Some(pressed_close_idx) = self.pressed_close {
+                            if self.hovered_close == Some(pressed_close_idx) {
+                                let tabs = match &self.mode {
+                                    TabsMode::Static => &self.tabs,
+                                    TabsMode::Dynamic(_, _, content_store) => content_store,
+                                };
+                                if let Some(tab) = tabs.get(pressed_close_idx) {
+                                    if let Some(ref callback) = tab.on_close {
+                                        update |= callback();
+                                    }
+                                }
+                            }
+                        }
                         self.pressed_tab = None;
+                        self.pressed_close = None;
                         self.dragging_tab = None;
                     },
                 }
