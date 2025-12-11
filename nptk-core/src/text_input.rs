@@ -130,76 +130,57 @@ impl TextBuffer {
 
     /// Insert text at the current cursor position.
     pub fn insert(&mut self, text: &str) {
-        if self.cursor.has_selection() {
-            // Replace selection with new text
-            if let Some(selection) = self.cursor.selection() {
-                if let Some(byte_range) = self.char_range_to_byte_range(&selection) {
-                    self.text.replace_range(byte_range, text);
-                    self.cursor.move_to(selection.start + text.chars().count());
-                }
-            }
-        } else {
-            // Insert at cursor position
-            if let Some(byte_pos) = self
-                .text
-                .char_indices()
-                .nth(self.cursor.position)
-                .map(|(i, _)| i)
-            {
-                self.text.insert_str(byte_pos, text);
+        if let Some(selection) = self.cursor.selection() {
+            if self.replace_chars(selection.clone(), text).is_some() {
                 self.cursor
-                    .move_to(self.cursor.position + text.chars().count());
-            } else if self.cursor.position == self.text.chars().count() {
-                self.text.push_str(text);
-                self.cursor
-                    .move_to(self.cursor.position + text.chars().count());
+                    .move_to(selection.start + text.chars().count());
             }
+            return;
+        }
+
+        let pos = self.cursor.position;
+        if self.replace_chars(pos..pos, text).is_some() {
+            self.cursor.move_to(pos + text.chars().count());
         }
     }
 
     /// Delete the character before the cursor (backspace).
     pub fn delete_backward(&mut self) {
-        if self.cursor.has_selection() {
-            // Delete selection
-            if let Some(selection) = self.cursor.selection() {
-                if let Some(byte_range) = self.char_range_to_byte_range(&selection) {
-                    self.text.replace_range(byte_range, "");
-                    self.cursor.move_to(selection.start);
-                }
+        if let Some(selection) = self.cursor.selection() {
+            if self.replace_chars(selection.clone(), "").is_some() {
+                self.cursor.move_to(selection.start);
             }
-        } else if self.cursor.position > 0 {
-            // Delete character before cursor
-            let current_pos = self.cursor.position;
-            let prev_pos = current_pos - 1;
-            if let Some(byte_range) = self.char_range_to_byte_range(&(prev_pos..current_pos)) {
-                self.text.replace_range(byte_range, "");
-                self.cursor.move_to(prev_pos);
-            }
+            return;
+        }
+
+        if self.cursor.position == 0 {
+            return;
+        }
+
+        let current_pos = self.cursor.position;
+        let prev_pos = current_pos - 1;
+        if self.replace_chars(prev_pos..current_pos, "").is_some() {
+            self.cursor.move_to(prev_pos);
         }
     }
 
     /// Delete the character after the cursor (delete key).
     pub fn delete_forward(&mut self) {
-        if self.cursor.has_selection() {
-            // Delete selection
-            if let Some(selection) = self.cursor.selection() {
-                if let Some(byte_range) = self.char_range_to_byte_range(&selection) {
-                    self.text.replace_range(byte_range, "");
-                    self.cursor.move_to(selection.start);
-                }
+        if let Some(selection) = self.cursor.selection() {
+            if self.replace_chars(selection.clone(), "").is_some() {
+                self.cursor.move_to(selection.start);
             }
-        } else {
-            let char_count = self.text.chars().count();
-            if self.cursor.position < char_count {
-                let current_pos = self.cursor.position;
-                if let Some(byte_range) =
-                    self.char_range_to_byte_range(&(current_pos..current_pos + 1))
-                {
-                    self.text.replace_range(byte_range, "");
-                    // Cursor position stays the same
-                }
-            }
+            return;
         }
+
+        let char_count = self.text.chars().count();
+        if self.cursor.position >= char_count {
+            return;
+        }
+
+        let current_pos = self.cursor.position;
+        let target = current_pos + 1;
+        let _ = self.replace_chars(current_pos..target, "");
     }
 
     /// Move cursor left by one character.
@@ -249,8 +230,11 @@ impl TextBuffer {
     /// Get the selected text (if any).
     pub fn selected_text(&self) -> Option<String> {
         self.cursor.selection().map(|range| {
-            let chars: Vec<char> = self.text.chars().collect();
-            chars[range].iter().collect()
+            self.text
+                .chars()
+                .skip(range.start)
+                .take(range.end - range.start)
+                .collect()
         })
     }
 
@@ -269,12 +253,24 @@ impl TextBuffer {
 
     /// Convert a character-based range to a byte-based range.
     fn char_range_to_byte_range(&self, range: &Range<usize>) -> Option<Range<usize>> {
-        let mut char_indices = self.text.char_indices().map(|(i, _)| i);
-        let start_byte = char_indices.nth(range.start)?;
-        let end_byte = char_indices
-            .nth(range.end - range.start)
-            .unwrap_or(self.text.len());
+        let start_byte = self.char_index_to_byte(range.start)?;
+        let end_byte = self.char_index_to_byte(range.end)?;
         Some(start_byte..end_byte)
+    }
+
+    fn char_index_to_byte(&self, idx: usize) -> Option<usize> {
+        let mut iter = self.text.char_indices().map(|(i, _)| i);
+        if idx == self.text.chars().count() {
+            Some(self.text.len())
+        } else {
+            iter.nth(idx)
+        }
+    }
+
+    fn replace_chars(&mut self, range: Range<usize>, with: &str) -> Option<()> {
+        let byte_range = self.char_range_to_byte_range(&range)?;
+        self.text.replace_range(byte_range, with);
+        Some(())
     }
 }
 
