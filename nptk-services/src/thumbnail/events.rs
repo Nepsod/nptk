@@ -30,4 +30,3 @@ pub enum ThumbnailEvent {
 pub fn create_thumbnail_event_channel() -> broadcast::Sender<ThumbnailEvent> {
     broadcast::channel(100).0 // Buffer up to 100 events
 }
-

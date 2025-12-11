@@ -21,5 +21,3 @@ pub use crate::menu_popup::MenuBarItem;
 // Re-export types for global menu integration
 #[cfg(feature = "global-menu")]
 pub use dbus::{Bridge, BridgeEvent, MenuSnapshot, RemoteMenuNode};
-
-

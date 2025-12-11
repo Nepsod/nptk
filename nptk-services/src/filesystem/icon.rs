@@ -28,15 +28,16 @@ impl MimeIconProvider {
     pub fn new() -> Self {
         Self
     }
-    
+
     fn mime_variants(mime_type: &str) -> Vec<String> {
         let mut out = Vec::new();
         let mut seen = std::collections::BTreeSet::new();
-        let push = |s: String, seen: &mut std::collections::BTreeSet<String>, out: &mut Vec<String>| {
-            if seen.insert(s.clone()) {
-                out.push(s);
-            }
-        };
+        let push =
+            |s: String, seen: &mut std::collections::BTreeSet<String>, out: &mut Vec<String>| {
+                if seen.insert(s.clone()) {
+                    out.push(s);
+                }
+            };
 
         push(mime_type.to_string(), &mut seen, &mut out);
 
@@ -65,7 +66,9 @@ impl MimeIconProvider {
         let mut seen = std::collections::BTreeSet::new();
 
         // Try exact match
-        if let Some(icon) = crate::filesystem::mime_registry::MimeRegistry::get_generic_icon_name(mime_type) {
+        if let Some(icon) =
+            crate::filesystem::mime_registry::MimeRegistry::get_generic_icon_name(mime_type)
+        {
             if seen.insert(icon.clone()) {
                 out.push(icon);
             }
@@ -73,7 +76,9 @@ impl MimeIconProvider {
 
         // Try variants
         for variant in Self::mime_variants(mime_type) {
-            if let Some(icon) = crate::filesystem::mime_registry::MimeRegistry::get_generic_icon_name(&variant) {
+            if let Some(icon) =
+                crate::filesystem::mime_registry::MimeRegistry::get_generic_icon_name(&variant)
+            {
                 if seen.insert(icon.clone()) {
                     out.push(icon);
                 }
@@ -81,8 +86,12 @@ impl MimeIconProvider {
         }
 
         // Try reverse alias lookup (if this type is an alias, check canonical type)
-        if let Some(canonical) = crate::filesystem::mime_registry::MimeRegistry::find_canonical_for_alias(mime_type) {
-            if let Some(icon) = crate::filesystem::mime_registry::MimeRegistry::get_generic_icon_name(&canonical) {
+        if let Some(canonical) =
+            crate::filesystem::mime_registry::MimeRegistry::find_canonical_for_alias(mime_type)
+        {
+            if let Some(icon) =
+                crate::filesystem::mime_registry::MimeRegistry::get_generic_icon_name(&canonical)
+            {
                 if seen.insert(icon.clone()) {
                     out.push(icon);
                 }
@@ -93,7 +102,7 @@ impl MimeIconProvider {
     }
 
     /// Map MIME type to icon name according to freedesktop.org Icon Naming Specification.
-    /// 
+    ///
     /// The specification states that MIME types map to icon names by replacing "/" with "-".
     /// General rule: Replace "/" with "-" in MIME type (e.g., text/plain -> text-plain).
     /// However, many themes use simplified names, so we apply some special cases.
@@ -110,16 +119,24 @@ impl MimeIconProvider {
             ("inode", "symlink") => "inode-symlink".to_string(),
             ("text", "plain") => "text-x-generic".to_string(),
             ("application", "pdf") => "application-pdf".to_string(),
-            ("application", "zip") | ("application", "x-zip-compressed") => "application-zip".to_string(),
+            ("application", "zip") | ("application", "x-zip-compressed") => {
+                "application-zip".to_string()
+            },
             ("application", "json") => "application-json".to_string(),
             ("application", "xml") => "application-xml".to_string(),
             ("application", "toml") => "application-toml".to_string(),
-            ("application", "x-executable") | ("application", "x-sharedlib") => "application-x-executable".to_string(),
+            ("application", "x-executable") | ("application", "x-sharedlib") => {
+                "application-x-executable".to_string()
+            },
             ("application", "octet-stream") => "application-x-executable".to_string(),
             // Disk image types - map to drive-harddisk or media-optical
-            ("application", "x-iso9660-image") | ("application", "x-cd-image") => "media-optical".to_string(),
+            ("application", "x-iso9660-image") | ("application", "x-cd-image") => {
+                "media-optical".to_string()
+            },
             ("application", "x-raw-floppy-disk-image") => "media-floppy".to_string(),
-            ("application", "x-vhd-disk") | ("application", "x-vhdx-disk") | ("application", "x-virtualbox-vhd") => "drive-harddisk".to_string(),
+            ("application", "x-vhd-disk")
+            | ("application", "x-vhdx-disk")
+            | ("application", "x-virtualbox-vhd") => "drive-harddisk".to_string(),
             ("application", "x-qemu-disk") => "drive-harddisk".to_string(),
             _ => {
                 // General rule: Replace "/" with "-"
@@ -137,13 +154,12 @@ impl MimeIconProvider {
                     } else {
                         // Try application-{subtype} first, fallback to application-x-{subtype}
                         format!("application-{}", sub_type)
-                }
+                    }
                 } else {
                     // For other types, use the simple replacement rule
-                    format!("{}-{}", main_type, sub_type)
-                        .replace("+", "-") // Replace + with - (e.g., svg+xml -> svg-xml)
+                    format!("{}-{}", main_type, sub_type).replace("+", "-") // Replace + with - (e.g., svg+xml -> svg-xml)
                 }
-            }
+            },
         }
     }
 }
@@ -178,7 +194,10 @@ impl IconProvider for MimeIconProvider {
         } else {
             // Use MimeDetector to detect MIME type from path or extension
             if let Some(ext) = entry.extension() {
-                log::debug!("MimeIconProvider: Detecting MIME type from extension: {}", ext);
+                log::debug!(
+                    "MimeIconProvider: Detecting MIME type from extension: {}",
+                    ext
+                );
                 let detected = MimeDetector::detect_mime_type_from_ext(ext);
                 if let Some(ref mime) = detected {
                     log::debug!("MimeIconProvider: Detected MIME type: {}", mime);
@@ -186,7 +205,10 @@ impl IconProvider for MimeIconProvider {
                 detected
             } else {
                 // Try to detect from path (for files without extensions)
-                log::debug!("MimeIconProvider: No extension, trying path-based detection for: {}", entry.name);
+                log::debug!(
+                    "MimeIconProvider: No extension, trying path-based detection for: {}",
+                    entry.name
+                );
                 MimeDetector::detect_mime_type(&entry.path)
             }
         };
@@ -205,7 +227,11 @@ impl IconProvider for MimeIconProvider {
 
             // Second, try the original MIME type first (to catch special cases)
             let original_icon = Self::mime_to_icon_name(mime_type);
-            log::debug!("MimeIconProvider: Mapped original MIME type '{}' -> icon '{}'", mime_type, original_icon);
+            log::debug!(
+                "MimeIconProvider: Mapped original MIME type '{}' -> icon '{}'",
+                mime_type,
+                original_icon
+            );
             if seen.insert(original_icon.clone()) {
                 names.push(original_icon);
             }
@@ -217,7 +243,12 @@ impl IconProvider for MimeIconProvider {
                     continue;
                 }
                 let icon_name = Self::mime_to_icon_name(&variant);
-                log::debug!("MimeIconProvider: Mapped MIME type '{}' -> variant '{}' -> icon '{}'", mime_type, variant, icon_name);
+                log::debug!(
+                    "MimeIconProvider: Mapped MIME type '{}' -> variant '{}' -> icon '{}'",
+                    mime_type,
+                    variant,
+                    icon_name
+                );
                 if seen.insert(icon_name.clone()) {
                     names.push(icon_name);
                 }
@@ -236,29 +267,32 @@ impl IconProvider for MimeIconProvider {
                             names.push(extra.to_string());
                         }
                     }
-                }
+                },
                 "application/x-raw-floppy-disk-image" => {
-                    for extra in [
-                        "media-floppy",
-                        "drive-removable-media",
-                        "drive-harddisk",
-                    ] {
+                    for extra in ["media-floppy", "drive-removable-media", "drive-harddisk"] {
                         if seen.insert(extra.to_string()) {
                             names.push(extra.to_string());
                         }
                     }
-                }
-                _ => {}
+                },
+                _ => {},
             }
 
             if !names.is_empty() {
-                log::debug!("MimeIconProvider: Generated icon names {:?} for MIME type '{}'", names, mime_type);
+                log::debug!(
+                    "MimeIconProvider: Generated icon names {:?} for MIME type '{}'",
+                    names,
+                    mime_type
+                );
                 return Some(IconData { names, path: None });
             }
         }
 
         // Final fallback: generic file icon
-        log::debug!("MimeIconProvider: Using fallback icon 'text-x-generic' for file: {}", entry.name);
+        log::debug!(
+            "MimeIconProvider: Using fallback icon 'text-x-generic' for file: {}",
+            entry.name
+        );
         Some(IconData {
             names: vec!["unknown".to_string()],
             path: None,
@@ -320,10 +354,12 @@ mod tests {
     #[test]
     fn registry_resolves_drive_removable_icon() {
         let registry = IconRegistry::new().expect("icon registry");
-        let entry =
-            dummy_entry("disk.img", "application/x-raw-floppy-disk-image", FileType::File);
+        let entry = dummy_entry(
+            "disk.img",
+            "application/x-raw-floppy-disk-image",
+            FileType::File,
+        );
         let icon = registry.get_file_icon(&entry, 64);
         assert!(icon.is_some(), "registry returned no icon");
     }
 }
-

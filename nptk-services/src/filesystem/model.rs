@@ -1,13 +1,13 @@
 //! Main filesystem model implementation.
 
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use tokio::sync::{mpsc, broadcast};
 use crate::filesystem::cache::FileSystemCache;
-use crate::filesystem::watcher::{FileSystemWatcher, FileSystemChange};
-use crate::filesystem::entry::{FileEntry, FileType, FileMetadata};
+use crate::filesystem::entry::{FileEntry, FileMetadata, FileType};
 use crate::filesystem::error::FileSystemError;
 use crate::filesystem::icon::{IconProvider, MimeIconProvider};
+use crate::filesystem::watcher::{FileSystemChange, FileSystemWatcher};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use tokio::sync::{broadcast, mpsc};
 
 /// Events emitted by the filesystem model for UI updates.
 #[derive(Debug, Clone)]
@@ -96,12 +96,7 @@ impl FileSystemModel {
         let watcher_clone = watcher.clone();
         let event_tx_clone = event_tx.clone();
         tokio::spawn(async move {
-            Self::worker_task(
-                task_rx,
-                event_tx_clone,
-                cache_clone,
-                watcher_clone,
-            ).await;
+            Self::worker_task(task_rx, event_tx_clone, cache_clone, watcher_clone).await;
         });
 
         let model = Self {
@@ -134,9 +129,7 @@ impl FileSystemModel {
             .send(FileSystemTask::GetChildren(path.to_path_buf(), tx))
             .map_err(|_| FileSystemError::ChannelClosed)?;
 
-        rx.recv()
-            .await
-            .ok_or(FileSystemError::ChannelClosed)
+        rx.recv().await.ok_or(FileSystemError::ChannelClosed)
     }
 
     /// Refresh a directory (reload from filesystem).
@@ -144,7 +137,12 @@ impl FileSystemModel {
         println!("FileSystemModel: Refreshing path {:?}", path);
         self.task_tx
             .send(FileSystemTask::LoadDirectory(path.to_path_buf()))
-            .map_err(|_| FileSystemError::Io(std::io::Error::new(std::io::ErrorKind::Other, "Worker task died")))
+            .map_err(|_| {
+                FileSystemError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Worker task died",
+                ))
+            })
     }
 
     /// Get file entry for a path.
@@ -215,14 +213,13 @@ impl FileSystemModel {
         }
 
         // Sort entries (directories first, then files, alphabetically)
-        entries.sort_by(|a, b| {
-            match (a.file_type, b.file_type) {
-                (FileType::Directory, FileType::Directory)
-                | (FileType::File, FileType::File) => a.name.cmp(&b.name),
-                (FileType::Directory, _) => std::cmp::Ordering::Less,
-                (_, FileType::Directory) => std::cmp::Ordering::Greater,
-                _ => a.name.cmp(&b.name),
-            }
+        entries.sort_by(|a, b| match (a.file_type, b.file_type) {
+            (FileType::Directory, FileType::Directory) | (FileType::File, FileType::File) => {
+                a.name.cmp(&b.name)
+            },
+            (FileType::Directory, _) => std::cmp::Ordering::Less,
+            (_, FileType::Directory) => std::cmp::Ordering::Greater,
+            _ => a.name.cmp(&b.name),
         });
 
         Ok(entries)
@@ -248,7 +245,7 @@ impl FileSystemModel {
                                     println!("FileSystemModel: Worker loaded {} entries for {:?}", entries.len(), path);
                                     // Update cache
                                     cache.insert_children(&path, entries.clone());
-                                    
+
                                     // Emit event
                                     let _ = event_tx.send(FileSystemEvent::DirectoryLoaded {
                                         path,
@@ -410,4 +407,3 @@ impl FileSystemModel {
         ))
     }
 }
-

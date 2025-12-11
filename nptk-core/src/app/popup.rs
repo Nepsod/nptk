@@ -1,5 +1,5 @@
-use std::sync::{Arc, Mutex};
 use crate::widget::BoxedWidget;
+use std::sync::{Arc, Mutex};
 
 /// A request to create a new popup window.
 pub struct PopupRequest {
@@ -35,7 +35,13 @@ impl PopupManager {
     }
 
     /// Request a new popup window with a specific position.
-    pub fn create_popup_at(&self, widget: BoxedWidget, title: impl Into<String>, size: (u32, u32), position: (i32, i32)) {
+    pub fn create_popup_at(
+        &self,
+        widget: BoxedWidget,
+        title: impl Into<String>,
+        size: (u32, u32),
+        position: (i32, i32),
+    ) {
         let mut requests = self.requests.lock().unwrap();
         requests.push(PopupRequest {
             widget,

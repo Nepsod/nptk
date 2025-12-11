@@ -4,7 +4,6 @@
 
 pub mod keyboard;
 pub mod pointer;
-pub mod touch;
-pub mod tablet;
 pub mod seat;
-
+pub mod tablet;
+pub mod touch;

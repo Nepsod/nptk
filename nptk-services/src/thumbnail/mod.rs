@@ -4,19 +4,19 @@
 //! thumbnails for images, videos, and PDFs. It follows the freedesktop.org
 //! Thumbnail Managing Standard for cache paths and naming.
 
-use std::path::PathBuf;
 use crate::filesystem::entry::FileEntry;
+use std::path::PathBuf;
 
 pub mod cache;
 pub mod error;
-pub mod executor;
-pub mod thumbnailify_provider;
 pub mod events;
+pub mod executor;
 pub mod image_cache;
+pub mod thumbnailify_provider;
 
 pub use error::ThumbnailError;
+pub use image_cache::{CachedThumbnail, ThumbnailImageCache};
 pub use thumbnailify_provider::ThumbnailifyProvider;
-pub use image_cache::{ThumbnailImageCache, CachedThumbnail};
 
 /// Trait for thumbnail providers.
 ///
@@ -68,4 +68,3 @@ pub trait ThumbnailProvider: Send + Sync + std::any::Any {
     /// * `false` - If thumbnails are not supported
     fn is_supported(&self, entry: &FileEntry) -> bool;
 }
-

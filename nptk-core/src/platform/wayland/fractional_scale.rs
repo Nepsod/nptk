@@ -47,19 +47,21 @@ impl Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, ()> for WaylandClient
         _qh: &QueueHandle<Self>,
     ) {
         match event {
-            wp_fractional_scale_v1::Event::PreferredScale { scale: preferred_scale } => {
+            wp_fractional_scale_v1::Event::PreferredScale {
+                scale: preferred_scale,
+            } => {
                 // preferred_scale is in 120ths of 1
                 let _scale_factor = preferred_scale as f64 / 120.0;
-                
+
                 // Find the window associated with this scale object and update its scale factor
                 // This requires tracking which window owns this scale object.
                 // For now, we'll just log it or store it if we can map it back.
                 // In a real implementation, we'd store the scale object in the Window struct
                 // and update the window's scale factor here.
-                
+
                 // TODO: Update window scale factor
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 }

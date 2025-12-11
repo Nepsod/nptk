@@ -1,9 +1,9 @@
 //! In-memory cache for filesystem entries.
 
+use crate::filesystem::entry::FileEntry;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use crate::filesystem::entry::FileEntry;
 
 /// Thread-safe cache for filesystem entries.
 pub struct FileSystemCache {
@@ -48,7 +48,10 @@ impl FileSystemCache {
 
     /// Insert or update a single entry.
     pub fn insert_entry(&self, entry: FileEntry) {
-        self.entries.lock().unwrap().insert(entry.path.clone(), entry);
+        self.entries
+            .lock()
+            .unwrap()
+            .insert(entry.path.clone(), entry);
     }
 
     /// Invalidate (remove) a directory and its children from the cache.
@@ -71,7 +74,7 @@ impl FileSystemCache {
     /// Remove a specific entry from the cache.
     pub fn remove_entry(&self, path: &Path) {
         self.entries.lock().unwrap().remove(path);
-        
+
         // Also remove from parent's children list if we can find it
         if let Some(parent) = path.parent() {
             if let Some(children) = self.children.lock().unwrap().get_mut(parent) {
@@ -92,4 +95,3 @@ impl Default for FileSystemCache {
         Self::new()
     }
 }
-

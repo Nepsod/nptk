@@ -27,10 +27,12 @@ static STORAGE: OnceLock<Mutex<Storage>> = OnceLock::new();
 
 impl MenuInfoStorage {
     fn get_storage() -> &'static Mutex<Storage> {
-        STORAGE.get_or_init(|| Mutex::new(Storage {
-            service_name: None,
-            object_path: None,
-        }))
+        STORAGE.get_or_init(|| {
+            Mutex::new(Storage {
+                service_name: None,
+                object_path: None,
+            })
+        })
     }
 
     /// Set the menu service name and object path.
@@ -100,5 +102,3 @@ pub fn update_appmenu_for_all_surfaces(service: String, path: String) {
     let client = WaylandClient::instance();
     client.update_appmenu_for_all_surfaces(service, path);
 }
-
-

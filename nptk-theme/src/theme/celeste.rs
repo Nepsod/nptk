@@ -151,9 +151,7 @@ impl Theme for CelesteTheme {
                     _ => None,
                 },
                 "FileList" | "FileListContent" => match property {
-                    crate::properties::ThemeProperty::ColorBackground => {
-                        Some(palette.background)
-                    },
+                    crate::properties::ThemeProperty::ColorBackground => Some(palette.background),
                     crate::properties::ThemeProperty::ColorText => Some(palette.text),
                     crate::properties::ThemeProperty::ColorBackgroundSelected => {
                         Some(palette.selection)

@@ -41,7 +41,7 @@ impl IconRegistry {
     /// Create a new icon registry with a specific theme.
     pub fn with_theme(theme: Option<String>) -> Result<Self, IconError> {
         let theme_name = theme.unwrap_or_else(|| "Sweet-Purple".to_string());
-        
+
         // Try to load the theme to verify it exists
         let lookup = IconLookup::new();
         lookup.load_theme(&theme_name)?;
@@ -81,13 +81,16 @@ impl IconRegistry {
         let context = self.guess_context(icon_name);
 
         // Lookup icon path
-        let icon_path = self.lookup.lookup_icon(icon_name, size, context, &self.theme)?;
+        let icon_path = self
+            .lookup
+            .lookup_icon(icon_name, size, context, &self.theme)?;
 
         // Load icon
         let cached_icon = self.loader.load_icon(&icon_path).ok()?;
 
         // Cache it
-        self.cache.put(icon_name.to_string(), size, cached_icon.clone());
+        self.cache
+            .put(icon_name.to_string(), size, cached_icon.clone());
 
         Some(cached_icon)
     }
@@ -96,28 +99,33 @@ impl IconRegistry {
     pub fn get_file_icon(&self, entry: &FileEntry, size: u32) -> Option<CachedIcon> {
         // Get icon candidates from MIME provider
         let icon_data = self.mime_provider.get_icon(entry)?;
-        log::debug!("IconRegistry: Looking up icons {:?} for file '{}' (MIME: {:?})", 
-            icon_data.names, 
+        log::debug!(
+            "IconRegistry: Looking up icons {:?} for file '{}' (MIME: {:?})",
+            icon_data.names,
             entry.name,
             entry.metadata.mime_type
         );
-        
+
         // Try specific icons in order
         for name in &icon_data.names {
             if let Some(icon) = self.get_icon(name, size) {
                 return Some(icon);
             }
         }
-        
+
         // Try generic category for each candidate
         for name in &icon_data.names {
             let generic_name = self.get_generic_icon_name(name);
             if let Some(icon) = self.get_icon(&generic_name, size) {
-                log::debug!("IconRegistry: Found generic icon '{}' from '{}'", generic_name, name);
+                log::debug!(
+                    "IconRegistry: Found generic icon '{}' from '{}'",
+                    generic_name,
+                    name
+                );
                 return Some(icon);
             }
         }
-        
+
         // Additional fallbacks for specific cases
         // For media-floppy, try drive-harddisk as fallback
         if icon_data.names.iter().any(|n| n == "media-floppy") {
@@ -126,7 +134,7 @@ impl IconRegistry {
                 return Some(icon);
             }
         }
-        
+
         // For application-toml, try text-x-generic as fallback (TOML is text-like)
         if icon_data.names.iter().any(|n| n == "application-toml") {
             if let Some(icon) = self.get_icon("text-x-generic", size) {
@@ -134,14 +142,14 @@ impl IconRegistry {
                 return Some(icon);
             }
         }
-        
+
         // Final fallback: text-x-generic or unknown
         self.get_icon("text-x-generic", size)
             .or_else(|| self.get_icon("unknown", size))
     }
 
     /// Get generic icon name from specific icon name.
-    /// 
+    ///
     /// Maps specific icons to their generic category:
     /// - text-x-toml -> text-x-generic
     /// - application-pdf -> application-x-generic
@@ -202,13 +210,11 @@ impl Default for IconRegistry {
     fn default() -> Self {
         Self::new().unwrap_or_else(|_| {
             // Fallback to hicolor if Sweet-Purple not found
-            Self::with_theme(Some("hicolor".to_string()))
-                .unwrap_or_else(|_| {
-                    // Last resort: create with Adwaita
-                    Self::with_theme(Some("Adwaita".to_string()))
-                        .expect("Failed to initialize icon registry")
-                })
+            Self::with_theme(Some("hicolor".to_string())).unwrap_or_else(|_| {
+                // Last resort: create with Adwaita
+                Self::with_theme(Some("Adwaita".to_string()))
+                    .expect("Failed to initialize icon registry")
+            })
         })
     }
 }
-

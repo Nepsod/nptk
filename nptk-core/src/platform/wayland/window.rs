@@ -50,4 +50,3 @@ impl WindowStateManager {
 // Window state is tracked via xdg_toplevel::Event::Configure states
 // The actual state management will be handled in the shell module
 // when processing configure events
-

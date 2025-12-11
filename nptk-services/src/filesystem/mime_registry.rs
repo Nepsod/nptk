@@ -46,7 +46,9 @@ impl MimeRegistry {
         }
 
         // Fallback to the first associated app we know about.
-        let first = apps_for_mime(&mime, &self.apps).next().map(|(id, _)| id.to_string());
+        let first = apps_for_mime(&mime, &self.apps)
+            .next()
+            .map(|(id, _)| id.to_string());
         first
     }
 
@@ -89,7 +91,9 @@ impl MimeRegistry {
     pub fn find_canonical_for_alias(alias: &str) -> Option<String> {
         // Try exact file at /usr/share/mime/{major}/{minor}.xml first
         if let Some((major, minor)) = alias.split_once('/') {
-            let path = Path::new("/usr/share/mime").join(major).join(format!("{minor}.xml"));
+            let path = Path::new("/usr/share/mime")
+                .join(major)
+                .join(format!("{minor}.xml"));
             if let Ok(content) = std::fs::read_to_string(&path) {
                 if let Some(canonical) = Self::extract_canonical_from_alias(&content, alias) {
                     return Some(canonical);
@@ -125,7 +129,7 @@ impl MimeRegistry {
         let mut search_start = 0;
         while let Some(alias_idx) = content[search_start..].find(&alias_pattern) {
             let alias_start = search_start + alias_idx;
-            
+
             // Find the mime-type block containing this alias
             // Search backwards for the opening <mime-type tag
             let mime_start = match content[..alias_start].rfind("<mime-type") {
@@ -133,19 +137,19 @@ impl MimeRegistry {
                 None => {
                     search_start = alias_start + alias_pattern.len();
                     continue;
-                }
+                },
             };
-            
+
             // Find the type attribute of this mime-type block
             let tag_end = match content[mime_start..].find('>') {
                 Some(i) => mime_start + i,
                 None => {
                     search_start = alias_start + alias_pattern.len();
                     continue;
-                }
+                },
             };
             let tag_text = &content[mime_start..tag_end];
-            
+
             // Extract type attribute
             let type_attr = r#"type=""#;
             let type_idx = match tag_text.find(type_attr) {
@@ -153,7 +157,7 @@ impl MimeRegistry {
                 None => {
                     search_start = alias_start + alias_pattern.len();
                     continue;
-                }
+                },
             };
             let rest = &tag_text[type_idx..];
             let end_quote = match rest.find('"') {
@@ -161,10 +165,10 @@ impl MimeRegistry {
                 None => {
                     search_start = alias_start + alias_pattern.len();
                     continue;
-                }
+                },
             };
             let canonical = &rest[..end_quote];
-            
+
             // Verify this alias is within the same mime-type block
             let end_tag = "</mime-type>";
             let block_end = match content[tag_end..].find(end_tag) {
@@ -172,7 +176,7 @@ impl MimeRegistry {
                 None => {
                     search_start = alias_start + alias_pattern.len();
                     continue;
-                }
+                },
             };
             if alias_start < block_end {
                 return Some(canonical.to_string());
@@ -242,7 +246,9 @@ impl MimeRegistry {
     pub fn get_generic_icon_name(mime_type: &str) -> Option<String> {
         // Try exact file at /usr/share/mime/{major}/{minor}.xml
         if let Some((major, minor)) = mime_type.split_once('/') {
-            let path = Path::new("/usr/share/mime").join(major).join(format!("{minor}.xml"));
+            let path = Path::new("/usr/share/mime")
+                .join(major)
+                .join(format!("{minor}.xml"));
             if let Ok(content) = std::fs::read_to_string(&path) {
                 if let Some(icon) = Self::extract_generic_icon(&content, mime_type) {
                     return Some(icon);
@@ -292,7 +298,7 @@ impl MimeRegistry {
                 None => {
                     search_start = tag_end;
                     continue;
-                }
+                },
             };
             let rest = &tag_text[type_idx..];
             let end_quote = match rest.find('"') {
@@ -300,7 +306,7 @@ impl MimeRegistry {
                 None => {
                     search_start = tag_end;
                     continue;
-                }
+                },
             };
             let ty = &rest[..end_quote];
             if ty != mime_type {
@@ -315,7 +321,7 @@ impl MimeRegistry {
                 None => {
                     search_start = tag_end;
                     continue;
-                }
+                },
             };
             let mime_block = &content[mime_start..block_end];
 
@@ -326,7 +332,7 @@ impl MimeRegistry {
                     None => {
                         search_start = block_end;
                         continue;
-                    }
+                    },
                 };
                 let icon_tag = &mime_block[icon_idx..icon_tag_end];
                 let name_attr = r#"name=""#;
@@ -338,7 +344,7 @@ impl MimeRegistry {
                         None => {
                             search_start = block_end;
                             continue;
-                        }
+                        },
                     };
                     return Some(name_rest[..name_end].to_string());
                 }
@@ -353,11 +359,12 @@ impl MimeRegistry {
         let mut out = Vec::new();
         let mut seen = std::collections::BTreeSet::new();
 
-        let push = |s: String, seen: &mut std::collections::BTreeSet<String>, out: &mut Vec<String>| {
-            if seen.insert(s.clone()) {
-                out.push(s);
-            }
-        };
+        let push =
+            |s: String, seen: &mut std::collections::BTreeSet<String>, out: &mut Vec<String>| {
+                if seen.insert(s.clone()) {
+                    out.push(s);
+                }
+            };
 
         push(mime.to_string(), &mut seen, &mut out);
 
@@ -385,7 +392,7 @@ impl MimeRegistry {
                 // If the entry isn't in the registry map, try gtk-launch first,
                 // otherwise fall back to xdg-open to avoid silent failures.
                 return fallback_launch(desktop_id, file);
-            }
+            },
         };
 
         let exec = read_exec_line(&app.path)
@@ -445,7 +452,7 @@ impl MimeRegistry {
         if let Some(app) = self.apps.get(desktop_id) {
             return Some(app.name.to_string());
         }
-        
+
         // Try with .desktop suffix if not present
         if !desktop_id.ends_with(".desktop") {
             let with_suffix = format!("{}.desktop", desktop_id);
@@ -453,7 +460,7 @@ impl MimeRegistry {
                 return Some(app.name.to_string());
             }
         }
-        
+
         // Try without .desktop suffix if present
         if desktop_id.ends_with(".desktop") {
             let without_suffix = desktop_id.strip_suffix(".desktop").unwrap_or(desktop_id);
@@ -461,19 +468,19 @@ impl MimeRegistry {
                 return Some(app.name.to_string());
             }
         }
-        
+
         None
     }
-    
+
     /// Get a prettified name for a desktop ID, with fallback prettification if not found in registry.
     pub fn name_or_prettify(&self, desktop_id: &str) -> String {
         if let Some(name) = self.name_for(desktop_id) {
             return name;
         }
-        
+
         // Fallback: prettify the desktop ID
         let trimmed = desktop_id.strip_suffix(".desktop").unwrap_or(desktop_id);
-        
+
         // Handle reverse domain notation (e.g., "org.kde.gwenview" -> "Gwenview")
         let name_part = if trimmed.contains('.') {
             // Extract the last component after the last dot
@@ -481,7 +488,7 @@ impl MimeRegistry {
         } else {
             trimmed
         };
-        
+
         // Prettify: replace separators with spaces and title-case
         let pretty = name_part
             .replace(['-', '_'], " ")
@@ -495,7 +502,7 @@ impl MimeRegistry {
             })
             .collect::<Vec<String>>()
             .join(" ");
-        
+
         if pretty.is_empty() {
             desktop_id.to_string()
         } else {
@@ -517,10 +524,13 @@ fn fallback_launch(desktop_id: &str, file: &Path) -> anyhow::Result<()> {
     }
 
     // Fall back to xdg-open to avoid total failure.
-    Command::new("xdg-open")
-        .arg(file)
-        .spawn()
-        .map_err(|e| anyhow::anyhow!("Desktop entry not found: {}. xdg-open failed: {}", desktop_id, e))?;
+    Command::new("xdg-open").arg(file).spawn().map_err(|e| {
+        anyhow::anyhow!(
+            "Desktop entry not found: {}. xdg-open failed: {}",
+            desktop_id,
+            e
+        )
+    })?;
     Ok(())
 }
 

@@ -70,7 +70,8 @@ pub struct WaylandGlobals {
     /// Text input manager for IME support.
     pub text_input_manager: Option<zwp_text_input_manager_v3::ZwpTextInputManagerV3>,
     /// Fractional scale manager for high-DPI support.
-    pub fractional_scale_manager: Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
+    pub fractional_scale_manager:
+        Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
     /// Viewporter for viewport transformations.
     pub viewporter: Option<wp_viewporter::WpViewporter>,
     /// XDG activation for window activation requests.
@@ -124,11 +125,12 @@ impl WaylandGlobals {
         };
 
         #[cfg(feature = "global-menu")]
-        let appmenu_manager = match globals.bind::<
-            org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager,
-            _,
-            _,
-        >(qh, 1..=KDE_APPMENU_MANAGER_VERSION, ()) {
+        let appmenu_manager = match globals
+            .bind::<org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager, _, _>(
+                qh,
+                1..=KDE_APPMENU_MANAGER_VERSION,
+                (),
+            ) {
             Ok(mgr) => {
                 log::info!("Bound to org.kde.kwin.appmenu_manager");
                 Some(mgr)
@@ -160,16 +162,20 @@ impl WaylandGlobals {
         if let Some(ref seat) = seat {
             pointer = Some(seat.get_pointer(qh, ()));
             keyboard = Some(seat.get_keyboard(qh, ()));
-            log::info!("Wayland keyboard created: {:?}", keyboard.as_ref().map(|k| k.id()));
+            log::info!(
+                "Wayland keyboard created: {:?}",
+                keyboard.as_ref().map(|k| k.id())
+            );
         } else {
             log::warn!("No Wayland seat available, keyboard input will not work");
         }
 
-        let data_device_manager = match globals.bind::<wl_data_device_manager::WlDataDeviceManager, _, _>(
-            qh,
-            1..=WL_DATA_DEVICE_MANAGER_VERSION,
-            (),
-        ) {
+        let data_device_manager = match globals
+            .bind::<wl_data_device_manager::WlDataDeviceManager, _, _>(
+                qh,
+                1..=WL_DATA_DEVICE_MANAGER_VERSION,
+                (),
+            ) {
             Ok(mgr) => Some(mgr),
             Err(wayland_client::globals::BindError::NotPresent) => None,
             Err(err) => return Err(format!("Failed to bind wl_data_device_manager: {:?}", err)),
@@ -190,11 +196,12 @@ impl WaylandGlobals {
             }
         };
 
-        let text_input_manager = match globals.bind::<
-            zwp_text_input_manager_v3::ZwpTextInputManagerV3,
-            _,
-            _,
-        >(qh, 1..=ZWP_TEXT_INPUT_MANAGER_V3_VERSION, ()) {
+        let text_input_manager = match globals
+            .bind::<zwp_text_input_manager_v3::ZwpTextInputManagerV3, _, _>(
+                qh,
+                1..=ZWP_TEXT_INPUT_MANAGER_V3_VERSION,
+                (),
+            ) {
             Ok(mgr) => Some(mgr),
             Err(wayland_client::globals::BindError::NotPresent) => None,
             Err(err) => {
@@ -202,23 +209,24 @@ impl WaylandGlobals {
                     "Failed to bind zwp_text_input_manager_v3: {:?}",
                     err
                 ));
-            }
+            },
         };
 
-        let fractional_scale_manager = match globals.bind::<
-            wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1,
-            _,
-            _,
-        >(qh, 1..=WP_FRACTIONAL_SCALE_MANAGER_V1_VERSION, ()) {
-            Ok(mgr) => Some(mgr),
-            Err(wayland_client::globals::BindError::NotPresent) => None,
-            Err(err) => {
-                return Err(format!(
-                    "Failed to bind wp_fractional_scale_manager_v1: {:?}",
-                    err
-                ));
-            }
-        };
+        let fractional_scale_manager =
+            match globals.bind::<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1, _, _>(
+                qh,
+                1..=WP_FRACTIONAL_SCALE_MANAGER_V1_VERSION,
+                (),
+            ) {
+                Ok(mgr) => Some(mgr),
+                Err(wayland_client::globals::BindError::NotPresent) => None,
+                Err(err) => {
+                    return Err(format!(
+                        "Failed to bind wp_fractional_scale_manager_v1: {:?}",
+                        err
+                    ));
+                },
+            };
 
         let viewporter = match globals.bind::<wp_viewporter::WpViewporter, _, _>(
             qh,
@@ -260,4 +268,3 @@ impl WaylandGlobals {
         })
     }
 }
-

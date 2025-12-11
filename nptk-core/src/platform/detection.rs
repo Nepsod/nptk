@@ -38,10 +38,7 @@ pub fn detect_platform() -> Platform {
                         return Platform::Winit;
                     },
                     _ => {
-                        log::warn!(
-                            "Unknown NPTK_PLATFORM value '{}'; defaulting to Winit",
-                            val
-                        );
+                        log::warn!("Unknown NPTK_PLATFORM value '{}'; defaulting to Winit", val);
                     },
                 }
             }
@@ -93,22 +90,24 @@ pub async fn create_surface(
             // Note: winit 0.30 with X11-only doesn't implement HasWindowHandle/HasDisplayHandle
             // We need to use create_surface_unsafe with raw window handles from raw-window-handle
             let instance = gpu_context.instance();
-            
+
             // Get raw window handles using raw-window-handle crate
-            use raw_window_handle::{HasWindowHandle, HasDisplayHandle};
-            let window_handle = (*window).window_handle()
+            use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+            let window_handle = (*window)
+                .window_handle()
                 .map_err(|e| format!("Failed to get window handle: {:?}", e))?;
-            let display_handle = (*window).display_handle()
+            let display_handle = (*window)
+                .display_handle()
                 .map_err(|e| format!("Failed to get display handle: {:?}", e))?;
-            
+
             let raw_window = window_handle.as_raw();
             let raw_display = display_handle.as_raw();
-            
+
             let target = vello::wgpu::SurfaceTargetUnsafe::RawHandle {
                 raw_display_handle: raw_display,
                 raw_window_handle: raw_window,
             };
-            
+
             let surface = unsafe { instance.create_surface_unsafe(target) }
                 .map_err(|e| format!("Failed to create winit surface: {:?}", e))?;
 
@@ -171,22 +170,24 @@ pub async fn create_surface(
             // Note: winit 0.30 with X11-only doesn't implement HasWindowHandle/HasDisplayHandle
             // We need to use create_surface_unsafe with raw window handles from raw-window-handle
             let instance = gpu_context.instance();
-            
+
             // Get raw window handles using raw-window-handle crate
-            use raw_window_handle::{HasWindowHandle, HasDisplayHandle};
-            let window_handle = (*window).window_handle()
+            use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+            let window_handle = (*window)
+                .window_handle()
                 .map_err(|e| format!("Failed to get window handle: {:?}", e))?;
-            let display_handle = (*window).display_handle()
+            let display_handle = (*window)
+                .display_handle()
                 .map_err(|e| format!("Failed to get display handle: {:?}", e))?;
-            
+
             let raw_window = window_handle.as_raw();
             let raw_display = display_handle.as_raw();
-            
+
             let target = vello::wgpu::SurfaceTargetUnsafe::RawHandle {
                 raw_display_handle: raw_display,
                 raw_window_handle: raw_window,
             };
-            
+
             let surface = unsafe { instance.create_surface_unsafe(target) }
                 .map_err(|e| format!("Failed to create winit surface: {:?}", e))?;
 
@@ -215,4 +216,3 @@ pub fn create_surface_blocking(
 }
 
 // PlatformSurface enum removed - VGI's Surface enum wraps platform surfaces directly
-

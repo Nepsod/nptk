@@ -166,4 +166,3 @@ impl WinitSurface {
         &mut self.surface
     }
 }
-

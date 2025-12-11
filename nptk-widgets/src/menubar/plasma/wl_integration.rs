@@ -45,4 +45,3 @@ pub fn notify_wl_client_menu_update() {
     // Use platform's public appmenu API
     nptk_core::platform::appmenu::update_appmenu_for_all_surfaces(service, path);
 }
-

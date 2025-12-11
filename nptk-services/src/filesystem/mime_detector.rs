@@ -28,7 +28,7 @@ impl MimeDetector {
     ];
 
     /// Detect MIME type from file path using hybrid approach.
-    /// 
+    ///
     /// Strategy:
     /// 1. Check override table first (for known edge cases)
     /// 2. Try extension-based detection (mime_guess2) - fast
@@ -40,7 +40,11 @@ impl MimeDetector {
             let ext_lower = ext.to_lowercase();
             for (override_ext, mime_type) in Self::MIME_OVERRIDES {
                 if ext_lower == *override_ext {
-                    log::debug!("MimeDetector: Using override for extension '{}': {}", ext, mime_type);
+                    log::debug!(
+                        "MimeDetector: Using override for extension '{}': {}",
+                        ext,
+                        mime_type
+                    );
                     return Some(mime_type.to_string());
                 }
             }
@@ -49,18 +53,26 @@ impl MimeDetector {
         // Try extension-based detection first (fast)
         let ext_mime = mime_guess2::from_path(path).first_or_octet_stream();
         let ext_mime_str = ext_mime.to_string();
-        
+
         // If we got a specific MIME type (not octet-stream), use it
         if ext_mime_str != "application/octet-stream" {
-            log::debug!("MimeDetector: Detected MIME type '{}' from extension for {:?}", ext_mime_str, path);
+            log::debug!(
+                "MimeDetector: Detected MIME type '{}' from extension for {:?}",
+                ext_mime_str,
+                path
+            );
             return Some(ext_mime_str);
         }
 
         // Extension-based detection gave generic result, try content-based detection
         log::debug!("MimeDetector: Extension-based detection gave generic result, trying content-based detection for {:?}", path);
-        
+
         if let Some(content_mime) = Self::detect_mime_type_from_content(path) {
-            log::debug!("MimeDetector: Detected MIME type '{}' from content for {:?}", content_mime, path);
+            log::debug!(
+                "MimeDetector: Detected MIME type '{}' from content for {:?}",
+                content_mime,
+                path
+            );
             return Some(content_mime);
         }
 
@@ -70,27 +82,33 @@ impl MimeDetector {
     }
 
     /// Detect MIME type from file contents using tree_magic_mini.
-    /// 
+    ///
     /// This reads a sample of the file and uses magic number detection.
     fn detect_mime_type_from_content(path: &Path) -> Option<String> {
         // Read first 8KB of file for magic number detection
         const MAX_READ_SIZE: usize = 8192;
-        
+
         let mut file = match fs::File::open(path) {
             Ok(f) => f,
             Err(e) => {
-                log::debug!("MimeDetector: Failed to open file for content detection: {}", e);
+                log::debug!(
+                    "MimeDetector: Failed to open file for content detection: {}",
+                    e
+                );
                 return None;
-            }
+            },
         };
 
         let mut buffer = vec![0u8; MAX_READ_SIZE];
         let bytes_read = match file.read(&mut buffer) {
             Ok(n) => n,
             Err(e) => {
-                log::debug!("MimeDetector: Failed to read file for content detection: {}", e);
+                log::debug!(
+                    "MimeDetector: Failed to read file for content detection: {}",
+                    e
+                );
                 return None;
-            }
+            },
         };
 
         if bytes_read == 0 {
@@ -105,7 +123,10 @@ impl MimeDetector {
 
         // Don't return "application/octet-stream" as it's too generic
         if mime_str == "application/octet-stream" {
-            log::debug!("MimeDetector: Content-based detection also gave generic octet-stream for {:?}", path);
+            log::debug!(
+                "MimeDetector: Content-based detection also gave generic octet-stream for {:?}",
+                path
+            );
             None
         } else {
             Some(mime_str)
@@ -113,16 +134,20 @@ impl MimeDetector {
     }
 
     /// Detect MIME type from file extension only (when path is not available).
-    /// 
+    ///
     /// This is a fallback for cases where we only have the extension.
     /// Note: This cannot use content-based detection since we don't have file access.
     pub fn detect_mime_type_from_ext(ext: &str) -> Option<String> {
         let ext_lower = ext.to_lowercase();
-        
+
         // Check override table first
         for (override_ext, mime_type) in Self::MIME_OVERRIDES {
             if ext_lower == *override_ext {
-                log::debug!("MimeDetector: Using override for extension '{}': {}", ext, mime_type);
+                log::debug!(
+                    "MimeDetector: Using override for extension '{}': {}",
+                    ext,
+                    mime_type
+                );
                 return Some(mime_type.to_string());
             }
         }
@@ -130,15 +155,21 @@ impl MimeDetector {
         // Use mime_guess2 (extension-based only, no content detection available)
         let mime = mime_guess2::from_ext(&ext_lower).first_or_octet_stream();
         let mime_str = mime.to_string();
-        
+
         // Don't return "application/octet-stream" as it's too generic
         if mime_str == "application/octet-stream" {
-            log::debug!("MimeDetector: Got generic octet-stream for extension '{}', returning None", ext);
+            log::debug!(
+                "MimeDetector: Got generic octet-stream for extension '{}', returning None",
+                ext
+            );
             None
         } else {
-            log::debug!("MimeDetector: Detected MIME type '{}' for extension '{}'", mime_str, ext);
+            log::debug!(
+                "MimeDetector: Detected MIME type '{}' for extension '{}'",
+                mime_str,
+                ext
+            );
             Some(mime_str)
         }
     }
 }
-

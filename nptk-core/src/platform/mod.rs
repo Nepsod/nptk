@@ -57,4 +57,3 @@ pub use xdg_desktop_portal::{WindowAppearance, XDPEvent, XDPEventSource};
 // Re-export MenuInfoStorage for convenience
 #[cfg(all(target_os = "linux", feature = "global-menu"))]
 pub use appmenu::MenuInfoStorage;
-

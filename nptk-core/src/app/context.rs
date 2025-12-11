@@ -1,14 +1,14 @@
 use crate::app::diagnostics::Diagnostics;
 use crate::app::focus::{FocusId, SharedFocusManager};
+use crate::app::popup::PopupManager;
 use crate::app::update::{Update, UpdateManager};
+use crate::menu::ContextMenuManager;
 use crate::signal::eval::EvalSignal;
 use crate::signal::fixed::FixedSignal;
 use crate::signal::memoized::MemoizedSignal;
 use crate::signal::state::StateSignal;
 use crate::signal::Signal;
 use crate::vgi::GpuContext;
-use crate::menu::ContextMenuManager;
-use crate::app::popup::PopupManager;
 use std::sync::Arc;
 
 use nptk_services::settings::SettingsRegistry;

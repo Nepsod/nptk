@@ -479,7 +479,7 @@ impl ScrollContainer {
         is_pressed: bool,
     ) {
         let widget_id = self.widget_id();
-        
+
         // Draw scrollbar track
         let track_color = theme
             .get_property(
@@ -547,7 +547,7 @@ impl ScrollContainer {
         is_pressed: bool,
     ) {
         let widget_id = self.widget_id();
-        
+
         // Use scrollbar thumb colors for buttons
         let bg_color = if is_pressed {
             theme
@@ -581,10 +581,7 @@ impl ScrollContainer {
 
         // Use text color for arrow
         let arrow_color = theme
-            .get_property(
-                widget_id,
-                &nptk_theme::properties::ThemeProperty::ColorText,
-            )
+            .get_property(widget_id, &nptk_theme::properties::ThemeProperty::ColorText)
             .unwrap_or_else(|| Color::BLACK);
         let center = bounds.center();
         let size = bounds.width().min(bounds.height()) * 0.4;
@@ -902,16 +899,12 @@ impl Widget for ScrollContainer {
         // Handle mouse wheel scrolling (GTK3-style responsiveness)
         if let Some(scroll_delta) = info.mouse_scroll_delta {
             let base_scroll_speed = 40.0; // Base scroll speed
-            
+
             // Check for natural scrolling setting
-            let natural_scrolling = context
-                .settings
-                .get()
-                .mouse
-                .natural_scrolling;
-                
+            let natural_scrolling = context.settings.get().mouse.natural_scrolling;
+
             let direction_multiplier = if natural_scrolling { -1.0 } else { 1.0 };
-            
+
             let (dx, dy) = match scroll_delta {
                 MouseScrollDelta::LineDelta(x, y) => {
                     // Line-based scrolling: scale based on content size for natural feel
@@ -921,19 +914,19 @@ impl Widget for ScrollContainer {
                     let horizontal_scale = (self.content_size.x / self.viewport_size.x)
                         .min(5.0)
                         .max(1.0);
-                    
+
                     // Calculate raw delta
                     // Note: We invert x/y by default to match standard "Windows-like" scrolling
                     // (wheel down = content moves up = view moves down)
                     // If natural scrolling is on, we invert again (so -1.0 * -1.0 = 1.0)
                     let raw_dx = x * base_scroll_speed * horizontal_scale * direction_multiplier;
                     let raw_dy = y * base_scroll_speed * vertical_scale * direction_multiplier;
-                    
+
                     // Clamp delta to prevent massive jumps (e.g. if input delta is large like 16.0)
                     // Limit to 1/3 of viewport size or 200px max
                     let max_step_y = (self.viewport_size.y / 3.0).min(200.0).max(50.0);
                     let max_step_x = (self.viewport_size.x / 3.0).min(200.0).max(50.0);
-                    
+
                     (
                         raw_dx.clamp(-max_step_x, max_step_x),
                         raw_dy.clamp(-max_step_y, max_step_y),
@@ -943,8 +936,8 @@ impl Widget for ScrollContainer {
                     // Pixel-based scrolling: direct mapping
                     // Usually pixel delta already has correct direction, but apply multiplier just in case
                     (
-                        pos.x as f32 * direction_multiplier, 
-                        pos.y as f32 * direction_multiplier
+                        pos.x as f32 * direction_multiplier,
+                        pos.y as f32 * direction_multiplier,
                     )
                 },
             };
@@ -952,7 +945,7 @@ impl Widget for ScrollContainer {
             // scroll_by adds to offset, so positive dy moves content up (scrolling down)
             // Wait, scroll_offset is (x, y) translation.
             // If we want to scroll DOWN (view moves down), we need to INCREASE offset.y?
-            // Let's check render: 
+            // Let's check render:
             // scrolled_layout.layout.location.y -= self.scroll_offset.get().y;
             // So positive offset.y shifts content UP (visual scroll down).
             // Standard wheel down gives negative y in some systems, positive in others?
@@ -1010,10 +1003,10 @@ impl Widget for ScrollContainer {
             // If I use `scroll_by(dx, dy)`:
             // Wheel Down (Positive 16) -> Positive dy -> Increase Offset -> Scroll Down.
             // This matches Windows-like IF their Wheel Down is Positive.
-            
+
             // Let's assume `scroll_by(dx, dy)` is what they want for default.
             // And `scroll_by(-dx, -dy)` for "Natural" (if "Natural" means inverted).
-            
+
             self.scroll_by(dx, dy);
             let new_offset = self.scroll_offset();
 

@@ -1,9 +1,9 @@
 //! File system change watcher.
 
-use notify::{Watcher, RecommendedWatcher, RecursiveMode, Event, EventKind};
+use crate::filesystem::error::FileSystemError;
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
-use crate::filesystem::error::FileSystemError;
 
 /// A change detected in the filesystem.
 #[derive(Debug, Clone)]
@@ -76,7 +76,7 @@ impl FileSystemWatcher {
                 for path in event.paths {
                     changes.push(FileSystemChange::Created(path));
                 }
-            }
+            },
             EventKind::Modify(kind) => {
                 use notify::event::ModifyKind;
                 match kind {
@@ -90,40 +90,39 @@ impl FileSystemWatcher {
                             // Single path rename - treat as modified
                             changes.push(FileSystemChange::Modified(event.paths[0].clone()));
                         }
-                    }
+                    },
                     _ => {
                         for path in event.paths {
                             changes.push(FileSystemChange::Modified(path));
                         }
-                    }
+                    },
                 }
-            }
+            },
             EventKind::Remove(_) => {
                 for path in event.paths {
                     changes.push(FileSystemChange::Removed(path));
                 }
-            }
+            },
             EventKind::Access(_) => {
                 // Access events are treated as modifications
                 for path in event.paths {
                     changes.push(FileSystemChange::Modified(path));
                 }
-            }
+            },
             EventKind::Other => {
                 // Other event kinds are treated as modifications
                 for path in event.paths {
                     changes.push(FileSystemChange::Modified(path));
                 }
-            }
+            },
             EventKind::Any => {
                 // Any event kind - treat as modifications
                 for path in event.paths {
                     changes.push(FileSystemChange::Modified(path));
                 }
-            }
+            },
         }
 
         changes
     }
 }
-

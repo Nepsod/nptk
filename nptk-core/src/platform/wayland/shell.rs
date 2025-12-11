@@ -75,18 +75,17 @@ impl Dispatch<xdg_surface::XdgSurface, ()> for WaylandClientState {
                 // We need to find which surface has this xdg_surface
                 let xdg_surf_id = xdg_surf.id().protocol_id();
                 let surfaces_map = state.shared.surfaces().lock().unwrap();
-                let surface_key = surfaces_map.iter()
-                    .find_map(|(key, surface_weak)| {
-                        surface_weak.upgrade().and_then(|s| {
-                            if s.xdg_surface.id().protocol_id() == xdg_surf_id {
-                                Some(*key)
-                            } else {
-                                None
-                            }
-                        })
-                    });
+                let surface_key = surfaces_map.iter().find_map(|(key, surface_weak)| {
+                    surface_weak.upgrade().and_then(|s| {
+                        if s.xdg_surface.id().protocol_id() == xdg_surf_id {
+                            Some(*key)
+                        } else {
+                            None
+                        }
+                    })
+                });
                 drop(surfaces_map);
-                
+
                 if let Some(surface_key) = surface_key {
                     log::trace!(
                         "Wayland xdg_surface configure serial={} (surface_key={})",
@@ -135,18 +134,17 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for WaylandClientState {
         // Look up surface by xdg_toplevel
         let toplevel_id = toplevel.id().protocol_id();
         let surfaces_map = state.shared.surfaces().lock().unwrap();
-        let surface_key = surfaces_map.iter()
-            .find_map(|(key, surface_weak)| {
-                surface_weak.upgrade().and_then(|s| {
-                    if s.xdg_toplevel.id().protocol_id() == toplevel_id {
-                        Some(*key)
-                    } else {
-                        None
-                    }
-                })
-            });
+        let surface_key = surfaces_map.iter().find_map(|(key, surface_weak)| {
+            surface_weak.upgrade().and_then(|s| {
+                if s.xdg_toplevel.id().protocol_id() == toplevel_id {
+                    Some(*key)
+                } else {
+                    None
+                }
+            })
+        });
         drop(surfaces_map);
-        
+
         if let Some(surface_key) = surface_key {
             if let Some(surface) = state.shared.get_surface(surface_key) {
                 match event {
@@ -193,9 +191,11 @@ impl Dispatch<wl_callback::WlCallback, ()> for WaylandClientState {
                     callback_map.remove(&callback_id);
                 }
             } else {
-                log::warn!("Wayland: Frame callback {} not found in mapping", callback_id);
+                log::warn!(
+                    "Wayland: Frame callback {} not found in mapping",
+                    callback_id
+                );
             }
         }
     }
 }
-

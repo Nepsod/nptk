@@ -65,12 +65,12 @@ impl Widget for Container {
                 continue;
             }
             if layout_index < layout_node.children.len() {
-            child.render(
-                graphics,
-                theme,
+                child.render(
+                    graphics,
+                    theme,
                     &layout_node.children[layout_index],
-                info,
-                context.clone(),
+                    info,
+                    context.clone(),
                 );
                 layout_index += 1;
             } else {
@@ -84,7 +84,7 @@ impl Widget for Container {
                 break;
             }
         }
-        
+
         // If we didn't render all layout children, log it
         if layout_index < layout_node.children.len() {
             log::warn!(
@@ -114,13 +114,13 @@ impl Widget for Container {
                 continue;
             }
             if layout_index < layout_node.children.len() {
-            child.render_postfix(
-                graphics,
-                theme,
+                child.render_postfix(
+                    graphics,
+                    theme,
                     &layout_node.children[layout_index],
-                info,
-                context.clone(),
-            );
+                    info,
+                    context.clone(),
+                );
                 layout_index += 1;
             }
         }

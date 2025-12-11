@@ -56,4 +56,3 @@ impl From<notify::Error> for FileSystemError {
         FileSystemError::Notify(err)
     }
 }
-

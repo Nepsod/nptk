@@ -103,10 +103,10 @@ impl<T: Theme + Clone> MayRunner<T> {
             .with_window_level(config.window.level)
             .with_active(config.window.active)
             .with_cursor(config.window.cursor.clone());
-        
+
         // Note: app_id cannot be set for winit windows since winit only supports X11 now.
         // Native Wayland windows set their app_id directly via the Wayland protocol.
-        
+
         attrs
     }
 
@@ -158,7 +158,10 @@ impl<T: Theme + Clone> MayRunner<T> {
         )) {
             // Log the error but don't panic - window destruction errors are often harmless
             if err.to_string().contains("BadWindow") || err.to_string().contains("invalid Window") {
-                log::debug!("Event loop exited with window destruction error (likely harmless): {:?}", err);
+                log::debug!(
+                    "Event loop exited with window destruction error (likely harmless): {:?}",
+                    err
+                );
             } else {
                 log::warn!("Event loop exited with error: {:?}", err);
             }

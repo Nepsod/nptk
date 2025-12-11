@@ -3,9 +3,9 @@
 //! This module implements freedesktop.org Thumbnail Managing Standard
 //! for cache paths and naming conventions.
 
-use std::path::{Path, PathBuf};
-use std::fs;
 use crate::filesystem::entry::FileEntry;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 /// Compute the cache directory path for thumbnails of a given size.
 ///
@@ -19,10 +19,14 @@ use crate::filesystem::entry::FileEntry;
 ///
 /// Path to the cache directory for the given size
 pub fn thumbnail_cache_dir(size: u32) -> PathBuf {
-    let cache_base = dirs::cache_dir()
-        .unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string())));
-    
-    cache_base.join("nptk").join("thumbnails").join(size.to_string())
+    let cache_base = dirs::cache_dir().unwrap_or_else(|| {
+        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+    });
+
+    cache_base
+        .join("nptk")
+        .join("thumbnails")
+        .join(size.to_string())
 }
 
 /// Compute the cache path for a thumbnail of a file entry.
@@ -64,7 +68,7 @@ pub fn file_uri(path: &Path) -> String {
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(path)
     };
-    
+
     let path_str = absolute_path.to_string_lossy();
     let encoded = urlencoding::encode(&path_str);
     format!("file://{}", encoded)
@@ -148,4 +152,3 @@ pub fn ensure_cache_dir(size: u32) -> std::io::Result<()> {
     log::debug!("Thumbnail cache directory ensured: {:?}", cache_dir);
     Ok(())
 }
-

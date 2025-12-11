@@ -91,4 +91,3 @@ impl FileEntry {
         self.parent.as_deref().or_else(|| self.path.parent())
     }
 }
-

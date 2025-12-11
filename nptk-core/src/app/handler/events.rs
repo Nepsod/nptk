@@ -1,0 +1,260 @@
+use super::*;
+use crate::app::context::AppContext;
+use crate::app::info::AppKeyEvent;
+use crate::app::update::Update;
+use crate::menu::MenuClickResult;
+use nalgebra::Vector2;
+use winit::event::{ElementState, MouseButton, WindowEvent};
+use winit::event_loop::ActiveEventLoop;
+
+impl<T, W, S, F> AppHandler<T, W, S, F>
+where
+    T: Theme + Clone,
+    W: Widget,
+    F: Fn(AppContext, S) -> W,
+{
+    /// Handle a window event.
+    pub(super) fn handle_window_event(&mut self, event: WindowEvent, event_loop: &ActiveEventLoop) {
+        match event {
+            WindowEvent::Resized(new_size) => self.handle_resize(new_size, event_loop),
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                let physical = self
+                    .window
+                    .as_ref()
+                    .map(|w| w.inner_size())
+                    .unwrap_or(winit::dpi::PhysicalSize::new(0, 0));
+
+                if let Some(surface) = &mut self.surface {
+                    if let Err(e) = surface.resize(physical.width, physical.height) {
+                        log::error!("Failed to resize surface on scale change: {}", e);
+                    }
+                }
+
+                let logical_size = physical.to_logical::<f64>(scale_factor);
+                self.update_window_node_size(logical_size.width as u32, logical_size.height as u32);
+                self.info.size = Vector2::new(logical_size.width, logical_size.height);
+                self.request_redraw();
+                self.update.insert(Update::DRAW | Update::LAYOUT);
+            },
+            WindowEvent::CloseRequested => self.handle_close_request(event_loop),
+            WindowEvent::RedrawRequested => self.update_internal(event_loop),
+            WindowEvent::CursorLeft { .. } => {
+                self.info.cursor_pos = None;
+                self.request_redraw();
+            },
+            WindowEvent::CursorMoved { position, .. } => {
+                let scale_factor = self
+                    .window
+                    .as_ref()
+                    .map(|w| w.scale_factor())
+                    .unwrap_or(1.0);
+                let logical = position.to_logical::<f64>(scale_factor);
+                self.info.cursor_pos = Some(Vector2::new(logical.x, logical.y));
+                self.request_redraw();
+            },
+            WindowEvent::ModifiersChanged(modifiers) => {
+                self.info.modifiers = modifiers.state();
+            },
+            WindowEvent::KeyboardInput {
+                event,
+                device_id,
+                is_synthetic,
+            } => {
+                self.handle_keyboard_input(event, device_id, is_synthetic);
+            },
+            WindowEvent::MouseInput {
+                device_id,
+                button,
+                state,
+            } => {
+                self.handle_mouse_input(device_id, button, state);
+            },
+            WindowEvent::MouseWheel { delta, .. } => {
+                self.info.mouse_scroll_delta = Some(delta);
+                self.request_redraw();
+            },
+            WindowEvent::Ime(ime_event) => {
+                self.info.ime_events.push(ime_event);
+                self.request_redraw();
+            },
+            WindowEvent::Destroyed => log::info!("Window destroyed! Exiting..."),
+            _ => (),
+        }
+    }
+
+    /// Handle window resize event.
+    pub(super) fn handle_resize(
+        &mut self,
+        new_size: winit::dpi::PhysicalSize<u32>,
+        _event_loop: &ActiveEventLoop,
+    ) {
+        if new_size.width == 0 || new_size.height == 0 {
+            log::debug!("Window size is 0x0, ignoring resize event.");
+            return;
+        }
+
+        log::info!("Window resized to {}x{}", new_size.width, new_size.height);
+
+        if let Some(surface) = &mut self.surface {
+            if let Err(e) = surface.resize(new_size.width, new_size.height) {
+                log::error!("Failed to resize surface: {}", e);
+            }
+        }
+
+        let scale_factor = self
+            .window
+            .as_ref()
+            .map(|w| w.scale_factor())
+            .unwrap_or(1.0);
+        let logical_size = new_size.to_logical::<f64>(scale_factor);
+
+        self.update_window_node_size(logical_size.width as u32, logical_size.height as u32);
+        self.info.size = Vector2::new(logical_size.width, logical_size.height);
+        self.request_redraw();
+        self.update.insert(Update::DRAW | Update::LAYOUT);
+    }
+
+    /// Handle window close request.
+    pub(super) fn handle_close_request(&mut self, event_loop: &ActiveEventLoop) {
+        log::info!("Window Close requested...");
+        log::debug!("Cleaning up resources...");
+
+        if self.config.window.close_on_request {
+            event_loop.exit();
+        }
+    }
+
+    /// Handle keyboard input event.
+    pub(super) fn handle_keyboard_input(
+        &mut self,
+        event: winit::event::KeyEvent,
+        device_id: winit::event::DeviceId,
+        is_synthetic: bool,
+    ) {
+        if is_synthetic {
+            return;
+        }
+
+        if event.state == ElementState::Pressed {
+            use winit::keyboard::{KeyCode, PhysicalKey};
+            match event.physical_key {
+                PhysicalKey::Code(KeyCode::Tab) => {
+                    self.handle_tab_navigation();
+                    self.request_redraw();
+                    return;
+                },
+                PhysicalKey::Code(KeyCode::Escape) => {
+                    if self.menu_manager.is_open() {
+                        self.menu_manager.close_context_menu();
+                        self.update.insert(Update::DRAW);
+                        return;
+                    }
+                },
+                _ => {},
+            }
+        }
+
+        let app_event = AppKeyEvent::from_winit(&event);
+        self.info.keys.push((device_id, app_event));
+        self.request_redraw();
+    }
+
+    /// Handle tab navigation for focus management.
+    pub(super) fn handle_tab_navigation(&mut self) {
+        if let Ok(mut manager) = self.info.focus_manager.lock() {
+            if self.info.modifiers.shift_key() {
+                manager.focus_previous();
+            } else {
+                manager.focus_next();
+            }
+            self.update.insert(Update::FOCUS | Update::DRAW);
+        }
+    }
+
+    /// Handle mouse input event.
+    pub(super) fn handle_mouse_input(
+        &mut self,
+        device_id: winit::event::DeviceId,
+        button: MouseButton,
+        state: ElementState,
+    ) {
+        if state == ElementState::Pressed {
+            let context = self.context();
+            if context.menu_manager.is_open() {
+                if let Some(cursor_pos) = self.info.cursor_pos {
+                    let cursor = vello::kurbo::Point::new(cursor_pos.x, cursor_pos.y);
+                    if let Some((menu, position)) = context.menu_manager.get_active_menu() {
+                        match crate::menu::handle_click(
+                            &menu,
+                            position,
+                            cursor,
+                            &mut self.text_render,
+                            &mut self.info.font_context,
+                        ) {
+                            Some(MenuClickResult::Action(action)) => {
+                                action();
+                                context.menu_manager.close_context_menu();
+                                self.update.insert(Update::DRAW);
+                                return;
+                            },
+                            Some(MenuClickResult::SubMenu(sub, pos)) => {
+                                context.menu_manager.push_submenu(sub, pos);
+                                self.update.insert(Update::DRAW);
+                                return;
+                            },
+                            Some(MenuClickResult::NonActionInside) => {
+                                self.update.insert(Update::DRAW);
+                                return;
+                            },
+                            None => {
+                                context.menu_manager.close_context_menu();
+                                self.update.insert(Update::DRAW);
+                                return;
+                            },
+                        }
+                    } else {
+                        context.menu_manager.close_context_menu();
+                        self.update.insert(Update::DRAW);
+                        return;
+                    }
+                }
+            }
+        }
+
+        if button == MouseButton::Left && state == ElementState::Pressed {
+            if let Some(cursor_pos) = self.info.cursor_pos {
+                if let Ok(mut manager) = self.info.focus_manager.lock() {
+                    if manager.handle_click(cursor_pos.x, cursor_pos.y) {
+                        self.update.insert(Update::FOCUS | Update::DRAW);
+                    }
+                }
+            }
+        }
+
+        self.info.buttons.push((device_id, button, state));
+        self.request_redraw();
+    }
+
+    pub(super) fn handle_update_flags(&mut self, event_loop: &ActiveEventLoop) {
+        if self.update.get().intersects(Update::EVAL | Update::FORCE) {
+            log::debug!("Evaluation update detected!");
+            let platform = crate::platform::Platform::detect();
+            if platform == crate::platform::Platform::Wayland {
+                // Wayland without a winit window still relies on the event loop pumping updates.
+            } else if let Some(window) = &self.window {
+                window.request_redraw();
+            }
+        }
+
+        if self.update.get().intersects(Update::EXIT) {
+            event_loop.exit();
+            return;
+        }
+
+        let flags_to_clear = self.update.get() & !(Update::DRAW | Update::FORCE);
+        if flags_to_clear.bits() != 0 {
+            self.update
+                .set(self.update.get() & (Update::DRAW | Update::FORCE));
+        }
+    }
+}

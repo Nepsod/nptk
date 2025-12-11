@@ -29,4 +29,3 @@ pub enum IconError {
     #[error("Invalid theme directory: {0}")]
     InvalidThemeDirectory(PathBuf),
 }
-

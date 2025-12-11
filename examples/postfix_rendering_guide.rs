@@ -34,8 +34,8 @@ use nptk::widgets::button::Button;
 use nptk::widgets::container::Container;
 use nptk::widgets::text::Text;
 use nptk_core::signal::MaybeSignal;
-use nptk_core::vgi::Graphics;
 use nptk_core::vgi::vello_vg::VelloGraphics;
+use nptk_core::vgi::Graphics;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 
@@ -91,9 +91,14 @@ impl Widget for TooltipWidget {
         if !layout.children.is_empty() {
             let mut child_scene = Scene::new();
             let mut child_graphics = VelloGraphics::new(&mut child_scene);
-            self.child
-                .render(&mut child_graphics, theme, &layout.children[0], info, context);
-            
+            self.child.render(
+                &mut child_graphics,
+                theme,
+                &layout.children[0],
+                info,
+                context,
+            );
+
             graphics.append(
                 &child_scene,
                 Some(Affine::translate((
@@ -260,7 +265,13 @@ impl Widget for SimpleDropdown {
             Color::from_rgb8(150, 150, 150)
         };
 
-        graphics.fill(Fill::NonZero, Affine::IDENTITY, &Brush::Solid(color), None, &button_rect.to_path(0.1));
+        graphics.fill(
+            Fill::NonZero,
+            Affine::IDENTITY,
+            &Brush::Solid(color),
+            None,
+            &button_rect.to_path(0.1),
+        );
 
         // Draw selected item text
         // Text baseline renders at y + font_size, so we need to position accordingly

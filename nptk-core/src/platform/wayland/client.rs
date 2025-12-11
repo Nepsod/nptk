@@ -92,26 +92,29 @@ impl WaylandClient {
         let Some(ref manager) = self.globals.appmenu_manager else {
             return Err("AppMenu manager not available".to_string());
         };
-        
+
         let surface_id = surface.id().protocol_id();
-        
+
         // Check if we already have an appmenu for this surface
         let mut appmenu_objects = self.shared.appmenu_objects.lock().unwrap();
         if appmenu_objects.contains_key(&surface_id) {
-            log::debug!("Appmenu already set for surface {}, updating address", surface_id);
+            log::debug!(
+                "Appmenu already set for surface {}, updating address",
+                surface_id
+            );
             // Update the existing appmenu
             let appmenu = appmenu_objects.get(&surface_id).unwrap();
             appmenu.set_address(service.clone(), path.clone());
         } else {
             // Create a new appmenu object for this surface
             let appmenu = manager.create(surface, &self.queue_handle, ());
-            
+
             // Set the menu address
             appmenu.set_address(service.clone(), path.clone());
-            
+
             // Store the appmenu object to keep it alive
             appmenu_objects.insert(surface_id, appmenu);
-            
+
             log::info!(
                 "Created and set application menu for surface {}: service={}, path={}",
                 surface_id,
@@ -120,44 +123,56 @@ impl WaylandClient {
             );
         }
         drop(appmenu_objects);
-        
+
         // Flush the connection to ensure the compositor receives the message
         if let Err(err) = self.flush() {
             log::warn!("Failed to flush Wayland connection after setting appmenu: {err}");
         }
-        
+
         // Dispatch any pending events
         if let Err(err) = self.dispatch_pending() {
             log::warn!("Failed to dispatch Wayland events after setting appmenu: {err}");
         }
-        
+
         Ok(())
     }
-    
+
     #[cfg(feature = "global-menu")]
     /// Update appmenu for all existing surfaces when menu info changes.
     /// This is called by the menubar module when menu info is updated.
-    pub(crate) fn update_appmenu_for_all_surfaces(
-        &self,
-        service: String,
-        path: String,
-    ) {
+    pub(crate) fn update_appmenu_for_all_surfaces(&self, service: String, path: String) {
         let surfaces_map = self.shared.surfaces.lock().unwrap();
         let surface_keys: Vec<u32> = surfaces_map.keys().copied().collect();
         let surface_count = surface_keys.len();
         drop(surfaces_map);
-        
-        log::info!("Attempting to set appmenu for {} existing surface(s) after menu info update", surface_count);
+
+        log::info!(
+            "Attempting to set appmenu for {} existing surface(s) after menu info update",
+            surface_count
+        );
         if surface_count == 0 {
             log::debug!("No surfaces registered yet, appmenu will be set when surface is created");
         } else {
             for surface_key in surface_keys {
                 if let Some(surface) = self.shared.get_surface(surface_key) {
-                    log::debug!("Found surface {}, attempting to set appmenu after menu info update", surface_key);
-                    if let Err(err) = self.set_appmenu_for_surface_with_info(surface.wl_surface(), service.clone(), path.clone()) {
-                        log::warn!("Failed to set appmenu for surface {} after menu info update: {err}", surface_key);
+                    log::debug!(
+                        "Found surface {}, attempting to set appmenu after menu info update",
+                        surface_key
+                    );
+                    if let Err(err) = self.set_appmenu_for_surface_with_info(
+                        surface.wl_surface(),
+                        service.clone(),
+                        path.clone(),
+                    ) {
+                        log::warn!(
+                            "Failed to set appmenu for surface {} after menu info update: {err}",
+                            surface_key
+                        );
                     } else {
-                        log::info!("Successfully set appmenu for surface {} after menu info update", surface_key);
+                        log::info!(
+                            "Successfully set appmenu for surface {} after menu info update",
+                            surface_key
+                        );
                     }
                 } else {
                     log::debug!("Surface {} not found (may have been dropped)", surface_key);
@@ -211,7 +226,7 @@ impl WaylandClient {
     pub fn unregister_surface(&self, surface_key: u32) {
         let mut map = self.shared.surfaces.lock().unwrap();
         map.remove(&surface_key);
-        
+
         // Also remove the appmenu object when surface is unregistered
         #[cfg(feature = "global-menu")]
         {
@@ -227,11 +242,15 @@ impl WaylandClient {
         let mut data = self.loop_data.lock().unwrap();
         let (event_queue, state) = &mut *data;
         log::trace!("Wayland dispatch_pending queue_ptr={:p}", event_queue);
-        
+
         // Log keyboard state before dispatch
         if let Some(ref keyboard) = self.globals.keyboard {
             let focused = *self.shared.focused_surface_key.lock().unwrap();
-            log::debug!("Wayland dispatch_pending: keyboard={:?}, focused_surface={:?}", keyboard.id(), focused);
+            log::debug!(
+                "Wayland dispatch_pending: keyboard={:?}, focused_surface={:?}",
+                keyboard.id(),
+                focused
+            );
         } else {
             log::debug!("Wayland dispatch_pending: no keyboard available");
         }
@@ -319,12 +338,16 @@ impl WaylandClient {
         if let Some(ref seat) = globals.seat {
             if let Some(ref manager) = globals.data_device_manager {
                 let device = manager.get_data_device(seat, &queue_handle, ());
-                state.data_devices.push(super::data_device::DataDevice::new(device));
+                state
+                    .data_devices
+                    .push(super::data_device::DataDevice::new(device));
             }
 
             if let Some(ref manager) = globals.primary_selection_manager {
                 let device = manager.get_device(seat, &queue_handle, ());
-                state.primary_selection_devices.push(super::primary_selection::PrimarySelectionDevice::new(device));
+                state.primary_selection_devices.push(
+                    super::primary_selection::PrimarySelectionDevice::new(device),
+                );
             }
         }
 
@@ -370,4 +393,3 @@ impl SharedState {
 
 /// Type alias for the Wayland queue handle.
 pub type WaylandQueueHandle = QueueHandle<WaylandClientState>;
-

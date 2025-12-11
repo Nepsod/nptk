@@ -40,7 +40,7 @@ impl IconLookup {
     /// Load a theme (with caching).
     pub fn load_theme(&self, theme_name: &str) -> Result<IconTheme, IconError> {
         let mut cache = self.theme_cache.lock().unwrap();
-        
+
         if let Some(theme) = cache.get(theme_name) {
             return Ok(theme.clone());
         }
@@ -54,7 +54,7 @@ impl IconLookup {
                         let theme_clone = theme.clone();
                         cache.insert(theme_name.to_string(), theme);
                         return Ok(theme_clone);
-                    }
+                    },
                     Err(_) => continue,
                 }
             }
@@ -71,9 +71,14 @@ impl IconLookup {
         context: IconContext,
         theme_name: &str,
     ) -> Option<PathBuf> {
-        log::debug!("IconLookup: Looking for icon '{}' (size: {}, context: {:?}) in theme '{}'", 
-            icon_name, size, context, theme_name);
-        
+        log::debug!(
+            "IconLookup: Looking for icon '{}' (size: {}, context: {:?}) in theme '{}'",
+            icon_name,
+            size,
+            context,
+            theme_name
+        );
+
         // Try current theme
         if let Ok(theme) = self.load_theme(theme_name) {
             if let Some(path) = self.lookup_in_theme(&theme, icon_name, size, context) {
@@ -85,8 +90,15 @@ impl IconLookup {
             for inherited in &theme.inherits {
                 log::debug!("IconLookup: Trying inherited theme '{}'", inherited);
                 if let Ok(inherited_theme) = self.load_theme(inherited) {
-                    if let Some(path) = self.lookup_in_theme(&inherited_theme, icon_name, size, context) {
-                        log::debug!("IconLookup: Found icon '{}' in inherited theme '{}' at {:?}", icon_name, inherited, path);
+                    if let Some(path) =
+                        self.lookup_in_theme(&inherited_theme, icon_name, size, context)
+                    {
+                        log::debug!(
+                            "IconLookup: Found icon '{}' in inherited theme '{}' at {:?}",
+                            icon_name,
+                            inherited,
+                            path
+                        );
                         return Some(path);
                     }
                 }
@@ -117,13 +129,21 @@ impl IconLookup {
         let best_dir = match self.find_best_directory(&theme.directories, size, context) {
             Some(dir) => dir,
             None => {
-                log::debug!("IconLookup: No matching directory found for size {} and context {:?}", size, context);
+                log::debug!(
+                    "IconLookup: No matching directory found for size {} and context {:?}",
+                    size,
+                    context
+                );
                 return None;
-            }
+            },
         };
-        
+
         let dir_path = theme.directory_path(&best_dir.name);
-        log::debug!("IconLookup: Searching in directory '{}' at {:?}", best_dir.name, dir_path);
+        log::debug!(
+            "IconLookup: Searching in directory '{}' at {:?}",
+            best_dir.name,
+            dir_path
+        );
 
         // Try different file extensions in order of preference
         let extensions = ["svg", "png", "xpm"];
@@ -136,7 +156,11 @@ impl IconLookup {
         }
 
         // If not found in best directory, try all directories (some themes organize differently)
-        log::debug!("IconLookup: Icon '{}' not found in directory '{}', trying all directories", icon_name, best_dir.name);
+        log::debug!(
+            "IconLookup: Icon '{}' not found in directory '{}', trying all directories",
+            icon_name,
+            best_dir.name
+        );
         for dir in &theme.directories {
             if dir.name == best_dir.name {
                 continue; // Already tried this one
@@ -145,13 +169,21 @@ impl IconLookup {
             for ext in &extensions {
                 let icon_path = dir_path.join(format!("{}.{}", icon_name, ext));
                 if icon_path.exists() {
-                    log::debug!("IconLookup: Found icon file at {:?} in directory '{}'", icon_path, dir.name);
+                    log::debug!(
+                        "IconLookup: Found icon file at {:?} in directory '{}'",
+                        icon_path,
+                        dir.name
+                    );
                     return Some(icon_path);
                 }
             }
         }
 
-        log::debug!("IconLookup: Icon '{}' not found in theme '{}'", icon_name, theme.name);
+        log::debug!(
+            "IconLookup: Icon '{}' not found in theme '{}'",
+            icon_name,
+            theme.name
+        );
         None
     }
 
@@ -193,9 +225,13 @@ impl IconLookup {
         candidates.sort_by_key(|d| {
             let score: u32 = match d.directory_type {
                 DirectoryType::Fixed => {
-                    let diff = if d.size > size { d.size - size } else { size - d.size };
+                    let diff = if d.size > size {
+                        d.size - size
+                    } else {
+                        size - d.size
+                    };
                     diff
-                }
+                },
                 DirectoryType::Scalable => {
                     let min = d.min_size.unwrap_or(16);
                     let max = d.max_size.unwrap_or(256);
@@ -206,7 +242,7 @@ impl IconLookup {
                     } else {
                         size - max
                     }
-                }
+                },
                 DirectoryType::Threshold => {
                     let threshold = d.threshold.unwrap_or(2);
                     let diff = if d.size > size {
@@ -219,7 +255,7 @@ impl IconLookup {
                     } else {
                         diff
                     }
-                }
+                },
             };
             score
         });
@@ -233,4 +269,3 @@ impl Default for IconLookup {
         Self::new()
     }
 }
-

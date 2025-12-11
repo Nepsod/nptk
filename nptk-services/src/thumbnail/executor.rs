@@ -1,11 +1,11 @@
 //! Background task executor for thumbnail generation.
 
-use std::path::PathBuf;
-use tokio::sync::{mpsc, broadcast};
 use crate::filesystem::entry::FileEntry;
-use crate::thumbnail::cache::{thumbnail_cache_path, ensure_cache_dir, is_thumbnail_fresh};
+use crate::thumbnail::cache::{ensure_cache_dir, is_thumbnail_fresh, thumbnail_cache_path};
 use crate::thumbnail::error::ThumbnailError;
-use crate::thumbnail::events::{ThumbnailEvent, create_thumbnail_event_channel};
+use crate::thumbnail::events::{create_thumbnail_event_channel, ThumbnailEvent};
+use std::path::PathBuf;
+use tokio::sync::{broadcast, mpsc};
 
 /// Task for thumbnail generation.
 #[derive(Debug, Clone)]
@@ -27,16 +27,13 @@ impl ThumbnailExecutor {
         let event_tx = create_thumbnail_event_channel();
 
         let event_tx_clone = event_tx.clone();
-        
+
         // Spawn background worker
         tokio::spawn(async move {
             Self::worker_task(task_rx, event_tx_clone).await;
         });
 
-        Self {
-            task_tx,
-            event_tx,
-        }
+        Self { task_tx, event_tx }
     }
 
     /// Request thumbnail generation for a file entry.
@@ -54,14 +51,11 @@ impl ThumbnailExecutor {
     /// * `Ok(())` - If the task was queued successfully
     /// * `Err(ThumbnailError)` - If queuing failed
     pub fn request_thumbnail(&self, entry: FileEntry, size: u32) -> Result<(), ThumbnailError> {
-        let task = ThumbnailTask {
-            entry,
-            size,
-        };
+        let task = ThumbnailTask { entry, size };
 
-        self.task_tx
-            .send(task)
-            .map_err(|e| ThumbnailError::Unknown(format!("Failed to queue thumbnail task: {}", e)))?;
+        self.task_tx.send(task).map_err(|e| {
+            ThumbnailError::Unknown(format!("Failed to queue thumbnail task: {}", e))
+        })?;
 
         Ok(())
     }
@@ -85,7 +79,8 @@ impl ThumbnailExecutor {
             // Generate thumbnail in blocking task
             let result = tokio::task::spawn_blocking(move || {
                 Self::generate_thumbnail(&task.entry, task.size)
-            }).await;
+            })
+            .await;
 
             match result {
                 Ok(Ok(thumbnail_path)) => {
@@ -95,7 +90,7 @@ impl ThumbnailExecutor {
                         size,
                     };
                     let _ = event_tx.send(event);
-                }
+                },
                 Ok(Err(e)) => {
                     let event = ThumbnailEvent::ThumbnailFailed {
                         entry_path,
@@ -103,7 +98,7 @@ impl ThumbnailExecutor {
                         size,
                     };
                     let _ = event_tx.send(event);
-                }
+                },
                 Err(e) => {
                     let event = ThumbnailEvent::ThumbnailFailed {
                         entry_path,
@@ -111,7 +106,7 @@ impl ThumbnailExecutor {
                         size,
                     };
                     let _ = event_tx.send(event);
-                }
+                },
             }
         }
     }
@@ -141,13 +136,16 @@ impl ThumbnailExecutor {
         } else {
             thumbnailify::ThumbnailSize::Large
         };
-        
+
         let generated_path = thumbnailify::generate_thumbnail(&entry.path, thumbnail_size)
-            .map_err(|e| ThumbnailError::GenerationFailed(format!("thumbnailify error: {:?}", e)))?;
+            .map_err(|e| {
+                ThumbnailError::GenerationFailed(format!("thumbnailify error: {:?}", e))
+            })?;
 
         // Copy generated thumbnail to our cache location
-        std::fs::copy(&generated_path, &thumbnail_path)
-            .map_err(|e| ThumbnailError::CacheError(format!("Failed to copy thumbnail to cache: {}", e)))?;
+        std::fs::copy(&generated_path, &thumbnail_path).map_err(|e| {
+            ThumbnailError::CacheError(format!("Failed to copy thumbnail to cache: {}", e))
+        })?;
 
         log::info!("Thumbnail generated and cached: {:?}", thumbnail_path);
 
@@ -160,4 +158,3 @@ impl Default for ThumbnailExecutor {
         Self::new()
     }
 }
-

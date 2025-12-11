@@ -24,11 +24,7 @@ impl wayland_client::backend::ObjectData for DummyObjectData {
         None
     }
 
-    fn destroyed(
-        &self,
-        _object_id: wayland_client::backend::ObjectId,
-    ) {
-    }
+    fn destroyed(&self, _object_id: wayland_client::backend::ObjectId) {}
 }
 
 /// Wrapper around a Wayland primary selection offer.
@@ -98,11 +94,19 @@ impl Dispatch<zwp_primary_selection_device_v1::ZwpPrimarySelectionDeviceV1, ()>
             zwp_primary_selection_device_v1::Event::DataOffer { offer } => {
                 let offer = PrimaryDataOffer::new(offer);
                 state.pending_primary_offers.push(offer);
-            }
+            },
             zwp_primary_selection_device_v1::Event::Selection { id } => {
-                if let Some(device_state) = state.primary_selection_devices.iter_mut().find(|d| d.device == *device) {
+                if let Some(device_state) = state
+                    .primary_selection_devices
+                    .iter_mut()
+                    .find(|d| d.device == *device)
+                {
                     if let Some(id) = id {
-                        if let Some(index) = state.pending_primary_offers.iter().position(|o| o.offer == id) {
+                        if let Some(index) = state
+                            .pending_primary_offers
+                            .iter()
+                            .position(|o| o.offer == id)
+                        {
                             let offer = state.pending_primary_offers.remove(index);
                             device_state.selection_offer = Some(offer);
                         }
@@ -110,8 +114,8 @@ impl Dispatch<zwp_primary_selection_device_v1::ZwpPrimarySelectionDeviceV1, ()>
                         device_state.selection_offer = None;
                     }
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 
@@ -136,7 +140,11 @@ impl Dispatch<zwp_primary_selection_offer_v1::ZwpPrimarySelectionOfferV1, ()>
     ) {
         match event {
             zwp_primary_selection_offer_v1::Event::Offer { mime_type } => {
-                if let Some(o) = state.pending_primary_offers.iter_mut().find(|o| o.offer == *offer) {
+                if let Some(o) = state
+                    .pending_primary_offers
+                    .iter_mut()
+                    .find(|o| o.offer == *offer)
+                {
                     o.mime_types.push(mime_type);
                 } else {
                     for device in &mut state.primary_selection_devices {
@@ -147,8 +155,8 @@ impl Dispatch<zwp_primary_selection_offer_v1::ZwpPrimarySelectionOfferV1, ()>
                         }
                     }
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 }
@@ -165,13 +173,16 @@ impl Dispatch<zwp_primary_selection_source_v1::ZwpPrimarySelectionSourceV1, ()>
         _qh: &QueueHandle<Self>,
     ) {
         match event {
-            zwp_primary_selection_source_v1::Event::Send { mime_type: _, fd: _ } => {
+            zwp_primary_selection_source_v1::Event::Send {
+                mime_type: _,
+                fd: _,
+            } => {
                 // TODO: Handle sending data
-            }
+            },
             zwp_primary_selection_source_v1::Event::Cancelled => {
                 source.destroy();
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 }

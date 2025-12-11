@@ -117,17 +117,17 @@ impl ContextMenuManager {
     }
 }
 
+use crate::vgi::Graphics;
+use nptk_theme::theme::Theme;
 use vello::kurbo::{Affine, Rect};
 use vello::peniko::{Brush, Color};
-use nptk_theme::theme::Theme;
-use crate::vgi::Graphics;
 
 use crate::app::font_ctx::FontContext;
 use crate::text_render::TextRenderContext;
 
-use nptk_theme::properties::ThemeProperty;
-use nptk_theme::id::WidgetId;
 use crate::vgi::shape_to_path;
+use nptk_theme::id::WidgetId;
+use nptk_theme::properties::ThemeProperty;
 use vello::kurbo::{RoundedRect, RoundedRectRadii};
 
 /// Renders the context menu.
@@ -152,40 +152,56 @@ pub fn render_context_menu(
     let menu_id = WidgetId::new("nptk-widgets", "MenuPopup");
 
     // Colors
-    let bg_color = theme.get_property(menu_id.clone(), &ThemeProperty::ColorBackground)
+    let bg_color = theme
+        .get_property(menu_id.clone(), &ThemeProperty::ColorBackground)
         .unwrap_or(Color::from_rgb8(255, 255, 255));
-    let border_color = theme.get_property(menu_id.clone(), &ThemeProperty::ColorBorder)
+    let border_color = theme
+        .get_property(menu_id.clone(), &ThemeProperty::ColorBorder)
         .unwrap_or(Color::from_rgb8(200, 200, 200));
-    let text_color = theme.get_property(menu_id.clone(), &ThemeProperty::ColorText)
+    let text_color = theme
+        .get_property(menu_id.clone(), &ThemeProperty::ColorText)
         .unwrap_or(Color::from_rgb8(0, 0, 0));
-    let hovered_color = theme.get_property(menu_id.clone(), &ThemeProperty::ColorMenuHovered)
+    let hovered_color = theme
+        .get_property(menu_id.clone(), &ThemeProperty::ColorMenuHovered)
         .unwrap_or(Color::from_rgb8(230, 230, 230)); // Default hover color
-    
+
     // Shadow
-    let shadow_rect = RoundedRect::new(x + 2.0, y + 2.0, x + width + 2.0, y + height + 2.0, RoundedRectRadii::new(4.0, 4.0, 4.0, 4.0));
+    let shadow_rect = RoundedRect::new(
+        x + 2.0,
+        y + 2.0,
+        x + width + 2.0,
+        y + height + 2.0,
+        RoundedRectRadii::new(4.0, 4.0, 4.0, 4.0),
+    );
     graphics.fill(
         vello::peniko::Fill::NonZero,
         Affine::IDENTITY,
         &Brush::Solid(Color::new([0.0, 0.0, 0.0, 0.2])),
         None,
-        &shape_to_path(&shadow_rect)
+        &shape_to_path(&shadow_rect),
     );
 
     // Main background
-    let rounded_rect = RoundedRect::new(x, y, x + width, y + height, RoundedRectRadii::new(4.0, 4.0, 4.0, 4.0));
+    let rounded_rect = RoundedRect::new(
+        x,
+        y,
+        x + width,
+        y + height,
+        RoundedRectRadii::new(4.0, 4.0, 4.0, 4.0),
+    );
     graphics.fill(
         vello::peniko::Fill::NonZero,
         Affine::IDENTITY,
         &Brush::Solid(bg_color),
         None,
-        &shape_to_path(&rounded_rect)
+        &shape_to_path(&rounded_rect),
     );
     graphics.stroke(
         &vello::kurbo::Stroke::new(1.0),
         Affine::IDENTITY,
         &Brush::Solid(border_color),
         None,
-        &shape_to_path(&rounded_rect)
+        &shape_to_path(&rounded_rect),
     );
 
     // Draw items
@@ -216,10 +232,10 @@ pub fn render_context_menu(
 
     for (i, item) in flat_items.iter().enumerate() {
         let item_rect = Rect::new(x, current_y, x + width, current_y + item_height);
-        
+
         // Draw hover background
         if Some(i) == hovered_index {
-             match item {
+            match item {
                 ContextMenuItem::Separator => {}, // Don't highlight separators
                 _ => {
                     let item_rounded = RoundedRect::new(
@@ -234,10 +250,10 @@ pub fn render_context_menu(
                         Affine::IDENTITY,
                         &Brush::Solid(hovered_color),
                         None,
-                        &shape_to_path(&item_rounded)
+                        &shape_to_path(&item_rounded),
                     );
-                }
-             }
+                },
+            }
         }
 
         match item {
@@ -254,21 +270,18 @@ pub fn render_context_menu(
                     true,
                     Some(width as f32 - 20.0),
                 );
-            }
+            },
             ContextMenuItem::Separator => {
                 let sep_y = current_y + item_height / 2.0;
-                let line = vello::kurbo::Line::new(
-                    (x + 8.0, sep_y),
-                    (x + width - 8.0, sep_y)
-                );
+                let line = vello::kurbo::Line::new((x + 8.0, sep_y), (x + width - 8.0, sep_y));
                 graphics.stroke(
                     &vello::kurbo::Stroke::new(1.0),
                     Affine::IDENTITY,
                     &Brush::Solid(Color::from_rgb8(200, 200, 200)),
                     None,
-                    &shape_to_path(&line)
+                    &shape_to_path(&line),
                 );
-            }
+            },
             ContextMenuItem::SubMenu { label, .. } => {
                 // Render label
                 text_render.render_text(
@@ -282,13 +295,13 @@ pub fn render_context_menu(
                     true,
                     Some(width as f32 - 30.0),
                 );
-                
+
                 // Draw arrow
                 let arrow_x = x + width - 12.0;
                 let arrow_y = current_y + (item_height / 2.0);
                 let arrow_size = 3.0;
                 let arrow_stroke = vello::kurbo::Stroke::new(1.0);
-                
+
                 graphics.stroke(
                     &arrow_stroke,
                     Affine::IDENTITY,
@@ -297,7 +310,7 @@ pub fn render_context_menu(
                     &shape_to_path(&vello::kurbo::Line::new(
                         Point::new(arrow_x - arrow_size, arrow_y - arrow_size),
                         Point::new(arrow_x, arrow_y),
-                    ))
+                    )),
                 );
                 graphics.stroke(
                     &arrow_stroke,
@@ -307,9 +320,9 @@ pub fn render_context_menu(
                     &shape_to_path(&vello::kurbo::Line::new(
                         Point::new(arrow_x, arrow_y),
                         Point::new(arrow_x - arrow_size, arrow_y + arrow_size),
-                    ))
+                    )),
                 );
-            }
+            },
         }
         current_y += item_height;
     }
@@ -326,14 +339,15 @@ fn calculate_layout_from_items(
     let padding = 4.0;
     let min_width = 120.0;
     let max_width = 400.0;
-    
+
     // Measure text using the active font context for accurate width.
     let mut max_text_width: f64 = 0.0;
     for item in items {
-        if let ContextMenuItem::Action { label, .. } | ContextMenuItem::SubMenu { label, .. } = item {
+        if let ContextMenuItem::Action { label, .. } | ContextMenuItem::SubMenu { label, .. } = item
+        {
             let (text_width, _) = text_render.measure_text_layout(font_cx, label, 14.0, None);
             max_text_width = max_text_width.max(text_width as f64);
-            }
+        }
     }
     // Add padding and clamp.
     let estimated = (max_text_width + 40.0).max(min_width);
@@ -376,7 +390,7 @@ pub fn handle_click(
     let item_height = 24.0;
     let padding = 4.0;
     let relative_y = cursor.y - position.y - padding;
-    
+
     if relative_y < 0.0 {
         return None;
     }
@@ -391,18 +405,19 @@ pub fn handle_click(
     let padding = 4.0;
     let item_top = position.y as f64 + padding + (index as f64 * item_height);
     let item_bottom = item_top + item_height;
-    let submenu_origin = Point::new(
-        rect.x1 as f64 + 8.0,
-        item_top,
-    );
+    let submenu_origin = Point::new(rect.x1 as f64 + 8.0, item_top);
 
     match &flat_items[index] {
         ContextMenuItem::Action { action, .. } => Some(MenuClickResult::Action(action.clone())),
-        ContextMenuItem::SubMenu { items, .. } => {
-            Some(MenuClickResult::SubMenu(ContextMenu { items: items.clone(), groups: None }, submenu_origin))
-        }
+        ContextMenuItem::SubMenu { items, .. } => Some(MenuClickResult::SubMenu(
+            ContextMenu {
+                items: items.clone(),
+                groups: None,
+            },
+            submenu_origin,
+        )),
         _ => Some(MenuClickResult::NonActionInside),
-        }
+    }
 }
 
 /// Hover helper: if cursor is over a submenu item, return its submenu and origin.
@@ -436,7 +451,13 @@ pub fn hover_submenu(
     if let ContextMenuItem::SubMenu { items, .. } = &flat_items[index] {
         let item_top = position.y as f64 + padding + (index as f64 * item_height);
         let submenu_origin = Point::new(rect.x1 as f64 + 8.0, item_top);
-        return Some((ContextMenu { items: items.clone(), groups: None }, submenu_origin));
+        return Some((
+            ContextMenu {
+                items: items.clone(),
+                groups: None,
+            },
+            submenu_origin,
+        ));
     }
     None
 }

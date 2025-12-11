@@ -1,12 +1,12 @@
 //! Thumbnail provider implementation using the thumbnailify crate.
 
-use std::path::PathBuf;
-use std::sync::Arc;
 use crate::filesystem::entry::FileEntry;
 use crate::filesystem::mime_detector::MimeDetector;
-use crate::thumbnail::{ThumbnailProvider, ThumbnailError};
-use crate::thumbnail::cache::{thumbnail_cache_path, is_thumbnail_fresh};
+use crate::thumbnail::cache::{is_thumbnail_fresh, thumbnail_cache_path};
 use crate::thumbnail::executor::ThumbnailExecutor;
+use crate::thumbnail::{ThumbnailError, ThumbnailProvider};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Thumbnail provider using the thumbnailify crate.
 pub struct ThumbnailifyProvider {
@@ -17,7 +17,9 @@ impl ThumbnailifyProvider {
     /// Get a receiver for thumbnail events.
     ///
     /// This allows subscribing to events when thumbnails are ready or fail.
-    pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<crate::thumbnail::events::ThumbnailEvent> {
+    pub fn subscribe(
+        &self,
+    ) -> tokio::sync::broadcast::Receiver<crate::thumbnail::events::ThumbnailEvent> {
         self.executor.subscribe()
     }
 }
@@ -32,9 +34,9 @@ impl ThumbnailifyProvider {
 
     /// Check if a MIME type is supported for thumbnail generation.
     fn is_mime_supported(mime_type: &str) -> bool {
-        mime_type.starts_with("image/") ||
-        mime_type.starts_with("video/") ||
-        mime_type == "application/pdf"
+        mime_type.starts_with("image/")
+            || mime_type.starts_with("video/")
+            || mime_type == "application/pdf"
     }
 }
 
@@ -73,21 +75,22 @@ impl ThumbnailProvider for ThumbnailifyProvider {
         // Only support files
         if !entry.is_file() {
             return Err(ThumbnailError::UnsupportedFileType(
-                "Only files are supported for thumbnail generation".to_string()
+                "Only files are supported for thumbnail generation".to_string(),
             ));
         }
 
         // Check if file type is supported
         if !self.is_supported(entry) {
-            let mime_type = entry.metadata.mime_type.as_deref()
-                .unwrap_or("unknown");
-            return Err(ThumbnailError::UnsupportedFileType(
-                format!("MIME type '{}' is not supported", mime_type)
-            ));
+            let mime_type = entry.metadata.mime_type.as_deref().unwrap_or("unknown");
+            return Err(ThumbnailError::UnsupportedFileType(format!(
+                "MIME type '{}' is not supported",
+                mime_type
+            )));
         }
 
         // Queue thumbnail generation
-        self.executor.request_thumbnail(entry.clone(), size)
+        self.executor
+            .request_thumbnail(entry.clone(), size)
             .map_err(|e| ThumbnailError::Unknown(format!("Failed to queue thumbnail: {}", e)))?;
 
         log::debug!("Thumbnail generation queued for {:?}", entry.path);
@@ -113,4 +116,3 @@ impl ThumbnailProvider for ThumbnailifyProvider {
         false
     }
 }
-

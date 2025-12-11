@@ -1,6 +1,10 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{parse::{Parse, ParseStream}, Token, LitStr, Expr, Result, punctuated::Punctuated};
+use syn::{
+    parse::{Parse, ParseStream},
+    punctuated::Punctuated,
+    Expr, LitStr, Result, Token,
+};
 
 struct ContextMenuItem {
     label: LitStr,

@@ -25,4 +25,3 @@ pub enum ThumbnailError {
     #[error("Unknown error: {0}")]
     Unknown(String),
 }
-

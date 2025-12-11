@@ -82,9 +82,7 @@ use wayland_protocols_plasma::appmenu::client::{
 };
 
 #[cfg(feature = "global-menu")]
-impl Dispatch<org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager, ()>
-    for WaylandClientState
-{
+impl Dispatch<org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager, ()> for WaylandClientState {
     fn event(
         _state: &mut Self,
         _proxy: &org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager,
@@ -110,4 +108,3 @@ impl Dispatch<org_kde_kwin_appmenu::OrgKdeKwinAppmenu, ()> for WaylandClientStat
         // The appmenu object doesn't send events to clients
     }
 }
-

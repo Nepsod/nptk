@@ -41,20 +41,23 @@ impl<'a> AppMenuRegistrar<'a> {
             let path = ObjectPath::try_from(MENU_OBJECT_PATH)?;
             // Always use 3-arg version to ensure service name is registered.
             // This helps Plasma resolve the menu even if it only has the unique bus name.
-            let call3: ZbusResult<()> = self
-                .proxy
-                .call("RegisterWindow", &((id as u32), self.service.as_str(), path.clone()));
+            let call3: ZbusResult<()> = self.proxy.call(
+                "RegisterWindow",
+                &((id as u32), self.service.as_str(), path.clone()),
+            );
             if call3.is_err() {
                 // Fall back to 2-arg if 3-arg fails (for compatibility)
                 log::debug!("3-arg RegisterWindow failed, trying 2-arg");
-                let call2: ZbusResult<()> =
-                    self.proxy.call("RegisterWindow", &((id as u32), path));
+                let call2: ZbusResult<()> = self.proxy.call("RegisterWindow", &((id as u32), path));
                 if call2.is_err() {
                     return Err(call2.unwrap_err());
                 }
                 log::debug!("Window registered with 2-arg RegisterWindow");
             } else {
-                log::debug!("Window registered with 3-arg RegisterWindow (service={})", self.service);
+                log::debug!(
+                    "Window registered with 3-arg RegisterWindow (service={})",
+                    self.service
+                );
             }
         } else if let Some(id) = self.current.take() {
             let _: () = self.proxy.call("UnregisterWindow", &((id as u32),))?;
@@ -64,5 +67,3 @@ impl<'a> AppMenuRegistrar<'a> {
         Ok(())
     }
 }
-
-

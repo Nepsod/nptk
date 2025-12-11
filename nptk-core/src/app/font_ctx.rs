@@ -28,8 +28,6 @@ impl FontContext {
         context
     }
 
-
-
     /// Discover and load system fonts into the collection.
     ///
     /// This triggers font discovery using fontique's fontconfig backend.

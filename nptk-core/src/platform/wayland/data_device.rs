@@ -3,11 +3,11 @@
 //! Drag & drop support via wl_data_device_manager.
 
 use std::sync::Arc;
+use wayland_client::backend::protocol::Message;
 use wayland_client::protocol::{
     wl_data_device, wl_data_device_manager, wl_data_offer, wl_data_source,
 };
 use wayland_client::{Connection, Dispatch, QueueHandle};
-use wayland_client::backend::protocol::Message;
 
 use super::shell::WaylandClientState;
 
@@ -23,11 +23,7 @@ impl wayland_client::backend::ObjectData for DummyObjectData {
         None
     }
 
-    fn destroyed(
-        &self,
-        _object_id: wayland_client::backend::ObjectId,
-    ) {
-    }
+    fn destroyed(&self, _object_id: wayland_client::backend::ObjectId) {}
 }
 
 /// Wrapper around a Wayland data offer.
@@ -97,43 +93,63 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for WaylandClientState {
                 let offer = DataOffer::new(id);
                 // Store temporarily, will be moved to drag_offer or selection_offer
                 // based on subsequent events (Enter or Selection)
-                // For now we just track it in a pending list if needed, 
+                // For now we just track it in a pending list if needed,
                 // or we can rely on the fact that Enter/Selection comes right after.
                 // But typically we need to store it to handle Offer events.
                 state.pending_data_offers.push(offer);
-            }
-            wl_data_device::Event::Enter { serial: _, surface: _, x: _, y: _, id } => {
+            },
+            wl_data_device::Event::Enter {
+                serial: _,
+                surface: _,
+                x: _,
+                y: _,
+                id,
+            } => {
                 // Drag enter
                 if let Some(id) = id {
-                    if let Some(index) = state.pending_data_offers.iter().position(|o| o.offer == id) {
+                    if let Some(index) =
+                        state.pending_data_offers.iter().position(|o| o.offer == id)
+                    {
                         let offer = state.pending_data_offers.remove(index);
-                        if let Some(device_state) = state.data_devices.iter_mut().find(|d| d.device == *device) {
+                        if let Some(device_state) =
+                            state.data_devices.iter_mut().find(|d| d.device == *device)
+                        {
                             device_state.drag_offer = Some(offer);
                         }
                     }
                 }
                 // TODO: Handle drag enter logic (notify surface)
-            }
+            },
             wl_data_device::Event::Leave => {
                 // Drag leave
-                if let Some(device_state) = state.data_devices.iter_mut().find(|d| d.device == *device) {
+                if let Some(device_state) =
+                    state.data_devices.iter_mut().find(|d| d.device == *device)
+                {
                     device_state.drag_offer = None;
                 }
                 // TODO: Handle drag leave logic
-            }
-            wl_data_device::Event::Motion { time: _, x: _, y: _ } => {
+            },
+            wl_data_device::Event::Motion {
+                time: _,
+                x: _,
+                y: _,
+            } => {
                 // Drag motion
                 // TODO: Handle drag motion logic
-            }
+            },
             wl_data_device::Event::Drop => {
                 // Drag drop
                 // TODO: Handle drop logic
-            }
+            },
             wl_data_device::Event::Selection { id } => {
                 // Clipboard selection
-                if let Some(device_state) = state.data_devices.iter_mut().find(|d| d.device == *device) {
+                if let Some(device_state) =
+                    state.data_devices.iter_mut().find(|d| d.device == *device)
+                {
                     if let Some(id) = id {
-                        if let Some(index) = state.pending_data_offers.iter().position(|o| o.offer == id) {
+                        if let Some(index) =
+                            state.pending_data_offers.iter().position(|o| o.offer == id)
+                        {
                             let offer = state.pending_data_offers.remove(index);
                             device_state.selection_offer = Some(offer);
                         }
@@ -141,8 +157,8 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for WaylandClientState {
                         device_state.selection_offer = None;
                     }
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 
@@ -166,7 +182,11 @@ impl Dispatch<wl_data_offer::WlDataOffer, ()> for WaylandClientState {
         match event {
             wl_data_offer::Event::Offer { mime_type } => {
                 // Find the offer in pending or active offers and add mime type
-                if let Some(o) = state.pending_data_offers.iter_mut().find(|o| o.offer == *offer) {
+                if let Some(o) = state
+                    .pending_data_offers
+                    .iter_mut()
+                    .find(|o| o.offer == *offer)
+                {
                     o.mime_types.push(mime_type);
                 } else {
                     for device in &mut state.data_devices {
@@ -182,8 +202,8 @@ impl Dispatch<wl_data_offer::WlDataOffer, ()> for WaylandClientState {
                         }
                     }
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 }
@@ -198,25 +218,28 @@ impl Dispatch<wl_data_source::WlDataSource, ()> for WaylandClientState {
         _qh: &QueueHandle<Self>,
     ) {
         match event {
-            wl_data_source::Event::Send { mime_type: _, fd: _ } => {
+            wl_data_source::Event::Send {
+                mime_type: _,
+                fd: _,
+            } => {
                 // TODO: Handle sending data
-            }
+            },
             wl_data_source::Event::Cancelled => {
                 source.destroy();
-            }
+            },
             wl_data_source::Event::Target { mime_type: _ } => {
                 // Target accepted
-            }
+            },
             wl_data_source::Event::DndDropPerformed => {
                 // Drop performed
-            }
+            },
             wl_data_source::Event::DndFinished => {
                 source.destroy();
-            }
+            },
             wl_data_source::Event::Action { dnd_action: _ } => {
                 // Action selected
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 }

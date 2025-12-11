@@ -49,12 +49,7 @@ impl Dispatch<wl_touch::WlTouch, ()> for WaylandClientState {
                     }
                 }
             },
-            wl_touch::Event::Motion {
-                time: _,
-                id,
-                x,
-                y,
-            } => {
+            wl_touch::Event::Motion { time: _, id, x, y } => {
                 // Find surface with this touch id - for simplicity, send to focused surface
                 if let Some(key) = state.shared.get_focused_surface_key() {
                     if let Some(surface) = state.shared.get_surface(key) {
@@ -87,4 +82,3 @@ impl Dispatch<wl_touch::WlTouch, ()> for WaylandClientState {
         }
     }
 }
-

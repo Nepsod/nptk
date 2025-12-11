@@ -19,4 +19,3 @@ impl Dispatch<wl_seat::WlSeat, ()> for WaylandClientState {
         // No-op - seat events are handled by individual input devices
     }
 }
-

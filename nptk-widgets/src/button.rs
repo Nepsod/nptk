@@ -1,5 +1,4 @@
 use crate::theme_rendering::render_button_with_theme;
-use std::time::{Duration, Instant};
 use nptk_core::app::context::AppContext;
 use nptk_core::app::focus::{FocusBounds, FocusId, FocusProperties, FocusState, FocusableWidget};
 use nptk_core::app::info::AppInfo;
@@ -13,6 +12,7 @@ use nptk_core::widget::{BoxedWidget, Widget, WidgetChildExt, WidgetLayoutExt};
 use nptk_core::window::{ElementState, KeyCode, MouseButton, PhysicalKey};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use std::time::{Duration, Instant};
 
 /// An interactive area with a child widget that runs a closure when pressed.
 ///
@@ -315,7 +315,7 @@ impl Widget for Button {
         // Handle repeat logic
         if self.repeat_enabled && self.state == ButtonState::Pressed {
             let now = Instant::now();
-            
+
             if let Some(start_time) = self.press_start_time {
                 // Check if we've passed the initial delay
                 if now.duration_since(start_time) >= self.repeat_delay {
@@ -332,7 +332,7 @@ impl Widget for Button {
                         self.last_repeat_time = Some(now);
                     }
                 }
-                
+
                 // Keep requesting updates while pressed to ensure smooth repeating
                 // We use Update::empty() here because we just need the loop to continue,
                 // but usually we need to signal that we want another frame or update cycle.
@@ -342,12 +342,12 @@ impl Widget for Button {
                 // For now, we'll rely on the fact that if we change something, we get updated.
                 // But if nothing changes (mouse held still), we might not get updates.
                 // We can force a redraw which usually triggers a new update cycle in many game loops,
-                // but here we should be careful. 
+                // but here we should be careful.
                 // Ideally, we'd request a timer callback. Since we don't have that explicit API here yet,
-                // we can return Update::DRAW to force a continuous loop while pressed, 
+                // we can return Update::DRAW to force a continuous loop while pressed,
                 // or rely on the fact that we are modifying state.
                 // Let's try returning Update::DRAW to ensure we get called back.
-                update |= Update::DRAW; 
+                update |= Update::DRAW;
             } else {
                 // Should have been set when state became Pressed, but just in case
                 self.press_start_time = Some(now);

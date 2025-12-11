@@ -29,7 +29,8 @@ mod wl_integration;
 /// Plasma AppMenu client state.
 struct PlasmaMenuState {
     menu_info: Arc<Mutex<Option<(String, String)>>>,
-    appmenu_objects: Arc<Mutex<std::collections::HashMap<u32, org_kde_kwin_appmenu::OrgKdeKwinAppmenu>>>,
+    appmenu_objects:
+        Arc<Mutex<std::collections::HashMap<u32, org_kde_kwin_appmenu::OrgKdeKwinAppmenu>>>,
 }
 
 static PLASMA_CLIENT: OnceLock<Arc<Mutex<Option<PlasmaMenuClient>>>> = OnceLock::new();
@@ -75,11 +76,12 @@ impl PlasmaMenuClient {
 
         // Bind to org.kde.kwin.appmenu_manager global if available
         // Try version 2 first (KWin supports it), fall back to version 1
-        let appmenu_manager = match global_list.bind::<
-            org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager,
-            _,
-            _,
-        >(&queue_handle, 1..=2, ()) {
+        let appmenu_manager = match global_list
+            .bind::<org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager, _, _>(
+            &queue_handle,
+            1..=2,
+            (),
+        ) {
             Ok(manager) => {
                 let version = manager.version();
                 log::info!("Bound to org.kde.kwin.appmenu_manager version {}", version);
@@ -114,45 +116,42 @@ impl PlasmaMenuClient {
             }
         }
     }
-    
+
     /// Set the application menu for a Wayland surface.
     ///
     /// This should be called when a window surface is created and menu info is available.
-    pub fn set_appmenu_for_surface(
-        &self,
-        surface: &wl_surface::WlSurface,
-    ) -> Result<(), String> {
+    pub fn set_appmenu_for_surface(&self, surface: &wl_surface::WlSurface) -> Result<(), String> {
         let Some(ref manager) = self.appmenu_manager else {
             return Err("AppMenu manager not available".to_string());
         };
-        
+
         let state_guard = self.state.lock().unwrap();
         let menu_info_guard = state_guard.menu_info.lock().unwrap();
         let Some((ref service, ref path)) = *menu_info_guard else {
             return Err("Menu info not available yet".to_string());
         };
-        
+
         // Create an appmenu object for this surface
         let appmenu = manager.create(surface, &self.queue_handle, ());
         let surface_id = surface.id().protocol_id();
-        
+
         // Set the menu address
         appmenu.set_address(service.clone(), path.clone());
-        
+
         // Store the appmenu object
         let mut appmenu_objects = state_guard.appmenu_objects.lock().unwrap();
         appmenu_objects.insert(surface_id, appmenu);
-        
+
         log::info!(
             "Set application menu for surface {}: service={}, path={}",
             surface_id,
             service,
             path
         );
-        
+
         Ok(())
     }
-    
+
     fn dispatch_events(&self) -> Result<(), String> {
         let mut event_queue = self._event_queue.lock().unwrap();
         let mut state = self.state.lock().unwrap();
@@ -172,12 +171,12 @@ pub fn initialize() -> Result<(), String> {
     PLASMA_CLIENT
         .set(Arc::new(Mutex::new(Some(client))))
         .map_err(|_| "Plasma client already initialized".to_string())?;
-    
+
     // Update menu info if available
     if let Some(ref client) = *PLASMA_CLIENT.get().unwrap().lock().unwrap() {
         client.update_menu_info();
     }
-    
+
     Ok(())
 }
 
@@ -202,19 +201,24 @@ pub fn set_appmenu_for_surface(surface: &wl_surface::WlSurface) -> Result<(), St
 /// menu info for later use when surfaces are created.
 pub fn set_appmenu_properties(service_name: &str) -> Result<(), String> {
     // Store menu info for later use
-    MenuInfoStorage::set(service_name.to_string(), "/com/canonical/menu/1".to_string());
-    
+    MenuInfoStorage::set(
+        service_name.to_string(),
+        "/com/canonical/menu/1".to_string(),
+    );
+
     // Notify VGI's Wayland client about the menu update
     // This will set appmenu for all existing surfaces
     wl_integration::notify_wl_client_menu_update();
-    
+
     // Try to initialize the Plasma client (for standalone use, separate from VGI's client)
     if let Err(err) = initialize() {
-        log::debug!("Failed to initialize Plasma window management client: {err} (may not be on Plasma)");
+        log::debug!(
+            "Failed to initialize Plasma window management client: {err} (may not be on Plasma)"
+        );
     } else {
         log::info!("Plasma window management protocol client initialized");
     }
-    
+
     Ok(())
 }
 
@@ -246,12 +250,14 @@ pub fn dispatch_events() -> Result<(), String> {
 
 /// Check if the Plasma client is initialized.
 pub fn is_initialized() -> bool {
-    PLASMA_CLIENT.get().is_some()
-        && PLASMA_CLIENT.get().unwrap().lock().unwrap().is_some()
+    PLASMA_CLIENT.get().is_some() && PLASMA_CLIENT.get().unwrap().lock().unwrap().is_some()
 }
 
-impl Dispatch<wayland_client::protocol::wl_registry::WlRegistry, wayland_client::globals::GlobalListContents>
-    for PlasmaMenuState
+impl
+    Dispatch<
+        wayland_client::protocol::wl_registry::WlRegistry,
+        wayland_client::globals::GlobalListContents,
+    > for PlasmaMenuState
 {
     fn event(
         _state: &mut Self,
@@ -265,9 +271,7 @@ impl Dispatch<wayland_client::protocol::wl_registry::WlRegistry, wayland_client:
     }
 }
 
-impl Dispatch<org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager, ()>
-    for PlasmaMenuState
-{
+impl Dispatch<org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager, ()> for PlasmaMenuState {
     fn event(
         _state: &mut Self,
         _proxy: &org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager,
@@ -292,4 +296,3 @@ impl Dispatch<org_kde_kwin_appmenu::OrgKdeKwinAppmenu, ()> for PlasmaMenuState {
         // The appmenu object doesn't send events to clients
     }
 }
-

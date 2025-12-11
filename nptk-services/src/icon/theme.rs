@@ -122,29 +122,34 @@ impl IconTheme {
     /// Load an icon theme from a directory.
     pub fn load(theme_name: &str, base_path: PathBuf) -> Result<Self, IconError> {
         let index_path = base_path.join("index.theme");
-        
+
         if !index_path.exists() {
             return Err(IconError::ThemeNotFound(theme_name.to_string()));
         }
 
-        let content = std::fs::read_to_string(&index_path)
-            .map_err(|e| IconError::IndexParseError(format!("Failed to read index.theme: {}", e)))?;
+        let content = std::fs::read_to_string(&index_path).map_err(|e| {
+            IconError::IndexParseError(format!("Failed to read index.theme: {}", e))
+        })?;
 
         let ini = parse_ini(&content)?;
 
         // Get theme name and inherits from [Icon Theme] section
-        let theme_section = ini.get("Icon Theme")
-            .ok_or_else(|| IconError::IndexParseError("Missing [Icon Theme] section".to_string()))?;
+        let theme_section = ini.get("Icon Theme").ok_or_else(|| {
+            IconError::IndexParseError("Missing [Icon Theme] section".to_string())
+        })?;
 
-        let name = theme_section.get("Name")
+        let name = theme_section
+            .get("Name")
             .map(|s| s.to_string())
             .unwrap_or_else(|| theme_name.to_string());
 
-        let inherits = theme_section.get("Inherits")
+        let inherits = theme_section
+            .get("Inherits")
             .map(|s| s.split(',').map(|t| t.trim().to_string()).collect())
             .unwrap_or_default();
 
-        let directories_str = theme_section.get("Directories")
+        let directories_str = theme_section
+            .get("Directories")
             .ok_or_else(|| IconError::IndexParseError("Missing Directories key".to_string()))?;
 
         let directory_names: Vec<String> = directories_str
@@ -156,31 +161,38 @@ impl IconTheme {
         let mut directories = Vec::new();
         for dir_name in &directory_names {
             if let Some(dir_section) = ini.get(dir_name.as_str()) {
-                let size = dir_section.get("Size")
+                let size = dir_section
+                    .get("Size")
                     .and_then(|s| s.parse::<u32>().ok())
                     .unwrap_or(48);
 
-                let scale = dir_section.get("Scale")
+                let scale = dir_section
+                    .get("Scale")
                     .and_then(|s| s.parse::<u32>().ok())
                     .unwrap_or(1);
 
-                let context_str = dir_section.get("Context")
+                let context_str = dir_section
+                    .get("Context")
                     .map(|s| s.as_str())
                     .unwrap_or("Unknown");
                 let context = IconContext::from_str(context_str);
 
-                let type_str = dir_section.get("Type")
+                let type_str = dir_section
+                    .get("Type")
                     .map(|s| s.as_str())
                     .unwrap_or("Fixed");
                 let directory_type = DirectoryType::from_str(type_str);
 
-                let min_size = dir_section.get("MinSize")
+                let min_size = dir_section
+                    .get("MinSize")
                     .and_then(|s| s.parse::<u32>().ok());
 
-                let max_size = dir_section.get("MaxSize")
+                let max_size = dir_section
+                    .get("MaxSize")
                     .and_then(|s| s.parse::<u32>().ok());
 
-                let threshold = dir_section.get("Threshold")
+                let threshold = dir_section
+                    .get("Threshold")
                     .and_then(|s| s.parse::<u32>().ok());
 
                 directories.push(IconDirectory {
@@ -218,7 +230,7 @@ fn parse_ini(content: &str) -> Result<HashMap<String, HashMap<String, String>>, 
 
     for line in content.lines() {
         let line = line.trim();
-        
+
         // Skip empty lines and comments
         if line.is_empty() || line.starts_with('#') {
             continue;
@@ -250,4 +262,3 @@ fn parse_ini(content: &str) -> Result<HashMap<String, HashMap<String, String>>, 
 
     Ok(result)
 }
-

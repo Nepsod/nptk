@@ -34,10 +34,10 @@ impl Dispatch<xdg_activation_token_v1::XdgActivationTokenV1, ()> for WaylandClie
                 // Token received
                 // TODO: Use token to activate window or pass to another application
                 log::info!("Received activation token: {}", token_str);
-                
+
                 // We can store it or use it immediately if we have a pending activation request
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 }

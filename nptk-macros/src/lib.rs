@@ -38,5 +38,7 @@ mod context_menu;
 /// ```
 #[proc_macro]
 pub fn context_menu(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    proc_macro::TokenStream::from(context_menu::context_menu(proc_macro2::TokenStream::from(input)))
+    proc_macro::TokenStream::from(context_menu::context_menu(proc_macro2::TokenStream::from(
+        input,
+    )))
 }

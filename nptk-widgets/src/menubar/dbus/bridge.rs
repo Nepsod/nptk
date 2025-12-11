@@ -13,12 +13,15 @@ use zbus::zvariant::OwnedValue;
 use zbus::Result as ZbusResult;
 
 use crate::menubar::common::{platform, x11};
-use nptk_core::platform::MenuInfoStorage;
 use crate::menubar::plasma;
+use nptk_core::platform::MenuInfoStorage;
 
 use super::menu_object::MenuObject;
 use super::registrar::AppMenuRegistrar;
-use super::types::{MenuSnapshot, MenuState, flatten_properties_updates, node_properties_map, owned_value, properties_index};
+use super::types::{
+    flatten_properties_updates, node_properties_map, owned_value, properties_index, MenuSnapshot,
+    MenuState,
+};
 
 const MENU_OBJECT_PATH: &str = "/com/canonical/menu/1";
 
@@ -85,16 +88,20 @@ impl Drop for Bridge {
     }
 }
 
-fn run(cmd_rx: Receiver<Command>, evt_tx: Sender<BridgeEvent>, cmd_tx: Sender<Command>) -> ZbusResult<()> {
+fn run(
+    cmd_rx: Receiver<Command>,
+    evt_tx: Sender<BridgeEvent>,
+    cmd_tx: Sender<Command>,
+) -> ZbusResult<()> {
     // D-Bus well-known names must have elements that don't start with a digit.
-    // 
+    //
     // Service name strategy:
     // - For winit: Use static "nptk.menubar" (matches app_id "nptk" via Plasma's heuristic)
     // - For native Wayland: Use "com.nptk.app.menubar_p{pid}" (protocol-based, PID needed for uniqueness)
     //
     // Detect platform using Platform::detect() to correctly identify native Wayland vs winit/X11
     let is_native_wayland = platform::is_native_wayland();
-    
+
     let service_name = if is_native_wayland {
         // Native Wayland: use PID-based name (protocol works directly, so uniqueness is important)
         format!("com.nptk.app.menubar_p{}", std::process::id())
@@ -104,13 +111,17 @@ fn run(cmd_rx: Receiver<Command>, evt_tx: Sender<BridgeEvent>, cmd_tx: Sender<Co
         // D-Bus names must have at least one dot, so "nptk.menubar" is valid
         "nptk.menubar".to_string()
     };
-    
+
     log::info!(
         "Global menu service name: '{}' (platform: {})",
         service_name,
-        if is_native_wayland { "native Wayland" } else { "winit" }
+        if is_native_wayland {
+            "native Wayland"
+        } else {
+            "winit"
+        }
     );
-    
+
     let state = Arc::new(Mutex::new(MenuState::default()));
     let menu_obj = MenuObject {
         state: state.clone(),
@@ -122,7 +133,11 @@ fn run(cmd_rx: Receiver<Command>, evt_tx: Sender<BridgeEvent>, cmd_tx: Sender<Co
         .name(WellKnownName::try_from(service_name.clone())?)?
         .serve_at(MENU_OBJECT_PATH, menu_obj)?
         .build()?;
-    log::info!("Global menu DBus service '{}', object '{}'", service_name, MENU_OBJECT_PATH);
+    log::info!(
+        "Global menu DBus service '{}', object '{}'",
+        service_name,
+        MENU_OBJECT_PATH
+    );
 
     let iface_ref = connection
         .object_server()
@@ -152,7 +167,7 @@ fn run(cmd_rx: Receiver<Command>, evt_tx: Sender<BridgeEvent>, cmd_tx: Sender<Co
         },
         Err(e) => {
             log::warn!("Failed to check for global menu registrar: {}", e);
-        }
+        },
     }
 
     loop {
@@ -226,26 +241,33 @@ fn run(cmd_rx: Receiver<Command>, evt_tx: Sender<BridgeEvent>, cmd_tx: Sender<Co
                         // X11 or XWayland (winit with X11)
                         log::info!("Global menu registered window id: {:?}", id);
                     }
-                    
+
                     // Set X11 window hints for Plasma appmenu discovery
                     // Always try to set X11 hints if we have a window ID - the function will fail gracefully
                     // if we're not on X11. This handles both pure X11 and XWayland cases.
                     // On native Wayland, this will fail but that's okay - we use Wayland protocols instead.
                     if let Some(window_id) = id {
-                        if let Err(err) = x11::set_appmenu_hints(window_id as u32, &service_name, MENU_OBJECT_PATH) {
+                        if let Err(err) = x11::set_appmenu_hints(
+                            window_id as u32,
+                            &service_name,
+                            MENU_OBJECT_PATH,
+                        ) {
                             log::debug!("Failed to set X11 appmenu hints (may not be on X11/XWayland): {err}");
                         } else {
-                            log::debug!("Successfully set X11 appmenu hints on window {}", window_id);
+                            log::debug!(
+                                "Successfully set X11 appmenu hints on window {}",
+                                window_id
+                            );
                         }
                     }
-                    
+
                     // On native Wayland, also try to set menu properties via Plasma window management
                     if is_native_wayland {
                         if let Err(err) = plasma::set_appmenu_properties(&service_name) {
                             log::debug!("Failed to set Wayland appmenu properties (may not be on Plasma): {err}");
                         }
                     }
-                    
+
                     // Nudge clients to query the layout after registration
                     // CRITICAL: We MUST run this even if entries are empty, so the root node (id=0)
                     // properties are sent. This prevents a race condition where SetWindow arrives
@@ -300,7 +322,8 @@ fn run(cmd_rx: Receiver<Command>, evt_tx: Sender<BridgeEvent>, cmd_tx: Sender<Co
                     }
                     // Do NOT emit LayoutUpdated for children here - the importer will call
                     // AboutToShow(id) or GetLayout(id, ...) when it needs the layout for a submenu.
-                } else if let Some(pnode) = super::types::find_node_by_id(&st_guard.entries, parent) {
+                } else if let Some(pnode) = super::types::find_node_by_id(&st_guard.entries, parent)
+                {
                     for c in &pnode.children {
                         updates.push((c.id, node_properties_map(c)));
                     }
@@ -323,4 +346,3 @@ fn run(cmd_rx: Receiver<Command>, evt_tx: Sender<BridgeEvent>, cmd_tx: Sender<Co
 
     Ok(())
 }
-

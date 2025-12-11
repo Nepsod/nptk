@@ -19,7 +19,8 @@ pub struct TextRenderContext {
     layout_cx: LayoutContext,
     /// Cache for text layouts to avoid expensive rebuilding
     /// Key: (text, max_width_u32, font_size_u32, max_lines, center_align)
-    layout_cache: std::collections::HashMap<(String, u32, u32, Option<usize>, bool), Layout<[u8; 4]>>,
+    layout_cache:
+        std::collections::HashMap<(String, u32, u32, Option<usize>, bool), Layout<[u8; 4]>>,
 }
 
 impl TextRenderContext {
@@ -32,7 +33,7 @@ impl TextRenderContext {
     }
 
     /// Render text using Parley for proper layout and glyph mapping
-    /// 
+    ///
     /// # Arguments
     /// * `max_width` - Optional maximum width for text wrapping. If None, text will not wrap.
     pub fn render_text(
@@ -94,10 +95,10 @@ impl TextRenderContext {
             text.to_string(),
             max_width.map(|w| w as u32).unwrap_or(0),
             font_size as u32,
-            None, // max_lines = None for render_text
+            None,  // max_lines = None for render_text
             false, // center_align = false for render_text
         );
-        
+
         // Check cache first
         let layout = if let Some(cached_layout) = self.layout_cache.get(&cache_key) {
             // Cache hit - clone the layout (cheap, Arc-based internally)
@@ -122,7 +123,7 @@ impl TextRenderContext {
                 layout.break_all_lines(None);
             }
             layout.align(max_width, Alignment::Start, Default::default());
-            
+
             // Store in cache
             self.layout_cache.insert(cache_key, layout.clone());
             layout
@@ -205,7 +206,7 @@ impl TextRenderContext {
             max_lines,
             center_align,
         );
-        
+
         // Check cache first
         let layout = if let Some(cached_layout) = self.layout_cache.get(&cache_key) {
             // Cache hit - clone the layout (cheap, Arc-based internally)
@@ -236,7 +237,7 @@ impl TextRenderContext {
                 Alignment::Start
             };
             layout.align(max_width, align, Default::default());
-            
+
             // Store in cache
             self.layout_cache.insert(cache_key, layout.clone());
             layout
@@ -246,7 +247,9 @@ impl TextRenderContext {
         let brushes = vec![color];
 
         // Render the text using Parley's layout with line limit
-        self.render_layout_simple_with_max_lines(scene, &layout, &brushes, transform, hint, max_lines);
+        self.render_layout_simple_with_max_lines(
+            scene, &layout, &brushes, transform, hint, max_lines,
+        );
 
         Ok(())
     }
@@ -395,7 +398,13 @@ impl TextRenderContext {
     }
 
     /// Measure text layout and get line count when wrapped to a specific width
-    pub fn measure_text_layout(&self, font_cx: &mut FontContext, text: &str, font_size: f32, max_width: Option<f32>) -> (f32, usize) {
+    pub fn measure_text_layout(
+        &self,
+        font_cx: &mut FontContext,
+        text: &str,
+        font_size: f32,
+        max_width: Option<f32>,
+    ) -> (f32, usize) {
         if text.is_empty() {
             return (0.0, 0);
         }

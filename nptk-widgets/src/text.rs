@@ -164,11 +164,12 @@ impl Widget for Text {
 
         StyleNode {
             style: LayoutStyle {
-                size: Vector2::new(
-                    width,
-                    Dimension::length(calculated_height),
-                ),
-                flex_grow: if style.size.x == Dimension::auto() { 1.0 } else { style.flex_grow }, // Grow to fill space if auto width
+                size: Vector2::new(width, Dimension::length(calculated_height)),
+                flex_grow: if style.size.x == Dimension::auto() {
+                    1.0
+                } else {
+                    style.flex_grow
+                }, // Grow to fill space if auto width
                 ..style
             },
             children: Vec::new(),

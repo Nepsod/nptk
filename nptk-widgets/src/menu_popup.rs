@@ -36,7 +36,7 @@ pub struct MenuPopup {
     on_item_selected: Option<Arc<dyn Fn(usize) -> Update + Send + Sync>>,
     /// Callback to execute when the popup should be closed
     on_close: Option<Arc<dyn Fn() -> Update + Send + Sync>>,
-    
+
     // Submenu support
     /// Currently open child popup
     child_popup: Option<Box<MenuPopup>>,
@@ -426,7 +426,7 @@ impl Widget for MenuPopup {
                     let arrow_x = item_rect.x1 - 12.0;
                     let arrow_y = item_rect.y0 + (item_height / 2.0);
                     let arrow_size = 3.0;
-                    
+
                     let arrow_stroke = Stroke::new(1.0);
                     let arrow_color = if Some(i) == self.hovered_index {
                         text_color
@@ -482,7 +482,7 @@ impl Widget for MenuPopup {
                 // Calculate position for child popup
                 // To the right of the parent item, slightly overlapping vertically
                 let item_y = popup_rect.y0 + 4.0 + (open_index as f64 * item_height);
-                
+
                 // Position: right of parent popup, aligned with item top
                 let child_x = popup_rect.x1 - 2.0; // Small overlap
                 let child_y = item_y - 4.0; // Align with item top (minus padding)
@@ -493,7 +493,7 @@ impl Widget for MenuPopup {
                     layout: Layout::default(),
                     children: Vec::new(),
                 };
-                
+
                 child_layout.layout.location.x = child_x as f32;
                 child_layout.layout.location.y = child_y as f32;
                 child_layout.layout.size.width = child_width as f32;
@@ -553,15 +553,14 @@ impl Widget for MenuPopup {
                     let item = &self.items[hovered];
                     if item.has_submenu() {
                         // Open new submenu
-                        let mut child = MenuPopup::new()
-                            .with_items(item.submenu.clone());
-                        
+                        let mut child = MenuPopup::new().with_items(item.submenu.clone());
+
                         // Pass callbacks
                         if let Some(ref cb) = self.on_close {
                             let cb = cb.clone();
                             child = child.with_on_close(move || cb());
                         }
-                        
+
                         self.child_popup = Some(Box::new(child));
                         self.open_item_index = Some(hovered);
                         update |= Update::DRAW;
@@ -585,7 +584,7 @@ impl Widget for MenuPopup {
                 let item_y = popup_rect.y0 + 4.0 + (open_index as f64 * item_height);
                 let child_x = popup_rect.x1 - 2.0;
                 let child_y = item_y - 4.0;
-                
+
                 let (child_width, child_height) = child.calculate_size();
                 let mut child_layout = LayoutNode {
                     layout: Layout::default(),
@@ -597,12 +596,20 @@ impl Widget for MenuPopup {
                 child_layout.layout.size.height = child_height as f32;
 
                 update |= child.update(&child_layout, _context, info);
-                
+
                 // Check if mouse is over child
                 if let Some(pos) = cursor_pos {
-                    let child_rect = Rect::new(child_x, child_y, child_x + child_width, child_y + child_height);
-                    if pos.x as f64 >= child_rect.x0 && pos.x as f64 <= child_rect.x1 &&
-                       pos.y as f64 >= child_rect.y0 && pos.y as f64 <= child_rect.y1 {
+                    let child_rect = Rect::new(
+                        child_x,
+                        child_y,
+                        child_x + child_width,
+                        child_y + child_height,
+                    );
+                    if pos.x as f64 >= child_rect.x0
+                        && pos.x as f64 <= child_rect.x1
+                        && pos.y as f64 >= child_rect.y0
+                        && pos.y as f64 <= child_rect.y1
+                    {
                         child_hovered = true;
                     }
                 }
@@ -611,12 +618,12 @@ impl Widget for MenuPopup {
 
         // Keep parent item selected if child is hovered
         if child_hovered {
-             if let Some(open_index) = self.open_item_index {
-                 if self.hovered_index != Some(open_index) {
-                     self.hovered_index = Some(open_index);
-                     update |= Update::DRAW;
-                 }
-             }
+            if let Some(open_index) = self.open_item_index {
+                if self.hovered_index != Some(open_index) {
+                    self.hovered_index = Some(open_index);
+                    update |= Update::DRAW;
+                }
+            }
         }
 
         // Handle mouse clicks
@@ -629,14 +636,13 @@ impl Widget for MenuPopup {
                         if item.has_submenu() {
                             // Already handled by hover, but ensure it's open
                             if self.open_item_index != Some(hovered) {
-                                let mut child = MenuPopup::new()
-                                    .with_items(item.submenu.clone());
-                                
+                                let mut child = MenuPopup::new().with_items(item.submenu.clone());
+
                                 if let Some(ref cb) = self.on_close {
                                     let cb = cb.clone();
                                     child = child.with_on_close(move || cb());
                                 }
-                                
+
                                 self.child_popup = Some(Box::new(child));
                                 self.open_item_index = Some(hovered);
                                 update |= Update::DRAW;

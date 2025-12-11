@@ -4,9 +4,9 @@
 //! be used by any file-related widget (file list, file grid, compact file list, etc.)
 //! to avoid re-decoding thumbnails on every render.
 
+use lru::LruCache;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use lru::LruCache;
 
 /// Cached decoded thumbnail image data.
 #[derive(Clone)]
@@ -89,7 +89,11 @@ impl ThumbnailImageCache {
     /// * `Ok(Some(CachedThumbnail))` - If the thumbnail was loaded successfully
     /// * `Ok(None)` - If the file doesn't exist or couldn't be read
     /// * `Err` - If decoding failed
-    pub fn load_or_get(&self, path: &PathBuf, size: u32) -> Result<Option<CachedThumbnail>, image::ImageError> {
+    pub fn load_or_get(
+        &self,
+        path: &PathBuf,
+        size: u32,
+    ) -> Result<Option<CachedThumbnail>, image::ImageError> {
         // Check cache first
         if let Some(cached) = self.get(path, size) {
             return Ok(Some(cached));
@@ -98,9 +102,11 @@ impl ThumbnailImageCache {
         // Load from file
         let img = match image::open(path) {
             Ok(img) => img,
-            Err(image::ImageError::IoError(io_err)) if io_err.kind() == std::io::ErrorKind::NotFound => {
+            Err(image::ImageError::IoError(io_err))
+                if io_err.kind() == std::io::ErrorKind::NotFound =>
+            {
                 return Ok(None);
-            }
+            },
             Err(e) => return Err(e),
         };
 
@@ -145,4 +151,3 @@ impl Default for ThumbnailImageCache {
         Self::new(100) // Default to 100 thumbnails
     }
 }
-

@@ -12,7 +12,6 @@ use vello::AaSupport;
 /// for a specific backend. Different backends may use different subsets of
 /// these options.
 pub struct RendererOptions {
-
     /// Antialiasing support configuration
     pub antialiasing_support: AaSupport,
     /// Number of initialization threads (optional)

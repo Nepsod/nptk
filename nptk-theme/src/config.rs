@@ -119,12 +119,12 @@
 //! - **Validation**: Theme validation is performed once at startup
 //! - **Memory Usage**: Minimal memory overhead for configuration
 
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
-use serde::Deserialize;
 
 use crate::manager::ThemeManager;
 use crate::theme::Theme;

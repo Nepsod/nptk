@@ -11,9 +11,8 @@ use crate::platform::wayland::WaylandSurface;
 #[cfg(target_os = "linux")]
 use crate::platform::winit::WinitSurface;
 use vello::wgpu::{
-    CommandEncoder, Device, Extent3d, SurfaceTexture, Texture,
-    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureView,
-    TextureViewDescriptor,
+    CommandEncoder, Device, Extent3d, SurfaceTexture, Texture, TextureDescriptor, TextureDimension,
+    TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,
 };
 
 /// A trait for platform-agnostic surface implementations.
@@ -83,7 +82,7 @@ pub trait SurfaceTrait {
 ///
 /// This enum wraps different platform surface types to provide a unified interface
 /// for rendering, while still allowing platform-specific optimizations.
-/// 
+///
 /// This is a rendering abstraction that wraps platform windowing surfaces.
 pub enum Surface {
     /// Winit-based surface (works on X11/Wayland via winit abstraction)
@@ -98,7 +97,7 @@ pub enum Surface {
 const OFFSCREEN_FORMAT: TextureFormat = TextureFormat::Rgba8Unorm;
 
 /// Offscreen texture that serves as the Vello render target.
-/// 
+///
 /// This is used by both platform surfaces (WinitSurface and WaylandSurface)
 /// for offscreen rendering before blitting to the actual surface.
 pub struct OffscreenSurface {
@@ -150,10 +149,10 @@ impl SurfaceTrait for Surface {
     fn get_current_texture(&mut self) -> Result<SurfaceTexture, String> {
         match self {
             #[cfg(target_os = "linux")]
-            Surface::Winit(surface) => {
-                surface.surface().get_current_texture()
-                    .map_err(|e| format!("Failed to get surface texture: {:?}", e))
-            },
+            Surface::Winit(surface) => surface
+                .surface()
+                .get_current_texture()
+                .map_err(|e| format!("Failed to get surface texture: {:?}", e)),
             #[cfg(all(target_os = "linux", feature = "wayland"))]
             Surface::Wayland(wayland_surface) => wayland_surface.get_current_texture(),
         }

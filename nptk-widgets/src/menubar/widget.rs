@@ -2,15 +2,18 @@ use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 // Overlay system removed for now - using direct rendering instead
 #[cfg(feature = "global-menu")]
+use super::common::platform;
+#[cfg(feature = "global-menu")]
 use super::dbus::{Bridge, MenuSnapshot, RemoteMenuNode};
 use crate::menu_popup::{MenuBarItem as MenuBarItemImpl, MenuPopup};
 #[cfg(feature = "global-menu")]
 use log::error;
-#[cfg(feature = "global-menu")]
-use super::common::platform;
 use nptk_core::app::update::Update;
 use nptk_core::layout;
-use nptk_core::layout::{Dimension, Display, Layout, LayoutNode, LayoutStyle, LengthPercentage, LengthPercentageAuto, StyleNode};
+use nptk_core::layout::{
+    Dimension, Display, Layout, LayoutNode, LayoutStyle, LengthPercentage, LengthPercentageAuto,
+    StyleNode,
+};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::text_render::TextRenderContext;
 use nptk_core::vg::kurbo::{
@@ -640,7 +643,11 @@ impl Widget for MenuBar {
         // Detect visibility changes and trigger layout update
         let current_visible = self.is_visible();
         if current_visible != self.previous_visible {
-            log::info!("MenuBar visibility changed from {} to {}, triggering FORCE layout update", self.previous_visible, current_visible);
+            log::info!(
+                "MenuBar visibility changed from {} to {}, triggering FORCE layout update",
+                self.previous_visible,
+                current_visible
+            );
             // Use FORCE | LAYOUT | DRAW to ensure the entire layout tree is rebuilt and rendered
             update |= Update::FORCE | Update::LAYOUT | Update::DRAW;
             self.previous_visible = current_visible;
@@ -648,13 +655,24 @@ impl Widget for MenuBar {
 
         // Process keyboard events FIRST, especially F10, even if menubar is not visible
         // This allows F10 to show the menubar when it's hidden
-        log::debug!("MenuBar update: processing {} keyboard events", info.keys.len());
+        log::debug!(
+            "MenuBar update: processing {} keyboard events",
+            info.keys.len()
+        );
         for (device_id, key_event) in &info.keys {
-            log::debug!("MenuBar: key event - device_id={:?}, physical_key={:?}, state={:?}", device_id, key_event.physical_key, key_event.state);
+            log::debug!(
+                "MenuBar: key event - device_id={:?}, physical_key={:?}, state={:?}",
+                device_id,
+                key_event.physical_key,
+                key_event.state
+            );
             if key_event.state == ElementState::Pressed {
                 match key_event.physical_key {
                     PhysicalKey::Code(KeyCode::F10) => {
-                        log::info!("F10 key detected in MenuBar update() - current visible={}", self.is_visible());
+                        log::info!(
+                            "F10 key detected in MenuBar update() - current visible={}",
+                            self.is_visible()
+                        );
                         // Toggle menu bar visibility
                         // F10 can override importer detection - if importer is detected but user presses F10,
                         // show the menubar anyway (user wants to see it)
@@ -662,13 +680,15 @@ impl Widget for MenuBar {
                         self.visible.set(visible);
                         // Persist user's choice to override auto-hide
                         self.user_visibility_override = Some(visible);
-                        
+
                         // If user manually shows the menubar, clear importer detection
                         // so it stays visible until they hide it again or importer queries again
                         if visible {
                             #[cfg(feature = "global-menu")]
                             {
-                                log::info!("F10 pressed - showing menubar (overriding importer detection)");
+                                log::info!(
+                                    "F10 pressed - showing menubar (overriding importer detection)"
+                                );
                                 self.importer_detected.set(false);
                             }
                         }
@@ -906,7 +926,7 @@ impl MenuBar {
         // Build menu snapshot first to ensure it's available before window registration
         let (snapshot, actions, signature) = build_menu_snapshot(&self.items);
         let menu_changed = self.global_menu_signature != signature;
-        
+
         // Always send menu on first bridge initialization or when menu changes
         if bridge_was_none || menu_changed {
             // CRITICAL: Update signature BEFORE registration logic checks it
@@ -919,7 +939,10 @@ impl MenuBar {
             if let Some(bridge) = self.global_menu_bridge.as_ref() {
                 // Send menu immediately, especially on first initialization
                 bridge.update_menu(snapshot.clone());
-                log::info!("Menu snapshot sent: {} top-level items", snapshot.entries.len());
+                log::info!(
+                    "Menu snapshot sent: {} top-level items",
+                    snapshot.entries.len()
+                );
             }
         }
 
@@ -934,7 +957,10 @@ impl MenuBar {
         } else if let Some(wayland_id) = wayland_surface_id {
             // Wayland: use actual Wayland surface protocol ID
             // This works for both native Wayland and winit-based Wayland windows
-            log::debug!("Using Wayland surface ID {} for menu registration", wayland_id);
+            log::debug!(
+                "Using Wayland surface ID {} for menu registration",
+                wayland_id
+            );
             Some(wayland_id as u64)
         } else if is_wayland_session() {
             // Fallback: use dummy window ID 1 if we can't get the surface ID
@@ -951,7 +977,8 @@ impl MenuBar {
             // Register window if:
             // 1. Window ID changed, OR
             // 2. Menu was just sent (bridge was just initialized or menu changed)
-            let should_register = self.last_window_id != window_id || bridge_was_none || menu_changed;
+            let should_register =
+                self.last_window_id != window_id || bridge_was_none || menu_changed;
             if should_register && self.global_menu_signature != 0 {
                 // Only register if menu has been sent (signature is non-zero)
                 bridge.set_window_id(window_id);

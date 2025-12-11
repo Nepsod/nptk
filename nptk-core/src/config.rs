@@ -7,8 +7,8 @@ pub use winit::window::{
     BadIcon, Cursor, CursorIcon, CustomCursor, Icon as WindowIcon, WindowButtons, WindowLevel,
 };
 
-use nptk_theme::theme::Theme;
 use nptk_services::settings::SettingsRegistry;
+use nptk_theme::theme::Theme;
 
 /// nptk Application Configuration Structure.
 #[derive(Clone)]
@@ -171,13 +171,10 @@ pub struct RenderConfig {
     pub init_threads: Option<NonZeroUsize>,
     /// The selector function to determine which device to use for rendering. Defaults to using the first device found.
     pub device_selector: fn(&[DeviceHandle]) -> &DeviceHandle,
-
 }
 
 impl Default for RenderConfig {
     fn default() -> Self {
-
-
         // Check environment variable for antialiasing
         // Options: area (default, fastest), msaa8, msaa16
         let antialiasing = match std::env::var("NPTK_ANTIALIASING") {
@@ -251,7 +248,6 @@ impl Default for RenderConfig {
             present_mode,
             init_threads: None,
             device_selector: |devices| devices.first().expect("No devices found"),
-
         }
     }
 }

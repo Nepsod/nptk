@@ -98,25 +98,10 @@ pub(crate) enum TouchEvent {
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub(crate) enum TabletEvent {
-    Tool {
-        tool_id: u32,
-    },
-    Proximity {
-        tool_id: u32,
-        x: f64,
-        y: f64,
-    },
-    Motion {
-        x: f64,
-        y: f64,
-    },
-    Pressure {
-        pressure: u32,
-    },
-    Button {
-        button: u32,
-        state: u32,
-    },
+    Tool { tool_id: u32 },
+    Proximity { tool_id: u32, x: f64, y: f64 },
+    Motion { x: f64, y: f64 },
+    Pressure { pressure: u32 },
+    Button { button: u32, state: u32 },
     Frame,
 }
-

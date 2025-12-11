@@ -94,7 +94,7 @@ impl WaylandSurfaceInner {
     pub fn surface_key(&self) -> u32 {
         self.surface_key
     }
-    
+
     /// Get the underlying Wayland surface object.
     #[cfg(feature = "global-menu")]
     pub fn wl_surface(&self) -> &wl_surface::WlSurface {
@@ -307,7 +307,11 @@ impl WaylandSurfaceInner {
                     err
                 );
             }
-            log::trace!("Registered wl_surface.frame callback {} for surface {}", callback_id, self.surface_key);
+            log::trace!(
+                "Registered wl_surface.frame callback {} for surface {}",
+                callback_id,
+                self.surface_key
+            );
         }
     }
 
@@ -376,10 +380,10 @@ pub(crate) struct SurfaceStatus {
 }
 
 // WaylandSurface implementation (merged from vgi/wayland_surface.rs)
-use std::ptr::NonNull;
 use raw_window_handle::{
     RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle,
 };
+use std::ptr::NonNull;
 use vello::wgpu::util::TextureBlitter;
 use vello::wgpu::{self, SurfaceTexture, TextureView};
 use wayland_client::Connection;
@@ -481,10 +485,17 @@ impl WaylandSurface {
         {
             if client.globals().appmenu_manager.is_some() {
                 if let Some((service, path)) = crate::platform::MenuInfoStorage::get() {
-                    if let Err(e) = client.set_appmenu_for_surface_with_info(&wl_surface, service, path) {
-                        log::debug!("Failed to set appmenu immediately on surface creation: {}", e);
+                    if let Err(e) =
+                        client.set_appmenu_for_surface_with_info(&wl_surface, service, path)
+                    {
+                        log::debug!(
+                            "Failed to set appmenu immediately on surface creation: {}",
+                            e
+                        );
                     } else {
-                        log::info!("Appmenu set immediately on surface creation (before window focus)");
+                        log::info!(
+                            "Appmenu set immediately on surface creation (before window focus)"
+                        );
                     }
                 } else {
                     log::debug!("Appmenu manager available but menu info not yet set - will be set when menu info becomes available");
@@ -653,10 +664,16 @@ impl SurfaceTrait for WaylandSurface {
 
         let mut new_events = self.inner.take_input_events();
         if !new_events.is_empty() {
-            log::debug!("WaylandSurface::dispatch_events: got {} input events", new_events.len());
+            log::debug!(
+                "WaylandSurface::dispatch_events: got {} input events",
+                new_events.len()
+            );
             for event in &new_events {
                 if let InputEvent::Keyboard(_) = event {
-                    log::debug!("WaylandSurface::dispatch_events: keyboard event: {:?}", event);
+                    log::debug!(
+                        "WaylandSurface::dispatch_events: keyboard event: {:?}",
+                        event
+                    );
                 }
             }
             self.pending_input_events.append(&mut new_events);
@@ -799,4 +816,3 @@ impl WaylandSurface {
         self.inner.prepare_frame_callback();
     }
 }
-

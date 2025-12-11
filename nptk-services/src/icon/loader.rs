@@ -18,7 +18,8 @@ impl IconLoader {
 
     /// Load an icon from a file path.
     pub fn load_icon(&self, path: &Path) -> Result<CachedIcon, IconError> {
-        let extension = path.extension()
+        let extension = path
+            .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_lowercase();
@@ -80,4 +81,3 @@ impl Default for IconLoader {
         Self::new()
     }
 }
-

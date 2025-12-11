@@ -1,15 +1,15 @@
 //! DBusMenu interface implementation.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 use zbus::interface;
 use zbus::object_server::SignalEmitter;
 use zbus::zvariant::OwnedValue;
 
 use super::bridge::Command;
-use super::types::{MenuState, SubMenuLayout};
 use super::types::{find_node_by_id, node_properties_map, node_property_value, owned_value};
+use super::types::{MenuState, SubMenuLayout};
 
 /// DBusMenu interface implementation.
 pub struct MenuObject {
@@ -27,8 +27,7 @@ impl MenuObject {
         let has_children = if _id == 0 {
             !self.state.lock().unwrap().entries.is_empty()
         } else {
-            self
-                .state
+            self.state
                 .lock()
                 .unwrap()
                 .entries
@@ -43,13 +42,7 @@ impl MenuObject {
     }
 
     #[zbus(name = "Event")]
-    async fn event(
-        &self,
-        id: i32,
-        event_id: &str,
-        _data: OwnedValue,
-        _timestamp: u32,
-    ) {
+    async fn event(&self, id: i32, event_id: &str, _data: OwnedValue, _timestamp: u32) {
         log::info!("DBusMenu.Event id={} event_id={}", id, event_id);
         if event_id == "clicked" {
             let _ = self.evt_tx.send(super::BridgeEvent::Activated(id));
@@ -72,7 +65,7 @@ impl MenuObject {
             // Emit ImporterDetected event to notify the bridge
             let _ = self.evt_tx.send(super::BridgeEvent::ImporterDetected);
         }
-        
+
         let st = self.state.lock().unwrap();
         let props_debug = properties.clone();
         let layout = st.layout_with(parent_id, depth, properties);
@@ -94,7 +87,11 @@ impl MenuObject {
         ids: Vec<i32>,
         properties: Vec<String>,
     ) -> (u32, Vec<(i32, HashMap<String, OwnedValue>)>) {
-        log::info!("DBusMenu.GetGroupProperties ids={:?} props={:?}", ids, properties);
+        log::info!(
+            "DBusMenu.GetGroupProperties ids={:?} props={:?}",
+            ids,
+            properties
+        );
         let st = self.state.lock().unwrap();
         let mut out: Vec<(i32, HashMap<String, OwnedValue>)> = Vec::new();
         for id in ids {
@@ -177,4 +174,3 @@ impl MenuObject {
         removed: Vec<(i32, Vec<String>)>,
     ) -> zbus::Result<()>;
 }
-

@@ -48,28 +48,35 @@ impl Dispatch<zwp_text_input_v3::ZwpTextInputV3, ()> for WaylandClientState {
             zwp_text_input_v3::Event::Enter { surface: _ } => {
                 // Text input entered surface
                 // TODO: Handle enter
-            }
+            },
             zwp_text_input_v3::Event::Leave { surface: _ } => {
                 // Text input left surface
                 // TODO: Handle leave
-            }
-            zwp_text_input_v3::Event::PreeditString { text: _, cursor_begin: _, cursor_end: _ } => {
+            },
+            zwp_text_input_v3::Event::PreeditString {
+                text: _,
+                cursor_begin: _,
+                cursor_end: _,
+            } => {
                 // IME preedit update
                 // TODO: Update preedit state
-            }
+            },
             zwp_text_input_v3::Event::CommitString { text: _ } => {
                 // IME commit
                 // TODO: Commit text
-            }
-            zwp_text_input_v3::Event::DeleteSurroundingText { before_length: _, after_length: _ } => {
+            },
+            zwp_text_input_v3::Event::DeleteSurroundingText {
+                before_length: _,
+                after_length: _,
+            } => {
                 // Delete surrounding text
                 // TODO: Handle deletion
-            }
+            },
             zwp_text_input_v3::Event::Done { serial: _ } => {
                 // Transaction done
                 // TODO: Apply changes
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 }

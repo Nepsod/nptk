@@ -78,4 +78,3 @@ impl Default for IconCache {
         Self::new()
     }
 }
-

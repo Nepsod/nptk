@@ -27,10 +27,10 @@ pub mod renderer;
 pub mod scene;
 pub mod surface;
 
-pub use backend::Backend;
-pub use gpu_context::{DeviceHandle, GpuContext};
 pub use self::options::RendererOptions;
 pub use crate::platform::Platform;
+pub use backend::Backend;
+pub use gpu_context::{DeviceHandle, GpuContext};
 pub use renderer::{Renderer, RendererTrait};
 pub use scene::{Scene, SceneTrait};
 pub use surface::{Surface, SurfaceTrait};

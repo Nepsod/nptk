@@ -32,8 +32,12 @@ pub mod x11 {
     ///
     /// This sets the `_KDE_NET_WM_APPMENU_SERVICE_NAME` and
     /// `_KDE_NET_WM_APPMENU_OBJECT_PATH` properties on the window.
-    pub fn set_appmenu_hints(window_id: u32, service_name: &str, object_path: &str) -> Result<(), String> {
-        use x11_dl::xlib::{Xlib, XA_STRING, PropModeReplace};
+    pub fn set_appmenu_hints(
+        window_id: u32,
+        service_name: &str,
+        object_path: &str,
+    ) -> Result<(), String> {
+        use x11_dl::xlib::{PropModeReplace, Xlib, XA_STRING};
 
         let xlib = Xlib::open().map_err(|e| format!("Failed to load X11 library: {e}"))?;
         unsafe {
@@ -110,8 +114,11 @@ pub mod x11 {
 
 #[cfg(not(feature = "global-menu"))]
 pub mod x11 {
-    pub fn set_appmenu_hints(_window_id: u32, _service_name: &str, _object_path: &str) -> Result<(), String> {
+    pub fn set_appmenu_hints(
+        _window_id: u32,
+        _service_name: &str,
+        _object_path: &str,
+    ) -> Result<(), String> {
         Ok(())
     }
 }
-

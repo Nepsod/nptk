@@ -114,7 +114,11 @@ pub fn build_owned_value_recursive(node: &RemoteMenuNode, depth: i32) -> OwnedVa
     // depth semantics:
     // -1 → recurse fully; 0 → no children; N≥1 → include children and recurse with N-1
     let recurse_children = depth < 0 || depth >= 1;
-    let next_depth = if depth < 0 { -1 } else { depth.saturating_sub(1) };
+    let next_depth = if depth < 0 {
+        -1
+    } else {
+        depth.saturating_sub(1)
+    };
     let children: Vec<OwnedValue> = if recurse_children {
         node.children
             .iter()
@@ -160,7 +164,11 @@ pub fn node_property_value(node: &RemoteMenuNode, name: &str) -> Option<OwnedVal
         "visible" => Some(OwnedValue::from(true)),
         "type" if node.is_separator => Some(owned_value("separator")),
         "children-display" if !node.children.is_empty() => Some(owned_value("submenu")),
-        "shortcut" => node.shortcut.as_ref().and_then(|s| encode_shortcut(s.as_str())).map(owned_value),
+        "shortcut" => node
+            .shortcut
+            .as_ref()
+            .and_then(|s| encode_shortcut(s.as_str()))
+            .map(owned_value),
         _ => None,
     }
 }
@@ -169,10 +177,7 @@ pub fn node_property_value(node: &RemoteMenuNode, name: &str) -> Option<OwnedVal
 pub fn flatten_properties_updates(
     roots: &[RemoteMenuNode],
 ) -> Vec<(i32, HashMap<String, OwnedValue>)> {
-    fn recurse<'a>(
-        node: &'a RemoteMenuNode,
-        acc: &mut Vec<(i32, HashMap<String, OwnedValue>)>,
-    ) {
+    fn recurse<'a>(node: &'a RemoteMenuNode, acc: &mut Vec<(i32, HashMap<String, OwnedValue>)>) {
         acc.push((node.id, node_properties_map(node)));
         for c in &node.children {
             recurse(c, acc);
@@ -222,5 +227,3 @@ pub fn encode_shortcut(s: &str) -> Option<Vec<Vec<String>>> {
         Some(vec![parts])
     }
 }
-
-

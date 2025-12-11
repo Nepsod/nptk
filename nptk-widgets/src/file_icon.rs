@@ -7,14 +7,14 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vg::kurbo::{Affine, Vec2};
-use nptk_core::vg::peniko::{Blob, ImageBrush, ImageData, ImageFormat, ImageAlphaType};
+use nptk_core::vg::peniko::{Blob, ImageAlphaType, ImageBrush, ImageData, ImageFormat};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_services::icon::CachedIcon;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use vello_svg::usvg::Options;
-use vello_svg::usvg::{ShapeRendering, TextRendering, ImageRendering};
+use vello_svg::usvg::{ImageRendering, ShapeRendering, TextRendering};
 
 /// Widget for rendering file icons (PNG or SVG).
 pub struct FileIcon {
@@ -92,7 +92,11 @@ impl Widget for FileIcon {
         let size = layout.layout.size.width.min(layout.layout.size.height) as f64;
 
         match icon {
-            CachedIcon::Image { data, width, height } => {
+            CachedIcon::Image {
+                data,
+                width,
+                height,
+            } => {
                 // Create ImageData from raw RGBA bytes
                 let image_data = ImageData {
                     data: Blob::from(data.as_ref().clone()),
@@ -109,13 +113,13 @@ impl Widget for FileIcon {
                 let scale_y = size / (height as f64);
                 let scale = scale_x.min(scale_y);
 
-                let transform = Affine::scale_non_uniform(scale, scale)
-                    .then_translate(Vec2::new(x, y));
+                let transform =
+                    Affine::scale_non_uniform(scale, scale).then_translate(Vec2::new(x, y));
 
                 if let Some(scene) = graphics.as_scene_mut() {
                     scene.draw_image(&image_brush, transform);
                 }
-            }
+            },
             CachedIcon::Svg(svg_source) => {
                 // Parse and render SVG
                 let tree = match vello_svg::usvg::Tree::from_str(
@@ -139,15 +143,15 @@ impl Widget for FileIcon {
                 let scale_y = size / svg_size.height() as f64;
                 let scale = scale_x.min(scale_y);
 
-                let transform = Affine::scale_non_uniform(scale, scale)
-                    .then_translate(Vec2::new(x, y));
+                let transform =
+                    Affine::scale_non_uniform(scale, scale).then_translate(Vec2::new(x, y));
 
                 graphics.append(&scene, Some(transform));
-            }
+            },
             CachedIcon::Path(_) => {
                 // Path-based icons should be loaded before rendering
                 // This case shouldn't happen if the registry is used correctly
-            }
+            },
         }
     }
 }
@@ -157,4 +161,3 @@ impl WidgetLayoutExt for FileIcon {
         self.layout_style = layout_style.into();
     }
 }
-

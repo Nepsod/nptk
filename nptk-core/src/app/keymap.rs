@@ -6,8 +6,8 @@ use std::os::raw::c_char;
 use std::sync::Mutex;
 #[cfg(all(target_os = "linux", feature = "wayland"))]
 use xkbcommon_dl::{
-    xkb_context, xkb_context_flags, xkb_key_direction, xkb_keymap, xkb_keymap_compile_flags,
-    xkb_keymap_format, xkb_state, xkbcommon_handle, xkb_keycode_t,
+    xkb_context, xkb_context_flags, xkb_key_direction, xkb_keycode_t, xkb_keymap,
+    xkb_keymap_compile_flags, xkb_keymap_format, xkb_state, xkbcommon_handle,
 };
 
 /// XKB keymap manager for handling keyboard layouts on Wayland.
@@ -27,9 +27,7 @@ pub struct XkbKeymapManager {
 impl XkbKeymapManager {
     pub fn new() -> Result<Self, String> {
         let handle = xkbcommon_handle();
-        let context = unsafe {
-            (handle.xkb_context_new)(xkb_context_flags::XKB_CONTEXT_NO_FLAGS)
-        };
+        let context = unsafe { (handle.xkb_context_new)(xkb_context_flags::XKB_CONTEXT_NO_FLAGS) };
         if context.is_null() {
             return Err("Failed to create XKB context".to_string());
         }
@@ -67,10 +65,10 @@ impl XkbKeymapManager {
         } else {
             keymap_bytes.to_vec()
         };
-        
+
         // Ensure null termination for CString
         keymap_vec.push(0);
-        
+
         let keymap_cstr = CString::from_vec_with_nul(keymap_vec)
             .map_err(|e| format!("Failed to create CString from keymap: {}", e))?;
 
@@ -133,7 +131,15 @@ impl XkbKeymapManager {
             if !state.is_null() {
                 unsafe {
                     let handle = xkbcommon_handle();
-                    (handle.xkb_state_update_mask)(state, mods_depressed, mods_latched, mods_locked, 0, 0, group);
+                    (handle.xkb_state_update_mask)(
+                        state,
+                        mods_depressed,
+                        mods_latched,
+                        mods_locked,
+                        0,
+                        0,
+                        group,
+                    );
                 }
             }
         }
@@ -154,13 +160,10 @@ impl XkbKeymapManager {
                     let handle = xkbcommon_handle();
                     // Get keysym first (before updating state) to get the base keysym
                     // The keysym should be the same regardless of key direction for function keys
-                    let keysym = (handle.xkb_state_key_get_one_sym)(state, keycode as xkb_keycode_t);
+                    let keysym =
+                        (handle.xkb_state_key_get_one_sym)(state, keycode as xkb_keycode_t);
                     // Update the state with the key direction for modifier tracking
-                    (handle.xkb_state_update_key)(
-                        state,
-                        keycode as xkb_keycode_t,
-                        direction,
-                    );
+                    (handle.xkb_state_update_key)(state, keycode as xkb_keycode_t, direction);
                     if keysym != 0 {
                         Some(keysym)
                     } else {
@@ -185,11 +188,7 @@ impl XkbKeymapManager {
                 unsafe {
                     let handle = xkbcommon_handle();
                     // Update state with key direction
-                    (handle.xkb_state_update_key)(
-                        state,
-                        keycode as xkb_keycode_t,
-                        direction,
-                    );
+                    (handle.xkb_state_update_key)(state, keycode as xkb_keycode_t, direction);
                     let mut buffer = [0u8; 64];
                     let len = (handle.xkb_state_key_get_utf8)(
                         state,

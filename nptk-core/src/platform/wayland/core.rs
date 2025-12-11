@@ -2,10 +2,10 @@
 
 //! Core Wayland protocol dispatch implementations.
 
+use wayland_client::globals::GlobalListContents;
 use wayland_client::protocol::{
     wl_buffer, wl_compositor, wl_region, wl_registry, wl_shm, wl_shm_pool, wl_surface,
 };
-use wayland_client::globals::GlobalListContents;
 use wayland_client::{Connection, Dispatch, QueueHandle};
 
 use super::shell::WaylandClientState;
@@ -100,4 +100,3 @@ impl Dispatch<wl_shm::WlShm, ()> for WaylandClientState {
         // SHM doesn't send events to clients
     }
 }
-

@@ -170,4 +170,3 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientState {
         }
     }
 }
-

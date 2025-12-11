@@ -1,9 +1,9 @@
 use anyhow::Result;
+use nptk_theme::config::ThemeConfig;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 use xdg::BaseDirectories;
-use nptk_theme::config::ThemeConfig;
 
 /// The main configuration structure for the application.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -63,10 +63,10 @@ impl SettingsRegistry {
     /// 3. User Config: ~/.config/nptk-0/config.toml (XDG_CONFIG_HOME)
     pub fn load(&mut self) -> Result<()> {
         let xdg_dirs = BaseDirectories::with_prefix("nptk-0")?;
-        
+
         // Load config.toml
         self.load_config_type(&xdg_dirs, "config.toml");
-        
+
         // Load input.toml
         self.load_config_type(&xdg_dirs, "input.toml");
 
@@ -127,41 +127,45 @@ impl SettingsRegistry {
         match ThemeConfig::from_file(path) {
             Ok(loaded_config) => {
                 self.theme_config.merge(loaded_config);
-            }
+            },
             Err(e) => {
                 log::warn!("Failed to load theme config {:?}: {}", path, e);
-            }
+            },
         }
     }
 
     fn load_file(&mut self, path: &Path) {
         log::info!("Loading config from: {:?}", path);
         match std::fs::read_to_string(path) {
-            Ok(content) => {
-                match toml::from_str::<Config>(&content) {
-                    Ok(loaded_config) => {
-                        self.merge(loaded_config);
-                    }
-                    Err(e) => {
-                        log::error!("Failed to parse config file {:?}: {}", path, e);
-                    }
-                }
-            }
+            Ok(content) => match toml::from_str::<Config>(&content) {
+                Ok(loaded_config) => {
+                    self.merge(loaded_config);
+                },
+                Err(e) => {
+                    log::error!("Failed to parse config file {:?}: {}", path, e);
+                },
+            },
             Err(e) => {
                 log::warn!("Failed to read config file {:?}: {}", path, e);
-            }
+            },
         }
     }
 
     /// Merge a loaded config into the current config.
     fn merge(&mut self, other: Config) {
         // General
-        if other.general.debug { self.config.general.debug = true; }
-        if other.general.log_level.is_some() { self.config.general.log_level = other.general.log_level; }
+        if other.general.debug {
+            self.config.general.debug = true;
+        }
+        if other.general.log_level.is_some() {
+            self.config.general.log_level = other.general.log_level;
+        }
 
         // Mouse
-        if other.mouse.natural_scrolling { self.config.mouse.natural_scrolling = true; }
-        
+        if other.mouse.natural_scrolling {
+            self.config.mouse.natural_scrolling = true;
+        }
+
         // Keyboard - nothing to merge yet
 
         // Other
@@ -173,5 +177,3 @@ impl SettingsRegistry {
         &self.config
     }
 }
-
-
