@@ -4,42 +4,74 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vg::kurbo::{Affine, Vec2};
-use nptk_core::vg::peniko::ImageBrush;
+use nptk_core::vg::peniko::{Blob, ImageAlphaType, ImageBrush, ImageFormat};
 pub use nptk_core::vg::peniko::ImageData;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
-use std::ops::Deref;
 
-/// An image widget. Pretty self-explanatory.
+/// An image widget that renders a brush-backed bitmap inside the layout rect.
 ///
-/// ### Theming
-/// The widget itself only draws the underlying image, so theming is useless.
+/// The widget itself only draws the underlying image, so it ignores theme data.
 pub struct Image {
-    image: MaybeSignal<ImageBrush>,
-    style: MaybeSignal<LayoutStyle>,
+    state: ImageState,
 }
 
 impl Image {
-    /// Create an image widget from the given [ImageBrush].
+    /// Create an image widget from the given [`ImageBrush`] (or signal of brushes).
     pub fn new(image: impl Into<MaybeSignal<ImageBrush>>) -> Self {
+        Self::from_brush(image)
+    }
+
+    /// Create an image from any brush-like signal.
+    pub fn from_brush(image: impl Into<MaybeSignal<ImageBrush>>) -> Self {
         Self {
-            image: image.into(),
-            style: LayoutStyle::default().into(),
+            state: ImageState::new(image.into()),
         }
     }
 
-    /// Set the image.
-    pub fn with_image(mut self, image: impl Into<MaybeSignal<ImageBrush>>) -> Self {
-        self.image = image.into();
+    /// Create an image directly from [`ImageData`].
+    pub fn from_data(data: ImageData) -> Self {
+        Self::from_brush(ImageBrush::new(data))
+    }
+
+    /// Convenience helper to build an image from raw RGBA pixels.
+    pub fn from_rgba(size: (u32, u32), pixels: impl Into<Vec<u8>>) -> Self {
+        let (width, height) = size;
+        let data = ImageData {
+            data: Blob::from(pixels.into()),
+            format: ImageFormat::Rgba8,
+            alpha_type: ImageAlphaType::Alpha,
+            width,
+            height,
+        };
+        Self::from_data(data)
+    }
+
+    /// Replace the backing brush/signal.
+    pub fn with_image(self, image: impl Into<MaybeSignal<ImageBrush>>) -> Self {
+        self.apply_with(|this| this.state.set_image(image))
+    }
+
+    /// Override the widget's layout style.
+    pub fn with_layout_style(self, layout_style: impl Into<MaybeSignal<LayoutStyle>>) -> Self {
+        self.apply_with(|this| this.state.set_style(layout_style))
+    }
+
+    fn apply_with(mut self, f: impl FnOnce(&mut Self)) -> Self {
+        f(&mut self);
         self
+    }
+
+    fn current_brush(&self) -> ImageBrush {
+        self.state.brush()
     }
 }
 
 impl WidgetLayoutExt for Image {
     fn set_layout_style(&mut self, layout_style: impl Into<MaybeSignal<LayoutStyle>>) {
-        self.style = layout_style.into();
+        self.state.set_style(layout_style);
     }
 }
 
@@ -52,23 +84,25 @@ impl Widget for Image {
         _: &mut AppInfo,
         _: AppContext,
     ) {
-        let image = self.image.get();
+        let brush = self.current_brush();
 
-        // Use as_scene_mut() to get Scene for image drawing
-        if let Some(scene) = graphics.as_scene_mut() {
-            scene.draw_image(
-                image.deref(),
-                Affine::translate(Vec2::new(
-                    layout_node.layout.location.x as f64,
-                    layout_node.layout.location.y as f64,
-                )),
-            );
-        }
+        let Some(scene) = graphics.as_scene_mut() else {
+            // TODO: provide a CPU fallback rendering path when no scene is available.
+            return;
+        };
+
+        scene.draw_image(
+            &brush,
+            Affine::translate(Vec2::new(
+                layout_node.layout.location.x as f64,
+                layout_node.layout.location.y as f64,
+            )),
+        );
     }
 
     fn layout_style(&self) -> StyleNode {
         StyleNode {
-            style: self.style.get().clone(),
+            style: self.state.layout_style(),
             children: Vec::new(),
         }
     }
@@ -79,5 +113,35 @@ impl Widget for Image {
 
     fn widget_id(&self) -> WidgetId {
         WidgetId::new("nptk-widgets", "Image")
+    }
+}
+
+struct ImageState {
+    image: MaybeSignal<ImageBrush>,
+    style: MaybeSignal<LayoutStyle>,
+}
+
+impl ImageState {
+    fn new(image: MaybeSignal<ImageBrush>) -> Self {
+        Self {
+            image,
+            style: LayoutStyle::default().into(),
+        }
+    }
+
+    fn set_image(&mut self, image: impl Into<MaybeSignal<ImageBrush>>) {
+        self.image = image.into();
+    }
+
+    fn set_style(&mut self, layout_style: impl Into<MaybeSignal<LayoutStyle>>) {
+        self.style = layout_style.into();
+    }
+
+    fn layout_style(&self) -> LayoutStyle {
+        self.style.get().clone()
+    }
+
+    fn brush(&self) -> ImageBrush {
+        self.image.get().clone()
     }
 }
