@@ -28,6 +28,66 @@ impl Container {
             children: children.into_iter().collect(),
         }
     }
+
+    /// Creates an empty container (useful for builder-style assembly).
+    pub fn new_empty() -> Self {
+        Self {
+            style: LayoutStyle::default().into(),
+            children: Vec::new(),
+        }
+    }
+
+    /// Adds a child and returns self for chaining.
+    pub fn with_child(mut self, child: impl Widget + 'static) -> Self {
+        self.children.push(Box::new(child));
+        self
+    }
+
+    /// Adds multiple children and returns self for chaining.
+    pub fn with_children(mut self, children: Vec<BoxedWidget>) -> Self {
+        self.children.extend(children);
+        self
+    }
+
+    fn for_each_visible_child<F>(&mut self, layout_node: &LayoutNode, mut f: F)
+    where
+        F: FnMut(&mut BoxedWidget, &LayoutNode, usize),
+    {
+        let mut layout_index = 0;
+        for child in &mut self.children {
+            let child_style = child.layout_style();
+            if child_style.style.display == Display::None {
+                continue;
+            }
+
+            if layout_index < layout_node.children.len() {
+                f(child, &layout_node.children[layout_index], layout_index);
+                layout_index += 1;
+            } else {
+                log::warn!(
+                    "Container: layout has {} children, but child {} is visible without layout entry",
+                    layout_node.children.len(),
+                    layout_index
+                );
+                return;
+            }
+        }
+
+        if layout_index < layout_node.children.len() {
+            log::warn!(
+                "Container: layout has {} children, but only {} were rendered",
+                layout_node.children.len(),
+                layout_index
+            );
+        }
+    }
+
+    fn dummy_layout_node() -> LayoutNode {
+        LayoutNode {
+            layout: Default::default(),
+            children: vec![],
+        }
+    }
 }
 
 impl WidgetChildrenExt for Container {
@@ -55,44 +115,9 @@ impl Widget for Container {
         info: &mut AppInfo,
         context: AppContext,
     ) {
-        // Track which layout child index we're on (skipping Display::None children)
-        // The layout_node.children should match the visible children in the same order
-        let mut layout_index = 0;
-        for child in &mut self.children {
-            let child_style = child.layout_style();
-            // Skip children with Display::None - they're not in the layout tree
-            if child_style.style.display == Display::None {
-                continue;
-            }
-            if layout_index < layout_node.children.len() {
-                child.render(
-                    graphics,
-                    theme,
-                    &layout_node.children[layout_index],
-                    info,
-                    context.clone(),
-                );
-                layout_index += 1;
-            } else {
-                // Layout node has fewer children than expected - this shouldn't happen
-                // but log it for debugging
-                log::warn!(
-                    "Container render: layout_node has {} children but expected more (child at index {} is visible but missing from layout)",
-                    layout_node.children.len(),
-                    layout_index
-                );
-                break;
-            }
-        }
-
-        // If we didn't render all layout children, log it
-        if layout_index < layout_node.children.len() {
-            log::warn!(
-                "Container render: layout_node has {} children but only rendered {} (some visible children may be missing)",
-                layout_node.children.len(),
-                layout_index
-            );
-        }
+        self.for_each_visible_child(layout_node, |child, child_layout, _idx| {
+            child.render(graphics, theme, child_layout, info, context.clone());
+        });
     }
 
     fn render_postfix(
@@ -103,27 +128,9 @@ impl Widget for Container {
         info: &mut AppInfo,
         context: AppContext,
     ) {
-        // Call render_postfix on all children after they've all been rendered
-        // This ensures overlays appear on top of all sibling content
-        // Track which layout child index we're on (skipping Display::None children)
-        let mut layout_index = 0;
-        for child in &mut self.children {
-            let child_style = child.layout_style();
-            // Skip children with Display::None - they're not in the layout tree
-            if child_style.style.display == Display::None {
-                continue;
-            }
-            if layout_index < layout_node.children.len() {
-                child.render_postfix(
-                    graphics,
-                    theme,
-                    &layout_node.children[layout_index],
-                    info,
-                    context.clone(),
-                );
-                layout_index += 1;
-            }
-        }
+        self.for_each_visible_child(layout_node, |child, child_layout, _idx| {
+            child.render_postfix(graphics, theme, child_layout, info, context.clone());
+        });
     }
 
     fn layout_style(&self) -> StyleNode {
@@ -143,25 +150,33 @@ impl Widget for Container {
     fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
-        // Track which layout child index we're on (skipping Display::None children)
         let mut layout_index = 0;
         for child in &mut self.children {
             let child_style = child.layout_style();
-            // Skip children with Display::None - they're not in the layout tree
-            // But still call update on them so they can detect visibility changes
             if child_style.style.display == Display::None {
-                // Create a dummy layout node for hidden children (they won't be rendered)
-                let dummy_layout = LayoutNode {
-                    layout: Default::default(),
-                    children: vec![],
-                };
-                update.insert(child.update(&dummy_layout, context.clone(), info));
+                update.insert(child.update(&Self::dummy_layout_node(), context.clone(), info));
                 continue;
             }
+
             if layout_index < layout.children.len() {
                 update.insert(child.update(&layout.children[layout_index], context.clone(), info));
                 layout_index += 1;
+            } else {
+                log::warn!(
+                    "Container update: layout has {} children, but child {} is visible without layout entry",
+                    layout.children.len(),
+                    layout_index
+                );
+                break;
             }
+        }
+
+        if layout_index < layout.children.len() {
+            log::warn!(
+                "Container update: layout has {} children, but only {} were updated",
+                layout.children.len(),
+                layout_index
+            );
         }
 
         update
