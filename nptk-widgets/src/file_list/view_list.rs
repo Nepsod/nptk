@@ -146,10 +146,12 @@ impl FileListContent {
                 .thumbnail_provider
                 .get_thumbnail(entry, self.thumbnail_size)
             {
-                if let Ok(Some(cached_thumb)) = self
-                    .thumbnail_cache
-                    .load_or_get(&thumbnail_path, self.thumbnail_size)
-                {
+                if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                    if let Ok(Some(cached_thumb)) = handle.block_on(async {
+                        self.thumbnail_cache
+                            .load_or_get(&thumbnail_path, self.thumbnail_size)
+                            .await
+                    }) {
                     use nptk_core::vg::peniko::{
                         Blob, ImageAlphaType, ImageBrush, ImageData, ImageFormat,
                     };
@@ -173,6 +175,7 @@ impl FileListContent {
                         scene.draw_image(&image_brush, transform);
                     }
                     use_thumbnail = true;
+                    }
                 }
             }
 

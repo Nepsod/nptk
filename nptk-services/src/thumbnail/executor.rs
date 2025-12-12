@@ -1,6 +1,7 @@
 //! Background task executor for thumbnail generation.
 
 use crate::filesystem::entry::FileEntry;
+use crate::io_helpers;
 use crate::thumbnail::cache::{ensure_cache_dir, is_thumbnail_fresh, thumbnail_cache_path};
 use crate::thumbnail::error::ThumbnailError;
 use crate::thumbnail::events::{create_thumbnail_event_channel, ThumbnailEvent};
@@ -143,9 +144,11 @@ impl ThumbnailExecutor {
             })?;
 
         // Copy generated thumbnail to our cache location
-        std::fs::copy(&generated_path, &thumbnail_path).map_err(|e| {
-            ThumbnailError::CacheError(format!("Failed to copy thumbnail to cache: {}", e))
-        })?;
+        // Use smol::block_on which works even within tokio runtime
+        smol::block_on(io_helpers::copy_file(&generated_path, &thumbnail_path))
+            .map_err(|e| {
+                ThumbnailError::CacheError(format!("Failed to copy thumbnail to cache: {}", e))
+            })?;
 
         log::info!("Thumbnail generated and cached: {:?}", thumbnail_path);
 

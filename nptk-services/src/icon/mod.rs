@@ -85,8 +85,9 @@ impl IconRegistry {
             .lookup
             .lookup_icon(icon_name, size, context, &self.theme)?;
 
-        // Load icon
-        let cached_icon = self.loader.load_icon(&icon_path).ok()?;
+        // Load icon (blocking call since this is in a sync context)
+        // Use smol::block_on which works even within tokio runtime
+        let cached_icon = smol::block_on(self.loader.load_icon(&icon_path)).ok()?;
 
         // Cache it
         self.cache

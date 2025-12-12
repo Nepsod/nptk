@@ -7,7 +7,6 @@
 use lru::LruCache;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::fs;
 
 use crate::filesystem::io_uring;
 
@@ -92,7 +91,7 @@ impl ThumbnailImageCache {
     /// * `Ok(Some(CachedThumbnail))` - If the thumbnail was loaded successfully
     /// * `Ok(None)` - If the file doesn't exist or couldn't be read
     /// * `Err` - If decoding failed
-    pub fn load_or_get(
+    pub async fn load_or_get(
         &self,
         path: &PathBuf,
         size: u32,
@@ -102,25 +101,11 @@ impl ThumbnailImageCache {
             return Ok(Some(cached));
         }
 
-        // Load from file; when inside a runtime, avoid blocking it and use std::fs.
-        let bytes = if tokio::runtime::Handle::try_current().is_ok() {
-            match fs::read(path) {
-                Ok(bytes) => bytes,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-                Err(e) => return Err(image::ImageError::IoError(e)),
-            }
-        } else {
-            match tokio::runtime::Handle::try_current()
-                .ok()
-                .and_then(|handle| handle.block_on(async { io_uring::read(path).await.ok() }))
-            {
-                Some(bytes) => bytes,
-                None => match fs::read(path) {
-                    Ok(bytes) => bytes,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-                    Err(e) => return Err(image::ImageError::IoError(e)),
-                },
-            }
+        // Load from file using async I/O
+        let bytes = match io_uring::read(path).await {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(image::ImageError::IoError(e)),
         };
 
         let img = image::load_from_memory(&bytes)?;

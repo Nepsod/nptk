@@ -274,9 +274,12 @@ impl FileListContent {
         // Try to get thumbnail first, fall back to icon
         let mut use_thumbnail = false;
         if let Some(thumbnail_path) = self.thumbnail_provider.get_thumbnail(entry, icon_size) {
-            if let Ok(Some(cached_thumb)) =
-                self.thumbnail_cache.load_or_get(&thumbnail_path, icon_size)
-            {
+            if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                if let Ok(Some(cached_thumb)) = handle.block_on(async {
+                    self.thumbnail_cache
+                        .load_or_get(&thumbnail_path, icon_size)
+                        .await
+                }) {
                 use nptk_core::vg::peniko::{
                     Blob, ImageAlphaType, ImageBrush, ImageData, ImageFormat,
                 };
@@ -297,6 +300,7 @@ impl FileListContent {
                     scene.draw_image(&image_brush, transform);
                 }
                 use_thumbnail = true;
+                }
             }
         }
 

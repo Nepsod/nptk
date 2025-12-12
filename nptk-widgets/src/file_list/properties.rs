@@ -637,9 +637,12 @@ impl Widget for PropertiesContent {
                 if let Some(thumbnail_path) =
                     self.thumbnail_provider.get_thumbnail(&entry, self.thumbnail_size)
                 {
-                    if let Ok(Some(cached_thumb)) =
-                        self.thumbnail_cache.load_or_get(&thumbnail_path, self.thumbnail_size)
-                    {
+                    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                        if let Ok(Some(cached_thumb)) = handle.block_on(async {
+                            self.thumbnail_cache
+                                .load_or_get(&thumbnail_path, self.thumbnail_size)
+                                .await
+                        }) {
                         let image_data = ImageData {
                             data: Blob::from(cached_thumb.data.as_ref().clone()),
                             format: ImageFormat::Rgba8,
@@ -662,8 +665,9 @@ impl Widget for PropertiesContent {
                         }
                     }
                 }
+            }
 
-                if !icon_rendered {
+            if !icon_rendered {
                     if let Some(icon) =
                         self.icon_registry.get_file_icon(&entry, icon_size as u32)
                     {
