@@ -97,9 +97,9 @@ impl IconRegistry {
     }
 
     /// Get an icon for a file entry with fallback chain.
-    pub fn get_file_icon(&self, entry: &FileEntry, size: u32) -> Option<CachedIcon> {
+    pub async fn get_file_icon(&self, entry: &FileEntry, size: u32) -> Option<CachedIcon> {
         // Get icon candidates from MIME provider
-        let icon_data = self.mime_provider.get_icon(entry)?;
+        let icon_data = self.mime_provider.get_icon(entry).await?;
         log::debug!(
             "IconRegistry: Looking up icons {:?} for file '{}' (MIME: {:?})",
             icon_data.names,

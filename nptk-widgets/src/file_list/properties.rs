@@ -75,7 +75,7 @@ impl FileListContent {
                 .map(|s| s.to_uppercase())
                 .unwrap_or_else(|| "FILE".to_string());
 
-            let mime_type = MimeDetector::detect_mime_type(path)
+            let mime_type = smol::block_on(MimeDetector::detect_mime_type(path))
                 .or_else(|| Self::xdg_mime_filetype(path))
                 .unwrap_or_else(|| "unknown".to_string());
 
@@ -604,7 +604,7 @@ impl Widget for PropertiesContent {
                     .to_string();
 
                 let mime_type = if file_type == FileType::File {
-                    MimeDetector::detect_mime_type(path)
+                    smol::block_on(MimeDetector::detect_mime_type(path))
                 } else {
                     None
                 };
@@ -669,7 +669,7 @@ impl Widget for PropertiesContent {
 
             if !icon_rendered {
                     if let Some(icon) =
-                        self.icon_registry.get_file_icon(&entry, icon_size as u32)
+                        smol::block_on(self.icon_registry.get_file_icon(&entry, icon_size as u32))
                     {
                         let icon_x = icon_rect.x0;
                         let icon_y = icon_rect.y0;

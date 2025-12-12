@@ -1,6 +1,7 @@
 //! MIME type detection with override table and content-based detection.
 
-use std::fs;
+use smol::fs;
+use smol::io::AsyncReadExt;
 use std::io::Read;
 use std::path::Path;
 
@@ -34,7 +35,7 @@ impl MimeDetector {
     /// 2. Try extension-based detection (mime_guess2) - fast
     /// 3. If extension-based gives generic result, try content-based detection (tree_magic_mini) - accurate
     /// 4. Return None if all methods fail
-    pub fn detect_mime_type(path: &Path) -> Option<String> {
+    pub async fn detect_mime_type(path: &Path) -> Option<String> {
         // Check override table first (for edge cases)
         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
             let ext_lower = ext.to_lowercase();
@@ -67,7 +68,7 @@ impl MimeDetector {
         // Extension-based detection gave generic result, try content-based detection
         log::debug!("MimeDetector: Extension-based detection gave generic result, trying content-based detection for {:?}", path);
 
-        if let Some(content_mime) = Self::detect_mime_type_from_content(path) {
+        if let Some(content_mime) = Self::detect_mime_type_from_content(path).await {
             log::debug!(
                 "MimeDetector: Detected MIME type '{}' from content for {:?}",
                 content_mime,
@@ -84,11 +85,11 @@ impl MimeDetector {
     /// Detect MIME type from file contents using tree_magic_mini.
     ///
     /// This reads a sample of the file and uses magic number detection.
-    fn detect_mime_type_from_content(path: &Path) -> Option<String> {
+    async fn detect_mime_type_from_content(path: &Path) -> Option<String> {
         // Read first 8KB of file for magic number detection
         const MAX_READ_SIZE: usize = 8192;
 
-        let mut file = match fs::File::open(path) {
+        let mut file = match fs::File::open(path).await {
             Ok(f) => f,
             Err(e) => {
                 log::debug!(
@@ -100,7 +101,7 @@ impl MimeDetector {
         };
 
         let mut buffer = vec![0u8; MAX_READ_SIZE];
-        let bytes_read = match file.read(&mut buffer) {
+        let bytes_read = match file.read(&mut buffer).await {
             Ok(n) => n,
             Err(e) => {
                 log::debug!(

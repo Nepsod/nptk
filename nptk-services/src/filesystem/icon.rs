@@ -15,7 +15,7 @@ pub struct IconData {
 /// Trait for providing icons for filesystem entries.
 pub trait IconProvider: Send + Sync {
     /// Get icon data for a file entry.
-    fn get_icon(&self, entry: &FileEntry) -> Option<IconData>;
+    async fn get_icon(&self, entry: &FileEntry) -> Option<IconData>;
 }
 
 /// Icon provider based on MIME type detection.
@@ -163,7 +163,7 @@ impl MimeIconProvider {
 }
 
 impl IconProvider for MimeIconProvider {
-    fn get_icon(&self, entry: &FileEntry) -> Option<IconData> {
+    async fn get_icon(&self, entry: &FileEntry) -> Option<IconData> {
         // Explicit symlink handling so we do not depend on target MIME detection.
         if entry.is_symlink() {
             return Some(IconData {
@@ -207,7 +207,7 @@ impl IconProvider for MimeIconProvider {
                     "MimeIconProvider: No extension, trying path-based detection for: {}",
                     entry.name
                 );
-                MimeDetector::detect_mime_type(&entry.path)
+                MimeDetector::detect_mime_type(&entry.path).await
             }
         };
 
@@ -333,7 +333,7 @@ mod tests {
     fn mime_provider_emits_application_toml_icon() {
         let entry = dummy_entry("test.toml", "application/toml", FileType::File);
         let provider = MimeIconProvider::new();
-        let icon = provider.get_icon(&entry).expect("icon data");
+        let icon = smol::block_on(provider.get_icon(&entry)).expect("icon data");
         assert!(
             icon.names.iter().any(|n| n == "application-toml"),
             "expected application-toml in {:?}",
@@ -345,7 +345,7 @@ mod tests {
     fn registry_resolves_application_toml_icon() {
         let registry = IconRegistry::new().expect("icon registry");
         let entry = dummy_entry("test.toml", "application/toml", FileType::File);
-        let icon = registry.get_file_icon(&entry, 64);
+        let icon = smol::block_on(registry.get_file_icon(&entry, 64));
         assert!(icon.is_some(), "registry returned no icon");
     }
 
@@ -357,7 +357,7 @@ mod tests {
             "application/x-raw-floppy-disk-image",
             FileType::File,
         );
-        let icon = registry.get_file_icon(&entry, 64);
+        let icon = smol::block_on(registry.get_file_icon(&entry, 64));
         assert!(icon.is_some(), "registry returned no icon");
     }
 }

@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 impl FileListContent {
     pub(super) fn launch_path(registry: MimeRegistry, path: PathBuf) {
-        let mime = MimeDetector::detect_mime_type(&path).or_else(|| Self::xdg_mime_filetype(&path));
+        let mime = smol::block_on(MimeDetector::detect_mime_type(&path)).or_else(|| Self::xdg_mime_filetype(&path));
         let Some(mime) = mime else {
             log::warn!("Could not detect MIME type for {:?}", path);
             return;
@@ -44,7 +44,7 @@ impl FileListContent {
             return "Open".to_string();
         }
 
-        let mime = MimeDetector::detect_mime_type(path).or_else(|| Self::xdg_mime_filetype(path));
+        let mime = smol::block_on(MimeDetector::detect_mime_type(path)).or_else(|| Self::xdg_mime_filetype(path));
         let Some(mime) = mime else {
             return "Open".to_string();
         };
@@ -77,7 +77,7 @@ impl FileListContent {
     ) -> Vec<ContextMenuItem> {
         let mut items = Vec::new();
 
-        let mime = MimeDetector::detect_mime_type(path).or_else(|| Self::xdg_mime_filetype(path));
+        let mime = smol::block_on(MimeDetector::detect_mime_type(path)).or_else(|| Self::xdg_mime_filetype(path));
         let Some(mime) = mime else {
             return items;
         };

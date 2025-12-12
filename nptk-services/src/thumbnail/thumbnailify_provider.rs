@@ -109,7 +109,7 @@ impl ThumbnailProvider for ThumbnailifyProvider {
         }
 
         // Try to detect MIME type if not available
-        if let Some(mime_type) = MimeDetector::detect_mime_type(&entry.path) {
+        if let Some(mime_type) = smol::block_on(MimeDetector::detect_mime_type(&entry.path)) {
             return Self::is_mime_supported(&mime_type);
         }
 

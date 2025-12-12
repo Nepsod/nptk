@@ -258,7 +258,7 @@ impl FileListContent {
                     if let Some(icon) = cache.get(&cache_key) {
                         icon.clone()
                     } else {
-                        let icon = self.icon_registry.get_file_icon(&entry, thumb_size);
+                        let icon = smol::block_on(self.icon_registry.get_file_icon(&entry, thumb_size));
                         cache.insert(cache_key.clone(), icon.clone());
                         icon
                     }

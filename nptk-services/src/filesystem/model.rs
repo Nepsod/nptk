@@ -74,7 +74,7 @@ pub struct FileSystemModel {
     watcher: Arc<Mutex<FileSystemWatcher>>,
     task_tx: mpsc::UnboundedSender<FileSystemTask>,
     event_tx: broadcast::Sender<FileSystemEvent>,
-    icon_provider: Arc<dyn IconProvider>,
+    icon_provider: Arc<MimeIconProvider>,
 }
 
 impl FileSystemModel {
@@ -91,7 +91,7 @@ impl FileSystemModel {
         let (event_tx, _) = broadcast::channel(100); // Buffer up to 100 events
 
         // Initialize icon provider
-        let icon_provider: Arc<dyn IconProvider> = Arc::new(MimeIconProvider::new());
+        let icon_provider: Arc<MimeIconProvider> = Arc::new(MimeIconProvider::new());
 
         // Spawn async worker task
         let cache_clone = cache.clone();
@@ -232,7 +232,7 @@ impl FileSystemModel {
 
             // Detect MIME type using MimeDetector
             let mime_type = if file_type == FileType::File {
-                crate::filesystem::mime_detector::MimeDetector::detect_mime_type(&entry_path)
+                crate::filesystem::mime_detector::MimeDetector::detect_mime_type(&entry_path).await
             } else {
                 None
             };
@@ -454,7 +454,7 @@ impl FileSystemModel {
             .to_string();
 
         let mime_type = if file_type == FileType::File {
-            crate::filesystem::mime_detector::MimeDetector::detect_mime_type(path)
+            crate::filesystem::mime_detector::MimeDetector::detect_mime_type(path).await
         } else {
             None
         };
