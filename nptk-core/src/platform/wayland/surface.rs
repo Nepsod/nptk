@@ -237,20 +237,44 @@ impl WaylandSurfaceInner {
             height,
             stride
         );
-        let mut file = tempfile::tempfile().map_err(|e| format!("tempfile failed: {:?}", e))?;
-        file.set_len(size_bytes as u64)
-            .map_err(|e| format!("ftruncate failed: {:?}", e))?;
+        // Use smol::unblock for tempfile operations to avoid blocking the runtime
+        let file = smol::block_on(async {
+            let file = smol::unblock(|| tempfile::tempfile())
+                .await
+                .map_err(|e| format!("tempfile failed: {:?}", e))?;
+            
+            let file = smol::unblock({
+                let size = size_bytes as u64;
+                move || {
+                    let mut f = file;
+                    f.set_len(size).map_err(|e| format!("ftruncate failed: {:?}", e))?;
+                    Ok::<std::fs::File, String>(f)
+                }
+            })
+            .await?;
 
-        // Fill with opaque gray
-        let mut pixels = vec![0u8; size_bytes as usize];
-        for px in pixels.chunks_exact_mut(4) {
-            px[0] = 0x80; // B
-            px[1] = 0x80; // G
-            px[2] = 0x80; // R
-            px[3] = 0xFF; // A
-        }
-        file.write_all(&pixels)
-            .map_err(|e| format!("write failed: {:?}", e))?;
+            // Fill with opaque gray
+            let mut pixels = vec![0u8; size_bytes as usize];
+            for px in pixels.chunks_exact_mut(4) {
+                px[0] = 0x80; // B
+                px[1] = 0x80; // G
+                px[2] = 0x80; // R
+                px[3] = 0xFF; // A
+            }
+            
+            let file = smol::unblock({
+                let pixels = pixels.clone();
+                move || {
+                    use std::io::Write;
+                    let mut f = file;
+                    f.write_all(&pixels).map_err(|e| format!("write failed: {:?}", e))?;
+                    Ok::<std::fs::File, String>(f)
+                }
+            })
+            .await?;
+            
+            Ok::<std::fs::File, String>(file)
+        })?;
 
         let pool = shm.create_pool(file.as_fd(), size_bytes as i32, queue_handle, ());
         let buffer = pool.create_buffer(

@@ -31,6 +31,7 @@ read-fonts = "0.29.2"
 parley = "0.7.0"
 harfrust = "0.2.0"
 futures-lite = { version = "2.0", optional = true }
+smol = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 smithay-client-toolkit = { version = "0.18", optional = true }
