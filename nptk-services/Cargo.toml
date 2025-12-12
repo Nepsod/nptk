@@ -32,3 +32,4 @@ cosmic-mime-apps = { git = "https://github.com/pop-os/cosmic-mime-apps.git" }
 mime = "0.3"
 shared-mime = { version = "0.1.0", features = ["xdg-runtime"] }
 uring-file = "0.9"
+futures = "0.3"

@@ -166,14 +166,27 @@ impl FileSystemModel {
 
     /// Load directory entries from filesystem.
     async fn load_directory(path: &Path) -> Result<Vec<FileEntry>, FileSystemError> {
-        let mut entries = Vec::new();
+        // First pass: collect all directory entry paths
+        let mut dir_entries = Vec::new();
         let mut dir = tokio::fs::read_dir(path).await?;
 
         while let Some(entry) = dir.next_entry().await? {
-            let path = entry.path();
-            let meta_res = io_uring::stat(&path).await;
+            let entry_path = entry.path();
+            dir_entries.push((entry, entry_path));
+        }
 
-            let (file_type, size, modified, created, permissions) = if let Ok(metadata) = meta_res {
+        if dir_entries.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Second pass: batch all statx operations
+        let paths: Vec<_> = dir_entries.iter().map(|(_, p)| p.clone()).collect();
+        let stat_results = io_uring::stat_batch(&paths).await;
+
+        // Third pass: process results and build FileEntry objects
+        let mut entries = Vec::new();
+        for ((entry, entry_path), stat_res) in dir_entries.into_iter().zip(stat_results) {
+            let (file_type, size, modified, created, permissions) = if let Ok(metadata) = stat_res {
                 let ft = if metadata.is_dir() {
                     FileType::Directory
                 } else if metadata.is_symlink() {
@@ -191,6 +204,7 @@ impl FileSystemModel {
                     metadata.permissions().mode(),
                 )
             } else {
+                // Fallback to tokio::fs::metadata if io_uring failed
                 let metadata = entry.metadata().await?;
                 let ft = if metadata.is_dir() {
                     FileType::Directory
@@ -210,7 +224,7 @@ impl FileSystemModel {
                 )
             };
 
-            let name = path
+            let name = entry_path
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("")
@@ -218,7 +232,7 @@ impl FileSystemModel {
 
             // Detect MIME type using MimeDetector
             let mime_type = if file_type == FileType::File {
-                crate::filesystem::mime_detector::MimeDetector::detect_mime_type(&path)
+                crate::filesystem::mime_detector::MimeDetector::detect_mime_type(&entry_path)
             } else {
                 None
             };
@@ -233,11 +247,11 @@ impl FileSystemModel {
             };
 
             entries.push(FileEntry::new(
-                path.clone(),
+                entry_path.clone(),
                 name,
                 file_type,
                 file_metadata,
-                Some(path.parent().unwrap().to_path_buf()),
+                Some(entry_path.parent().unwrap().to_path_buf()),
             ));
         }
 
