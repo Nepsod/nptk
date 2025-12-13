@@ -331,4 +331,36 @@ impl ToolbarButton {
                 ..Default::default()
             })
     }
+
+    /// Create a new toolbar button with multiple child widgets.
+    ///
+    /// The children will be arranged horizontally in a row with a small gap between them.
+    /// This is useful for toolbar buttons that contain both an icon and text, or multiple elements.
+    pub fn with_children(children: Vec<BoxedWidget>) -> crate::button::Button {
+        use nptk_core::layout::{AlignItems, FlexDirection, LengthPercentage, LayoutStyle};
+        use crate::container::Container;
+        
+        let container = Container::new(children)
+            .with_layout_style(LayoutStyle {
+                flex_direction: FlexDirection::Row,
+                align_items: Some(AlignItems::Center),
+                gap: nalgebra::Vector2::new(
+                    LengthPercentage::length(2.0),
+                    LengthPercentage::length(0.0),
+                ),
+                ..Default::default()
+            });
+        
+        crate::button::Button::new(container)
+            .with_style_id("ToolbarButton")
+            .with_layout_style(LayoutStyle {
+                padding: nptk_core::layout::Rect::<LengthPercentage> {
+                    left: LengthPercentage::length(0.0),
+                    right: LengthPercentage::length(0.0),
+                    top: LengthPercentage::length(2.0),
+                    bottom: LengthPercentage::length(10.0),
+                },
+                ..Default::default()
+            })
+    }
 }
