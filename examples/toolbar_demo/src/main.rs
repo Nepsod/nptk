@@ -13,7 +13,10 @@ impl Application for MyApp {
                     .with_child(ToolbarButton::new(Text::new("New".to_string()).with_font_size(24.0).with_font(MaybeSignal::value(Some("WenQuanYi Micro Hei".to_string())))))
                     .with_child(ToolbarButton::new(Text::new("Open".to_string()).with_font_size(24.0)))
                     .with_separator()
-                    .with_child(ToolbarButton::new(Text::new("Save".to_string()).with_font_size(24.0)))
+                    .with_child(ToolbarButton::with_children(vec![
+                        Box::new(Icon::new("document-save", 28, None)),
+                        Box::new(Text::new("Save".to_string()).with_font_size(24.0)),
+                    ]))
                     .with_spacer()
                     .with_child(ToolbarButton::new(Text::new("Help❔".to_string()).with_font_size(24.0).with_font(MaybeSignal::value(Some("Noto Color Emoji".to_string())))))
             )

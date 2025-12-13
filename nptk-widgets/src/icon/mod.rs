@@ -158,15 +158,18 @@ impl Widget for Icon {
 
         match *icon_data_ref {
             IconData::Svg(ref svg_icon) => {
-                // The size is divided, as otherwise the icon would be either too large (with 1.0) or too tiny (with 0.1 somehow getting converted to 0.0)
-                let affine = Affine::scale_non_uniform(
-                    layout_node.layout.size.width as f64 / 100.0,
-                    layout_node.layout.size.height as f64 / 100.0,
-                )
-                .then_translate(Vec2::new(
-                    layout_node.layout.location.x as f64,
-                    layout_node.layout.location.y as f64,
-                ));
+                // Scale SVG to fit layout size while maintaining aspect ratio
+                let svg_width = svg_icon.width();
+                let svg_height = svg_icon.height();
+                let scale_x = layout_node.layout.size.width as f64 / svg_width;
+                let scale_y = layout_node.layout.size.height as f64 / svg_height;
+                let scale = scale_x.min(scale_y);
+
+                let affine = Affine::scale(scale)
+                    .then_translate(Vec2::new(
+                        layout_node.layout.location.x as f64,
+                        layout_node.layout.location.y as f64,
+                    ));
 
                 graphics.append(&svg_icon.scene(), Some(affine));
             },
