@@ -251,7 +251,7 @@ impl FileSystemModel {
                 name,
                 file_type,
                 file_metadata,
-                Some(entry_path.parent().unwrap().to_path_buf()),
+                entry_path.parent().map(|p| p.to_path_buf()),
             ));
         }
 

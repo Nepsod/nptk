@@ -24,13 +24,13 @@ pub struct Config {
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct GeneralSettings {
-    pub debug: bool,
+    pub debug: Option<bool>,
     pub log_level: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct MouseSettings {
-    pub natural_scrolling: bool,
+    pub natural_scrolling: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -48,7 +48,17 @@ impl SettingsRegistry {
     /// Create a new SettingsRegistry and load configuration from standard locations.
     pub fn new() -> Result<Self> {
         let mut registry = Self {
-            config: Config::default(),
+            config: Config {
+                general: GeneralSettings {
+                    debug: Some(false),
+                    log_level: None,
+                },
+                mouse: MouseSettings {
+                    natural_scrolling: Some(false),
+                },
+                keyboard: KeyboardSettings {},
+                other: HashMap::new(),
+            },
             theme_config: ThemeConfig::new(),
         };
         registry.load()?;
@@ -154,16 +164,16 @@ impl SettingsRegistry {
     /// Merge a loaded config into the current config.
     fn merge(&mut self, other: Config) {
         // General
-        if other.general.debug {
-            self.config.general.debug = true;
+        if let Some(debug) = other.general.debug {
+            self.config.general.debug = Some(debug);
         }
         if other.general.log_level.is_some() {
             self.config.general.log_level = other.general.log_level;
         }
 
         // Mouse
-        if other.mouse.natural_scrolling {
-            self.config.mouse.natural_scrolling = true;
+        if let Some(natural) = other.mouse.natural_scrolling {
+            self.config.mouse.natural_scrolling = Some(natural);
         }
 
         // Keyboard - nothing to merge yet
@@ -175,5 +185,46 @@ impl SettingsRegistry {
     /// Get the current configuration.
     pub fn get(&self) -> &Config {
         &self.config
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_merge_boolean_override() {
+        let mut registry = SettingsRegistry {
+            config: Config {
+                general: GeneralSettings {
+                    debug: Some(true),
+                    log_level: None,
+                },
+                mouse: MouseSettings {
+                    natural_scrolling: Some(true),
+                },
+                keyboard: KeyboardSettings {},
+                other: HashMap::new(),
+            },
+            theme_config: ThemeConfig::new(),
+        };
+
+        let new_config = Config {
+            general: GeneralSettings {
+                debug: Some(false), // Should override to false
+                log_level: None,
+            },
+            mouse: MouseSettings {
+                natural_scrolling: Some(false), // Should override to false
+            },
+            keyboard: KeyboardSettings {},
+            other: HashMap::new(),
+        };
+
+        registry.merge(new_config);
+
+        // This is expected to FAIL currently because merge logic only enables, doesn't disable
+        assert_eq!(registry.config.general.debug, Some(false), "Debug should be false");
+        assert_eq!(registry.config.mouse.natural_scrolling, Some(false), "Natural scrolling should be false");
     }
 }

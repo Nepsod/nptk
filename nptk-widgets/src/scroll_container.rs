@@ -901,7 +901,7 @@ impl Widget for ScrollContainer {
             let base_scroll_speed = 40.0; // Base scroll speed
 
             // Check for natural scrolling setting
-            let natural_scrolling = context.settings.get().mouse.natural_scrolling;
+            let natural_scrolling = context.settings.get().mouse.natural_scrolling.unwrap_or(false);
 
             let direction_multiplier = if natural_scrolling { -1.0 } else { 1.0 };
 
