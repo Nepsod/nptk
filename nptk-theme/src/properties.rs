@@ -302,6 +302,14 @@ pub enum ThemeProperty {
     /// Common disabled state color.
     ColorDisabled,
 
+    // Toolbar-specific properties
+    /// Toolbar background color.
+    ColorToolbarBackground,
+    /// Toolbar border color.
+    ColorToolbarBorder,
+    /// Toolbar separator color.
+    ColorToolbarSeparator,
+
     // Custom properties (for extensibility)
     /// Custom property for specialized widgets.
     Custom(&'static str),
@@ -365,6 +373,9 @@ impl ThemeProperty {
             ThemeProperty::TabTextActive => "tab_text_active",
             ThemeProperty::ColorProgress => "color_progress",
             ThemeProperty::ColorDisabled => "color_disabled",
+            ThemeProperty::ColorToolbarBackground => "color_toolbar_background",
+            ThemeProperty::ColorToolbarBorder => "color_toolbar_border",
+            ThemeProperty::ColorToolbarSeparator => "color_toolbar_separator",
             ThemeProperty::Custom(name) => name,
         }
     }
@@ -434,6 +445,9 @@ impl std::str::FromStr for ThemeProperty {
             "tab_text_active" => Ok(ThemeProperty::TabTextActive),
             "color_progress" => Ok(ThemeProperty::ColorProgress),
             "color_disabled" => Ok(ThemeProperty::ColorDisabled),
+            "color_toolbar_background" => Ok(ThemeProperty::ColorToolbarBackground),
+            "color_toolbar_border" => Ok(ThemeProperty::ColorToolbarBorder),
+            "color_toolbar_separator" => Ok(ThemeProperty::ColorToolbarSeparator),
             // For custom properties, we can't easily return a static str reference from a temporary string
             // So we'll handle custom properties separately in the config loader
             _ => Err(()),

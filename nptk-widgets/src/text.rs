@@ -28,6 +28,7 @@ pub struct Text {
     hinting: MaybeSignal<bool>,
     line_gap: MaybeSignal<f32>,
     text_render_context: TextRenderContext,
+    measured_size: Option<Vector2<f32>>,
 }
 
 impl Text {
@@ -41,6 +42,7 @@ impl Text {
             hinting: true.into(),
             line_gap: 7.5.into(),
             text_render_context: TextRenderContext::new(),
+            measured_size: None,
         }
     }
 
@@ -155,9 +157,17 @@ impl Widget for Text {
 
         let style = self.style.get().deref().clone();
 
-        // Default to filling available width if not explicitly set
+        // Default to estimated content width if not explicitly set
         let width = if style.size.x == Dimension::auto() {
-            Dimension::percent(1.0) // Fill available space by default
+            if let Some(size) = self.measured_size {
+                Dimension::length(size.x)
+            } else {
+                // Heuristic: estimate width based on char count
+                // Average character width is roughly 0.6 * font_size, but we use 0.8 to be safe
+                let char_count = text.chars().count();
+                let estimated_width = char_count as f32 * font_size * 0.8;
+                Dimension::length(estimated_width)
+            }
         } else {
             style.size.x // Keep user-defined width
         };
@@ -166,17 +176,38 @@ impl Widget for Text {
             style: LayoutStyle {
                 size: Vector2::new(width, Dimension::length(calculated_height)),
                 flex_grow: if style.size.x == Dimension::auto() {
-                    1.0
+                    0.0 // Do not grow by default, let content define size
                 } else {
                     style.flex_grow
-                }, // Grow to fill space if auto width
+                },
                 ..style
             },
             children: Vec::new(),
         }
     }
 
-    fn update(&mut self, _: &LayoutNode, _: AppContext, _: &mut AppInfo) -> Update {
+    fn update(&mut self, _: &LayoutNode, _: AppContext, info: &mut AppInfo) -> Update {
+        let text = self.text.get();
+        let font_size = *self.font_size.get();
+        let line_gap = *self.line_gap.get();
+        
+        // Measure text
+        let (width, line_count) = self.text_render_context.measure_text_layout(
+            &mut info.font_context,
+            &text,
+            font_size,
+            None, // No max width constraint for auto-sizing
+        );
+        
+        let line_height = font_size + line_gap;
+        let height = line_height * line_count as f32;
+        let new_size = Vector2::new(width, height);
+
+        if self.measured_size != Some(new_size) {
+            self.measured_size = Some(new_size);
+            return Update::LAYOUT | Update::DRAW;
+        }
+
         Update::empty()
     }
 

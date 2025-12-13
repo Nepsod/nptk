@@ -67,5 +67,6 @@ pub mod prelude {
     pub use crate::widgets::text::Text;
     pub use crate::widgets::text_input::TextInput;
     pub use crate::widgets::toggle::Toggle;
+    pub use crate::widgets::toolbar::{Toolbar, ToolbarButton, ToolbarSeparator, ToolbarSpacer};
     pub use crate::widgets::value_input::ValueInput;
 }

@@ -148,6 +148,25 @@ impl Theme for CelesteTheme {
                     crate::properties::ThemeProperty::ColorToggleDisabled => {
                         Some(palette.text_muted)
                     },
+                    crate::properties::ThemeProperty::ColorToggleDisabled => {
+                        Some(palette.text_muted)
+                    },
+                    _ => None,
+                },
+                "Toolbar" => match property {
+                    crate::properties::ThemeProperty::ColorToolbarBackground => {
+                        Some(palette.background_alt)
+                    },
+                    crate::properties::ThemeProperty::ColorToolbarBorder => Some(palette.border),
+                    crate::properties::ThemeProperty::ColorToolbarSeparator => Some(palette.border),
+                    crate::properties::ThemeProperty::ColorToolbarSeparator => Some(palette.border),
+                    _ => None,
+                },
+                "ToolbarButton" => match property {
+                    crate::properties::ThemeProperty::ColorIdle => Some(Color::TRANSPARENT),
+                    crate::properties::ThemeProperty::ColorPressed => Some(palette.primary_dark),
+                    crate::properties::ThemeProperty::ColorHovered => Some(palette.primary_light),
+                    crate::properties::ThemeProperty::ColorFocused => Some(palette.primary_dark),
                     _ => None,
                 },
                 "FileList" | "FileListContent" => match property {

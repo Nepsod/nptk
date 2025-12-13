@@ -7,7 +7,8 @@ use nptk_core::app::update::Update;
 use nptk_core::layout;
 use nptk_core::layout::{LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
 use nptk_core::signal::MaybeSignal;
-use nptk_core::vg::kurbo::{Affine, Vec2};
+use nptk_core::vg::kurbo::{Affine, Rect, Shape};
+use nptk_core::vg::peniko::Mix;
 use nptk_core::vgi::{vello_vg::VelloGraphics, Graphics};
 use nptk_core::widget::{BoxedWidget, Widget, WidgetChildExt, WidgetLayoutExt};
 use nptk_core::window::{ElementState, KeyCode, MouseButton, PhysicalKey};
@@ -38,6 +39,7 @@ pub struct Button {
     repeat_interval: Duration,
     press_start_time: Option<Instant>,
     last_repeat_time: Option<Instant>,
+    style_id: &'static str,
 }
 
 impl Button {
@@ -54,6 +56,7 @@ impl Button {
                     top: LengthPercentage::length(2.0),
                     bottom: LengthPercentage::length(10.0),
                 },
+                flex_shrink: 0.0,
                 ..Default::default()
             }
             .into(),
@@ -66,6 +69,7 @@ impl Button {
             repeat_interval: Duration::from_millis(100),
             press_start_time: None,
             last_repeat_time: None,
+            style_id: "Button",
         }
     }
 
@@ -97,6 +101,19 @@ impl Button {
     /// Set the interval between repeats (in milliseconds).
     pub fn with_repeat_interval(self, interval_ms: u64) -> Self {
         self.apply_with(|s| s.repeat_interval = Duration::from_millis(interval_ms))
+    }
+
+    /// Set the theme style ID for this button.
+    ///
+    /// This allows the button to be styled differently by the theme.
+    /// For example, a toolbar button might use "ToolbarButton".
+    pub fn with_style_id(self, id: &'static str) -> Self {
+        self.apply_with(|s| s.style_id = id)
+    }
+
+    /// Set the layout style for this button.
+    pub fn with_layout_style(self, layout_style: impl Into<MaybeSignal<LayoutStyle>>) -> Self {
+        self.apply_with(|s| s.layout_style = layout_style.into())
     }
 
     fn update_focus_state(
@@ -302,21 +319,37 @@ impl Widget for Button {
             let mut child_scene = nptk_core::vg::Scene::new();
             let mut child_graphics = VelloGraphics::new(&mut child_scene);
 
+            let child_layout = &layout_node.children[0];
+            
+            // Render child to scene - child layout coordinates are already relative to button
             self.child.render(
                 &mut child_graphics,
                 theme,
-                &layout_node.children[0],
+                child_layout,
                 info,
                 context,
             );
 
-            graphics.append(
-                &child_scene,
-                Some(Affine::translate(Vec2::new(
-                    layout_node.layout.location.x as f64,
-                    layout_node.layout.location.y as f64,
-                ))),
+            // Apply clipping to prevent label overflow
+            // Child layout coordinates are in screen space, so we clip to button bounds
+            let button_rect = Rect::new(
+                layout_node.layout.location.x as f64,
+                layout_node.layout.location.y as f64,
+                (layout_node.layout.location.x + layout_node.layout.size.width) as f64,
+                (layout_node.layout.location.y + layout_node.layout.size.height) as f64,
             );
+
+            graphics.push_layer(
+                Mix::Clip,
+                1.0,
+                Affine::IDENTITY,
+                &button_rect.to_path(0.1),
+            );
+
+            // Append without translation - child layout coordinates are already in screen space
+            graphics.append(&child_scene, None);
+
+            graphics.pop_layer();
 
             theme.globals_mut().invert_text_color = false;
         }
@@ -360,7 +393,7 @@ impl Widget for Button {
     }
 
     fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "Button")
+        WidgetId::new("nptk-widgets", self.style_id)
     }
 }
 

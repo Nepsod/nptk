@@ -79,3 +79,6 @@ pub mod toggle;
 
 /// Contains theme rendering bridge functionality.
 pub mod theme_rendering;
+
+/// Contains the [toolbar::Toolbar] widget.
+pub mod toolbar;

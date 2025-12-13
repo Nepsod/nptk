@@ -389,6 +389,53 @@ impl Theme for SweetTheme {
                             .get_color("text-muted")
                             .unwrap_or(Color::from_rgb8(102, 106, 115)),
                     ),
+                    crate::properties::ThemeProperty::ColorToggleDisabled => Some(
+                        self.variables
+                            .get_color("text-muted")
+                            .unwrap_or(Color::from_rgb8(102, 106, 115)),
+                    ),
+                    _ => None,
+                },
+                "Toolbar" => match property {
+                    crate::properties::ThemeProperty::ColorToolbarBackground => Some(
+                        self.variables
+                            .get_color("bg-secondary")
+                            .unwrap_or(Color::from_rgb8(30, 34, 51)),
+                    ),
+                    crate::properties::ThemeProperty::ColorToolbarBorder => Some(
+                        self.variables
+                            .get_color("border-primary")
+                            .unwrap_or(Color::from_rgb8(102, 106, 115)),
+                    ),
+                    crate::properties::ThemeProperty::ColorToolbarSeparator => Some(
+                        self.variables
+                            .get_color("border-primary")
+                            .unwrap_or(Color::from_rgb8(102, 106, 115)),
+                    ),
+                    crate::properties::ThemeProperty::ColorToolbarSeparator => Some(
+                        self.variables
+                            .get_color("border-primary")
+                            .unwrap_or(Color::from_rgb8(102, 106, 115)),
+                    ),
+                    _ => None,
+                },
+                "ToolbarButton" => match property {
+                    crate::properties::ThemeProperty::ColorIdle => Some(Color::TRANSPARENT),
+                    crate::properties::ThemeProperty::ColorPressed => Some(
+                        self.variables
+                            .get_color("primary-dark")
+                            .unwrap_or(Color::from_rgb8(157, 51, 213)),
+                    ),
+                    crate::properties::ThemeProperty::ColorHovered => Some(
+                        self.variables
+                            .get_color("bg-tertiary")
+                            .unwrap_or(Color::from_rgb8(24, 27, 40)),
+                    ),
+                    crate::properties::ThemeProperty::ColorFocused => Some(
+                        self.variables
+                            .get_color("primary")
+                            .unwrap_or(Color::from_rgb8(197, 14, 210)),
+                    ),
                     _ => None,
                 },
                 "TabsContainer" => match property {
@@ -728,6 +775,41 @@ impl Theme for SweetTheme {
                     (
                         ThemeProperty::ColorToggleDisabled,
                         self.variables.get_color("text-muted").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorToggleDisabled,
+                        self.variables.get_color("text-muted").unwrap(),
+                    ),
+                ])),
+
+                "Toolbar" => Some(self.create_widget_style(&[
+                    (
+                        ThemeProperty::ColorToolbarBackground,
+                        self.variables.get_color("bg-secondary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorToolbarBorder,
+                        self.variables.get_color("border-primary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorToolbarSeparator,
+                        self.variables.get_color("border-primary").unwrap(),
+                    ),
+                ])),
+
+                "ToolbarButton" => Some(self.create_widget_style(&[
+                    (ThemeProperty::ColorIdle, Color::TRANSPARENT),
+                    (
+                        ThemeProperty::ColorPressed,
+                        self.variables.get_color("primary-dark").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorHovered,
+                        self.variables.get_color("bg-tertiary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorFocused,
+                        self.variables.get_color("primary").unwrap(),
                     ),
                 ])),
 
