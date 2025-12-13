@@ -1,10 +1,12 @@
 use crate::icon::{ImageRendering, ShapeRendering, SvgError, TextRendering};
 use nptk_core::vg::Scene;
+use std::sync::Arc;
 use vello_svg::usvg;
 use vello_svg::usvg::Options;
 
 /// An SVG icon rendered as a Vello [Scene].
-pub struct SvgIcon(Scene);
+#[derive(Clone)]
+pub struct SvgIcon(Arc<Scene>);
 
 impl SvgIcon {
     /// Creates a new icon from the given SVG source.
@@ -45,7 +47,7 @@ impl SvgIcon {
 
         let scene = vello_svg::render_tree(&tree);
 
-        Ok(Self(scene))
+        Ok(Self(Arc::new(scene)))
     }
 
     /// Returns the underlying [Scene].
@@ -56,6 +58,6 @@ impl SvgIcon {
 
 impl From<Scene> for SvgIcon {
     fn from(scene: Scene) -> Self {
-        Self(scene)
+        Self(Arc::new(scene))
     }
 }
