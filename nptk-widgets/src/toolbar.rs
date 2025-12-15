@@ -14,10 +14,24 @@ use nptk_theme::id::WidgetId;
 use nptk_theme::properties::ThemeProperty;
 use nptk_theme::theme::Theme;
 
+/// Configuration for toolbar border lines.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolbarBorder {
+    /// No border line.
+    None,
+    /// Border line at the top.
+    Top,
+    /// Border line at the bottom.
+    Bottom,
+    /// Border lines at both top and bottom.
+    TopAndBottom,
+}
+
 /// A toolbar widget that displays a horizontal row of tools/buttons.
 pub struct Toolbar {
     children: Vec<BoxedWidget>,
     layout_style: MaybeSignal<LayoutStyle>,
+    border: ToolbarBorder,
 }
 
 impl Toolbar {
@@ -45,6 +59,7 @@ impl Toolbar {
                 ..Default::default()
             }
             .into(),
+            border: ToolbarBorder::None, // No border by default.
         }
     }
 
@@ -57,6 +72,12 @@ impl Toolbar {
     /// Add multiple child widgets to the toolbar.
     pub fn with_children(mut self, children: Vec<BoxedWidget>) -> Self {
         self.children.extend(children);
+        self
+    }
+
+    /// Configure the toolbar border line.
+    pub fn with_border_line(mut self, border: ToolbarBorder) -> Self {
+        self.border = border;
         self
     }
 
@@ -147,19 +168,36 @@ impl Widget for Toolbar {
             &rect.to_path(0.1),
         );
 
-        // Draw subtle top border (Qt style)
+        // Draw borders based on configuration
         let stroke = Stroke::new(1.0);
-        let top_border_line = Line::new(
-            Point::new(rect.x0, rect.y0),
-            Point::new(rect.x1, rect.y0),
-        );
-        graphics.stroke(
-            &stroke,
-            Affine::IDENTITY,
-            &Brush::Solid(border_color),
-            None,
-            &top_border_line.to_path(0.1),
-        );
+
+        if self.border == ToolbarBorder::Top || self.border == ToolbarBorder::TopAndBottom {
+            let top_border_line = Line::new(
+                Point::new(rect.x0, rect.y0),
+                Point::new(rect.x1, rect.y0),
+            );
+            graphics.stroke(
+                &stroke,
+                Affine::IDENTITY,
+                &Brush::Solid(border_color),
+                None,
+                &top_border_line.to_path(0.1),
+            );
+        }
+
+        if self.border == ToolbarBorder::Bottom || self.border == ToolbarBorder::TopAndBottom {
+            let bottom_border_line = Line::new(
+                Point::new(rect.x0, rect.y1),
+                Point::new(rect.x1, rect.y1),
+            );
+            graphics.stroke(
+                &stroke,
+                Affine::IDENTITY,
+                &Brush::Solid(border_color),
+                None,
+                &bottom_border_line.to_path(0.1),
+            );
+        }
 
         // Render children
         for (i, child) in self.children.iter_mut().enumerate() {
