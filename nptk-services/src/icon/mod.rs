@@ -65,6 +65,13 @@ impl IconRegistry {
         Ok(())
     }
 
+    /// Clear the icon cache.
+    ///
+    /// Useful when the icon lookup algorithm changes or to force reload of icons.
+    pub fn clear_cache(&mut self) {
+        self.cache.clear();
+    }
+
     /// Get the current theme name.
     pub fn theme(&self) -> &str {
         &self.theme
@@ -72,22 +79,60 @@ impl IconRegistry {
 
     /// Get an icon by name and size.
     pub fn get_icon(&self, icon_name: &str, size: u32) -> Option<CachedIcon> {
+        println!("IconRegistry::get_icon: Looking for '{}' at size {}px", icon_name, size);
+        
         // Check cache first
         if let Some(cached) = self.cache.get(icon_name, size) {
+            println!("IconRegistry::get_icon: Found in cache");
+            // Log cached icon dimensions for debugging
+            if let CachedIcon::Image { width, height, .. } = &cached {
+                println!(
+                    "IconRegistry: Using cached icon '{}' (requested: {}px, actual: {}x{}px)",
+                    icon_name,
+                    size,
+                    width,
+                    height
+                );
+            } else if let CachedIcon::Svg(_) = &cached {
+                println!("IconRegistry: Using cached SVG icon '{}'", icon_name);
+            }
             return Some(cached);
         }
 
+        println!("IconRegistry::get_icon: Not in cache, looking up...");
         // Determine context based on icon name patterns
         let context = self.guess_context(icon_name);
+        println!("IconRegistry::get_icon: Guessed context: {:?}", context);
 
         // Lookup icon path
-        let icon_path = self
+        let icon_path = match self
             .lookup
-            .lookup_icon(icon_name, size, context, &self.theme)?;
+            .lookup_icon(icon_name, size, context, &self.theme) {
+            Some(path) => {
+                println!("IconRegistry::get_icon: Found icon path: {:?}", path);
+                path
+            },
+            None => {
+                println!("IconRegistry::get_icon: No icon path found for '{}'", icon_name);
+                return None;
+            },
+        };
 
         // Load icon (blocking call since this is in a sync context)
         // Use smol::block_on which works even within tokio runtime
         let cached_icon = smol::block_on(self.loader.load_icon(&icon_path)).ok()?;
+
+        // Log loaded icon dimensions for debugging
+        if let CachedIcon::Image { width, height, .. } = &cached_icon {
+            println!(
+                "IconRegistry: Loaded icon '{}' (requested: {}px, actual: {}x{}px) from {:?}",
+                icon_name,
+                size,
+                width,
+                height,
+                icon_path
+            );
+        }
 
         // Cache it
         self.cache
@@ -191,6 +236,17 @@ impl IconRegistry {
         } else if icon_name.starts_with("media-") || icon_name.starts_with("drive-") {
             // Media and drive icons are in Devices context
             IconContext::Devices
+        } else if icon_name.starts_with("document-") || icon_name.starts_with("edit-") 
+            || icon_name.starts_with("view-") || icon_name.starts_with("go-")
+            || icon_name.starts_with("insert-") || icon_name.starts_with("format-")
+            || icon_name.starts_with("tools-") || icon_name.starts_with("help-")
+            || icon_name.contains("-save") || icon_name.contains("-open")
+            || icon_name.contains("-new") || icon_name.contains("-print")
+            || icon_name.contains("-undo") || icon_name.contains("-redo")
+            || icon_name.contains("-cut") || icon_name.contains("-copy")
+            || icon_name.contains("-paste") || icon_name.contains("-delete") {
+            // Document/editing actions are in Actions context
+            IconContext::Actions
         } else if icon_name.starts_with("text-") {
             IconContext::Mimetypes
         } else if icon_name.starts_with("image-") {

@@ -71,8 +71,8 @@ impl IconLookup {
         context: IconContext,
         theme_name: &str,
     ) -> Option<PathBuf> {
-        log::debug!(
-            "IconLookup: Looking for icon '{}' (size: {}, context: {:?}) in theme '{}'",
+        println!(
+            "IconLookup::lookup_icon: Looking for icon '{}' (size: {}, context: {:?}) in theme '{}'",
             icon_name,
             size,
             context,
@@ -126,10 +126,16 @@ impl IconLookup {
         context: IconContext,
     ) -> Option<PathBuf> {
         // Find best matching directory
+        println!("IconLookup::lookup_in_theme: Available directories: {:?}", 
+            theme.directories.iter().map(|d| format!("{} (size: {}, type: {:?}, context: {:?})", d.name, d.size, d.directory_type, d.context)).collect::<Vec<_>>());
+        
         let best_dir = match self.find_best_directory(&theme.directories, size, context) {
-            Some(dir) => dir,
+            Some(dir) => {
+                println!("IconLookup::lookup_in_theme: Selected best directory: '{}' (size: {}, type: {:?})", dir.name, dir.size, dir.directory_type);
+                dir
+            },
             None => {
-                log::debug!(
+                println!(
                     "IconLookup: No matching directory found for size {} and context {:?}",
                     size,
                     context
@@ -139,9 +145,10 @@ impl IconLookup {
         };
 
         let dir_path = theme.directory_path(&best_dir.name);
-        log::debug!(
-            "IconLookup: Searching in directory '{}' at {:?}",
+        println!(
+            "IconLookup: Searching in directory '{}' (size: {}) at {:?}",
             best_dir.name,
+            best_dir.size,
             dir_path
         );
 
@@ -200,15 +207,29 @@ impl IconLookup {
             .filter(|d| d.context == context)
             .collect();
 
+        println!("IconLookup::find_best_directory: After context filter ({:?}): {} candidates", context, candidates.len());
+
         // Second try: Unknown context (many themes use this)
         if candidates.is_empty() {
             candidates = directories
                 .iter()
                 .filter(|d| d.context == IconContext::Unknown)
                 .collect();
+            println!("IconLookup::find_best_directory: After Unknown fallback: {} candidates", candidates.len());
         }
 
-        // Third try: Mimetypes context (for file type icons)
+        // Third try: Try Actions context if we're looking for action-like icons
+        if candidates.is_empty() && context == IconContext::Unknown {
+            candidates = directories
+                .iter()
+                .filter(|d| d.context == IconContext::Actions)
+                .collect();
+            if !candidates.is_empty() {
+                println!("IconLookup::find_best_directory: After Actions fallback: {} candidates", candidates.len());
+            }
+        }
+
+        // Fourth try: Mimetypes context (for file type icons)
         if candidates.is_empty() && context == IconContext::Mimetypes {
             candidates = directories
                 .iter()
@@ -219,48 +240,164 @@ impl IconLookup {
         // Final fallback: any directory
         if candidates.is_empty() {
             candidates = directories.iter().collect();
+            println!("IconLookup::find_best_directory: Using all directories as fallback: {} candidates", candidates.len());
         }
 
         // Sort by how well they match the requested size
-        candidates.sort_by_key(|d| {
-            let score: u32 = match d.directory_type {
+        // According to XDG spec and best practices (GNOME, Qt6):
+        // 1. Prefer exact matches
+        // 2. Prefer larger sizes (downscale) over smaller sizes (upscale)
+        //    Downscaling preserves quality, upscaling causes blur/stretch
+        println!("IconLookup::find_best_directory: Candidates before sorting (requested size: {}):", size);
+        for c in &candidates {
+            println!("  - {} (size: {}, type: {:?})", c.name, c.size, c.directory_type);
+        }
+        
+        candidates.sort_by(|a, b| {
+            let score_a = match a.directory_type {
                 DirectoryType::Fixed => {
-                    let diff = if d.size > size {
-                        d.size - size
+                    if a.size == size {
+                        0i64 // Exact match - best
+                    } else if a.size > size {
+                        // Larger size - can downscale (good quality)
+                        (a.size - size) as i64
                     } else {
-                        size - d.size
-                    };
-                    diff
+                        // Smaller size - must upscale (poor quality)
+                        // Add large penalty (10000) to strongly prefer larger sizes
+                        ((size - a.size) as i64) + 10000
+                    }
                 },
                 DirectoryType::Scalable => {
-                    let min = d.min_size.unwrap_or(16);
-                    let max = d.max_size.unwrap_or(256);
+                    let min = a.min_size.unwrap_or(16);
+                    let max = a.max_size.unwrap_or(256);
                     if size >= min && size <= max {
-                        0 // Perfect match
+                        // Within range, but prefer larger sizes (downscale) over smaller (upscale)
+                        // Use the directory size as a tiebreaker - prefer larger directory sizes
+                        if a.size >= size {
+                            // Directory size is larger or equal - can downscale (good)
+                            (a.size - size) as i64
+                        } else {
+                            // Directory size is smaller - must upscale (bad, add penalty)
+                            ((size - a.size) as i64) + 10000
+                        }
                     } else if size < min {
-                        min - size
+                        (min - size) as i64 // Can scale up from min
                     } else {
-                        size - max
+                        (size - max) as i64 // Can scale down from max
                     }
                 },
                 DirectoryType::Threshold => {
-                    let threshold = d.threshold.unwrap_or(2);
-                    let diff = if d.size > size {
-                        d.size - size
+                    let threshold = a.threshold.unwrap_or(2);
+                    let diff = if a.size > size {
+                        a.size - size
                     } else {
-                        size - d.size
+                        size - a.size
                     };
                     if diff <= threshold {
-                        0
+                        0i64 // Within threshold
+                    } else if a.size > size {
+                        // Larger size - can downscale
+                        diff as i64
                     } else {
-                        diff
+                        // Smaller size - must upscale (add penalty)
+                        (diff as i64) + 10000
                     }
                 },
             };
-            score
+
+            let score_b = match b.directory_type {
+                DirectoryType::Fixed => {
+                    if b.size == size {
+                        0i64
+                    } else if b.size > size {
+                        (b.size - size) as i64
+                    } else {
+                        ((size - b.size) as i64) + 10000
+                    }
+                },
+                DirectoryType::Scalable => {
+                    let min = b.min_size.unwrap_or(16);
+                    let max = b.max_size.unwrap_or(256);
+                    if size >= min && size <= max {
+                        // Within range, but prefer larger sizes (downscale) over smaller (upscale)
+                        if b.size >= size {
+                            (b.size - size) as i64
+                        } else {
+                            ((size - b.size) as i64) + 10000
+                        }
+                    } else if size < min {
+                        (min - size) as i64
+                    } else {
+                        (size - max) as i64
+                    }
+                },
+                DirectoryType::Threshold => {
+                    let threshold = b.threshold.unwrap_or(2);
+                    let diff = if b.size > size {
+                        b.size - size
+                    } else {
+                        size - b.size
+                    };
+                    if diff <= threshold {
+                        0i64
+                    } else if b.size > size {
+                        diff as i64
+                    } else {
+                        (diff as i64) + 10000
+                    }
+                },
+            };
+
+            score_a.cmp(&score_b)
         });
 
-        candidates.first().copied()
+        println!("IconLookup::find_best_directory: Candidates after sorting:");
+        for (i, c) in candidates.iter().enumerate() {
+            let score = match c.directory_type {
+                DirectoryType::Fixed => {
+                    if c.size == size {
+                        0i64
+                    } else if c.size > size {
+                        (c.size - size) as i64
+                    } else {
+                        ((size - c.size) as i64) + 10000
+                    }
+                },
+                DirectoryType::Scalable => {
+                    let min = c.min_size.unwrap_or(16);
+                    let max = c.max_size.unwrap_or(256);
+                    if size >= min && size <= max {
+                        0i64
+                    } else if size < min {
+                        (min - size) as i64
+                    } else {
+                        (size - max) as i64
+                    }
+                },
+                DirectoryType::Threshold => {
+                    let threshold = c.threshold.unwrap_or(2);
+                    let diff = if c.size > size {
+                        c.size - size
+                    } else {
+                        size - c.size
+                    };
+                    if diff <= threshold {
+                        0i64
+                    } else if c.size > size {
+                        diff as i64
+                    } else {
+                        (diff as i64) + 10000
+                    }
+                },
+            };
+            println!("  {}: {} (size: {}, score: {})", i, c.name, c.size, score);
+        }
+
+        let selected = candidates.first().copied();
+        if let Some(sel) = selected {
+            println!("IconLookup::find_best_directory: Selected: {} (size: {})", sel.name, sel.size);
+        }
+        selected
     }
 }
 

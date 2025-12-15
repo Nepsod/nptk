@@ -71,7 +71,16 @@ impl Icon {
         });
 
         // Load icon from XDG theme
+        println!("Icon::new: Requesting icon '{}' at size {}px", icon_name, size);
         let cached_icon = registry.get_icon(&icon_name, size);
+        println!("Icon::new: get_icon returned: {:?}", cached_icon.as_ref().map(|c| match c {
+            nptk_services::icon::CachedIcon::Svg(_) => "Svg",
+            nptk_services::icon::CachedIcon::Image { width, height, .. } => {
+                println!("  -> Image {}x{}", width, height);
+                "Image"
+            },
+            nptk_services::icon::CachedIcon::Path(_) => "Path",
+        }));
 
         // Convert CachedIcon to IconData
         let icon_data = match cached_icon {
@@ -155,25 +164,62 @@ impl Widget for Icon {
         _: AppContext,
     ) {
         let icon_data_ref = self.icon.get();
+        println!("Icon::render: Called with layout size {}x{}", 
+            layout_node.layout.size.width, 
+            layout_node.layout.size.height);
 
         match *icon_data_ref {
             IconData::Svg(ref svg_icon) => {
+                println!("Icon::render: Rendering SVG icon");
                 // Scale SVG to fit layout size while maintaining aspect ratio
+                // Use the smaller of width/height to ensure icon fits within layout
                 let svg_width = svg_icon.width();
                 let svg_height = svg_icon.height();
-                let scale_x = layout_node.layout.size.width as f64 / svg_width;
-                let scale_y = layout_node.layout.size.height as f64 / svg_height;
-                let scale = scale_x.min(scale_y);
+                let layout_width = layout_node.layout.size.width as f64;
+                let layout_height = layout_node.layout.size.height as f64;
+                
+                // Safety check: ensure SVG has valid dimensions
+                if svg_width > 0.0 && svg_height > 0.0 && layout_width > 0.0 && layout_height > 0.0 {
+                    // Calculate scale to fit layout while maintaining aspect ratio
+                    // Use the pattern from tabs_container: scale based on max dimension
+                    let target_size = layout_width.min(layout_height);
+                    let svg_max_dim = svg_width.max(svg_height);
+                    let scale = target_size / svg_max_dim;
 
-                let affine = Affine::scale(scale)
-                    .then_translate(Vec2::new(
+                    // Calculate scaled dimensions for centering
+                    let scaled_width = svg_width * scale;
+                    let scaled_height = svg_height * scale;
+
+                    // Center the icon within the layout bounds
+                    let offset_x = (layout_width - scaled_width) / 2.0;
+                    let offset_y = (layout_height - scaled_height) / 2.0;
+
+                    // Apply uniform scaling to maintain aspect ratio (same as tabs_container)
+                    let affine = Affine::scale(scale)
+                        .then_translate(Vec2::new(
+                            layout_node.layout.location.x as f64 + offset_x,
+                            layout_node.layout.location.y as f64 + offset_y,
+                        ));
+
+                    graphics.append(&svg_icon.scene(), Some(affine));
+                } else {
+                    // Fallback: render at layout position with default scale
+                    log::warn!(
+                        "Invalid SVG dimensions ({}x{}) or layout size ({}x{}), using fallback",
+                        svg_width,
+                        svg_height,
+                        layout_width,
+                        layout_height
+                    );
+                    let affine = Affine::translate(Vec2::new(
                         layout_node.layout.location.x as f64,
                         layout_node.layout.location.y as f64,
                     ));
-
-                graphics.append(&svg_icon.scene(), Some(affine));
+                    graphics.append(&svg_icon.scene(), Some(affine));
+                }
             },
             IconData::Image { ref data, width, height } => {
+                println!("Icon::render: Rendering Image icon {}x{}", width, height);
                 use nptk_core::vg::peniko::{
                     Blob, ImageAlphaType, ImageBrush, ImageData, ImageFormat,
                 };
@@ -188,14 +234,35 @@ impl Widget for Icon {
                 let image_brush = ImageBrush::new(image_data);
 
                 // Scale image to fit layout size while maintaining aspect ratio
-                let scale_x = layout_node.layout.size.width as f64 / (width as f64);
-                let scale_y = layout_node.layout.size.height as f64 / (height as f64);
+                let layout_width = layout_node.layout.size.width as f64;
+                let layout_height = layout_node.layout.size.height as f64;
+                let img_width = width as f64;
+                let img_height = height as f64;
+                
+                println!(
+                    "Icon render (Image): image size {}x{}, layout {}x{}",
+                    width,
+                    height,
+                    layout_width,
+                    layout_height
+                );
+                
+                let scale_x = layout_width / img_width;
+                let scale_y = layout_height / img_height;
                 let scale = scale_x.min(scale_y);
 
-                let transform = Affine::scale_non_uniform(scale, scale)
+                // Calculate scaled dimensions
+                let scaled_width = img_width * scale;
+                let scaled_height = img_height * scale;
+
+                // Center the image within the layout bounds
+                let offset_x = (layout_width - scaled_width) / 2.0;
+                let offset_y = (layout_height - scaled_height) / 2.0;
+
+                let transform = Affine::scale(scale)
                     .then_translate(Vec2::new(
-                        layout_node.layout.location.x as f64,
-                        layout_node.layout.location.y as f64,
+                        layout_node.layout.location.x as f64 + offset_x,
+                        layout_node.layout.location.y as f64 + offset_y,
                     ));
 
                 if let Some(scene) = graphics.as_scene_mut() {
