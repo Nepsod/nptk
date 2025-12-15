@@ -155,13 +155,9 @@ impl Widget for Icon {
         _: AppContext,
     ) {
         let icon_data_ref = self.icon.get();
-        println!("Icon::render: Called with layout size {}x{}", 
-            layout_node.layout.size.width, 
-            layout_node.layout.size.height);
 
         match *icon_data_ref {
             IconData::Svg(ref svg_icon) => {
-                println!("Icon::render: Rendering SVG icon");
                 // Scale SVG to fit layout size while maintaining aspect ratio
                 // Use the smaller of width/height to ensure icon fits within layout
                 let svg_width = svg_icon.width();

@@ -31,10 +31,10 @@ impl Toolbar {
                     Dimension::length(32.0), // Desktop toolbar height
                 ),
                 padding: nptk_core::layout::Rect::<LengthPercentage> {
-                    left: LengthPercentage::length(0.0),
-                    right: LengthPercentage::length(0.0),
-                    top: LengthPercentage::length(0.0),
-                    bottom: LengthPercentage::length(0.0),
+                    left: LengthPercentage::length(4.0),
+                    right: LengthPercentage::length(4.0),
+                    top: LengthPercentage::length(2.0),
+                    bottom: LengthPercentage::length(2.0),
                 },
                 flex_direction: FlexDirection::Row,
                 align_items: Some(AlignItems::Center),
@@ -106,14 +106,30 @@ impl Widget for Toolbar {
         info: &mut AppInfo,
         context: AppContext,
     ) {
-        // Draw background
+        // Get theme colors with proper fallbacks
         let bg_color = theme
             .get_property(self.widget_id(), &ThemeProperty::ColorToolbarBackground)
-            .unwrap_or_else(|| Color::from_rgb8(240, 240, 240));
+            .unwrap_or_else(|| {
+                // Fallback to MenuBar background color if available
+                theme
+                    .get_property(
+                        WidgetId::new("nptk-widgets", "MenuBar"),
+                        &ThemeProperty::ColorBackground,
+                    )
+                    .unwrap_or_else(|| Color::from_rgb8(240, 240, 240))
+            });
 
         let border_color = theme
             .get_property(self.widget_id(), &ThemeProperty::ColorToolbarBorder)
-            .unwrap_or_else(|| Color::from_rgb8(200, 200, 200));
+            .unwrap_or_else(|| {
+                // Fallback to MenuBar border color if available
+                theme
+                    .get_property(
+                        WidgetId::new("nptk-widgets", "MenuBar"),
+                        &ThemeProperty::ColorBorder,
+                    )
+                    .unwrap_or_else(|| Color::from_rgb8(180, 180, 180))
+            });
 
         let rect = Rect::new(
             layout.layout.location.x as f64,
@@ -122,6 +138,7 @@ impl Widget for Toolbar {
             (layout.layout.location.y + layout.layout.size.height) as f64,
         );
 
+        // Draw background
         graphics.fill(
             Fill::NonZero,
             Affine::IDENTITY,
@@ -130,18 +147,18 @@ impl Widget for Toolbar {
             &rect.to_path(0.1),
         );
 
-        // Draw bottom border
+        // Draw subtle top border (Qt style)
         let stroke = Stroke::new(1.0);
-        let border_line = Line::new(
-            Point::new(rect.x0, rect.y1),
-            Point::new(rect.x1, rect.y1),
+        let top_border_line = Line::new(
+            Point::new(rect.x0, rect.y0),
+            Point::new(rect.x1, rect.y0),
         );
         graphics.stroke(
             &stroke,
             Affine::IDENTITY,
             &Brush::Solid(border_color),
             None,
-            &border_line.to_path(0.1),
+            &top_border_line.to_path(0.1),
         );
 
         // Render children
@@ -180,14 +197,15 @@ impl ToolbarSeparator {
             layout_style: LayoutStyle {
                 size: nalgebra::Vector2::new(
                     Dimension::length(1.0),
-                    Dimension::percent(0.6), // 60% of parent height
+                    Dimension::percent(0.7), // 70% of parent height for better visibility
                 ),
                 margin: nptk_core::layout::Rect::<LengthPercentageAuto> {
-                    left: LengthPercentageAuto::length(2.0),
-                    right: LengthPercentageAuto::length(2.0),
-                    top: LengthPercentageAuto::length(0.0),
-                    bottom: LengthPercentageAuto::length(0.0),
+                    left: LengthPercentageAuto::length(3.0),
+                    right: LengthPercentageAuto::length(3.0),
+                    top: LengthPercentageAuto::auto(), // Auto margin for vertical centering
+                    bottom: LengthPercentageAuto::auto(),
                 },
+                // Vertical centering handled by auto margins
                 ..Default::default()
             }
             .into(),
@@ -220,9 +238,18 @@ impl Widget for ToolbarSeparator {
         _info: &mut AppInfo,
         _context: AppContext,
     ) {
+        // Get separator color with proper fallback (more subtle than border)
         let color = theme
             .get_property(self.widget_id(), &ThemeProperty::ColorToolbarSeparator)
-            .unwrap_or_else(|| Color::from_rgb8(200, 200, 200));
+            .unwrap_or_else(|| {
+                // Fallback to toolbar border color, or use a subtle default
+                theme
+                    .get_property(
+                        WidgetId::new("nptk-widgets", "Toolbar"),
+                        &ThemeProperty::ColorToolbarBorder,
+                    )
+                    .unwrap_or_else(|| Color::from_rgb8(180, 180, 180))
+            });
 
         let rect = Rect::new(
             layout.layout.location.x as f64,
@@ -317,17 +344,20 @@ pub struct ToolbarButton;
 impl ToolbarButton {
     /// Create a new toolbar button with the given child widget.
     pub fn new(child: impl Widget + 'static) -> crate::button::Button {
-        use nptk_core::layout::{LengthPercentage, LayoutStyle};
+        use nptk_core::layout::{Dimension, LengthPercentage, LayoutStyle};
         
         crate::button::Button::new(child)
             .with_style_id("ToolbarButton")
             .with_layout_style(LayoutStyle {
                 padding: nptk_core::layout::Rect::<LengthPercentage> {
-                    left: LengthPercentage::length(0.0),
-                    right: LengthPercentage::length(0.0),
-                    top: LengthPercentage::length(2.0),
-                    bottom: LengthPercentage::length(10.0),
+                    left: LengthPercentage::length(2.0),
+                    right: LengthPercentage::length(2.0),
+                    top: LengthPercentage::length(4.0),
+                    bottom: LengthPercentage::length(4.0),
                 },
+                flex_grow: 0.0, // Don't grow beyond content size
+                flex_shrink: 1.0, // Allow toolbar buttons to shrink to fit content
+                flex_basis: Dimension::auto(), // Size based on content
                 ..Default::default()
             })
     }
@@ -342,12 +372,22 @@ impl ToolbarButton {
         
         let container = Container::new(children)
             .with_layout_style(LayoutStyle {
+                size: nalgebra::Vector2::new(
+                    Dimension::auto(), // Size to content width
+                    Dimension::auto(), // Size to content height
+                ),
+                min_size: nalgebra::Vector2::new(
+                    Dimension::length(0.0), // No minimum width
+                    Dimension::length(0.0), // No minimum height
+                ),
                 flex_direction: FlexDirection::Row,
                 align_items: Some(AlignItems::Center),
                 gap: nalgebra::Vector2::new(
                     LengthPercentage::length(2.0),
                     LengthPercentage::length(0.0),
                 ),
+                flex_grow: 0.0, // Don't grow beyond content size
+                flex_shrink: 1.0, // Allow to shrink
                 ..Default::default()
             });
         
@@ -355,11 +395,14 @@ impl ToolbarButton {
             .with_style_id("ToolbarButton")
             .with_layout_style(LayoutStyle {
                 padding: nptk_core::layout::Rect::<LengthPercentage> {
-                    left: LengthPercentage::length(0.0),
-                    right: LengthPercentage::length(0.0),
-                    top: LengthPercentage::length(2.0),
-                    bottom: LengthPercentage::length(10.0),
+                    left: LengthPercentage::length(2.0),
+                    right: LengthPercentage::length(2.0),
+                    top: LengthPercentage::length(4.0),
+                    bottom: LengthPercentage::length(4.0),
                 },
+                flex_grow: 0.0, // Don't grow beyond content size
+                flex_shrink: 1.0, // Allow toolbar buttons to shrink to fit content
+                flex_basis: Dimension::auto(), // Size based on content
                 ..Default::default()
             })
     }

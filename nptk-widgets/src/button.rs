@@ -389,6 +389,10 @@ impl Widget for Button {
 
         self.handle_repeat(&mut update);
 
+        if !layout.children.is_empty() {
+            update |= self.child.update(&layout.children[0], _context, info);
+        }
+
         update
     }
 
