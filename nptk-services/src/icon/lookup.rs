@@ -71,13 +71,6 @@ impl IconLookup {
         context: IconContext,
         theme_name: &str,
     ) -> Option<PathBuf> {
-        println!(
-            "IconLookup::lookup_icon: Looking for icon '{}' (size: {}, context: {:?}) in theme '{}'",
-            icon_name,
-            size,
-            context,
-            theme_name
-        );
 
         // Try current theme
         if let Ok(theme) = self.load_theme(theme_name) {
@@ -126,16 +119,10 @@ impl IconLookup {
         context: IconContext,
     ) -> Option<PathBuf> {
         // Find best matching directory
-        println!("IconLookup::lookup_in_theme: Available directories: {:?}", 
-            theme.directories.iter().map(|d| format!("{} (size: {}, type: {:?}, context: {:?})", d.name, d.size, d.directory_type, d.context)).collect::<Vec<_>>());
-        
         let best_dir = match self.find_best_directory(&theme.directories, size, context) {
-            Some(dir) => {
-                println!("IconLookup::lookup_in_theme: Selected best directory: '{}' (size: {}, type: {:?})", dir.name, dir.size, dir.directory_type);
-                dir
-            },
+            Some(dir) => dir,
             None => {
-                println!(
+                log::debug!(
                     "IconLookup: No matching directory found for size {} and context {:?}",
                     size,
                     context
@@ -145,12 +132,6 @@ impl IconLookup {
         };
 
         let dir_path = theme.directory_path(&best_dir.name);
-        println!(
-            "IconLookup: Searching in directory '{}' (size: {}) at {:?}",
-            best_dir.name,
-            best_dir.size,
-            dir_path
-        );
 
         // Try different file extensions in order of preference
         let extensions = ["svg", "png", "xpm"];
@@ -207,15 +188,12 @@ impl IconLookup {
             .filter(|d| d.context == context)
             .collect();
 
-        println!("IconLookup::find_best_directory: After context filter ({:?}): {} candidates", context, candidates.len());
-
         // Second try: Unknown context (many themes use this)
         if candidates.is_empty() {
             candidates = directories
                 .iter()
                 .filter(|d| d.context == IconContext::Unknown)
                 .collect();
-            println!("IconLookup::find_best_directory: After Unknown fallback: {} candidates", candidates.len());
         }
 
         // Third try: Try Actions context if we're looking for action-like icons
@@ -224,9 +202,6 @@ impl IconLookup {
                 .iter()
                 .filter(|d| d.context == IconContext::Actions)
                 .collect();
-            if !candidates.is_empty() {
-                println!("IconLookup::find_best_directory: After Actions fallback: {} candidates", candidates.len());
-            }
         }
 
         // Fourth try: Mimetypes context (for file type icons)
@@ -240,7 +215,6 @@ impl IconLookup {
         // Final fallback: any directory
         if candidates.is_empty() {
             candidates = directories.iter().collect();
-            println!("IconLookup::find_best_directory: Using all directories as fallback: {} candidates", candidates.len());
         }
 
         // Sort by how well they match the requested size
@@ -248,11 +222,6 @@ impl IconLookup {
         // 1. Prefer exact matches
         // 2. Prefer larger sizes (downscale) over smaller sizes (upscale)
         //    Downscaling preserves quality, upscaling causes blur/stretch
-        println!("IconLookup::find_best_directory: Candidates before sorting (requested size: {}):", size);
-        for c in &candidates {
-            println!("  - {} (size: {}, type: {:?})", c.name, c.size, c.directory_type);
-        }
-        
         candidates.sort_by(|a, b| {
             let score_a = match a.directory_type {
                 DirectoryType::Fixed => {
@@ -351,53 +320,7 @@ impl IconLookup {
             score_a.cmp(&score_b)
         });
 
-        println!("IconLookup::find_best_directory: Candidates after sorting:");
-        for (i, c) in candidates.iter().enumerate() {
-            let score = match c.directory_type {
-                DirectoryType::Fixed => {
-                    if c.size == size {
-                        0i64
-                    } else if c.size > size {
-                        (c.size - size) as i64
-                    } else {
-                        ((size - c.size) as i64) + 10000
-                    }
-                },
-                DirectoryType::Scalable => {
-                    let min = c.min_size.unwrap_or(16);
-                    let max = c.max_size.unwrap_or(256);
-                    if size >= min && size <= max {
-                        0i64
-                    } else if size < min {
-                        (min - size) as i64
-                    } else {
-                        (size - max) as i64
-                    }
-                },
-                DirectoryType::Threshold => {
-                    let threshold = c.threshold.unwrap_or(2);
-                    let diff = if c.size > size {
-                        c.size - size
-                    } else {
-                        size - c.size
-                    };
-                    if diff <= threshold {
-                        0i64
-                    } else if c.size > size {
-                        diff as i64
-                    } else {
-                        (diff as i64) + 10000
-                    }
-                },
-            };
-            println!("  {}: {} (size: {}, score: {})", i, c.name, c.size, score);
-        }
-
-        let selected = candidates.first().copied();
-        if let Some(sel) = selected {
-            println!("IconLookup::find_best_directory: Selected: {} (size: {})", sel.name, sel.size);
-        }
-        selected
+        candidates.first().copied()
     }
 }
 

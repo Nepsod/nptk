@@ -79,60 +79,22 @@ impl IconRegistry {
 
     /// Get an icon by name and size.
     pub fn get_icon(&self, icon_name: &str, size: u32) -> Option<CachedIcon> {
-        println!("IconRegistry::get_icon: Looking for '{}' at size {}px", icon_name, size);
-        
         // Check cache first
         if let Some(cached) = self.cache.get(icon_name, size) {
-            println!("IconRegistry::get_icon: Found in cache");
-            // Log cached icon dimensions for debugging
-            if let CachedIcon::Image { width, height, .. } = &cached {
-                println!(
-                    "IconRegistry: Using cached icon '{}' (requested: {}px, actual: {}x{}px)",
-                    icon_name,
-                    size,
-                    width,
-                    height
-                );
-            } else if let CachedIcon::Svg(_) = &cached {
-                println!("IconRegistry: Using cached SVG icon '{}'", icon_name);
-            }
             return Some(cached);
         }
 
-        println!("IconRegistry::get_icon: Not in cache, looking up...");
         // Determine context based on icon name patterns
         let context = self.guess_context(icon_name);
-        println!("IconRegistry::get_icon: Guessed context: {:?}", context);
 
         // Lookup icon path
-        let icon_path = match self
+        let icon_path = self
             .lookup
-            .lookup_icon(icon_name, size, context, &self.theme) {
-            Some(path) => {
-                println!("IconRegistry::get_icon: Found icon path: {:?}", path);
-                path
-            },
-            None => {
-                println!("IconRegistry::get_icon: No icon path found for '{}'", icon_name);
-                return None;
-            },
-        };
+            .lookup_icon(icon_name, size, context, &self.theme)?;
 
         // Load icon (blocking call since this is in a sync context)
         // Use smol::block_on which works even within tokio runtime
         let cached_icon = smol::block_on(self.loader.load_icon(&icon_path)).ok()?;
-
-        // Log loaded icon dimensions for debugging
-        if let CachedIcon::Image { width, height, .. } = &cached_icon {
-            println!(
-                "IconRegistry: Loaded icon '{}' (requested: {}px, actual: {}x{}px) from {:?}",
-                icon_name,
-                size,
-                width,
-                height,
-                icon_path
-            );
-        }
 
         // Cache it
         self.cache

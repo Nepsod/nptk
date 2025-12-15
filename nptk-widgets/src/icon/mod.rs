@@ -71,16 +71,7 @@ impl Icon {
         });
 
         // Load icon from XDG theme
-        println!("Icon::new: Requesting icon '{}' at size {}px", icon_name, size);
         let cached_icon = registry.get_icon(&icon_name, size);
-        println!("Icon::new: get_icon returned: {:?}", cached_icon.as_ref().map(|c| match c {
-            nptk_services::icon::CachedIcon::Svg(_) => "Svg",
-            nptk_services::icon::CachedIcon::Image { width, height, .. } => {
-                println!("  -> Image {}x{}", width, height);
-                "Image"
-            },
-            nptk_services::icon::CachedIcon::Path(_) => "Path",
-        }));
 
         // Convert CachedIcon to IconData
         let icon_data = match cached_icon {
@@ -219,7 +210,6 @@ impl Widget for Icon {
                 }
             },
             IconData::Image { ref data, width, height } => {
-                println!("Icon::render: Rendering Image icon {}x{}", width, height);
                 use nptk_core::vg::peniko::{
                     Blob, ImageAlphaType, ImageBrush, ImageData, ImageFormat,
                 };
@@ -238,14 +228,6 @@ impl Widget for Icon {
                 let layout_height = layout_node.layout.size.height as f64;
                 let img_width = width as f64;
                 let img_height = height as f64;
-                
-                println!(
-                    "Icon render (Image): image size {}x{}, layout {}x{}",
-                    width,
-                    height,
-                    layout_width,
-                    layout_height
-                );
                 
                 let scale_x = layout_width / img_width;
                 let scale_y = layout_height / img_height;
