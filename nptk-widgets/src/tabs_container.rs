@@ -622,7 +622,7 @@ impl TabsContainer {
         // Use TextRenderContext to measure text width
         let text_width =
             self.text_render_context
-                .measure_text_width(&mut info.font_context, label, font_size);
+                .measure_text_width(&mut info.font_context, label, None, font_size);
 
         let total_width = text_width + padding;
 

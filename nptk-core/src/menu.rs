@@ -373,7 +373,7 @@ fn calculate_layout_from_items(
     for item in items {
         if let ContextMenuItem::Action { label, .. } | ContextMenuItem::SubMenu { label, .. } = item
         {
-            let (text_width, _) = text_render.measure_text_layout(font_cx, label, 14.0, None);
+            let (text_width, _) = text_render.measure_text_layout(font_cx, label, None, 14.0, None);
             max_text_width = max_text_width.max(text_width as f64);
         }
     }

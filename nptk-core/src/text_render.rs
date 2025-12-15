@@ -18,9 +18,9 @@ pub struct BrushIndex(pub usize);
 pub struct TextRenderContext {
     layout_cx: LayoutContext,
     /// Cache for text layouts to avoid expensive rebuilding
-    /// Key: (text, max_width_u32, font_size_u32, max_lines, center_align)
+    /// Key: (text, font_family, max_width_u32, font_size_u32, max_lines, center_align)
     layout_cache:
-        std::collections::HashMap<(String, u32, u32, Option<usize>, bool), Layout<[u8; 4]>>,
+        std::collections::HashMap<(String, String, u32, u32, Option<usize>, bool), Layout<[u8; 4]>>,
 }
 
 impl TextRenderContext {
@@ -41,7 +41,7 @@ impl TextRenderContext {
         font_cx: &mut FontContext,
         graphics: &mut dyn Graphics,
         text: &str,
-        font: Option<QueryFont>,
+        font_family: Option<String>,
         font_size: f32,
         color: Brush,
         transform: Affine,
@@ -60,7 +60,7 @@ impl TextRenderContext {
                 font_cx,
                 scene,
                 text,
-                font.clone(),
+                font_family.clone(),
                 font_size,
                 color.clone(),
                 transform,
@@ -69,7 +69,7 @@ impl TextRenderContext {
             ) {
                 log::debug!("Parley rendering failed, using simple fallback");
                 self.render_simple_fallback(
-                    font_cx, scene, text, font, font_size, color, transform,
+                    font_cx, scene, text, font_family, font_size, color, transform,
                 );
             }
         } else {
@@ -83,7 +83,7 @@ impl TextRenderContext {
         font_cx: &mut FontContext,
         scene: &mut Scene,
         text: &str,
-        _font: Option<QueryFont>,
+        font_family: Option<String>,
         font_size: f32,
         color: Brush,
         transform: Affine,
@@ -93,6 +93,7 @@ impl TextRenderContext {
         let layout = self.fetch_layout(
             font_cx,
             text,
+            font_family,
             font_size,
             max_width,
             None,
@@ -111,7 +112,7 @@ impl TextRenderContext {
         font_cx: &mut FontContext,
         graphics: &mut dyn Graphics,
         text: &str,
-        font: Option<QueryFont>,
+        font_family: Option<String>,
         font_size: f32,
         color: Brush,
         transform: Affine,
@@ -131,7 +132,7 @@ impl TextRenderContext {
                 font_cx,
                 scene,
                 text,
-                font.clone(),
+                font_family.clone(),
                 font_size,
                 color.clone(),
                 transform,
@@ -142,7 +143,7 @@ impl TextRenderContext {
             ) {
                 log::debug!("Parley rendering failed, using simple fallback");
                 self.render_simple_fallback(
-                    font_cx, scene, text, font, font_size, color, transform,
+                    font_cx, scene, text, font_family, font_size, color, transform,
                 );
             }
         } else {
@@ -156,7 +157,7 @@ impl TextRenderContext {
         font_cx: &mut FontContext,
         scene: &mut Scene,
         text: &str,
-        _font: Option<QueryFont>,
+        font_family: Option<String>,
         font_size: f32,
         color: Brush,
         transform: Affine,
@@ -168,6 +169,7 @@ impl TextRenderContext {
         let layout = self.fetch_layout(
             font_cx,
             text,
+            font_family,
             font_size,
             max_width,
             max_lines,
@@ -188,7 +190,7 @@ impl TextRenderContext {
         _font_cx: &mut FontContext,
         _scene: &mut Scene,
         text: &str,
-        _font: Option<QueryFont>,
+        _font_family: Option<String>,
         _font_size: f32,
         _color: Brush,
         _transform: Affine,
@@ -289,6 +291,7 @@ impl TextRenderContext {
         &mut self,
         font_cx: &mut FontContext,
         text: &str,
+        font_family: Option<String>,
         font_size: f32,
         max_width: Option<f32>,
         max_lines: Option<usize>,
@@ -296,6 +299,7 @@ impl TextRenderContext {
     ) -> Layout<[u8; 4]> {
         let cache_key = (
             text.to_string(),
+            font_family.clone().unwrap_or_default(),
             max_width.map(|w| w as u32).unwrap_or(0),
             font_size as u32,
             max_lines,
@@ -313,6 +317,11 @@ impl TextRenderContext {
             .ranged_builder(&mut parley_font_cx, text, display_scale, true);
 
         builder.push_default(StyleProperty::FontSize(font_size));
+        if let Some(family) = font_family {
+            builder.push_default(StyleProperty::FontStack(parley::style::FontStack::Single(
+                parley::style::FontFamily::Named(std::borrow::Cow::Owned(family)),
+            )));
+        }
 
         let mut layout = builder.build(text);
 
@@ -334,7 +343,13 @@ impl TextRenderContext {
     }
 
     /// Measure the width of text using Parley's layout system
-    pub fn measure_text_width(&self, font_cx: &mut FontContext, text: &str, font_size: f32) -> f32 {
+    pub fn measure_text_width(
+        &self,
+        font_cx: &mut FontContext,
+        text: &str,
+        font_family: Option<String>,
+        font_size: f32,
+    ) -> f32 {
         if text.is_empty() {
             return 0.0;
         }
@@ -346,8 +361,13 @@ impl TextRenderContext {
         let mut builder =
             temp_layout_cx.ranged_builder(&mut parley_font_cx, text, display_scale, true);
 
-        // Set font size
+        // Set font size and font family if provided
         builder.push_default(StyleProperty::FontSize(font_size));
+        if let Some(family) = font_family {
+            builder.push_default(StyleProperty::FontStack(parley::style::FontStack::Single(
+                parley::style::FontFamily::Named(std::borrow::Cow::Owned(family)),
+            )));
+        }
 
         let mut layout = builder.build(text);
 
@@ -378,6 +398,7 @@ impl TextRenderContext {
         &self,
         font_cx: &mut FontContext,
         text: &str,
+        font_family: Option<String>,
         font_size: f32,
         max_width: Option<f32>,
     ) -> (f32, usize) {
@@ -392,8 +413,13 @@ impl TextRenderContext {
         let mut builder =
             temp_layout_cx.ranged_builder(&mut parley_font_cx, text, display_scale, true);
 
-        // Set font size
+        // Set font size and font family if provided
         builder.push_default(StyleProperty::FontSize(font_size));
+        if let Some(family) = font_family {
+            builder.push_default(StyleProperty::FontStack(parley::style::FontStack::Single(
+                parley::style::FontFamily::Named(std::borrow::Cow::Owned(family)),
+            )));
+        }
 
         let mut layout = builder.build(text);
 

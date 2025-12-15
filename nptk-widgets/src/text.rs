@@ -94,6 +94,7 @@ impl Widget for Text {
         let font_size = *self.font_size.get();
         let hinting = *self.hinting.get();
         let text = self.text.get();
+        let font_name = self.font.get().clone();
 
         let color = if theme.globals().invert_text_color {
             theme
@@ -136,7 +137,7 @@ impl Widget for Text {
             &mut info.font_context,
             graphics,
             text.as_ref(),
-            None, // No specific font, use default
+            font_name,
             font_size,
             Brush::Solid(color),
             transform,
@@ -191,10 +192,13 @@ impl Widget for Text {
         let font_size = *self.font_size.get();
         let line_gap = *self.line_gap.get();
         
+        let font_name = self.font.get().clone();
+
         // Measure text
         let (width, line_count) = self.text_render_context.measure_text_layout(
             &mut info.font_context,
             &text,
+            font_name,
             font_size,
             None, // No max width constraint for auto-sizing
         );

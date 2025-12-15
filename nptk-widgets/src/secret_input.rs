@@ -168,6 +168,7 @@ impl SecretInput {
         self.text_render_context.measure_text_width(
             &mut info.font_context,
             &display_text,
+            None,
             font_size,
         )
     }

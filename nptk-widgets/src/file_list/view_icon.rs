@@ -682,6 +682,7 @@ impl FileListContent {
         let (measured_width, line_count) = self.text_render_context.measure_text_layout(
             font_cx,
             &text_with_breaks,
+            None,
             font_size,
             Some(max_text_width),
         );

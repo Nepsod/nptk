@@ -238,7 +238,7 @@ impl ValueInput {
         // Use TextRenderContext to get accurate measurements from Parley
         // This handles all Unicode characters, emojis, and different scripts properly
         self.text_render_context
-            .measure_text_width(&mut info.font_context, text, font_size)
+            .measure_text_width(&mut info.font_context, text, None, font_size)
     }
 
     /// Calculate the X position of the cursor based on its character position.
