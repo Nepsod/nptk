@@ -100,6 +100,9 @@ impl FileList {
         // Create thumbnail service
         let thumbnail_service = Arc::new(ThumbnailService::new());
         let thumbnail_event_rx = thumbnail_service.subscribe();
+        
+        // Create channel for cache update notifications
+        let (cache_update_tx, cache_update_rx) = tokio::sync::mpsc::unbounded_channel();
 
         // Create content widget
         let content = FileListContent::new(
@@ -112,6 +115,8 @@ impl FileList {
             icon_registry.clone(),
             thumbnail_service.clone(),
             thumbnail_event_rx,
+            cache_update_tx,
+            cache_update_rx,
         );
 
         // Create scroll container (Both directions to support icon view)
@@ -297,6 +302,13 @@ struct FileListContent {
     // Thumbnail event receiver
     thumbnail_event_rx: Arc<Mutex<tokio::sync::broadcast::Receiver<ThumbnailEvent>>>,
 
+    // Update manager for triggering redraws from async tasks
+    update_manager: Arc<Mutex<Option<nptk_core::app::update::UpdateManager>>>,
+    
+    // Channel to notify when caches are updated (for triggering redraws)
+    cache_update_tx: tokio::sync::mpsc::UnboundedSender<()>,
+    cache_update_rx: Arc<Mutex<tokio::sync::mpsc::UnboundedReceiver<()>>>,
+
     // Drag selection state
     drag_start: Option<Point>,
     current_drag_pos: Option<Point>,
@@ -342,6 +354,8 @@ impl FileListContent {
         icon_registry: Arc<IconRegistry>,
         thumbnail_service: Arc<ThumbnailService>,
         thumbnail_event_rx: tokio::sync::broadcast::Receiver<ThumbnailEvent>,
+        cache_update_tx: tokio::sync::mpsc::UnboundedSender<()>,
+        cache_update_rx: tokio::sync::mpsc::UnboundedReceiver<()>,
     ) -> Self {
         Self {
             entries,
@@ -362,6 +376,9 @@ impl FileListContent {
             pending_thumbnails: Arc::new(Mutex::new(HashSet::new())),
             thumbnail_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
             thumbnail_event_rx: Arc::new(Mutex::new(thumbnail_event_rx)),
+            update_manager: Arc::new(Mutex::new(None)),
+            cache_update_tx,
+            cache_update_rx: Arc::new(Mutex::new(cache_update_rx)),
             drag_start: None,
             current_drag_pos: None,
             is_dragging: false,
@@ -507,7 +524,20 @@ impl Widget for FileListContent {
     }
 
     fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+        // Store update manager for async tasks to trigger redraws
+        {
+            let mut update_mgr = self.update_manager.lock().unwrap();
+            *update_mgr = Some(context.update());
+        }
+        
         let mut update = Update::empty();
+        
+        // Poll cache update notifications (non-blocking)
+        if let Ok(mut rx) = self.cache_update_rx.try_lock() {
+            while rx.try_recv().is_ok() {
+                update.insert(Update::DRAW);
+            }
+        }
 
         if let Some(cursor) = info.cursor_pos {
             self.last_cursor = Some(Point::new(cursor.x, cursor.y));
@@ -538,6 +568,8 @@ impl Widget for FileListContent {
                             let size_u32 = thumbnail_size_to_u32(size);
                             
                             if let Ok(file) = get_file_for_uri(&uri) {
+                                let update_mgr_clone = self.update_manager.clone();
+                                let cache_update_tx_clone = self.cache_update_tx.clone();
                                 tokio::spawn(async move {
                                     if let Ok(thumbnail_image) = service_clone
                                         .get_thumbnail_image(&*file, size, None)
@@ -545,6 +577,16 @@ impl Widget for FileListContent {
                                     {
                                         let mut cache = cache_clone.lock().unwrap();
                                         cache.insert((path_clone, size_u32), thumbnail_image);
+                                        
+                                        // Trigger redraw when thumbnail is cached
+                                        if let Ok(mut update_mgr) = update_mgr_clone.lock() {
+                                            if let Some(ref update_manager) = *update_mgr {
+                                                update_manager.insert(Update::DRAW);
+                                            }
+                                        }
+                                        
+                                        // Also send notification via channel (backup mechanism)
+                                        let _ = cache_update_tx_clone.send(());
                                     }
                                 });
                             }

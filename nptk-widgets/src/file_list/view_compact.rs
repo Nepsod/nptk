@@ -274,10 +274,13 @@ impl FileListContent {
                     let registry_clone = self.icon_registry.clone();
                     let entry_clone = entry.clone();
                     let cache_key_clone = cache_key.clone();
+                    let cache_update_tx_clone = self.cache_update_tx.clone();
                     tokio::spawn(async move {
                         let icon = registry_clone.get_file_icon(&entry_clone, thumb_size).await;
                         let mut cache = cache_clone.lock().unwrap();
                         cache.insert(cache_key_clone, icon);
+                        // Notify that cache was updated to trigger redraw
+                        let _ = cache_update_tx_clone.send(());
                     });
                 }
 
