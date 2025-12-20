@@ -16,8 +16,9 @@ use nptk_core::window::{ElementState, MouseButton};
 use nptk_services::filesystem::entry::{FileEntry, FileType};
 use nptk_services::filesystem::model::{FileSystemEvent, FileSystemModel};
 use nptk_services::icon::IconRegistry;
-use nptk_services::thumbnail::events::ThumbnailEvent;
-use nptk_services::thumbnail::{ThumbnailProvider, ThumbnailifyProvider};
+use npio::{ThumbnailService, ThumbnailEvent, get_file_for_uri, register_backend};
+use npio::backend::local::LocalBackend;
+use nptk_services::thumbnail::npio_adapter::{file_entry_to_uri, u32_to_thumbnail_size, uri_to_path};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use std::collections::HashSet;
@@ -31,7 +32,6 @@ mod view_list;
 
 use crate::scroll_container::{ScrollContainer, ScrollDirection};
 use nptk_services::filesystem::mime_registry::MimeRegistry;
-use nptk_services::thumbnail::ThumbnailImageCache;
 use std::path::PathBuf;
 
 /// View mode for the file list.
@@ -92,10 +92,14 @@ impl FileList {
         let icon_registry =
             Arc::new(IconRegistry::new().unwrap_or_else(|_| IconRegistry::default()));
 
-        // Create thumbnail provider
-        let provider = ThumbnailifyProvider::new();
-        let thumbnail_event_rx = provider.subscribe();
-        let thumbnail_provider: Arc<dyn ThumbnailProvider> = Arc::new(provider);
+        // Register npio backend if not already registered
+        // Note: This is idempotent - registering multiple times is safe
+        let backend = Arc::new(LocalBackend::new());
+        register_backend(backend);
+
+        // Create thumbnail service
+        let thumbnail_service = Arc::new(ThumbnailService::new());
+        let thumbnail_event_rx = thumbnail_service.subscribe();
 
         // Create content widget
         let content = FileListContent::new(
@@ -106,7 +110,7 @@ impl FileList {
             icon_size.clone(),
             fs_model.clone(),
             icon_registry.clone(),
-            thumbnail_provider.clone(),
+            thumbnail_service.clone(),
             thumbnail_event_rx,
         );
 
@@ -268,7 +272,7 @@ struct FileListContent {
     icon_size: StateSignal<u32>,
     fs_model: Arc<FileSystemModel>,
     icon_registry: Arc<IconRegistry>,
-    thumbnail_provider: Arc<dyn ThumbnailProvider>,
+    thumbnail_service: Arc<ThumbnailService>,
 
     item_height: f32,
     text_render_context: TextRenderContext,
@@ -283,9 +287,6 @@ struct FileListContent {
     icon_cache: Arc<
         Mutex<std::collections::HashMap<(PathBuf, u32), Option<nptk_services::icon::CachedIcon>>>,
     >,
-
-    // Thumbnail cache for decoded images
-    thumbnail_cache: Arc<ThumbnailImageCache>,
 
     // Track pending thumbnail requests to avoid duplicate requests
     pending_thumbnails: Arc<Mutex<HashSet<PathBuf>>>,
@@ -336,7 +337,7 @@ impl FileListContent {
         icon_size: StateSignal<u32>,
         fs_model: Arc<FileSystemModel>,
         icon_registry: Arc<IconRegistry>,
-        thumbnail_provider: Arc<dyn ThumbnailProvider>,
+        thumbnail_service: Arc<ThumbnailService>,
         thumbnail_event_rx: tokio::sync::broadcast::Receiver<ThumbnailEvent>,
     ) -> Self {
         Self {
@@ -347,7 +348,7 @@ impl FileListContent {
             icon_size,
             fs_model,
             icon_registry,
-            thumbnail_provider,
+            thumbnail_service,
             item_height: 30.0,
             text_render_context: TextRenderContext::new(),
             thumbnail_size: 128,
@@ -355,7 +356,6 @@ impl FileListContent {
             last_click_index: None,
             anchor_index: None,
             icon_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
-            thumbnail_cache: Arc::new(ThumbnailImageCache::default()),
             pending_thumbnails: Arc::new(Mutex::new(HashSet::new())),
             thumbnail_event_rx: Arc::new(Mutex::new(thumbnail_event_rx)),
             drag_start: None,
@@ -520,23 +520,27 @@ impl Widget for FileListContent {
         if let Ok(mut rx) = self.thumbnail_event_rx.try_lock() {
             while let Ok(event) = rx.try_recv() {
                 match event {
-                    ThumbnailEvent::ThumbnailReady { entry_path, .. } => {
-                        // Thumbnail is ready, invalidate cache and trigger redraw
-                        log::debug!("Thumbnail ready for {:?}", entry_path);
-                        let mut pending = self.pending_thumbnails.lock().unwrap();
-                        pending.remove(&entry_path);
-                        update.insert(Update::DRAW);
+                    ThumbnailEvent::ThumbnailReady { uri, .. } => {
+                        // Convert URI to path for pending tracking
+                        if let Some(entry_path) = uri_to_path(&uri) {
+                            log::debug!("Thumbnail ready for {:?}", entry_path);
+                            let mut pending = self.pending_thumbnails.lock().unwrap();
+                            pending.remove(&entry_path);
+                            update.insert(Update::DRAW);
+                        }
                     },
                     ThumbnailEvent::ThumbnailFailed {
-                        entry_path, error, ..
+                        uri, error_message, ..
                     } => {
-                        log::warn!(
-                            "Thumbnail generation failed for {:?}: {}",
-                            entry_path,
-                            error
-                        );
-                        let mut pending = self.pending_thumbnails.lock().unwrap();
-                        pending.remove(&entry_path);
+                        if let Some(entry_path) = uri_to_path(&uri) {
+                            log::warn!(
+                                "Thumbnail generation failed for {:?}: {}",
+                                entry_path,
+                                error_message
+                            );
+                            let mut pending = self.pending_thumbnails.lock().unwrap();
+                            pending.remove(&entry_path);
+                        }
                     },
                 }
             }

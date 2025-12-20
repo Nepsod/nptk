@@ -18,6 +18,7 @@ nalgebra = { version = "0.33.2", default-features = false, features = ["std"] }
 indexmap = "2.9.0"
 log = "0.4.27"
 smol = "2.0"
+npio = { version = "0.0", path = "../npio" }
 nptk-core = { version = "0.5.0", path = "nptk-core" }
 nptk-macros = { version = "0.5.0", path = "nptk-macros" }
 nptk-theme = { version = "0.5.0", path = "nptk-theme" }
@@ -37,6 +38,7 @@ repository.workspace = true
 homepage.workspace = true
 
 [dependencies]
+npio = { workspace = true }
 nptk-core = { workspace = true }
 nptk-theme = { workspace = true }
 nptk-widgets = { workspace = true }

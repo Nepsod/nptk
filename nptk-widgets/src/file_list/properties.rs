@@ -16,7 +16,8 @@ use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_services::filesystem::entry::{FileEntry, FileMetadata, FileType};
 use nptk_services::filesystem::MimeDetector;
 use nptk_services::icon::IconRegistry;
-use nptk_services::thumbnail::{ThumbnailImageCache, ThumbnailProvider};
+use nptk_services::thumbnail::npio_adapter::{file_entry_to_uri, u32_to_thumbnail_size};
+use npio::{ThumbnailService, get_file_for_uri};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use std::fs;
@@ -27,8 +28,7 @@ impl FileListContent {
     pub(super) fn build_properties_widget(
         data: PropertiesData,
         icon_registry: Arc<IconRegistry>,
-        thumbnail_provider: Arc<dyn ThumbnailProvider>,
-        thumbnail_cache: Arc<ThumbnailImageCache>,
+        thumbnail_service: Arc<ThumbnailService>,
         icon_cache: Arc<
             Mutex<
                 std::collections::HashMap<(PathBuf, u32), Option<nptk_services::icon::CachedIcon>>,
@@ -41,8 +41,7 @@ impl FileListContent {
         let content = PropertiesContent::new(
             data,
             icon_registry,
-            thumbnail_provider,
-            thumbnail_cache,
+            thumbnail_service,
             icon_cache,
             svg_scene_cache,
         );
@@ -141,8 +140,7 @@ impl FileListContent {
         let props_widget = Self::build_properties_widget(
             data,
             self.icon_registry.clone(),
-            self.thumbnail_provider.clone(),
-            self.thumbnail_cache.clone(),
+            self.thumbnail_service.clone(),
             self.icon_cache.clone(),
             svg_scene_cache,
         );
@@ -366,8 +364,7 @@ struct PropertiesContent {
     data: PropertiesData,
     text_ctx: TextRenderContext,
     icon_registry: Arc<IconRegistry>,
-    thumbnail_provider: Arc<dyn ThumbnailProvider>,
-    thumbnail_cache: Arc<ThumbnailImageCache>,
+    thumbnail_service: Arc<ThumbnailService>,
     _icon_cache: Arc<
         Mutex<
             std::collections::HashMap<(PathBuf, u32), Option<nptk_services::icon::CachedIcon>>,
@@ -381,8 +378,7 @@ impl PropertiesContent {
     fn new(
         data: PropertiesData,
         icon_registry: Arc<IconRegistry>,
-        thumbnail_provider: Arc<dyn ThumbnailProvider>,
-        thumbnail_cache: Arc<ThumbnailImageCache>,
+        thumbnail_service: Arc<ThumbnailService>,
         icon_cache: Arc<
             Mutex<
                 std::collections::HashMap<(PathBuf, u32), Option<nptk_services::icon::CachedIcon>>,
@@ -396,8 +392,7 @@ impl PropertiesContent {
             data,
             text_ctx: TextRenderContext::new(),
             icon_registry,
-            thumbnail_provider,
-            thumbnail_cache,
+            thumbnail_service,
             _icon_cache: icon_cache,
             svg_scene_cache,
             thumbnail_size: 64,
@@ -634,28 +629,26 @@ impl Widget for PropertiesContent {
             };
 
             if let Some(entry) = entry {
-                if let Some(thumbnail_path) =
-                    self.thumbnail_provider.get_thumbnail(&entry, self.thumbnail_size)
-                {
-                    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                        if let Ok(Some(cached_thumb)) = handle.block_on(async {
-                            self.thumbnail_cache
-                                .load_or_get(&thumbnail_path, self.thumbnail_size)
-                                .await
-                        }) {
+                if let Ok(file) = get_file_for_uri(&file_entry_to_uri(&entry)) {
+                    if let Ok(thumbnail_image) = smol::block_on(async {
+                        // Try to get existing thumbnail image (checks cache first)
+                        self.thumbnail_service
+                            .get_thumbnail_image(&*file, u32_to_thumbnail_size(self.thumbnail_size), None)
+                            .await
+                    }) {
                         let image_data = ImageData {
-                            data: Blob::from(cached_thumb.data.as_ref().clone()),
+                            data: Blob::from(thumbnail_image.data),
                             format: ImageFormat::Rgba8,
                             alpha_type: ImageAlphaType::Alpha,
-                            width: cached_thumb.width,
-                            height: cached_thumb.height,
+                            width: thumbnail_image.width,
+                            height: thumbnail_image.height,
                         };
                         let image_brush = ImageBrush::new(image_data);
                         let icon_x = icon_rect.x0;
                         let icon_y = icon_rect.y0;
                         let icon_size_f64 = icon_rect.width().min(icon_rect.height());
-                        let scale_x = icon_size_f64 / (cached_thumb.width as f64);
-                        let scale_y = icon_size_f64 / (cached_thumb.height as f64);
+                        let scale_x = icon_size_f64 / (thumbnail_image.width as f64);
+                        let scale_y = icon_size_f64 / (thumbnail_image.height as f64);
                         let scale = scale_x.min(scale_y);
                         let transform =
                             Affine::scale_non_uniform(scale, scale).then_translate(Vec2::new(icon_x, icon_y));
@@ -665,9 +658,8 @@ impl Widget for PropertiesContent {
                         }
                     }
                 }
-            }
 
-            if !icon_rendered {
+                if !icon_rendered {
                     if let Some(icon) =
                         smol::block_on(self.icon_registry.get_file_icon(&entry, icon_size as u32))
                     {

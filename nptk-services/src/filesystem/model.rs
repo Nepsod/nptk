@@ -3,7 +3,7 @@
 use crate::filesystem::cache::FileSystemCache;
 use crate::filesystem::entry::{FileEntry, FileMetadata, FileType};
 use crate::filesystem::error::FileSystemError;
-use crate::filesystem::icon::{IconProvider, MimeIconProvider};
+use crate::filesystem::icon::MimeIconProvider;
 use crate::filesystem::io_uring;
 use crate::filesystem::watcher::{FileSystemChange, FileSystemWatcher};
 use std::path::{Path, PathBuf};

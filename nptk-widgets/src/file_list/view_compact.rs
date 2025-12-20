@@ -8,7 +8,9 @@ use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::Widget;
 use nptk_services::filesystem::entry::{FileEntry, FileType};
+use nptk_services::thumbnail::npio_adapter::{file_entry_to_uri, u32_to_thumbnail_size};
 use nptk_theme::theme::Theme;
+use npio::get_file_for_uri;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -206,27 +208,26 @@ impl FileListContent {
             let mut use_thumbnail = false;
             let thumb_size = 48;
 
-            if let Some(thumbnail_path) = self.thumbnail_provider.get_thumbnail(&entry, thumb_size)
-            {
-                if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                    if let Ok(Some(cached_thumb)) = handle.block_on(async {
-                        self.thumbnail_cache
-                            .load_or_get(&thumbnail_path, thumb_size)
-                            .await
-                    }) {
+            if let Ok(file) = get_file_for_uri(&file_entry_to_uri(&entry)) {
+                if let Ok(thumbnail_image) = smol::block_on(async {
+                    // Try to get existing thumbnail image (checks cache first)
+                    self.thumbnail_service
+                        .get_thumbnail_image(&*file, u32_to_thumbnail_size(thumb_size), None)
+                        .await
+                }) {
                     use nptk_core::vg::peniko::{
                         Blob, ImageAlphaType, ImageBrush, ImageData, ImageFormat,
                     };
                     let image_data = ImageData {
-                        data: Blob::from(cached_thumb.data.as_ref().clone()),
+                        data: Blob::from(thumbnail_image.data),
                         format: ImageFormat::Rgba8,
                         alpha_type: ImageAlphaType::Alpha,
-                        width: cached_thumb.width,
-                        height: cached_thumb.height,
+                        width: thumbnail_image.width,
+                        height: thumbnail_image.height,
                     };
                     let image_brush = ImageBrush::new(image_data);
-                    let scale_x = icon_size as f64 / (cached_thumb.width as f64);
-                    let scale_y = icon_size as f64 / (cached_thumb.height as f64);
+                    let scale_x = icon_size as f64 / (thumbnail_image.width as f64);
+                    let scale_y = icon_size as f64 / (thumbnail_image.height as f64);
                     let scale = scale_x.min(scale_y);
                     let transform = Affine::scale_non_uniform(scale, scale)
                         .then_translate(Vec2::new(icon_x, icon_y));
@@ -234,20 +235,33 @@ impl FileListContent {
                         scene.draw_image(&image_brush, transform);
                     }
                     use_thumbnail = true;
-                    }
                 }
             }
 
             if !use_thumbnail {
                 // Request thumbnail generation if supported
-                if self.thumbnail_provider.is_supported(&entry) {
-                    let mut pending = self.pending_thumbnails.lock().unwrap();
-                    if !pending.contains(&entry.path) {
-                        if let Ok(()) = self
-                            .thumbnail_provider
-                            .request_thumbnail(&entry, thumb_size)
-                        {
-                            pending.insert(entry.path.clone());
+                if let Ok(file) = get_file_for_uri(&file_entry_to_uri(&entry)) {
+                    if let Ok(true) = smol::block_on(async {
+                        self.thumbnail_service.is_supported(&*file, None).await
+                    }) {
+                        let mut pending = self.pending_thumbnails.lock().unwrap();
+                        if !pending.contains(&entry.path) {
+                            // Request thumbnail generation (async, will emit event when ready)
+                            let file_clone = get_file_for_uri(&file_entry_to_uri(&entry)).ok();
+                            let service_clone = self.thumbnail_service.clone();
+                            let size = u32_to_thumbnail_size(thumb_size);
+                            let entry_path = entry.path.clone();
+                            
+                            // Spawn async task to generate thumbnail
+                            smol::spawn(async move {
+                                if let Some(f) = file_clone {
+                                    let _ = service_clone
+                                        .get_or_generate_thumbnail(&*f, size, None)
+                                        .await;
+                                }
+                            }).detach();
+                            
+                            pending.insert(entry_path);
                         }
                     }
                 }
@@ -265,7 +279,7 @@ impl FileListContent {
                     }
                 };
 
-                if let Some(icon) = cached_icon {
+                    if let Some(icon) = cached_icon {
                     match icon {
                         nptk_services::icon::CachedIcon::Image {
                             data,

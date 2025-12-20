@@ -1,70 +1,56 @@
 //! Thumbnail generation and caching system.
 //!
-//! This module provides a pluggable thumbnail system that generates and caches
-//! thumbnails for images, videos, and PDFs. It follows the freedesktop.org
-//! Thumbnail Managing Standard for cache paths and naming.
+//! This module provides adapter functions for using npio's ThumbnailService
+//! with NPTK's FileEntry types. The actual thumbnail implementation is now
+//! provided by npio.
 
-use crate::filesystem::entry::FileEntry;
-use std::path::PathBuf;
+pub mod npio_adapter;
 
-pub mod cache;
+// Re-export adapter functions for convenience
+pub use npio_adapter::{file_entry_to_uri, u32_to_thumbnail_size, uri_to_path, thumbnail_size_to_u32};
+
+// Keep error type for backward compatibility (may be used elsewhere)
 pub mod error;
+pub use error::ThumbnailError;
+
+// Deprecated: Old implementation modules kept for reference but not used
+#[deprecated(note = "Use npio::ThumbnailService instead")]
+pub mod cache;
+
+#[deprecated(note = "Use npio::ThumbnailService instead")]
 pub mod events;
+
+#[deprecated(note = "Use npio::ThumbnailService instead")]
 pub mod executor;
+
+#[deprecated(note = "Use npio::ThumbnailImageCache or ThumbnailService::get_thumbnail_image() instead")]
 pub mod image_cache;
+
+#[deprecated(note = "Use npio::ThumbnailService instead")]
 pub mod thumbnailify_provider;
 
-pub use error::ThumbnailError;
+// Re-export deprecated types for backward compatibility
+#[deprecated(note = "Use npio::ThumbnailService instead")]
 pub use image_cache::{CachedThumbnail, ThumbnailImageCache};
+
+#[deprecated(note = "Use npio::ThumbnailService instead")]
 pub use thumbnailify_provider::ThumbnailifyProvider;
 
 /// Trait for thumbnail providers.
 ///
-/// Thumbnail providers are responsible for generating and caching thumbnails
-/// for supported file types. They should follow the freedesktop.org
-/// Thumbnail Managing Standard for cache paths and naming.
+/// @deprecated This trait is deprecated. Use npio::ThumbnailService directly.
+/// The adapter functions in npio_adapter can help convert between NPTK and npio types.
+#[deprecated(note = "Use npio::ThumbnailService instead")]
 pub trait ThumbnailProvider: Send + Sync + std::any::Any {
     /// Returns a path to a cached thumbnail for the file, or None if unavailable.
-    ///
-    /// This method checks if a thumbnail exists in the cache and is fresh.
-    /// It does not trigger generation if the thumbnail is missing.
-    ///
-    /// # Arguments
-    ///
-    /// * `entry` - The file entry to get a thumbnail for
-    /// * `size` - The desired thumbnail size (e.g., 128 or 256)
-    ///
-    /// # Returns
-    ///
-    /// * `Some(PathBuf)` - Path to the cached thumbnail if available and fresh
-    /// * `None` - If no thumbnail is available or it's stale
-    fn get_thumbnail(&self, entry: &FileEntry, size: u32) -> Option<PathBuf>;
+    #[deprecated(note = "Use npio::ThumbnailService::get_thumbnail_path() instead")]
+    fn get_thumbnail(&self, entry: &crate::filesystem::entry::FileEntry, size: u32) -> Option<std::path::PathBuf>;
 
     /// Triggers background generation of a thumbnail for the file.
-    ///
-    /// This method queues a thumbnail generation task. The thumbnail will
-    /// be generated asynchronously and cached for future use.
-    ///
-    /// # Arguments
-    ///
-    /// * `entry` - The file entry to generate a thumbnail for
-    /// * `size` - The desired thumbnail size (e.g., 128 or 256)
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(())` - If the request was queued successfully
-    /// * `Err(ThumbnailError)` - If the file type is unsupported or queuing failed
-    fn request_thumbnail(&self, entry: &FileEntry, size: u32) -> Result<(), ThumbnailError>;
+    #[deprecated(note = "Use npio::ThumbnailService::get_or_generate_thumbnail() instead")]
+    fn request_thumbnail(&self, entry: &crate::filesystem::entry::FileEntry, size: u32) -> Result<(), ThumbnailError>;
 
     /// Check if the file type is supported for thumbnail generation.
-    ///
-    /// # Arguments
-    ///
-    /// * `entry` - The file entry to check
-    ///
-    /// # Returns
-    ///
-    /// * `true` - If thumbnails can be generated for this file type
-    /// * `false` - If thumbnails are not supported
-    fn is_supported(&self, entry: &FileEntry) -> bool;
+    #[deprecated(note = "Use npio::ThumbnailService::is_supported() instead")]
+    fn is_supported(&self, entry: &crate::filesystem::entry::FileEntry) -> bool;
 }
