@@ -205,81 +205,83 @@ impl FileListContent {
 
             // 2. Draw Icon
             // Try to get thumbnail first, fall back to icon
-            let mut use_thumbnail = false;
             let thumb_size = 48;
-
-            if let Ok(file) = get_file_for_uri(&file_entry_to_uri(&entry)) {
-                if let Ok(thumbnail_image) = smol::block_on(async {
-                    // Try to get existing thumbnail image (checks cache first)
-                    self.thumbnail_service
-                        .get_thumbnail_image(&*file, u32_to_thumbnail_size(thumb_size), None)
-                        .await
-                }) {
-                    use nptk_core::vg::peniko::{
-                        Blob, ImageAlphaType, ImageBrush, ImageData, ImageFormat,
-                    };
-                    let image_data = ImageData {
-                        data: Blob::from(thumbnail_image.data),
-                        format: ImageFormat::Rgba8,
-                        alpha_type: ImageAlphaType::Alpha,
-                        width: thumbnail_image.width,
-                        height: thumbnail_image.height,
-                    };
-                    let image_brush = ImageBrush::new(image_data);
-                    let scale_x = icon_size as f64 / (thumbnail_image.width as f64);
-                    let scale_y = icon_size as f64 / (thumbnail_image.height as f64);
-                    let scale = scale_x.min(scale_y);
-                    let transform = Affine::scale_non_uniform(scale, scale)
-                        .then_translate(Vec2::new(icon_x, icon_y));
-                    if let Some(scene) = graphics.as_scene_mut() {
-                        scene.draw_image(&image_brush, transform);
-                    }
-                    use_thumbnail = true;
+            
+            // Try to get thumbnail from cache first, fall back to icon
+            let mut use_thumbnail = false;
+            let thumbnail_cache_key = (entry.path.clone(), thumb_size);
+            if let Some(thumbnail_image) = {
+                let cache = self.thumbnail_cache.lock().unwrap();
+                cache.get(&thumbnail_cache_key).cloned()
+            } {
+                use nptk_core::vg::peniko::{
+                    Blob, ImageAlphaType, ImageBrush, ImageData, ImageFormat,
+                };
+                let image_data = ImageData {
+                    data: Blob::from(thumbnail_image.data),
+                    format: ImageFormat::Rgba8,
+                    alpha_type: ImageAlphaType::Alpha,
+                    width: thumbnail_image.width,
+                    height: thumbnail_image.height,
+                };
+                let image_brush = ImageBrush::new(image_data);
+                let scale_x = icon_size as f64 / (thumbnail_image.width as f64);
+                let scale_y = icon_size as f64 / (thumbnail_image.height as f64);
+                let scale = scale_x.min(scale_y);
+                let transform = Affine::scale_non_uniform(scale, scale)
+                    .then_translate(Vec2::new(icon_x, icon_y));
+                if let Some(scene) = graphics.as_scene_mut() {
+                    scene.draw_image(&image_brush, transform);
                 }
+                use_thumbnail = true;
             }
 
             if !use_thumbnail {
-                // Request thumbnail generation if supported
-                if let Ok(file) = get_file_for_uri(&file_entry_to_uri(&entry)) {
-                    if let Ok(true) = smol::block_on(async {
-                        self.thumbnail_service.is_supported(&*file, None).await
-                    }) {
-                        let mut pending = self.pending_thumbnails.lock().unwrap();
-                        if !pending.contains(&entry.path) {
-                            // Request thumbnail generation (async, will emit event when ready)
+                // Request thumbnail generation asynchronously (non-blocking)
+                if entry.is_file() {
+                    let mut pending = self.pending_thumbnails.lock().unwrap();
+                    if !pending.contains(&entry.path) {
+                        if let Ok(file) = get_file_for_uri(&file_entry_to_uri(&entry)) {
                             let file_clone = get_file_for_uri(&file_entry_to_uri(&entry)).ok();
                             let service_clone = self.thumbnail_service.clone();
                             let size = u32_to_thumbnail_size(thumb_size);
                             let entry_path = entry.path.clone();
                             
-                            // Spawn async task to generate thumbnail
-                            smol::spawn(async move {
+                            // Spawn async task to generate thumbnail (non-blocking)
+                            tokio::spawn(async move {
                                 if let Some(f) = file_clone {
                                     let _ = service_clone
                                         .get_or_generate_thumbnail(&*f, size, None)
                                         .await;
                                 }
-                            }).detach();
+                            });
                             
                             pending.insert(entry_path);
                         }
                     }
                 }
 
-                // Get icon for this entry
+                // Get icon for this entry (only use cached, don't block on loading)
                 let cache_key = (entry.path.clone(), thumb_size);
                 let cached_icon = {
-                    let mut cache = self.icon_cache.lock().unwrap();
-                    if let Some(icon) = cache.get(&cache_key) {
-                        icon.clone()
-                    } else {
-                        let icon = smol::block_on(self.icon_registry.get_file_icon(&entry, thumb_size));
-                        cache.insert(cache_key.clone(), icon.clone());
-                        icon
-                    }
+                    let cache = self.icon_cache.lock().unwrap();
+                    cache.get(&cache_key).and_then(|opt| opt.clone())
                 };
+                
+                // If icon not cached, request it asynchronously (non-blocking)
+                if cached_icon.is_none() {
+                    let cache_clone = self.icon_cache.clone();
+                    let registry_clone = self.icon_registry.clone();
+                    let entry_clone = entry.clone();
+                    let cache_key_clone = cache_key.clone();
+                    tokio::spawn(async move {
+                        let icon = registry_clone.get_file_icon(&entry_clone, thumb_size).await;
+                        let mut cache = cache_clone.lock().unwrap();
+                        cache.insert(cache_key_clone, icon);
+                    });
+                }
 
-                    if let Some(icon) = cached_icon {
+                if let Some(icon) = cached_icon {
                     match icon {
                         nptk_services::icon::CachedIcon::Image {
                             data,

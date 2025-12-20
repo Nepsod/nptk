@@ -16,9 +16,9 @@ use nptk_core::window::{ElementState, MouseButton};
 use nptk_services::filesystem::entry::{FileEntry, FileType};
 use nptk_services::filesystem::model::{FileSystemEvent, FileSystemModel};
 use nptk_services::icon::IconRegistry;
-use npio::{ThumbnailService, ThumbnailEvent, get_file_for_uri, register_backend};
+use npio::{ThumbnailService, ThumbnailEvent, ThumbnailImage, get_file_for_uri, register_backend};
 use npio::backend::local::LocalBackend;
-use nptk_services::thumbnail::npio_adapter::{file_entry_to_uri, u32_to_thumbnail_size, uri_to_path};
+use nptk_services::thumbnail::npio_adapter::{file_entry_to_uri, u32_to_thumbnail_size, uri_to_path, thumbnail_size_to_u32};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use std::collections::HashSet;
@@ -291,6 +291,9 @@ struct FileListContent {
     // Track pending thumbnail requests to avoid duplicate requests
     pending_thumbnails: Arc<Mutex<HashSet<PathBuf>>>,
 
+    // Thumbnail cache: (path, size) -> ThumbnailImage
+    thumbnail_cache: Arc<Mutex<std::collections::HashMap<(PathBuf, u32), ThumbnailImage>>>,
+
     // Thumbnail event receiver
     thumbnail_event_rx: Arc<Mutex<tokio::sync::broadcast::Receiver<ThumbnailEvent>>>,
 
@@ -357,6 +360,7 @@ impl FileListContent {
             anchor_index: None,
             icon_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
             pending_thumbnails: Arc::new(Mutex::new(HashSet::new())),
+            thumbnail_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
             thumbnail_event_rx: Arc::new(Mutex::new(thumbnail_event_rx)),
             drag_start: None,
             current_drag_pos: None,
@@ -520,12 +524,31 @@ impl Widget for FileListContent {
         if let Ok(mut rx) = self.thumbnail_event_rx.try_lock() {
             while let Ok(event) = rx.try_recv() {
                 match event {
-                    ThumbnailEvent::ThumbnailReady { uri, .. } => {
+                    ThumbnailEvent::ThumbnailReady { uri, size, .. } => {
                         // Convert URI to path for pending tracking
                         if let Some(entry_path) = uri_to_path(&uri) {
                             log::debug!("Thumbnail ready for {:?}", entry_path);
                             let mut pending = self.pending_thumbnails.lock().unwrap();
                             pending.remove(&entry_path);
+                            
+                            // Fetch and cache the thumbnail image (non-blocking spawn)
+                            let service_clone = self.thumbnail_service.clone();
+                            let cache_clone = self.thumbnail_cache.clone();
+                            let path_clone = entry_path.clone();
+                            let size_u32 = thumbnail_size_to_u32(size);
+                            
+                            if let Ok(file) = get_file_for_uri(&uri) {
+                                tokio::spawn(async move {
+                                    if let Ok(thumbnail_image) = service_clone
+                                        .get_thumbnail_image(&*file, size, None)
+                                        .await
+                                    {
+                                        let mut cache = cache_clone.lock().unwrap();
+                                        cache.insert((path_clone, size_u32), thumbnail_image);
+                                    }
+                                });
+                            }
+                            
                             update.insert(Update::DRAW);
                         }
                     },
