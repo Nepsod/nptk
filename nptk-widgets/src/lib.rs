@@ -85,3 +85,9 @@ pub mod theme_rendering;
 
 /// Contains the [toolbar::Toolbar] widget.
 pub mod toolbar;
+
+/// Contains the [sidebar::Sidebar] widget.
+pub mod sidebar;
+
+// Re-export public types
+pub use sidebar::{Sidebar, SidebarItem, SidebarSection};
