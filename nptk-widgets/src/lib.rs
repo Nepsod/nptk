@@ -13,6 +13,9 @@ pub mod button;
 /// Contains the [container::Container] widget.
 pub mod container;
 
+/// Contains the [expandable_section::ExpandableSection] widget.
+pub mod expandable_section;
+
 /// Contains the [image::Image] widget.
 pub mod image;
 
