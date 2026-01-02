@@ -1,6 +1,4 @@
 pub mod filesystem;
-pub mod icon;
-pub mod io_helpers;
 pub mod places;
 pub mod bookmarks;
 pub mod settings;

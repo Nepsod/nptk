@@ -1,7 +1,7 @@
 //! Background task executor for thumbnail generation.
 
 use crate::filesystem::entry::FileEntry;
-use crate::io_helpers;
+use npio::service::io_helpers;
 use crate::thumbnail::cache::{ensure_cache_dir, is_thumbnail_fresh, thumbnail_cache_path};
 use crate::thumbnail::error::ThumbnailError;
 use crate::thumbnail::events::{create_thumbnail_event_channel, ThumbnailEvent};

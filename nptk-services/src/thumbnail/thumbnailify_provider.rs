@@ -1,7 +1,7 @@
 //! Thumbnail provider implementation using the thumbnailify crate.
 
 use crate::filesystem::entry::FileEntry;
-use crate::filesystem::mime_detector::MimeDetector;
+use npio::service::filesystem::mime_detector::MimeDetector;
 use crate::thumbnail::cache::{is_thumbnail_fresh, thumbnail_cache_path};
 use crate::thumbnail::executor::ThumbnailExecutor;
 use crate::thumbnail::{ThumbnailError, ThumbnailProvider};

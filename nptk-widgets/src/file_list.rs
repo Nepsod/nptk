@@ -15,7 +15,7 @@ use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_services::filesystem::entry::{FileEntry, FileType};
 use nptk_services::filesystem::model::{FileSystemEvent, FileSystemModel};
-use nptk_services::icon::IconRegistry;
+use npio::service::icon::IconRegistry;
 use npio::{ThumbnailService, ThumbnailEvent, ThumbnailImage, get_file_for_uri, register_backend};
 use npio::backend::local::LocalBackend;
 use nptk_services::thumbnail::npio_adapter::{file_entry_to_uri, u32_to_thumbnail_size, uri_to_path, thumbnail_size_to_u32};
@@ -31,7 +31,7 @@ mod view_icon;
 mod view_list;
 
 use crate::scroll_container::{ScrollContainer, ScrollDirection};
-use nptk_services::filesystem::mime_registry::MimeRegistry;
+use npio::service::filesystem::mime_registry::MimeRegistry;
 use std::path::PathBuf;
 
 /// View mode for the file list.
@@ -290,7 +290,7 @@ struct FileListContent {
 
     // Icon cache per entry (to avoid repeated lookups)
     icon_cache: Arc<
-        Mutex<std::collections::HashMap<(PathBuf, u32), Option<nptk_services::icon::CachedIcon>>>,
+        Mutex<std::collections::HashMap<(PathBuf, u32), Option<npio::service::icon::CachedIcon>>>,
     >,
 
     // Track pending thumbnail requests to avoid duplicate requests

@@ -343,17 +343,20 @@ impl FileListContent {
                 let cache_key_clone = cache_key.clone();
                 let cache_update_tx_clone = self.cache_update_tx.clone();
                 tokio::spawn(async move {
-                    let icon = registry_clone.get_file_icon(&entry_clone, icon_size).await;
-                    let mut cache = cache_clone.lock().unwrap();
-                    cache.insert(cache_key_clone, icon);
-                    // Notify that cache was updated to trigger redraw
-                    let _ = cache_update_tx_clone.send(());
+                    let uri = file_entry_to_uri(&entry_clone);
+                    if let Ok(file) = get_file_for_uri(&uri) {
+                        let icon = registry_clone.get_file_icon(&*file, icon_size).await;
+                        let mut cache = cache_clone.lock().unwrap();
+                        cache.insert(cache_key_clone, icon);
+                        // Notify that cache was updated to trigger redraw
+                        let _ = cache_update_tx_clone.send(());
+                    }
                 });
             }
 
             if let Some(icon) = cached_icon {
                 match icon {
-                    nptk_services::icon::CachedIcon::Image {
+                    npio::service::icon::CachedIcon::Image {
                         data,
                         width,
                         height,
@@ -378,7 +381,7 @@ impl FileListContent {
                             scene.draw_image(&image_brush, transform);
                         }
                     },
-                    nptk_services::icon::CachedIcon::Svg(svg_source) => {
+                    npio::service::icon::CachedIcon::Svg(svg_source) => {
                         use vello_svg::usvg::{
                             ImageRendering, Options, ShapeRendering, TextRendering, Tree,
                         };
@@ -401,7 +404,7 @@ impl FileListContent {
                             graphics.append(&scene, Some(transform));
                         }
                     },
-                    nptk_services::icon::CachedIcon::Path(_) => {
+                    npio::service::icon::CachedIcon::Path(_) => {
                         let icon_color = theme
                             .get_property(
                                 self.widget_id(),

@@ -1,7 +1,7 @@
 use super::{FileListContent, PendingAction};
 use nptk_core::menu::ContextMenuItem;
-use nptk_services::filesystem::mime_registry::MimeRegistry;
-use nptk_services::filesystem::MimeDetector;
+use npio::service::filesystem::mime_registry::MimeRegistry;
+use npio::service::filesystem::mime_detector::MimeDetector;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;

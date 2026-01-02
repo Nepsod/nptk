@@ -182,11 +182,14 @@ impl FileListContent {
                 let cache_key_clone = cache_key.clone();
                 let cache_update_tx_clone = self.cache_update_tx.clone();
                 tokio::spawn(async move {
-                    let icon = registry_clone.get_file_icon(&entry_clone, icon_size as u32).await;
-                    let mut cache = cache_clone.lock().unwrap();
-                    cache.insert(cache_key_clone, icon);
-                    // Notify that cache was updated to trigger redraw
-                    let _ = cache_update_tx_clone.send(());
+                    let uri = file_entry_to_uri(&entry_clone);
+                    if let Ok(file) = get_file_for_uri(&uri) {
+                        let icon = registry_clone.get_file_icon(&*file, icon_size as u32).await;
+                        let mut cache = cache_clone.lock().unwrap();
+                        cache.insert(cache_key_clone, icon);
+                        // Notify that cache was updated to trigger redraw
+                        let _ = cache_update_tx_clone.send(());
+                    }
                 });
             }
 
@@ -196,7 +199,7 @@ impl FileListContent {
                 let icon_size_f64 = icon_rect.width().min(icon_rect.height());
 
                 match icon {
-                    nptk_services::icon::CachedIcon::Image {
+                    npio::service::icon::CachedIcon::Image {
                         data,
                         width,
                         height,
@@ -221,7 +224,7 @@ impl FileListContent {
                             scene.draw_image(&image_brush, transform);
                         }
                     },
-                    nptk_services::icon::CachedIcon::Svg(svg_source) => {
+                    npio::service::icon::CachedIcon::Svg(svg_source) => {
                         // Check SVG scene cache first
                         let cached_scene =
                             self.svg_scene_cache.get(svg_source.as_str()).cloned();
@@ -264,7 +267,7 @@ impl FileListContent {
                             .then_translate(Vec2::new(icon_x, icon_y));
                         graphics.append(&scene, Some(transform));
                     },
-                    nptk_services::icon::CachedIcon::Path(_) => {
+                    npio::service::icon::CachedIcon::Path(_) => {
                         let icon_color = theme
                             .get_property(
                                 self.widget_id(),

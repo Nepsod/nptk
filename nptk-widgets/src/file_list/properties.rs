@@ -14,8 +14,8 @@ use nptk_core::vg::Scene;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_services::filesystem::entry::{FileEntry, FileMetadata, FileType};
-use nptk_services::filesystem::MimeDetector;
-use nptk_services::icon::IconRegistry;
+use npio::service::filesystem::mime_detector::MimeDetector;
+use npio::service::icon::IconRegistry;
 use nptk_services::thumbnail::npio_adapter::{file_entry_to_uri, u32_to_thumbnail_size};
 use npio::{ThumbnailService, get_file_for_uri};
 use nptk_theme::id::WidgetId;
@@ -31,7 +31,7 @@ impl FileListContent {
         thumbnail_service: Arc<ThumbnailService>,
         icon_cache: Arc<
             Mutex<
-                std::collections::HashMap<(PathBuf, u32), Option<nptk_services::icon::CachedIcon>>,
+                std::collections::HashMap<(PathBuf, u32), Option<npio::service::icon::CachedIcon>>,
             >,
         >,
         svg_scene_cache: Arc<
@@ -367,7 +367,7 @@ struct PropertiesContent {
     thumbnail_service: Arc<ThumbnailService>,
     _icon_cache: Arc<
         Mutex<
-            std::collections::HashMap<(PathBuf, u32), Option<nptk_services::icon::CachedIcon>>,
+            std::collections::HashMap<(PathBuf, u32), Option<npio::service::icon::CachedIcon>>,
         >,
     >,
     svg_scene_cache: Arc<Mutex<std::collections::HashMap<String, (nptk_core::vg::Scene, f64, f64)>>>,
@@ -381,7 +381,7 @@ impl PropertiesContent {
         thumbnail_service: Arc<ThumbnailService>,
         icon_cache: Arc<
             Mutex<
-                std::collections::HashMap<(PathBuf, u32), Option<nptk_services::icon::CachedIcon>>,
+                std::collections::HashMap<(PathBuf, u32), Option<npio::service::icon::CachedIcon>>,
             >,
         >,
         svg_scene_cache: Arc<
@@ -501,7 +501,7 @@ impl Widget for PropertiesContent {
                     let icon_size_f64 = icon_rect.width().min(icon_rect.height());
 
                     match icon {
-                        nptk_services::icon::CachedIcon::Image {
+                        npio::service::icon::CachedIcon::Image {
                             data,
                             width,
                             height,
@@ -525,7 +525,7 @@ impl Widget for PropertiesContent {
                                 break;
                             }
                         },
-                        nptk_services::icon::CachedIcon::Svg(svg_source) => {
+                        npio::service::icon::CachedIcon::Svg(svg_source) => {
                             let cached_scene = {
                                 let cache = self.svg_scene_cache.lock().unwrap();
                                 cache.get(svg_source.as_str()).cloned()
@@ -572,7 +572,7 @@ impl Widget for PropertiesContent {
                             icon_rendered = true;
                             break;
                         },
-                        nptk_services::icon::CachedIcon::Path(_) => {},
+                        npio::service::icon::CachedIcon::Path(_) => {},
                     }
                 }
             }
@@ -660,15 +660,17 @@ impl Widget for PropertiesContent {
                 }
 
                 if !icon_rendered {
-                    if let Some(icon) =
-                        smol::block_on(self.icon_registry.get_file_icon(&entry, icon_size as u32))
-                    {
+                    let uri = file_entry_to_uri(&entry);
+                    if let Ok(file) = get_file_for_uri(&uri) {
+                        if let Some(icon) =
+                            smol::block_on(self.icon_registry.get_file_icon(&*file, icon_size as u32))
+                        {
                         let icon_x = icon_rect.x0;
                         let icon_y = icon_rect.y0;
                         let icon_size_f64 = icon_rect.width().min(icon_rect.height());
 
                         match icon {
-                            nptk_services::icon::CachedIcon::Image {
+                            npio::service::icon::CachedIcon::Image {
                                 data,
                                 width,
                                 height,
@@ -691,7 +693,7 @@ impl Widget for PropertiesContent {
                                     icon_rendered = true;
                                 }
                             },
-                            nptk_services::icon::CachedIcon::Svg(svg_source) => {
+                            npio::service::icon::CachedIcon::Svg(svg_source) => {
                                 use vello_svg::usvg::{
                                     ImageRendering, Options, ShapeRendering, TextRendering, Tree,
                                 };
@@ -715,7 +717,8 @@ impl Widget for PropertiesContent {
                                     icon_rendered = true;
                                 }
                             },
-                            nptk_services::icon::CachedIcon::Path(_) => {},
+                            npio::service::icon::CachedIcon::Path(_) => {},
+                        }
                         }
                     }
                 }

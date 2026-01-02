@@ -8,7 +8,7 @@ use lru::LruCache;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use crate::filesystem::io_uring;
+use npio::service::filesystem::io_uring;
 
 /// Cached decoded thumbnail image data.
 #[derive(Clone)]

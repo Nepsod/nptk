@@ -19,8 +19,6 @@ anyhow = "1.0"
 nptk-theme = { workspace = true }
 tokio = { version = "1.35", features = ["fs", "sync", "rt-multi-thread", "macros", "time"] }
 notify = "6.1"
-mime_guess2 = "2.0"
-tree_magic_mini = "3.2"
 image = "0.25"
 thiserror = "1.0"
 thumbnailify = "0.1"
@@ -28,10 +26,6 @@ md5 = "0.7"
 urlencoding = "2.1"
 dirs = "5.0"
 lru = "0.12"
-cosmic-mime-apps = { git = "https://github.com/pop-os/cosmic-mime-apps.git" }
-mime = "0.3"
-shared-mime = { version = "0.1.0", features = ["xdg-runtime"] }
-uring-file = "0.9"
 futures = "0.3"
 smol = { workspace = true }
 npio = { workspace = true }

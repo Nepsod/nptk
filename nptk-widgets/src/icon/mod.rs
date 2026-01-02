@@ -59,9 +59,9 @@ impl Icon {
     pub fn new(
         icon_name: impl Into<String>,
         size: u32,
-        registry: Option<Arc<nptk_services::icon::IconRegistry>>,
+        registry: Option<Arc<npio::service::icon::IconRegistry>>,
     ) -> Self {
-        use nptk_services::icon::{CachedIcon, IconRegistry};
+        use npio::service::icon::{CachedIcon, IconRegistry};
 
         let icon_name = icon_name.into();
         let registry = registry.unwrap_or_else(|| {

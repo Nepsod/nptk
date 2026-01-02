@@ -10,7 +10,7 @@ use nptk_core::vg::kurbo::{Affine, Vec2};
 use nptk_core::vg::peniko::{Blob, ImageAlphaType, ImageBrush, ImageData, ImageFormat};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
-use nptk_services::icon::CachedIcon;
+use npio::service::icon::CachedIcon;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use vello_svg::usvg::Options;

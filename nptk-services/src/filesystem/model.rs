@@ -3,9 +3,9 @@
 use crate::filesystem::cache::FileSystemCache;
 use crate::filesystem::entry::{FileEntry, FileMetadata, FileType};
 use crate::filesystem::error::FileSystemError;
-use crate::filesystem::icon::MimeIconProvider;
-use crate::filesystem::io_uring;
-use crate::filesystem::watcher::{FileSystemChange, FileSystemWatcher};
+use npio::service::filesystem::icon::MimeIconProvider;
+use npio::service::filesystem::io_uring;
+use npio::service::filesystem::watcher::{FileSystemChange, FileSystemWatcher};
 use std::path::{Path, PathBuf};
 use std::os::unix::fs::PermissionsExt;
 use std::sync::{Arc, Mutex};
@@ -84,7 +84,7 @@ impl FileSystemModel {
         let cache = Arc::new(FileSystemCache::new());
 
         // Initialize watcher
-        let watcher = Arc::new(Mutex::new(FileSystemWatcher::new()?));
+        let watcher = Arc::new(Mutex::new(FileSystemWatcher::new().map_err(|e| FileSystemError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?));
 
         // Create channels
         let (task_tx, task_rx) = mpsc::unbounded_channel();
@@ -111,7 +111,7 @@ impl FileSystemModel {
         };
 
         // Start watching root path
-        model.watcher.lock().unwrap().watch(&root_path)?;
+        model.watcher.lock().unwrap().watch(&root_path).map_err(|e| FileSystemError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
 
         Ok(model)
     }
@@ -232,7 +232,7 @@ impl FileSystemModel {
 
             // Detect MIME type using MimeDetector
             let mime_type = if file_type == FileType::File {
-                crate::filesystem::mime_detector::MimeDetector::detect_mime_type(&entry_path).await
+                npio::service::filesystem::mime_detector::MimeDetector::detect_mime_type(&entry_path).await
             } else {
                 None
             };
@@ -454,7 +454,7 @@ impl FileSystemModel {
             .to_string();
 
         let mime_type = if file_type == FileType::File {
-            crate::filesystem::mime_detector::MimeDetector::detect_mime_type(path).await
+            npio::service::filesystem::mime_detector::MimeDetector::detect_mime_type(path).await
         } else {
             None
         };
