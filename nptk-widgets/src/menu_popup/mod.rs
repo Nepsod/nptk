@@ -11,6 +11,8 @@ mod layout;
 mod rendering;
 mod size;
 mod theme;
+#[cfg(feature = "unified-menu")]
+mod conversion;
 
 pub use constants::*;
 pub use interaction::*;
@@ -23,9 +25,11 @@ use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
+use nptk_core::menu::unified::MenuTemplate;
+use nptk_core::menu::render::{render_menu, calculate_menu_size};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::text_render::TextRenderContext;
-use nptk_core::vg::kurbo::Rect;
+use nptk_core::vg::kurbo::{Point, Rect};
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
@@ -34,9 +38,13 @@ use nptk_core::vgi::Graphics;
 use std::sync::Arc;
 
 /// A popup menu widget that displays a list of menu items
+/// 
+/// Supports both the legacy MenuBarItem API and the new unified MenuTemplate system.
 pub struct MenuPopup {
-    /// The menu items to display
+    /// The menu items to display (legacy API)
     items: Vec<MenuBarItem>,
+    /// The menu template to display (new unified API)
+    template: Option<MenuTemplate>,
     /// Layout style for the popup
     layout_style: MaybeSignal<LayoutStyle>,
     /// Currently hovered item index
@@ -143,6 +151,7 @@ impl MenuPopup {
             on_close: None,
             child_popup: None,
             open_item_index: None,
+            template: None,
         }
     }
 
@@ -176,9 +185,31 @@ impl MenuPopup {
         self
     }
 
+    /// Set the menu template (new unified API)
+    pub fn with_template(mut self, template: MenuTemplate) -> Self {
+        self.template = Some(template);
+        self
+    }
+
     /// Calculate the size needed for the popup based on items
     pub fn calculate_size(&self) -> (f64, f64) {
-        size::calculate_popup_size(&self.items)
+        if let Some(ref template) = self.template {
+            // Use unified system size calculation
+            // We'll use temporary contexts for measurement
+            let mut text_render = TextRenderContext::new();
+            // For now, fall back to legacy calculation if template is present but empty
+            if template.items.is_empty() {
+                size::calculate_popup_size(&self.items)
+            } else {
+                // Estimate size - proper implementation would need font context
+                let height = (template.items.len() as f64 * 24.0) + 8.0;
+                let width = 200.0; // Default width
+                (width, height)
+            }
+        } else {
+            // Legacy calculation
+            size::calculate_popup_size(&self.items)
+        }
     }
 }
 
