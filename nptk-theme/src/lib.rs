@@ -140,6 +140,8 @@
 pub mod app_integration;
 /// Contains the [config::ThemeConfig] struct for theme configuration.
 pub mod config;
+/// Contains error types for the theming system.
+pub mod error;
 /// Contains the [globals::Globals] struct.
 pub mod globals;
 /// Contains helper functions for safe theme property access.
@@ -157,3 +159,7 @@ pub mod rendering;
 pub mod theme;
 /// Contains the [theme_resolver::SelfContainedThemeResolver] for self-contained theme resolution.
 pub mod theme_resolver;
+/// Contains theme transition logic.
+pub mod transition;
+
+pub use error::{ThemeError, ThemeResult};

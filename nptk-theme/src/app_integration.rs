@@ -288,6 +288,7 @@ pub trait ThemeAware: ThemeConfigurable + DefaultThemeProvider {
     fn resolve_theme(&self) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
         self.theme_config()
             .resolve_theme()
+            .map_err(|e| Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e))) as Box<dyn std::error::Error>)
             .or_else(|_| Ok(Self::default_theme()))
     }
 
@@ -370,6 +371,7 @@ pub fn resolve_app_theme(
 
     match resolver.resolve_from_config(&config) {
         Ok(theme) => Ok(theme),
-        Err(_) => resolver.resolve_theme(default_theme_name),
+        Err(_) => resolver.resolve_theme(default_theme_name)
+            .map_err(|e| Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e))) as Box<dyn std::error::Error>),
     }
 }

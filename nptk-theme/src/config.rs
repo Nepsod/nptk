@@ -126,6 +126,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::error::{ThemeError, ThemeResult};
 use crate::manager::ThemeManager;
 use crate::theme::Theme;
 use crate::theme_resolver::SelfContainedThemeResolver;
@@ -180,9 +181,49 @@ pub struct ThemeConfig {
     /// The fallback theme source.
     pub fallback_theme: Option<ThemeSource>,
     /// Custom theme configurations.
-    custom_themes: HashMap<String, CustomThemeConfig>,
+    pub custom_themes: HashMap<String, CustomThemeConfig>,
     /// Theme manager for runtime theme switching.
     theme_manager: Option<Arc<std::sync::RwLock<ThemeManager>>>,
+    /// Transition configuration.
+    pub transitions: TransitionConfig,
+    /// Hot reload configuration.
+    pub hot_reload: HotReloadConfig,
+}
+
+/// Configuration for theme transitions.
+#[derive(Debug, Clone)]
+pub struct TransitionConfig {
+    /// Whether transitions are enabled.
+    pub enabled: bool,
+    /// Transition duration in milliseconds.
+    pub duration_ms: u64,
+}
+
+impl Default for TransitionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            duration_ms: 300,
+        }
+    }
+}
+
+/// Configuration for theme hot reloading.
+#[derive(Debug, Clone)]
+pub struct HotReloadConfig {
+    /// Whether hot reload is enabled.
+    pub enabled: bool,
+    /// Whether to watch referenced theme files.
+    pub watch_referenced_files: bool,
+}
+
+impl Default for HotReloadConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            watch_referenced_files: true,
+        }
+    }
 }
 
 /// A source for theme configuration.
@@ -233,6 +274,34 @@ struct ThemeSettings {
     default: Option<String>,
     fallback: Option<String>,
     custom: Option<HashMap<String, CustomThemeDef>>,
+    #[serde(default)]
+    transitions: TransitionSettings,
+    #[serde(default)]
+    hot_reload: HotReloadSettings,
+}
+
+#[derive(Deserialize, Default)]
+struct TransitionSettings {
+    #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default = "default_transition_duration")]
+    duration_ms: Option<u64>,
+}
+
+#[derive(Deserialize, Default)]
+struct HotReloadSettings {
+    #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default = "default_true")]
+    watch_referenced_files: Option<bool>,
+}
+
+fn default_transition_duration() -> Option<u64> {
+    Some(300)
+}
+
+fn default_true() -> Option<bool> {
+    Some(true)
 }
 
 #[derive(Deserialize)]
@@ -259,6 +328,8 @@ impl ThemeConfig {
             fallback_theme: Some(ThemeSource::Sweet),
             custom_themes: HashMap::new(),
             theme_manager: None,
+            transitions: TransitionConfig::default(),
+            hot_reload: HotReloadConfig::default(),
         }
     }
 
@@ -294,6 +365,9 @@ impl ThemeConfig {
         if let Ok(config_path) = env::var("NPTK_THEME_CONFIG") {
             if let Ok(file_config) = Self::from_file(&config_path) {
                 config = file_config;
+            } else {
+                // Log error but don't fail - use defaults
+                log::warn!("Failed to load theme config from {}", config_path);
             }
         }
 
@@ -313,14 +387,18 @@ impl ThemeConfig {
     ///
     /// let config = ThemeConfig::from_file("theme.toml").unwrap();
     /// ```
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, ThemeError> {
         let path = path.as_ref();
-        let content = fs::read_to_string(path)?;
+        let content = fs::read_to_string(path)
+            .map_err(|_e| ThemeError::file_not_found(path.to_path_buf()))?;
 
         if path.extension().and_then(|s| s.to_str()) == Some("toml") {
-            Self::from_toml(&content)
+            Self::from_toml_with_path(&content, path)
         } else {
-            Err("Unsupported configuration file format. Use .toml".into())
+            Err(ThemeError::parse_error(
+                path.to_path_buf(),
+                "Unsupported configuration file format. Use .toml",
+            ))
         }
     }
 
@@ -343,8 +421,18 @@ impl ThemeConfig {
     ///
     /// let config = ThemeConfig::from_toml(toml_content).unwrap();
     /// ```
-    pub fn from_toml(content: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let config_def: ThemeConfigDef = toml::from_str(content)?;
+    pub fn from_toml(content: &str) -> Result<Self, ThemeError> {
+        Self::from_toml_with_path(content, Path::new(""))
+    }
+
+    fn from_toml_with_path(content: &str, path: &Path) -> Result<Self, ThemeError> {
+        let config_def: ThemeConfigDef = toml::from_str(content)
+            .map_err(|e| {
+                ThemeError::parse_error(
+                    path.to_path_buf(),
+                    format!("Failed to parse TOML: {}", e),
+                )
+            })?;
         let mut config = Self::new();
 
         if let Some(theme_settings) = config_def.theme {
@@ -367,6 +455,17 @@ impl ThemeConfig {
                     config.custom_themes.insert(key, custom_config);
                 }
             }
+
+            // Parse transition settings
+            config.transitions.enabled = theme_settings.transitions.enabled.unwrap_or(false);
+            config.transitions.duration_ms = theme_settings.transitions.duration_ms.unwrap_or(300);
+
+            // Parse hot reload settings
+            config.hot_reload.enabled = theme_settings.hot_reload.enabled.unwrap_or(false);
+            config.hot_reload.watch_referenced_files = theme_settings
+                .hot_reload
+                .watch_referenced_files
+                .unwrap_or(true);
         }
 
         Ok(config)
@@ -464,7 +563,7 @@ impl ThemeConfig {
     /// ```
     pub fn resolve_theme(
         &self,
-    ) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
+    ) -> ThemeResult<Box<dyn Theme + Send + Sync>> {
         let resolver = SelfContainedThemeResolver::new();
         resolver.resolve_from_config(self)
     }
@@ -486,7 +585,7 @@ impl ThemeConfig {
     pub fn resolve_theme_source(
         &self,
         source: &ThemeSource,
-    ) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
+    ) -> ThemeResult<Box<dyn Theme + Send + Sync>> {
         let resolver = SelfContainedThemeResolver::new();
         resolver.resolve_theme_source(source)
     }
@@ -634,7 +733,7 @@ pub fn create_theme_config() -> ThemeConfig {
 ///
 /// let theme = resolve_theme_from_env().unwrap();
 /// ```
-pub fn resolve_theme_from_env() -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>>
+pub fn resolve_theme_from_env() -> ThemeResult<Box<dyn Theme + Send + Sync>>
 {
     let config = ThemeConfig::from_env_or_default();
     config.resolve_theme()

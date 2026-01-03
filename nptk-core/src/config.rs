@@ -48,6 +48,57 @@ impl Default for MayConfig {
         // Create theme manager from the loaded theme configuration
         let theme_manager = create_shared_theme_manager_from_config(&settings.theme_config);
         
+        // Enable hot reload if configured
+        // Note: Hot reload file watching is set up in the theme manager
+        // The actual reload will be triggered by checking for file changes
+        // in the application update loop (see AppHandler::check_theme_changes)
+        if settings.theme_config.hot_reload.enabled {
+            // Find theme.toml file paths for hot reload watching
+            // Use the same XDG directories access pattern as SettingsRegistry
+            // For now, try to find theme.toml in standard locations
+            // In a full implementation, SettingsRegistry could expose the paths
+            use std::path::PathBuf;
+            let theme_file_path: Option<PathBuf> = if let Ok(xdg_dirs) = xdg::BaseDirectories::with_prefix("nptk-0") {
+                xdg_dirs
+                    .find_config_file("theme.toml")
+                    .or_else(|| {
+                        let user_path = xdg_dirs.get_config_home().join("theme.toml");
+                        if user_path.exists() {
+                            Some(user_path)
+                        } else {
+                            None
+                        }
+                    })
+            } else {
+                None
+            };
+            
+            if let Some(config_path) = theme_file_path {
+                let mut referenced_paths = Vec::new();
+                
+                // Collect referenced theme file paths from custom themes
+                for custom_config in settings.theme_config.custom_themes.values() {
+                    if let Some(ref path) = custom_config.path {
+                        if let Ok(path_buf) = std::path::PathBuf::from(path).canonicalize() {
+                            referenced_paths.push(path_buf);
+                        }
+                    }
+                }
+                
+                // Enable hot reload on the theme manager
+                if let Ok(mut manager) = theme_manager.write() {
+                    if let Err(e) = manager.enable_hot_reload(&config_path, referenced_paths) {
+                        log::warn!("Failed to enable hot reload: {}", e);
+                    } else {
+                        log::info!("Hot reload enabled for theme.toml: {:?}", config_path);
+                    }
+                }
+            } else {
+                log::debug!("theme.toml not found, hot reload will be inactive");
+            }
+        }
+        
+        
         Self {
             window: WindowConfig::default(),
             render: RenderConfig::default(),

@@ -61,6 +61,7 @@
 use std::collections::HashMap;
 
 use crate::config::{ThemeConfig, ThemeSource};
+use crate::error::{ThemeError, ThemeResult};
 use crate::theme::{celeste::CelesteTheme, dark::DarkTheme, sweet::SweetTheme, Theme};
 
 /// A self-contained theme resolver that can create themes without external imports.
@@ -129,7 +130,7 @@ impl SelfContainedThemeResolver {
     pub fn resolve_theme(
         &self,
         name: &str,
-    ) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
+    ) -> ThemeResult<Box<dyn Theme + Send + Sync>> {
         match name.to_lowercase().as_str() {
             "light" | "celeste" => Ok(Box::new(CelesteTheme::light())),
             "dark" => Ok(Box::new(DarkTheme::new())),
@@ -140,8 +141,9 @@ impl SelfContainedThemeResolver {
                     // Clone the theme (in a real implementation, you'd need proper cloning)
                     // For now, we'll create a new instance based on the name
                     self.create_theme_by_name(name)
+                        .map_err(|e| ThemeError::load_error(std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e))))
                 } else {
-                    Err(format!("Theme '{}' not found", name).into())
+                    Err(ThemeError::not_found(name))
                 }
             },
         }
@@ -165,7 +167,7 @@ impl SelfContainedThemeResolver {
     pub fn resolve_theme_source(
         &self,
         source: &ThemeSource,
-    ) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
+    ) -> ThemeResult<Box<dyn Theme + Send + Sync>> {
         match source {
             ThemeSource::Light => Ok(Box::new(CelesteTheme::light())),
             ThemeSource::Dark => Ok(Box::new(DarkTheme::new())),
@@ -198,7 +200,7 @@ impl SelfContainedThemeResolver {
     pub fn resolve_from_config(
         &self,
         config: &ThemeConfig,
-    ) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
+    ) -> ThemeResult<Box<dyn Theme + Send + Sync>> {
         // Try to resolve the default theme
         let default_source = config.default_theme.as_ref().unwrap_or(&ThemeSource::Sweet);
         match self.resolve_theme_source(default_source) {
@@ -206,12 +208,11 @@ impl SelfContainedThemeResolver {
             Err(_) => {
                 // Try fallback theme
                 if let Some(ref fallback) = config.fallback_theme {
-                    match self.resolve_theme_source(fallback) {
-                        Ok(theme) => Ok(theme),
-                        Err(e) => Err(format!("Failed to resolve fallback theme: {}", e).into()),
-                    }
+                    self.resolve_theme_source(fallback).map_err(|e| {
+                        ThemeError::load_error(e)
+                    })
                 } else {
-                    Err("No fallback theme configured".into())
+                    Err(ThemeError::transition_error("No fallback theme configured"))
                 }
             },
         }
@@ -357,6 +358,7 @@ pub fn resolve_theme(
 ) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
     let resolver = create_theme_resolver();
     resolver.resolve_theme(name)
+        .map_err(|e| Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e))) as Box<dyn std::error::Error>)
 }
 
 /// Convenience function to resolve a theme from configuration.
@@ -381,4 +383,5 @@ pub fn resolve_theme_from_config(
 ) -> Result<Box<dyn Theme + Send + Sync>, Box<dyn std::error::Error>> {
     let resolver = create_theme_resolver();
     resolver.resolve_from_config(config)
+        .map_err(|e| Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e))) as Box<dyn std::error::Error>)
 }

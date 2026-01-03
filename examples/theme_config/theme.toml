@@ -25,3 +25,17 @@ text_color = "#DCDCDC"
 border_radius = 8.0
 padding = 16.0
 font_size = 14.0
+
+# Theme transitions configuration
+[theme.transitions]
+# Enable smooth transitions when switching themes
+enabled = true
+# Transition duration in milliseconds (default: 300)
+duration_ms = 300
+
+# Hot reload configuration
+[theme.hot_reload]
+# Enable hot reload for theme files
+enabled = true
+# Watch referenced theme files for changes
+watch_referenced_files = true

@@ -6,7 +6,7 @@ use crate::properties::{ThemeProperty, ThemeStyle, ThemeVariables};
 use crate::theme::{LayoutMetrics, ProvidesLayoutMetrics, ProvidesPalette, Theme, ThemePalette};
 
 /// A dark theme with high contrast and modern styling.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DarkTheme {
     globals: Globals,
     variables: ThemeVariables,

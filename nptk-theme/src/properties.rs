@@ -108,6 +108,7 @@
 
 use vello::peniko::{Brush, Color, Gradient};
 use std::collections::HashMap;
+use serde::{Deserializer, Serializer, de};
 
 /// Type-safe theme property keys for widgets.
 ///
@@ -168,7 +169,8 @@ use std::collections::HashMap;
 /// ```
 ///
 /// Custom properties should be documented and used consistently across your application.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ThemeProperty {
     // Common properties
     /// Common color property used across multiple widgets.
@@ -551,6 +553,118 @@ pub enum ThemeValue {
     Reference(ThemeProperty),
 }
 
+impl serde::Serialize for ThemeValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(2))?;
+        match self {
+            ThemeValue::Color(color) => {
+                map.serialize_entry("type", "color")?;
+                let components = color.components;
+                let r = (components[0] * 255.0) as u8;
+                let g = (components[1] * 255.0) as u8;
+                let b = (components[2] * 255.0) as u8;
+                let a = (components[3] * 255.0) as u8;
+                let hex = if a == 255 {
+                    format!("#{:02x}{:02x}{:02x}", r, g, b)
+                } else {
+                    format!("#{:02x}{:02x}{:02x}{:02x}", r, g, b, a)
+                };
+                map.serialize_entry("value", &hex)?;
+            },
+            ThemeValue::Float(v) => {
+                map.serialize_entry("type", "float")?;
+                map.serialize_entry("value", v)?;
+            },
+            ThemeValue::Int(v) => {
+                map.serialize_entry("type", "int")?;
+                map.serialize_entry("value", v)?;
+            },
+            ThemeValue::UInt(v) => {
+                map.serialize_entry("type", "uint")?;
+                map.serialize_entry("value", v)?;
+            },
+            ThemeValue::Bool(v) => {
+                map.serialize_entry("type", "bool")?;
+                map.serialize_entry("value", v)?;
+            },
+            ThemeValue::String(v) => {
+                map.serialize_entry("type", "string")?;
+                map.serialize_entry("value", v)?;
+            },
+            ThemeValue::Reference(prop) => {
+                map.serialize_entry("type", "reference")?;
+                map.serialize_entry("value", prop)?;
+            },
+            // Gradient and Brush are not serializable for now
+            ThemeValue::Gradient(_) | ThemeValue::Brush(_) => {
+                return Err(serde::ser::Error::custom("Gradient and Brush types cannot be serialized"));
+            },
+        }
+        map.end()
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ThemeValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::{MapAccess, Visitor};
+        use std::fmt;
+
+        struct ValueVisitor;
+
+        impl<'de> Visitor<'de> for ValueVisitor {
+            type Value = ThemeValue;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a ThemeValue")
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let mut type_str: Option<String> = None;
+                let mut value: Option<serde_json::Value> = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "type" => type_str = Some(map.next_value()?),
+                        "value" => value = Some(map.next_value()?),
+                        _ => { let _: de::IgnoredAny = map.next_value()?; },
+                    }
+                }
+
+                let type_str = type_str.ok_or_else(|| de::Error::missing_field("type"))?;
+                let value = value.ok_or_else(|| de::Error::missing_field("value"))?;
+
+                match type_str.as_str() {
+                    "color" => {
+                        let hex = value.as_str().ok_or_else(|| de::Error::invalid_type(de::Unexpected::Other("expected string"), &"string"))?;
+                        Ok(ThemeValue::Color(parse_hex_color(hex).map_err(de::Error::custom)?))
+                    },
+                    "float" => Ok(ThemeValue::Float(value.as_f64().ok_or_else(|| de::Error::invalid_type(de::Unexpected::Other("expected number"), &"number"))? as f32)),
+                    "int" => Ok(ThemeValue::Int(value.as_i64().ok_or_else(|| de::Error::invalid_type(de::Unexpected::Other("expected integer"), &"integer"))? as i32)),
+                    "uint" => Ok(ThemeValue::UInt(value.as_u64().ok_or_else(|| de::Error::invalid_type(de::Unexpected::Other("expected unsigned integer"), &"unsigned integer"))? as u32)),
+                    "bool" => Ok(ThemeValue::Bool(value.as_bool().ok_or_else(|| de::Error::invalid_type(de::Unexpected::Other("expected boolean"), &"boolean"))?)),
+                    "string" => Ok(ThemeValue::String(value.as_str().ok_or_else(|| de::Error::invalid_type(de::Unexpected::Other("expected string"), &"string"))?.to_string())),
+                    "reference" => {
+                        return Err(de::Error::custom("Reference deserialization not yet supported"));
+                    },
+                    _ => Err(de::Error::unknown_variant(&type_str, &["color", "float", "int", "uint", "bool", "string", "reference"])),
+                }
+            }
+        }
+
+        deserializer.deserialize_map(ValueVisitor)
+    }
+}
+
 impl ThemeValue {
     /// Get the color value, if this is a color.
     pub fn as_color(&self) -> Option<Color> {
@@ -702,7 +816,7 @@ impl ThemeValue {
 /// 3. **Group Related Properties**: Keep related properties together
 /// 4. **Use Merging**: Use style merging for inheritance and composition
 /// 5. **Document Custom Properties**: Document any custom properties you use
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct ThemeStyle {
     properties: HashMap<ThemeProperty, ThemeValue>,
 }
@@ -952,7 +1066,7 @@ impl Default for ThemeStyle {
 /// 4. **Use Semantic Names**: Use names that describe the purpose, not the value
 /// 5. **Provide Fallbacks**: Always handle missing variables gracefully
 /// 6. **Avoid Deep Nesting**: Keep variable references simple and clear
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ThemeVariables {
     variables: HashMap<String, ThemeValue>,
 }
@@ -996,3 +1110,73 @@ impl Default for ThemeVariables {
         Self::new()
     }
 }
+
+// Custom serialization for Color as hex string
+fn serialize_color<S>(color: &Color, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let components = color.components;
+    let r = (components[0] * 255.0) as u8;
+    let g = (components[1] * 255.0) as u8;
+    let b = (components[2] * 255.0) as u8;
+    let a = (components[3] * 255.0) as u8;
+    let hex = if a == 255 {
+        format!("#{:02x}{:02x}{:02x}", r, g, b)
+    } else {
+        format!("#{:02x}{:02x}{:02x}{:02x}", r, g, b, a)
+    };
+    serializer.serialize_str(&hex)
+}
+
+fn deserialize_color<'de, D>(deserializer: D) -> Result<Color, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+    use serde::Deserialize;
+    let hex = String::deserialize(deserializer)?;
+    parse_hex_color(&hex).map_err(Error::custom)
+}
+
+fn parse_hex_color(hex: &str) -> Result<Color, String> {
+    let hex = hex.trim_start_matches('#');
+    if hex.len() == 6 {
+        let r = u8::from_str_radix(&hex[0..2], 16)
+            .map_err(|_| "Invalid hex color")?;
+        let g = u8::from_str_radix(&hex[2..4], 16)
+            .map_err(|_| "Invalid hex color")?;
+        let b = u8::from_str_radix(&hex[4..6], 16)
+            .map_err(|_| "Invalid hex color")?;
+        Ok(Color::from_rgb8(r, g, b))
+    } else if hex.len() == 8 {
+        let r = u8::from_str_radix(&hex[0..2], 16)
+            .map_err(|_| "Invalid hex color")?;
+        let g = u8::from_str_radix(&hex[2..4], 16)
+            .map_err(|_| "Invalid hex color")?;
+        let b = u8::from_str_radix(&hex[4..6], 16)
+            .map_err(|_| "Invalid hex color")?;
+        let a = u8::from_str_radix(&hex[6..8], 16)
+            .map_err(|_| "Invalid hex color")?;
+        Ok(Color::from_rgba8(r, g, b, a))
+    } else {
+        Err("Hex color must be 6 or 8 characters".to_string())
+    }
+}
+
+// Serialization helpers for property maps
+fn serialize_property_map<S>(
+    map: &HashMap<ThemeProperty, ThemeValue>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    use serde::ser::SerializeMap;
+    let mut map_serializer = serializer.serialize_map(Some(map.len()))?;
+    for (key, value) in map {
+        map_serializer.serialize_entry(key, value)?;
+    }
+    map_serializer.end()
+}
+

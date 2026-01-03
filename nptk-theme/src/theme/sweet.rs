@@ -8,7 +8,7 @@ use crate::theme::{LayoutMetrics, ProvidesLayoutMetrics, ProvidesPalette, Theme,
 /// A modern dark theme inspired by the Sweet Dark theme for Kvantum and KDE.
 ///
 /// Features vibrant purple/magenta accents on a dark background with excellent contrast.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SweetTheme {
     globals: Globals,
     variables: ThemeVariables,

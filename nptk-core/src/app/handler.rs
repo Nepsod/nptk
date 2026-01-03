@@ -496,6 +496,7 @@ where
     /// Update plugins with current state.
     /// Check for theme changes and trigger redraw if the theme has changed.
     fn check_theme_changes(&mut self) {
+        // Check for theme change notifications
         if let Some(ref mut rx) = self.theme_change_rx {
             // Non-blocking check for theme changes
             while let Ok(_variant) = rx.try_recv() {
@@ -507,6 +508,33 @@ where
                 };
                 // Request redraw to apply new theme
                 self.update.insert(Update::DRAW);
+            }
+        }
+
+        // Update active theme transitions
+        if let Ok(mut manager) = self.config.theme_manager.write() {
+            let had_transition = manager.has_active_transition();
+            manager.update_transition();
+            
+            // If transition is active or just completed, trigger redraw
+            if had_transition || manager.has_active_transition() {
+                self.update.insert(Update::DRAW);
+            }
+
+            // Check for hot reload file changes
+            match manager.check_and_reload() {
+                Ok(true) => {
+                    // Reload was triggered, update cached theme reference
+                    self.theme_cache = Some(manager.current_theme());
+                    // Trigger redraw to apply reloaded theme
+                    self.update.insert(Update::DRAW);
+                },
+                Ok(false) => {
+                    // No reload needed
+                },
+                Err(e) => {
+                    log::warn!("Failed to reload theme: {}", e);
+                },
             }
         }
     }

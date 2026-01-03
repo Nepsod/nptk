@@ -5,13 +5,13 @@ use crate::id::WidgetId;
 use crate::theme::{LayoutMetrics, ProvidesLayoutMetrics, ProvidesPalette, Theme, ThemePalette};
 
 /// A smooth and minimalistic theme with a cold blue and purple touch.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum CelesteTheme {
     /// Use [CelesteTheme::light] to use the light Celeste theme.
     Light(CelesteThemeData),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 /// Data for the Celeste theme.
 pub struct CelesteThemeData {
     globals: Globals,

@@ -190,12 +190,20 @@
 //! - **Lock Contention**: Minimize lock contention by using appropriate lock types
 
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock, mpsc};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
+use notify::{Watcher, RecommendedWatcher, Event, EventKind, RecursiveMode};
+
+use crate::error::ThemeError;
 use crate::id::WidgetId;
 use crate::properties::{ThemeProperty, ThemeValue};
 use crate::theme::{celeste::CelesteTheme, dark::DarkTheme, sweet::SweetTheme, Theme};
+use crate::transition::{ThemeTransition, TransitionConfig};
 
 
 // ThemeVariant enum is removed in favor of simple strings
@@ -205,11 +213,17 @@ use crate::theme::{celeste::CelesteTheme, dark::DarkTheme, sweet::SweetTheme, Th
 pub struct ThemeManager {
     current_theme: Arc<RwLock<Box<dyn Theme + Send + Sync>>>,
     current_variant_internal: Arc<RwLock<String>>,
-    theme_cache: Arc<RwLock<HashMap<(WidgetId, ThemeProperty), ThemeValue>>>,
+    theme_cache: Arc<RwLock<HashMap<u64, ThemeValue>>>,
     variables_cache: Arc<RwLock<HashMap<String, ThemeValue>>>,
     available_themes: HashMap<String, Box<dyn Theme + Send + Sync>>,
     change_notifiers: Arc<RwLock<Vec<mpsc::Sender<String>>>>,
     notify_counter: AtomicUsize,
+    active_transition: Option<Arc<RwLock<ThemeTransition>>>,
+    file_watcher: Option<RecommendedWatcher>,
+    watched_paths: Vec<PathBuf>,
+    config_reload_sender: Option<mpsc::Sender<PathBuf>>,
+    config_reload_receiver: Option<mpsc::Receiver<PathBuf>>,
+    config_path: Option<PathBuf>,
 }
 
 impl ThemeManager {
@@ -223,6 +237,12 @@ impl ThemeManager {
             available_themes: HashMap::new(),
             change_notifiers: Arc::new(RwLock::new(Vec::new())),
             notify_counter: AtomicUsize::new(0),
+            active_transition: None,
+            file_watcher: None,
+            watched_paths: Vec::new(),
+            config_reload_sender: None,
+            config_reload_receiver: None,
+            config_path: None,
         };
 
         // Add default themes
@@ -243,6 +263,12 @@ impl ThemeManager {
             available_themes: HashMap::new(),
             change_notifiers: Arc::new(RwLock::new(Vec::new())),
             notify_counter: AtomicUsize::new(0),
+            active_transition: None,
+            file_watcher: None,
+            watched_paths: Vec::new(),
+            config_reload_sender: None,
+            config_reload_receiver: None,
+            config_path: None,
         };
 
         // Add default themes
@@ -260,25 +286,217 @@ impl ThemeManager {
 
     /// Switch to a different theme variant.
     pub fn switch_theme(&mut self, name: &str) -> bool {
-        if let Some(theme) = self.available_themes.get(name) {
-            // Clone the theme (themes should be lightweight to clone)
-            let new_theme = self.clone_theme(theme.as_ref());
-            if let Ok(mut current) = self.current_theme.write() {
-                *current = new_theme;
-                // Clear caches when switching themes
-                self.clear_caches();
-                
-                // Update current variant
-                if let Ok(mut current_var) = self.current_variant_internal.write() {
-                    *current_var = name.to_string();
+        self.switch_theme_with_transition(name, None).is_ok()
+    }
+
+    /// Switch to a different theme variant with optional transition.
+    ///
+    /// If `transition_config` is `Some` and transitions are enabled, a smooth
+    /// transition will be performed. Otherwise, the theme switches immediately.
+    pub fn switch_theme_with_transition(
+        &mut self,
+        name: &str,
+        transition_config: Option<&TransitionConfig>,
+    ) -> Result<(), ThemeError> {
+        let theme = self.available_themes.get(name)
+            .ok_or_else(|| ThemeError::not_found(name))?;
+
+        // Clone the current theme for transition start point
+        let start_theme = if let Ok(current) = self.current_theme.read() {
+            self.clone_theme(current.as_ref())
+        } else {
+            return Err(ThemeError::transition_error("Failed to access current theme"));
+        };
+
+        let target_theme = self.clone_theme(theme.as_ref());
+
+        // Check if we should use transitions
+        if let Some(config) = transition_config {
+            if config.is_enabled() {
+                // Clone target theme properly
+                let target_theme_clone = self.clone_theme(target_theme.as_ref());
+                let transition = ThemeTransition::new(
+                    start_theme,
+                    target_theme_clone,
+                    config.duration(),
+                );
+                // Set transition first
+                self.active_transition = Some(Arc::new(RwLock::new(transition)));
+            } else {
+                // Transition disabled, switch immediately
+                if let Ok(mut current) = self.current_theme.write() {
+                    *current = target_theme;
                 }
-                
-                // Notify all subscribers of theme change
-                self.notify_theme_changed(name.to_string());
-                return true;
+                self.active_transition = None;
+            }
+        } else {
+            // No transition config provided, switch immediately
+            if let Ok(mut current) = self.current_theme.write() {
+                *current = target_theme;
+            }
+            self.active_transition = None;
+        }
+
+        // Clear caches when switching themes
+        self.clear_caches();
+
+        // Update current variant
+        if let Ok(mut current_var) = self.current_variant_internal.write() {
+            *current_var = name.to_string();
+        }
+
+        // Notify all subscribers of theme change
+        self.notify_theme_changed(name.to_string());
+
+        Ok(())
+    }
+
+    /// Check if a transition is active and complete it if finished.
+    pub fn update_transition(&mut self) {
+        let should_finalize = if let Some(transition) = &self.active_transition {
+            if let Ok(transition_guard) = transition.read() {
+                transition_guard.is_complete()
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        
+        if should_finalize {
+            // Transition complete, clear it
+            // The target theme is already set, we just need to clear the transition
+            self.active_transition = None;
+            // Clear caches to force refresh with final theme
+            self.clear_caches();
+        }
+    }
+
+    /// Check if a transition is currently active.
+    pub fn has_active_transition(&self) -> bool {
+        self.active_transition.is_some()
+    }
+
+    /// Enable hot reload for theme configuration files.
+    ///
+    /// This will watch the specified config file and all referenced theme files
+    /// for changes, and automatically reload the theme when files are modified.
+    pub fn enable_hot_reload<P: AsRef<Path>>(
+        &mut self,
+        config_path: P,
+        referenced_paths: Vec<PathBuf>,
+    ) -> Result<(), ThemeError> {
+        let config_path = config_path.as_ref().to_path_buf();
+        let all_paths: Vec<PathBuf> = {
+            let mut paths = vec![config_path.clone()];
+            paths.extend(referenced_paths);
+            paths
+        };
+
+        let (sender, receiver) = mpsc::channel();
+        self.config_reload_sender = Some(sender.clone());
+        self.config_reload_receiver = Some(receiver);
+        self.config_path = Some(config_path.clone());
+
+        // Setup file watcher
+        let mut watcher = RecommendedWatcher::new(
+            move |result: Result<Event, notify::Error>| {
+                match result {
+                    Ok(event) => {
+                        if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
+                            for path in &event.paths {
+                                if let Err(_) = sender.send(path.clone()) {
+                                    // Receiver dropped, stop watching
+                                    break;
+                                }
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        log::warn!("File watcher error: {}", e);
+                    },
+                }
+            },
+            notify::Config::default().with_poll_interval(Duration::from_millis(500)),
+        )
+        .map_err(|e| ThemeError::file_watcher_error(e))?;
+
+        // Watch all paths
+        for path in &all_paths {
+            if path.exists() {
+                watcher.watch(path, RecursiveMode::NonRecursive)
+                    .map_err(|e| ThemeError::file_watcher_error(e))?;
             }
         }
-        false
+
+        self.file_watcher = Some(watcher);
+        self.watched_paths = all_paths;
+
+        Ok(())
+    }
+
+    /// Check for file changes and reload theme if needed.
+    /// Returns true if a reload was triggered.
+    pub fn check_and_reload(&mut self) -> Result<bool, ThemeError> {
+        if let Some(receiver) = &mut self.config_reload_receiver {
+            // Non-blocking check for file changes
+            while let Ok(changed_path) = receiver.try_recv() {
+                log::info!("Theme file changed: {:?}, reloading...", changed_path);
+                
+                // Reload from the main config file if it changed
+                if let Some(config_path) = &self.config_path {
+                    if changed_path == *config_path || self.watched_paths.contains(&changed_path) {
+                        // Clone config_path to avoid borrow issues
+                        let config_path = config_path.clone();
+                        self.reload_from_file(&config_path)?;
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+        Ok(false)
+    }
+
+    /// Reload theme from a configuration file.
+    pub fn reload_from_file<P: AsRef<Path>>(
+        &mut self,
+        config_path: P,
+    ) -> Result<(), ThemeError> {
+        use crate::config::ThemeConfig;
+        
+        let config = ThemeConfig::from_file(config_path)?;
+        
+        // Resolve the theme
+        let theme = config.resolve_theme()?;
+        
+        // Determine theme name
+        let theme_name = config.default_theme
+            .as_ref()
+            .map(|s| match s {
+                crate::config::ThemeSource::Light => "light",
+                crate::config::ThemeSource::Dark => "dark",
+                crate::config::ThemeSource::Sweet => "sweet",
+                crate::config::ThemeSource::Custom(name) => name.as_str(),
+                crate::config::ThemeSource::File(_) => "custom",
+            })
+            .unwrap_or("sweet");
+
+        // Add theme if not already present
+        if !self.available_themes.contains_key(theme_name) {
+            self.add_theme(theme_name, theme);
+        }
+
+        // Switch to the theme (with transition if enabled)
+        use crate::transition::TransitionConfig as TransitionConfigType;
+        let transition_config = if config.transitions.enabled {
+            Some(TransitionConfigType::new(true, config.transitions.duration_ms))
+        } else {
+            None
+        };
+        
+        self.switch_theme_with_transition(theme_name, transition_config.as_ref())?;
+
+        Ok(())
     }
 
     /// Notify all subscribers that the theme has changed.
@@ -311,8 +529,10 @@ impl ThemeManager {
     /// Get the current theme variant name.
     pub fn current_variant(&self) -> String {
         self.current_variant_internal.read()
-            .map(|v| v.clone())
-            .unwrap_or_else(|_| "sweet".to_string())
+            .as_ref()
+            .map(|v| v.as_str())
+            .unwrap_or("sweet")
+            .to_string()
     }
 
     /// Get all available theme variants.
@@ -320,9 +540,27 @@ impl ThemeManager {
         self.available_themes.keys().cloned().collect()
     }
 
+    /// Compute a cache key from widget ID and property.
+    fn cache_key(id: &WidgetId, property: &ThemeProperty) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        id.hash(&mut hasher);
+        property.hash(&mut hasher);
+        hasher.finish()
+    }
+
     /// Get a theme property with caching.
-    pub fn get_property(&self, id: WidgetId, property: &ThemeProperty) -> Option<vello::peniko::Color> {
-        let cache_key = (id.clone(), property.clone());
+    pub fn get_property(&self, id: &WidgetId, property: &ThemeProperty) -> Option<vello::peniko::Color> {
+        let cache_key = Self::cache_key(id, property);
+
+        // Check if we're in a transition
+        if let Some(transition) = &self.active_transition {
+            if let Ok(transition_guard) = transition.read() {
+                if let Some(color) = transition_guard.get_interpolated_color(id, property) {
+                    return Some(color);
+                }
+                // Transition complete, fall through to normal lookup
+            }
+        }
 
         // Check cache first
         if let Ok(cache) = self.theme_cache.read() {
@@ -332,6 +570,7 @@ impl ThemeManager {
         }
 
         // Get from current theme
+        // Note: Theme::get_property requires ownership, so we clone here
         if let Ok(theme) = self.current_theme.read() {
             if let Some(color) = theme.get_property(id.clone(), property) {
                 // Cache the result
@@ -350,6 +589,7 @@ impl ThemeManager {
         // Check cache first
         if let Ok(cache) = self.variables_cache.read() {
             if let Some(value) = cache.get(name) {
+                // Return cloned value (necessary for ThemeValue enum)
                 return Some(value.clone());
             }
         }
@@ -361,6 +601,7 @@ impl ThemeManager {
                 if let Ok(mut cache) = self.variables_cache.write() {
                     cache.insert(name.to_string(), value.clone());
                 }
+                // Return cloned value (necessary for ThemeValue enum)
                 return Some(value.clone());
             }
         }

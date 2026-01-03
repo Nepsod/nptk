@@ -146,7 +146,7 @@
 /// 3. **Consistent Behavior**: Ensure globals behave consistently across widgets
 /// 4. **Performance**: Keep globals lightweight since they're copied
 /// 5. **Thread Safety**: Globals are thread-safe due to Copy semantics
-#[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Default, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Globals {
     /// Invert text color for better contrast in dark contexts.
     ///

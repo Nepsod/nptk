@@ -1,29 +1,98 @@
 use vello::peniko::Color;
 
+mod serde_color_inner {
+    use serde::{Deserializer, Serializer, Deserialize};
+    use vello::peniko::Color;
+    
+    pub fn serialize<S>(color: &Color, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let components = color.components;
+        let r = (components[0] * 255.0) as u8;
+        let g = (components[1] * 255.0) as u8;
+        let b = (components[2] * 255.0) as u8;
+        let a = (components[3] * 255.0) as u8;
+        let hex = if a == 255 {
+            format!("#{:02x}{:02x}{:02x}", r, g, b)
+        } else {
+            format!("#{:02x}{:02x}{:02x}{:02x}", r, g, b, a)
+        };
+        serializer.serialize_str(&hex)
+    }
+    
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Color, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::Error;
+        let hex = String::deserialize(deserializer)?;
+        parse_hex_color(&hex).map_err(Error::custom)
+    }
+    
+    fn parse_hex_color(hex: &str) -> Result<Color, String> {
+        let hex = hex.trim_start_matches('#');
+        if hex.len() == 6 {
+            let r = u8::from_str_radix(&hex[0..2], 16)
+                .map_err(|_| "Invalid hex color")?;
+            let g = u8::from_str_radix(&hex[2..4], 16)
+                .map_err(|_| "Invalid hex color")?;
+            let b = u8::from_str_radix(&hex[4..6], 16)
+                .map_err(|_| "Invalid hex color")?;
+            Ok(Color::from_rgb8(r, g, b))
+        } else if hex.len() == 8 {
+            let r = u8::from_str_radix(&hex[0..2], 16)
+                .map_err(|_| "Invalid hex color")?;
+            let g = u8::from_str_radix(&hex[2..4], 16)
+                .map_err(|_| "Invalid hex color")?;
+            let b = u8::from_str_radix(&hex[4..6], 16)
+                .map_err(|_| "Invalid hex color")?;
+            let a = u8::from_str_radix(&hex[6..8], 16)
+                .map_err(|_| "Invalid hex color")?;
+            Ok(Color::from_rgba8(r, g, b, a))
+        } else {
+            Err("Hex color must be 6 or 8 characters".to_string())
+        }
+    }
+}
+
+use serde_color_inner as serde_color;
+
 /// Shared palette description for themes.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ThemePalette {
     /// Core accent color used across widgets.
+    #[serde(with = "serde_color")]
     pub primary: Color,
     /// Lighter variant of the primary color.
+    #[serde(with = "serde_color")]
     pub primary_light: Color,
     /// Darker variant of the primary color.
+    #[serde(with = "serde_color")]
     pub primary_dark: Color,
     /// Secondary accent color.
+    #[serde(with = "serde_color")]
     pub accent: Color,
     /// Default background color.
+    #[serde(with = "serde_color")]
     pub background: Color,
     /// Alternate background used for raised surfaces.
+    #[serde(with = "serde_color")]
     pub background_alt: Color,
     /// Elevated background color for popovers.
+    #[serde(with = "serde_color")]
     pub background_elevated: Color,
     /// Main text color.
+    #[serde(with = "serde_color")]
     pub text: Color,
     /// Muted text color for secondary labels.
+    #[serde(with = "serde_color")]
     pub text_muted: Color,
     /// Border color for separators and outlines.
+    #[serde(with = "serde_color")]
     pub border: Color,
     /// Selection highlight color.
+    #[serde(with = "serde_color")]
     pub selection: Color,
 }
 

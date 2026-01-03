@@ -1,5 +1,5 @@
 /// Basic layout metrics shared across themes.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct LayoutMetrics {
     /// Default corner radius for controls.
     pub control_corner_radius: f32,
