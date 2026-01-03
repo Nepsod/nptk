@@ -449,7 +449,12 @@ where
         let mut layout_node = self.ensure_layout_initialized();
         layout_node = self.update_layout_if_needed(layout_node);
 
-        // Update widget - this may set LAYOUT or FORCE flags if visibility changes
+        // Check if cursor is over menu for masking during render (but not during update/events)
+        let original_cursor_pos = self.info.cursor_pos;
+        let cursor_over_menu = self.is_cursor_over_menu();
+        
+        // Update widget - cursor is NOT masked here so event handling works correctly
+        // Cursor will be masked during render phase only
         self.update_widget(&layout_node);
 
         // If widget update set LAYOUT or FORCE flags, rebuild the layout immediately
@@ -472,8 +477,11 @@ where
             );
             // Always use the latest layout_node that was just updated
             // The layout_node parameter is already the latest one from update_layout_if_needed
-            self.render_frame(&layout_node, event_loop);
+            // Pass cursor masking info so render can handle menu cursor restoration
+            self.render_frame(&layout_node, event_loop, cursor_over_menu, original_cursor_pos);
         }
+
+        // Cursor position will be reset in info.reset() below
 
         self.handle_update_flags(event_loop);
         self.info.reset();
@@ -706,6 +714,50 @@ where
         log::info!("Layout rebuild complete");
     }
 
+    /// Check if the cursor is over any open context menu
+    /// This uses the same logic as render_context_menu to ensure consistency
+    fn is_cursor_over_menu(&mut self) -> bool {
+        let context = self.context();
+        if !context.menu_manager.is_open() {
+            return false;
+        }
+        
+        let Some(cursor_pos) = self.info.cursor_pos else {
+            return false;
+        };
+        
+        let cursor = vello::kurbo::Point::new(cursor_pos.x, cursor_pos.y);
+        let stack = context.menu_manager.get_stack();
+        
+        if stack.is_empty() {
+            return false;
+        }
+        
+        // Check if cursor is over any menu in the stack
+        // Use the same logic as render_context_menu to ensure consistency
+        for (template, position) in stack.iter() {
+            use crate::menu::render::MenuGeometry;
+            // Create geometry to check if cursor is in menu bounds
+            let geometry = MenuGeometry::new(
+                template,
+                *position,
+                &mut self.text_render,
+                &mut self.info.font_context,
+            );
+            if geometry.rect.contains(cursor) {
+                log::debug!(
+                    "Cursor ({:.1}, {:.1}) is over menu at ({:.1}, {:.1}) with rect {:?}",
+                    cursor.x, cursor.y,
+                    position.x, position.y,
+                    geometry.rect
+                );
+                return true;
+            }
+        }
+        
+        false
+    }
+
     /// Update the widget with the current layout.
     fn update_widget(&mut self, layout_node: &LayoutNode) {
         log::debug!(
@@ -713,6 +765,8 @@ where
             self.info.keys.len(),
             self.info.buttons.len()
         );
+        
+        // Note: cursor_pos masking is handled in update_internal() to persist through render phase
         let context = self.context();
         self.update.insert(self.widget.as_mut().unwrap().update(
             layout_node,

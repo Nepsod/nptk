@@ -13,17 +13,45 @@ where
     W: Widget,
     F: Fn(AppContext, S) -> W,
 {
-    pub(super) fn render_frame(&mut self, layout_node: &LayoutNode, event_loop: &ActiveEventLoop) {
+    pub(super) fn render_frame(
+        &mut self,
+        layout_node: &LayoutNode,
+        event_loop: &ActiveEventLoop,
+        cursor_over_menu: bool,
+        original_cursor_pos: Option<nalgebra::Vector2<f64>>,
+    ) {
         log::debug!("Draw update detected!");
         let render_start = Instant::now();
 
         self.scene.reset();
         let scene_reset_time = render_start.elapsed();
 
+        // Mask cursor during widget rendering to prevent hover effects on widgets below menu
+        let widget_cursor_pos = if cursor_over_menu {
+            // Temporarily mask cursor during widget render
+            let saved = self.info.cursor_pos;
+            self.info.cursor_pos = None;
+            saved
+        } else {
+            self.info.cursor_pos
+        };
+        
         let widget_render_time = self.render_widget(layout_node);
         let postfix_render_time = self.render_postfix(layout_node);
-
-        self.render_context_menu();
+        
+        // Restore cursor for menu rendering
+        if cursor_over_menu {
+            self.info.cursor_pos = widget_cursor_pos;
+        }
+        
+        // Menu rendering uses the restored cursor position
+        let menu_cursor_pos = widget_cursor_pos;
+        self.render_context_menu(menu_cursor_pos);
+        
+        // Restore cursor after menu render (it will be reset by info.reset() anyway)
+        if cursor_over_menu {
+            self.info.cursor_pos = widget_cursor_pos;
+        }
 
         if let Some(render_times) = self.render_to_surface(
             render_start,
@@ -107,14 +135,22 @@ where
         start.elapsed()
     }
 
-    fn render_context_menu(&mut self) {
+    fn render_context_menu(&mut self, original_cursor_pos: Option<nalgebra::Vector2<f64>>) {
         let context = self.context();
         let stack = context.menu_manager.get_stack();
         if stack.is_empty() {
             return;
         }
         
-        if let Some(cursor_pos) = self.info.cursor_pos {
+        // Restore cursor position temporarily for menu rendering
+        // Widgets already rendered without cursor, but menus need it for hover detection
+        let cursor_pos_for_menu = if self.info.cursor_pos.is_none() {
+            original_cursor_pos
+        } else {
+            self.info.cursor_pos
+        };
+        
+        if let Some(cursor_pos) = cursor_pos_for_menu {
             let cursor = vello::kurbo::Point::new(cursor_pos.x, cursor_pos.y);
 
             // Find which menu in the stack the cursor is over
@@ -163,9 +199,7 @@ where
 
         // Render all menus in the stack
         if let Some(mut graphics) = graphics_from_scene(&mut self.scene) {
-            let cursor_pos = self
-                .info
-                .cursor_pos
+            let cursor_pos = cursor_pos_for_menu
                 .map(|p| vello::kurbo::Point::new(p.x, p.y));
             let theme_manager = self.config.theme_manager.clone();
             for (template, position) in context.menu_manager.get_stack() {
