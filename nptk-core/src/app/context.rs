@@ -2,7 +2,7 @@ use crate::app::diagnostics::Diagnostics;
 use crate::app::focus::{FocusId, SharedFocusManager};
 use crate::app::popup::PopupManager;
 use crate::app::update::{Update, UpdateManager};
-use crate::menu::ContextMenuManager;
+use crate::menu::ContextMenuState;
 use crate::signal::eval::EvalSignal;
 use crate::signal::fixed::FixedSignal;
 use crate::signal::memoized::MemoizedSignal;
@@ -20,7 +20,7 @@ pub struct AppContext {
     diagnostics: Diagnostics,
     gpu_context: Arc<GpuContext>,
     focus_manager: SharedFocusManager,
-    pub menu_manager: ContextMenuManager,
+    pub menu_manager: ContextMenuState,
     pub popup_manager: PopupManager,
     pub settings: Arc<SettingsRegistry>,
 }
@@ -32,7 +32,7 @@ impl AppContext {
         diagnostics: Diagnostics,
         gpu_context: Arc<GpuContext>,
         focus_manager: SharedFocusManager,
-        menu_manager: ContextMenuManager,
+        menu_manager: ContextMenuState,
         popup_manager: PopupManager,
         settings: Arc<SettingsRegistry>,
     ) -> Self {

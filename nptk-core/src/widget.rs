@@ -307,7 +307,7 @@ pub trait Widget {
     fn widget_id(&self) -> WidgetId;
 
     /// Return the context menu for this widget, if any.
-    fn context_menu(&self) -> Option<crate::menu::ContextMenu> {
+    fn context_menu(&self) -> Option<crate::menu::MenuTemplate> {
         None
     }
 }

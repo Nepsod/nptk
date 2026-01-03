@@ -5,7 +5,7 @@ use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
-use nptk_core::menu::{ContextMenu, ContextMenuGroup, ContextMenuItem};
+use nptk_core::menu::{MenuTemplate, MenuItem, MenuCommand};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::text_render::TextRenderContext;
 use nptk_core::vg::kurbo::{Affine, Point, Rect, Shape, Stroke, Vec2};
@@ -793,78 +793,87 @@ impl Widget for FileListContent {
 
                             let open_label = self.open_label_for_path(&target_path);
 
-                            let open_with_items =
-                                self.build_open_with_items(&target_path, paths_for_action.clone());
+                            // Build menu items using unified system
+                            let mut core_items = vec![
+                                MenuItem::new(MenuCommand::Custom(0x2001), open_label.clone())
+                                    .with_action({
+                                        let pending = pending.clone();
+                                        let paths_for_open = paths_for_open.clone();
+                                        move || {
+                                            if let Ok(mut pending_lock) = pending.lock() {
+                                                *pending_lock = Some(PendingAction {
+                                                    paths: paths_for_open.clone(),
+                                                    app_id: None,
+                                                    properties: false,
+                                                });
+                                            }
+                                            Update::DRAW
+                                        }
+                                    }),
+                            ];
 
-                            let mut core_items = vec![ContextMenuItem::Action {
-                                label: open_label,
-                                action: Arc::new(move || {
-                                    if let Ok(mut pending_lock) = pending.lock() {
-                                        *pending_lock = Some(PendingAction {
-                                            paths: paths_for_open.clone(),
-                                            app_id: None,
-                                            properties: false,
-                                        });
-                                    }
-                                }),
-                            }];
+                            // Add "Open With" submenu if needed
+                            let open_with_items = self.build_open_with_items(&target_path, paths_for_action.clone());
                             if !open_with_items.is_empty() {
-                                core_items.push(ContextMenuItem::SubMenu {
-                                    label: "Open With".to_string(),
-                                    items: open_with_items,
-                                });
+                                let open_with_template = MenuTemplate::from_items(
+                                    "open_with",
+                                    open_with_items,
+                                );
+                                core_items.push(
+                                    MenuItem::new(MenuCommand::Custom(0x2002), "Open With")
+                                        .with_submenu(open_with_template),
+                                );
                             }
-                            core_items.push(ContextMenuItem::Action {
-                                label: "Delete".to_string(),
-                                action: Arc::new(|| {
-                                    println!("Delete");
-                                }),
-                            });
+
+                            // Add Delete item
+                            core_items.push(
+                                MenuItem::new(MenuCommand::FileDelete, "Delete")
+                                    .with_action(|| {
+                                        println!("Delete");
+                                        Update::empty()
+                                    }),
+                            );
+
+                            // Add Properties item
                             let pending_props = self.pending_action.clone();
                             let props_paths = paths_for_action.clone();
-                            core_items.push(ContextMenuItem::Action {
-                                label: "Properties".to_string(),
-                                action: Arc::new(move || {
-                                    if let Ok(mut pending_lock) = pending_props.lock() {
-                                        *pending_lock = Some(PendingAction {
-                                            paths: props_paths.clone(),
-                                            app_id: None,
-                                            properties: true,
-                                        });
-                                    }
-                                }),
-                            });
+                            core_items.push(
+                                MenuItem::new(MenuCommand::Custom(0x2006), "Properties")
+                                    .with_action(move || {
+                                        if let Ok(mut pending_lock) = pending_props.lock() {
+                                            *pending_lock = Some(PendingAction {
+                                                paths: props_paths.clone(),
+                                                app_id: None,
+                                                properties: true,
+                                            });
+                                        }
+                                        Update::DRAW
+                                    }),
+                            );
 
-                            // Placeholder groups for future integrations.
-                            let sharing_items = vec![ContextMenuItem::Action {
-                                label: "Share (placeholder)".to_string(),
-                                action: Arc::new(|| {}),
-                            }];
-                            let extensions_items = vec![ContextMenuItem::Action {
-                                label: "Extensions (placeholder)".to_string(),
-                                action: Arc::new(|| {}),
-                            }];
-                            let view_items = vec![ContextMenuItem::Action {
-                                label: "View options (placeholder)".to_string(),
-                                action: Arc::new(|| {}),
-                            }];
+                            // Build groups with separators
+                            let mut all_items = core_items;
+                            all_items.push(MenuItem::separator());
+                            all_items.push(
+                                MenuItem::new(MenuCommand::Custom(0x2003), "Share (placeholder)")
+                                    .with_action(|| Update::empty()),
+                            );
+                            all_items.push(MenuItem::separator());
+                            all_items.push(
+                                MenuItem::new(MenuCommand::Custom(0x2004), "Extensions (placeholder)")
+                                    .with_action(|| Update::empty()),
+                            );
+                            all_items.push(MenuItem::separator());
+                            all_items.push(
+                                MenuItem::new(MenuCommand::Custom(0x2005), "View options (placeholder)")
+                                    .with_action(|| Update::empty()),
+                            );
 
-                            let menu = ContextMenu {
-                                items: Vec::new(),
-                                groups: Some(vec![
-                                    ContextMenuGroup { items: core_items },
-                                    ContextMenuGroup {
-                                        items: sharing_items,
-                                    },
-                                    ContextMenuGroup {
-                                        items: extensions_items,
-                                    },
-                                    ContextMenuGroup { items: view_items },
-                                ]),
-                            };
+                            let menu_template = MenuTemplate::from_items("file_context_menu", all_items);
+                            
                             if let Some(cursor_pos) = info.cursor_pos {
                                 let cursor = Point::new(cursor_pos.x, cursor_pos.y);
-                                context.menu_manager.show_context_menu(menu, cursor);
+                                context.menu_manager.show(menu_template, cursor);
                                 update.insert(Update::DRAW);
                             }
                         }

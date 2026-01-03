@@ -13,7 +13,7 @@ use nptk_theme::theme::Theme;
 use std::sync::Arc;
 
 use crate::button::Button;
-pub use crate::menu_popup::{MenuBarItem, MenuPopup};
+pub use crate::menu_popup::MenuPopup;
 use crate::text::Text;
 
 /// Represents a menu item in a popup menu
@@ -209,38 +209,52 @@ impl MenuButton {
     /// Create and show the menu popup
     fn show_menu_popup(&mut self, _layout: &LayoutNode, _info: &mut AppInfo) {
         if !self.menu_items.is_empty() {
-            let menu_bar_items: Vec<MenuBarItem> = self
+            use nptk_core::menu::unified::{MenuTemplate, MenuItem as UnifiedMenuItem};
+            use nptk_core::menu::commands::MenuCommand;
+            
+            let unified_items: Vec<UnifiedMenuItem> = self
                 .menu_items
                 .iter()
-                .filter_map(|item| match item {
-                    MenuItem::Item(label, shortcut) => Some(
-                        MenuBarItem::new(label.clone(), label.clone())
-                            .with_shortcut(shortcut.clone().unwrap_or_default())
-                            .with_enabled(true),
-                    ),
-                    MenuItem::Separator => None, // Skip separators for now
+                .enumerate()
+                .filter_map(|(idx, item)| match item {
+                    MenuItem::Item(label, shortcut) => {
+                        let menu_items_clone = self.menu_items.clone();
+                        let on_item_selected_clone = self.on_item_selected.clone();
+                        
+                        Some(UnifiedMenuItem::new(
+                            MenuCommand::Custom(idx as u32),
+                            label.clone(),
+                        )
+                        .with_shortcut(shortcut.clone().unwrap_or_default())
+                        .with_enabled(true)
+                        .with_action(move || {
+                            // Call user callback if provided
+                            if let Some(ref on_item_selected) = on_item_selected_clone {
+                                if let Some(MenuItem::Item(label, _)) = menu_items_clone.get(idx) {
+                                    on_item_selected(label.clone());
+                                }
+                            }
+                            // Return FORCE to signal that an item was selected and menu should close
+                            Update::FORCE
+                        }))
+                    },
+                    MenuItem::Separator => Some(UnifiedMenuItem::separator()),
                 })
                 .collect();
 
-            let mut menu_popup = MenuPopup::new().with_items(menu_bar_items);
+            let template = MenuTemplate::from_items("menu_button", unified_items);
+            let mut menu_popup = MenuPopup::new(template);
+            
             let menu_items_clone = self.menu_items.clone();
             let on_item_selected_clone = self.on_item_selected.clone();
-
-            // Always set an on_item_selected callback to handle closing
-            menu_popup = menu_popup.with_on_item_selected(Box::new(move |index| {
+            
+            // Set callback to close the menu when an item is selected
+            menu_popup = menu_popup.with_on_close(move || {
                 // Call user callback if provided
-                if let Some(ref on_item_selected) = on_item_selected_clone {
-                    if let Some(MenuItem::Item(label, _)) = menu_items_clone.get(index) {
-                        on_item_selected(label.clone());
-                    }
-                }
-                // Return FORCE to signal that an item was selected and menu should close
+                // Note: We can't easily track which item was clicked here,
+                // so the action callback in MenuItem handles that
                 Update::FORCE
-            }));
-
-            // Add a callback to close the menu when an item is selected or closed
-            // Note: We'll handle closing in the update method instead of using a callback
-            // to avoid Send/Sync issues with StateSignal
+            });
 
             self.popup_data = Some(menu_popup);
         }

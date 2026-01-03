@@ -74,7 +74,7 @@ where
     #[cfg(all(target_os = "linux", feature = "wayland"))]
     xkb_keymap: crate::app::keymap::XkbKeymapManager,
     text_render: crate::text_render::TextRenderContext,
-    menu_manager: crate::menu::ContextMenuManager,
+    menu_manager: crate::menu::ContextMenuState,
     popup_manager: crate::app::popup::PopupManager,
     popup_windows: std::collections::HashMap<WindowId, PopupWindow>,
     /// Native Wayland popups (indexed by surface key u32)
@@ -178,7 +178,7 @@ where
             #[cfg(all(target_os = "linux", feature = "wayland"))]
             xkb_keymap,
             text_render: crate::text_render::TextRenderContext::new(),
-            menu_manager: crate::menu::ContextMenuManager::new(),
+            menu_manager: crate::menu::ContextMenuState::new(),
             popup_manager: crate::app::popup::PopupManager::new(),
             popup_windows: std::collections::HashMap::new(),
             #[cfg(all(target_os = "linux", feature = "wayland"))]

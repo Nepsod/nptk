@@ -1,4 +1,5 @@
 use nptk::prelude::*;
+use nptk_core::menu::{MenuTemplate, MenuItem, MenuCommand, MenuManager};
 
 struct MenuBarApp;
 
@@ -8,238 +9,267 @@ impl Application for MenuBarApp {
     fn build(_context: AppContext, _config: Self::State) -> impl Widget {
         let _status_text = StateSignal::new("Welcome! Use the menu bar above.".to_string());
 
-        // Create comprehensive menu items
-        let file_menu = MenuBarItem::new("file", "File")
-            .with_submenu_item(
-                MenuBarItem::new("new", "New Document")
-                    .with_shortcut("Ctrl+N")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("new_window", "New Window")
-                    .with_shortcut("Ctrl+Shift+N")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("separator1", "---").with_enabled(false), // Separator
-            )
-            .with_submenu_item(
-                MenuBarItem::new("open", "Open...")
-                    .with_shortcut("Ctrl+O")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("open_recent", "Open Recent")
-                    .with_submenu_item(
-                        MenuBarItem::new("recent1", "document1.txt")
-                            .with_on_activate(|| Update::empty()),
-                    )
-                    .with_submenu_item(
-                        MenuBarItem::new("recent2", "project.rs")
-                            .with_on_activate(|| Update::empty()),
-                    )
-                    .with_submenu_item(
-                        MenuBarItem::new("recent3", "notes.md")
-                            .with_on_activate(|| Update::empty()),
-                    ),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("separator2", "---").with_enabled(false), // Separator
-            )
-            .with_submenu_item(
-                MenuBarItem::new("save", "Save")
-                    .with_shortcut("Ctrl+S")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("save_as", "Save As...")
-                    .with_shortcut("Ctrl+Shift+S")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("save_all", "Save All")
-                    .with_shortcut("Ctrl+Alt+S")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("separator3", "---").with_enabled(false), // Separator
-            )
-            .with_submenu_item(
-                MenuBarItem::new("close", "Close")
-                    .with_shortcut("Ctrl+W")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("quit", "Quit")
-                    .with_shortcut("Ctrl+Q")
-                    .with_on_activate(|| Update::empty()),
-            );
+        // Create menu manager for command routing
+        let menu_manager = MenuManager::new();
 
-        let edit_menu = MenuBarItem::new("edit", "Edit")
-            .with_submenu_item(
-                MenuBarItem::new("undo", "Undo")
-                    .with_shortcut("Ctrl+Z")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("redo", "Redo")
-                    .with_shortcut("Ctrl+Y")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("separator4", "---").with_enabled(false), // Separator
-            )
-            .with_submenu_item(
-                MenuBarItem::new("cut", "Cut")
-                    .with_shortcut("Ctrl+X")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("copy", "Copy")
-                    .with_shortcut("Ctrl+C")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("paste", "Paste")
-                    .with_shortcut("Ctrl+V")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("paste_special", "Paste Special")
-                    .with_shortcut("Ctrl+Shift+V")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("separator5", "---").with_enabled(false), // Separator
-            )
-            .with_submenu_item(
-                MenuBarItem::new("select_all", "Select All")
-                    .with_shortcut("Ctrl+A")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("find", "Find...")
-                    .with_shortcut("Ctrl+F")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("replace", "Replace...")
-                    .with_shortcut("Ctrl+H")
-                    .with_on_activate(|| Update::empty()),
-            );
+        // Create File menu template
+        let file_menu = MenuTemplate::new("File")
+            .add_item(MenuItem::new(MenuCommand::FileNew, "New Document")
+                .with_shortcut("Ctrl+N")
+                .with_action(|| {
+                    println!("New Document");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::new(MenuCommand::Custom(0x1001), "New Window")
+                .with_shortcut("Ctrl+Shift+N")
+                .with_action(|| {
+                    println!("New Window");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::separator())
+            .add_item(MenuItem::new(MenuCommand::FileOpen, "Open...")
+                .with_shortcut("Ctrl+O")
+                .with_action(|| {
+                    println!("Open...");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::new(MenuCommand::Custom(0x1002), "Open Recent")
+                .with_submenu(MenuTemplate::new("open_recent")
+                    .add_item(MenuItem::new(MenuCommand::Custom(0x1101), "document1.txt")
+                        .with_action(|| {
+                            println!("Open: document1.txt");
+                            Update::empty()
+                        }))
+                    .add_item(MenuItem::new(MenuCommand::Custom(0x1102), "project.rs")
+                        .with_action(|| {
+                            println!("Open: project.rs");
+                            Update::empty()
+                        }))
+                    .add_item(MenuItem::new(MenuCommand::Custom(0x1103), "notes.md")
+                        .with_action(|| {
+                            println!("Open: notes.md");
+                            Update::empty()
+                        }))))
+            .add_item(MenuItem::separator())
+            .add_item(MenuItem::new(MenuCommand::FileSave, "Save")
+                .with_shortcut("Ctrl+S")
+                .with_action(|| {
+                    println!("Save");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::new(MenuCommand::FileSaveAs, "Save As...")
+                .with_shortcut("Ctrl+Shift+S")
+                .with_action(|| {
+                    println!("Save As...");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::new(MenuCommand::Custom(0x1003), "Save All")
+                .with_shortcut("Ctrl+Alt+S")
+                .with_action(|| {
+                    println!("Save All");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::separator())
+            .add_item(MenuItem::new(MenuCommand::FileClose, "Close")
+                .with_shortcut("Ctrl+W")
+                .with_action(|| {
+                    println!("Close");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::new(MenuCommand::FileExit, "Quit")
+                .with_shortcut("Ctrl+Q")
+                .with_action(|| {
+                    println!("Quit");
+                    Update::empty()
+                }));
 
-        let view_menu = MenuBarItem::new("view", "View")
-            .with_submenu_item(
-                MenuBarItem::new("toolbar", "Show Toolbar").with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("statusbar", "Show Status Bar")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("sidebar", "Show Sidebar")
-                    .with_shortcut("Ctrl+B")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("separator6", "---").with_enabled(false), // Separator
-            )
-            .with_submenu_item(
-                MenuBarItem::new("fullscreen", "Enter Fullscreen")
-                    .with_shortcut("F11")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("zoom", "Zoom")
-                    .with_submenu_item(
-                        MenuBarItem::new("zoom_in", "Zoom In")
-                            .with_shortcut("Ctrl++")
-                            .with_on_activate(|| Update::empty()),
-                    )
-                    .with_submenu_item(
-                        MenuBarItem::new("zoom_out", "Zoom Out")
-                            .with_shortcut("Ctrl+-")
-                            .with_on_activate(|| Update::empty()),
-                    )
-                    .with_submenu_item(
-                        MenuBarItem::new("zoom_reset", "Reset Zoom")
-                            .with_shortcut("Ctrl+0")
-                            .with_on_activate(|| Update::empty()),
-                    ),
-            );
+        // Create Edit menu template
+        let edit_menu = MenuTemplate::new("Edit")
+            .add_item(MenuItem::new(MenuCommand::EditUndo, "Undo")
+                .with_shortcut("Ctrl+Z")
+                .with_action(|| {
+                    println!("Undo");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::new(MenuCommand::EditRedo, "Redo")
+                .with_shortcut("Ctrl+Y")
+                .with_action(|| {
+                    println!("Redo");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::separator())
+            .add_item(MenuItem::new(MenuCommand::EditCut, "Cut")
+                .with_shortcut("Ctrl+X")
+                .with_action(|| {
+                    println!("Cut");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::new(MenuCommand::EditCopy, "Copy")
+                .with_shortcut("Ctrl+C")
+                .with_action(|| {
+                    println!("Copy");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::new(MenuCommand::EditPaste, "Paste")
+                .with_shortcut("Ctrl+V")
+                .with_action(|| {
+                    println!("Paste");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::new(MenuCommand::Custom(0x2001), "Paste Special")
+                .with_shortcut("Ctrl+Shift+V")
+                .with_action(|| {
+                    println!("Paste Special");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::separator())
+            .add_item(MenuItem::new(MenuCommand::EditSelectAll, "Select All")
+                .with_shortcut("Ctrl+A")
+                .with_action(|| {
+                    println!("Select All");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::new(MenuCommand::Custom(0x2002), "Find...")
+                .with_shortcut("Ctrl+F")
+                .with_action(|| {
+                    println!("Find...");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::new(MenuCommand::Custom(0x2003), "Replace...")
+                .with_shortcut("Ctrl+H")
+                .with_action(|| {
+                    println!("Replace...");
+                    Update::empty()
+                }));
 
-        let tools_menu = MenuBarItem::new("tools", "Tools")
-            .with_submenu_item(
-                MenuBarItem::new("preferences", "Preferences...")
-                    .with_shortcut("Ctrl+,")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("extensions", "Extensions")
-                    .with_shortcut("Ctrl+Shift+X")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("terminal", "Terminal")
-                    .with_shortcut("Ctrl+`")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("separator7", "---").with_enabled(false), // Separator
-            )
-            .with_submenu_item(
-                MenuBarItem::new("developer", "Developer Tools")
-                    .with_submenu_item(
-                        MenuBarItem::new("console", "Developer Console")
-                            .with_shortcut("F12")
-                            .with_on_activate(|| Update::empty()),
-                    )
-                    .with_submenu_item(
-                        MenuBarItem::new("inspector", "Element Inspector")
-                            .with_shortcut("Ctrl+Shift+I")
-                            .with_on_activate(|| Update::empty()),
-                    ),
-            );
+        // Create View menu template
+        let view_menu = MenuTemplate::new("View")
+            .add_item(MenuItem::new(MenuCommand::Custom(0x3001), "Show Toolbar")
+                .with_action(|| {
+                    println!("Toggle Toolbar");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::new(MenuCommand::Custom(0x3002), "Show Status Bar")
+                .with_action(|| {
+                    println!("Toggle Status Bar");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::new(MenuCommand::Custom(0x3003), "Show Sidebar")
+                .with_shortcut("Ctrl+B")
+                .with_action(|| {
+                    println!("Toggle Sidebar");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::separator())
+            .add_item(MenuItem::new(MenuCommand::Custom(0x3004), "Enter Fullscreen")
+                .with_shortcut("F11")
+                .with_action(|| {
+                    println!("Toggle Fullscreen");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::new(MenuCommand::Custom(0x3005), "Zoom")
+                .with_submenu(MenuTemplate::new("zoom")
+                    .add_item(MenuItem::new(MenuCommand::Custom(0x3101), "Zoom In")
+                        .with_shortcut("Ctrl++")
+                        .with_action(|| {
+                            println!("Zoom In");
+                            Update::empty()
+                        }))
+                    .add_item(MenuItem::new(MenuCommand::Custom(0x3102), "Zoom Out")
+                        .with_shortcut("Ctrl+-")
+                        .with_action(|| {
+                            println!("Zoom Out");
+                            Update::empty()
+                        }))
+                    .add_item(MenuItem::new(MenuCommand::Custom(0x3103), "Reset Zoom")
+                        .with_shortcut("Ctrl+0")
+                        .with_action(|| {
+                            println!("Reset Zoom");
+                            Update::empty()
+                        }))));
 
-        let help_menu = MenuBarItem::new("help", "Help")
-            .with_submenu_item(
-                MenuBarItem::new("welcome", "Welcome Guide").with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("documentation", "Documentation")
-                    .with_shortcut("F1")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("shortcuts", "Keyboard Shortcuts")
-                    .with_shortcut("Ctrl+/")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("separator8", "---").with_enabled(false), // Separator
-            )
-            .with_submenu_item(
-                MenuBarItem::new("report_bug", "Report Issue...")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("check_updates", "Check for Updates...")
-                    .with_on_activate(|| Update::empty()),
-            )
-            .with_submenu_item(
-                MenuBarItem::new("separator9", "---").with_enabled(false), // Separator
-            )
-            .with_submenu_item(
-                MenuBarItem::new("about", "About NPTK").with_on_activate(|| Update::empty()),
-            );
+        // Create Tools menu template
+        let tools_menu = MenuTemplate::new("Tools")
+            .add_item(MenuItem::new(MenuCommand::Custom(0x4001), "Preferences...")
+                .with_shortcut("Ctrl+,")
+                .with_action(|| {
+                    println!("Preferences...");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::new(MenuCommand::Custom(0x4002), "Extensions")
+                .with_shortcut("Ctrl+Shift+X")
+                .with_action(|| {
+                    println!("Extensions");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::new(MenuCommand::Custom(0x4003), "Terminal")
+                .with_shortcut("Ctrl+`")
+                .with_action(|| {
+                    println!("Terminal");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::separator())
+            .add_item(MenuItem::new(MenuCommand::Custom(0x4004), "Developer Tools")
+                .with_submenu(MenuTemplate::new("developer")
+                    .add_item(MenuItem::new(MenuCommand::Custom(0x4101), "Developer Console")
+                        .with_shortcut("F12")
+                        .with_action(|| {
+                            println!("Developer Console");
+                            Update::empty()
+                        }))
+                    .add_item(MenuItem::new(MenuCommand::Custom(0x4102), "Element Inspector")
+                        .with_shortcut("Ctrl+Shift+I")
+                        .with_action(|| {
+                            println!("Element Inspector");
+                            Update::empty()
+                        }))));
+
+        // Create Help menu template
+        let help_menu = MenuTemplate::new("Help")
+            .add_item(MenuItem::new(MenuCommand::Custom(0x5001), "Welcome Guide")
+                .with_action(|| {
+                    println!("Welcome Guide");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::new(MenuCommand::Custom(0x5002), "Documentation")
+                .with_shortcut("F1")
+                .with_action(|| {
+                    println!("Documentation");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::new(MenuCommand::Custom(0x5003), "Keyboard Shortcuts")
+                .with_shortcut("Ctrl+/")
+                .with_action(|| {
+                    println!("Keyboard Shortcuts");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::separator())
+            .add_item(MenuItem::new(MenuCommand::Custom(0x5004), "Report Issue...")
+                .with_action(|| {
+                    println!("Report Issue...");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::new(MenuCommand::Custom(0x5005), "Check for Updates...")
+                .with_action(|| {
+                    println!("Check for Updates...");
+                    Update::empty()
+                }))
+            .add_item(MenuItem::separator())
+            .add_item(MenuItem::new(MenuCommand::Custom(0x5006), "About NPTK")
+                .with_action(|| {
+                    println!("About NPTK");
+                    Update::empty()
+                }));
 
         // Create the menu bar with all menus
+        // The template IDs are used as the menubar labels, and the template items are shown in the dropdown
         let menu_bar = MenuBar::new()
-            .with_item(file_menu)
-            .with_item(edit_menu)
-            .with_item(view_menu)
-            .with_item(tools_menu)
-            .with_item(help_menu);
+            .with_template(file_menu)
+            .with_template(edit_menu)
+            .with_template(view_menu)
+            .with_template(tools_menu)
+            .with_template(help_menu)
+            .with_menu_manager(menu_manager);
         // let menu_bar = menu_bar.without_global_menu(); // Need to disable the global menu?
 
         // Create content container with padding

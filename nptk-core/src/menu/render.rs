@@ -75,8 +75,9 @@ impl MenuGeometry {
     }
 
     pub fn submenu_origin(&self, index: usize) -> Point {
-        let item_top = self.rect.y0 + PADDING + (index as f64 * ITEM_HEIGHT);
-        Point::new(self.rect.x1 + 8.0, item_top)
+        let item_top = self.rect.y0 + (index as f64 * ITEM_HEIGHT);
+        // Position submenu directly adjacent to parent menu (no gap)
+        Point::new(self.rect.x1, item_top)
     }
 }
 
@@ -175,10 +176,10 @@ pub fn render_menu(
         .map(|c| {
             // Make disabled color more transparent
             let components = c.components;
-            let r = components[0] as u8;
-            let g = components[1] as u8;
-            let b = components[2] as u8;
-            let alpha = ((components[3] as f32) * 0.5).clamp(0.0, 255.0) as u8;
+            let r = (components[0] * 255.0).clamp(0.0, 255.0) as u8;
+            let g = (components[1] * 255.0).clamp(0.0, 255.0) as u8;
+            let b = (components[2] * 255.0).clamp(0.0, 255.0) as u8;
+            let alpha = (components[3] * 0.5 * 255.0).clamp(0.0, 255.0) as u8;
             Color::from_rgba8(r, g, b, alpha)
         })
         .unwrap_or(Color::from_rgb8(128, 128, 128));

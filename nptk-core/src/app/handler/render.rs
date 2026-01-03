@@ -109,60 +109,92 @@ where
 
     fn render_context_menu(&mut self) {
         let context = self.context();
-        let stack = context.menu_manager.get_menu_stack();
+        let stack = context.menu_manager.get_stack();
         if stack.is_empty() {
             return;
         }
+        
         if let Some(cursor_pos) = self.info.cursor_pos {
             let cursor = vello::kurbo::Point::new(cursor_pos.x, cursor_pos.y);
 
+            // Find which menu in the stack the cursor is over
             let mut deepest_idx: Option<usize> = None;
-            for (i, (menu, pos)) in stack.iter().enumerate() {
-                let rect = crate::menu::get_menu_rect(
-                    menu,
+            for (i, (template, pos)) in stack.iter().enumerate() {
+                use crate::menu::render::MenuGeometry;
+                let geometry = MenuGeometry::new(
+                    template,
                     *pos,
                     &mut self.text_render,
                     &mut self.info.font_context,
                 );
-                if rect.contains(cursor) {
+                if geometry.rect.contains(cursor) {
                     deepest_idx = Some(i);
                 }
             }
 
+            // Handle submenu opening on hover
             if let Some(idx) = deepest_idx {
-                let (active_menu, active_pos) = stack[idx].clone();
+                let (active_template, active_pos) = &stack[idx];
                 let mut new_stack = stack[..=idx].to_vec();
 
-                if let Some((sub, sub_pos)) = crate::menu::hover_submenu(
-                    &active_menu,
-                    active_pos,
-                    cursor,
+                // Check if hovering over a submenu item
+                use crate::menu::render::MenuGeometry;
+                let geometry = MenuGeometry::new(
+                    active_template,
+                    *active_pos,
                     &mut self.text_render,
                     &mut self.info.font_context,
-                ) {
-                    new_stack.push((sub, sub_pos));
+                );
+                
+                if let Some(hovered_index) = geometry.hit_test_index(cursor) {
+                    if let Some(item) = active_template.items.get(hovered_index) {
+                        if item.has_submenu() {
+                            if let Some(submenu) = item.submenu.clone() {
+                                let sub_pos = geometry.submenu_origin(hovered_index);
+                                new_stack.push((submenu, sub_pos));
+                            }
+                        }
+                    }
                 }
 
                 context.menu_manager.set_stack(new_stack);
             }
         }
 
+        // Render all menus in the stack
         if let Some(mut graphics) = graphics_from_scene(&mut self.scene) {
             let cursor_pos = self
                 .info
                 .cursor_pos
                 .map(|p| vello::kurbo::Point::new(p.x, p.y));
             let theme_manager = self.config.theme_manager.clone();
-            for (menu, position) in context.menu_manager.get_menu_stack() {
+            for (template, position) in context.menu_manager.get_stack() {
                 theme_manager.read().unwrap().access_theme_mut(|theme| {
-                    crate::menu::render_context_menu(
+                    // Calculate hovered index for this menu
+                    use crate::menu::render::MenuGeometry;
+                    let geometry = MenuGeometry::new(
+                        &template,
+                        position,
+                        &mut self.text_render,
+                        &mut self.info.font_context,
+                    );
+                    let hovered = cursor_pos.and_then(|cursor| {
+                        if geometry.rect.contains(cursor) {
+                            geometry.hit_test_index(cursor)
+                        } else {
+                            None
+                        }
+                    });
+
+                    crate::menu::render_menu(
                         graphics.as_mut(),
-                        &menu,
+                        &template,
                         position,
                         theme,
                         &mut self.text_render,
                         &mut self.info.font_context,
                         cursor_pos,
+                        hovered,
                     );
                 });
             }

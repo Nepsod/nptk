@@ -12,11 +12,11 @@ mod dbus;
 mod plasma;
 
 mod widget;
+#[cfg(feature = "global-menu")]
+mod adapter;
 
 // Re-export the main widget
 pub use widget::MenuBar;
-// Re-export MenuBarItem for external use
-pub use crate::menu_popup::MenuBarItem;
 
 // Re-export types for global menu integration
 #[cfg(feature = "global-menu")]

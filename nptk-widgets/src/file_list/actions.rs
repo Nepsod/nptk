@@ -1,5 +1,6 @@
 use super::{FileListContent, PendingAction};
-use nptk_core::menu::ContextMenuItem;
+use nptk_core::menu::{MenuItem, MenuCommand};
+use nptk_core::app::update::Update;
 use npio::service::filesystem::mime_registry::MimeRegistry;
 use npio::service::filesystem::mime_detector::MimeDetector;
 use std::collections::HashSet;
@@ -74,7 +75,7 @@ impl FileListContent {
         &self,
         path: &Path,
         selection: Vec<PathBuf>,
-    ) -> Vec<ContextMenuItem> {
+    ) -> Vec<MenuItem> {
         let mut items = Vec::new();
 
         let mime = smol::block_on(MimeDetector::detect_mime_type(path)).or_else(|| Self::xdg_mime_filetype(path));
@@ -104,23 +105,28 @@ impl FileListContent {
             }
         }
 
+        let mut command_id = 0x3000u32; // Start from 0x3000 for open-with commands
         for app_id in handlers {
             let label = self.display_name_for_appid(&app_id);
             let pending = self.pending_action.clone();
             let paths_for_action = selection.clone();
             let app_id_cloned = app_id.clone();
-            items.push(ContextMenuItem::Action {
-                label,
-                action: Arc::new(move || {
-                    if let Ok(mut pending_lock) = pending.lock() {
-                        *pending_lock = Some(PendingAction {
-                            paths: paths_for_action.clone(),
-                            app_id: Some(app_id_cloned.clone()),
-                            properties: false,
-                        });
-                    }
-                }),
-            });
+            let cmd = MenuCommand::Custom(command_id);
+            command_id += 1;
+            
+            items.push(
+                MenuItem::new(cmd, label)
+                    .with_action(move || {
+                        if let Ok(mut pending_lock) = pending.lock() {
+                            *pending_lock = Some(PendingAction {
+                                paths: paths_for_action.clone(),
+                                app_id: Some(app_id_cloned.clone()),
+                                properties: false,
+                            });
+                        }
+                        Update::DRAW
+                    }),
+            );
         }
 
         items

@@ -2,7 +2,8 @@ use super::*;
 use crate::app::context::AppContext;
 use crate::app::info::AppKeyEvent;
 use crate::app::update::Update;
-use crate::menu::MenuClickResult;
+use crate::menu::render::MenuGeometry;
+use crate::menu::manager::MenuManager;
 use nalgebra::Vector2;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
@@ -144,7 +145,7 @@ where
                 },
                 PhysicalKey::Code(KeyCode::Escape) => {
                     if self.menu_manager.is_open() {
-                        self.menu_manager.close_context_menu();
+                        self.menu_manager.close();
                         self.update.insert(Update::DRAW);
                         return;
                     }
@@ -182,40 +183,43 @@ where
             if context.menu_manager.is_open() {
                 if let Some(cursor_pos) = self.info.cursor_pos {
                     let cursor = vello::kurbo::Point::new(cursor_pos.x, cursor_pos.y);
-                    if let Some((menu, position)) = context.menu_manager.get_active_menu() {
-                        match crate::menu::handle_click(
-                            &menu,
-                            position,
-                            cursor,
+                    let stack = context.menu_manager.get_stack();
+                    
+                    // Find which menu in the stack the cursor is over
+                    for (template, position) in stack.iter().rev() {
+                        let geometry = MenuGeometry::new(
+                            template,
+                            *position,
                             &mut self.text_render,
                             &mut self.info.font_context,
-                        ) {
-                            Some(MenuClickResult::Action(action)) => {
-                                action();
-                                context.menu_manager.close_context_menu();
-                                self.update.insert(Update::DRAW);
-                                return;
-                            },
-                            Some(MenuClickResult::SubMenu(sub, pos)) => {
-                                context.menu_manager.push_submenu(sub, pos);
-                                self.update.insert(Update::DRAW);
-                                return;
-                            },
-                            Some(MenuClickResult::NonActionInside) => {
-                                self.update.insert(Update::DRAW);
-                                return;
-                            },
-                            None => {
-                                context.menu_manager.close_context_menu();
-                                self.update.insert(Update::DRAW);
-                                return;
-                            },
+                        );
+                        
+                        if let Some(item_index) = geometry.hit_test_index(cursor) {
+                            if let Some(item) = template.items.get(item_index) {
+                                if item.enabled && !item.is_separator() {
+                                    if item.has_submenu() {
+                                        // Submenu already handled by hover
+                                        self.update.insert(Update::DRAW);
+                                        return;
+                                    } else {
+                                        // Execute action
+                                        // Note: We need a way to route commands - for now use item.action
+                                        if let Some(ref action) = item.action {
+                                            action();
+                                        }
+                                        context.menu_manager.close();
+                                        self.update.insert(Update::DRAW);
+                                        return;
+                                    }
+                                }
+                            }
                         }
-                    } else {
-                        context.menu_manager.close_context_menu();
-                        self.update.insert(Update::DRAW);
-                        return;
                     }
+                    
+                    // Click outside any menu - close
+                    context.menu_manager.close();
+                    self.update.insert(Update::DRAW);
+                    return;
                 }
             }
         }

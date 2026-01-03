@@ -59,6 +59,12 @@ impl MenuManager {
         self.command_actions.contains_key(&id)
     }
 
+    /// Get the action for a command (for cloning/forwarding to other systems)
+    pub fn get_action(&self, command: MenuCommand) -> Option<Arc<dyn Fn() -> Update + Send + Sync>> {
+        let id = command.to_u32();
+        self.command_actions.get(&id).cloned()
+    }
+
     /// Get all registered command IDs (for debugging/testing)
     pub fn registered_commands(&self) -> Vec<MenuCommand> {
         self.command_actions

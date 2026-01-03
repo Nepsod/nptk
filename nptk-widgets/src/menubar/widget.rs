@@ -5,7 +5,12 @@ use nptk_core::app::info::AppInfo;
 use super::common::platform;
 #[cfg(feature = "global-menu")]
 use super::dbus::{Bridge, MenuSnapshot, RemoteMenuNode};
-use crate::menu_popup::{MenuBarItem as MenuBarItemImpl, MenuPopup};
+use crate::menu_popup::MenuPopup;
+use nptk_core::menu::unified::{MenuTemplate, MenuItem, MenuContext};
+use nptk_core::menu::templates::{init_edit_commands, init_view_menu};
+use nptk_core::menu::render::render_menu;
+use nptk_core::menu::manager::MenuManager;
+use nptk_core::menu::commands::MenuCommand;
 #[cfg(feature = "global-menu")]
 use log::error;
 use nptk_core::app::update::Update;
@@ -47,7 +52,12 @@ use std::sync::Arc;
 /// - `color_disabled` - The text color for disabled items.
 /// - `color_border` - The border color for the menu bar.
 pub struct MenuBar {
-    items: Vec<MenuBarItemImpl>,
+    // Menu templates (unified system)
+    menu_templates: Vec<MenuTemplate>,
+    // Menu manager for command routing
+    menu_manager: Option<MenuManager>,
+    // Menu context for dynamic enabling/disabling
+    menu_context: MenuContext,
     #[cfg(feature = "global-menu")]
     global_menu_bridge: Option<Bridge>,
     #[cfg(feature = "global-menu")]
@@ -72,8 +82,12 @@ pub struct MenuBar {
     hovered_submenu_index: Option<usize>,
     text_render_context: TextRenderContext,
 
-    // Direct popup rendering (no overlay system)
-    popup_data: Option<MenuPopup>,
+    // Menu template for currently open popup
+    open_template: Option<MenuTemplate>,
+    
+    // Submenu support
+    open_submenu_index: Option<usize>,
+    open_submenu_template: Option<MenuTemplate>,
     // Global menu integration (disabled for now)
     // #[cfg(feature = "global-menu")]
     // global_menu_enabled: bool,
@@ -82,85 +96,7 @@ pub struct MenuBar {
 }
 
 #[cfg(feature = "global-menu")]
-fn build_menu_snapshot(
-    items: &[MenuBarItemImpl],
-) -> (
-    MenuSnapshot,
-    HashMap<i32, Arc<dyn Fn() -> Update + Send + Sync>>,
-    u64,
-) {
-    struct SnapshotBuilder {
-        hasher: DefaultHasher,
-        next_id: i32,
-        nodes: Vec<RemoteMenuNode>,
-        actions: HashMap<i32, Arc<dyn Fn() -> Update + Send + Sync>>,
-    }
-
-    impl SnapshotBuilder {
-        fn new() -> Self {
-            Self {
-                hasher: DefaultHasher::new(),
-                next_id: 1,
-                nodes: Vec::new(),
-                actions: HashMap::new(),
-            }
-        }
-
-        fn build(
-            mut self,
-            items: &[MenuBarItemImpl],
-        ) -> (
-            MenuSnapshot,
-            HashMap<i32, Arc<dyn Fn() -> Update + Send + Sync>>,
-            u64,
-        ) {
-            self.nodes = self.convert_items(items);
-            let signature = self.hasher.finish();
-            (
-                MenuSnapshot {
-                    entries: self.nodes,
-                },
-                self.actions,
-                signature,
-            )
-        }
-
-        fn convert_items(&mut self, items: &[MenuBarItemImpl]) -> Vec<RemoteMenuNode> {
-            items.iter().map(|item| self.convert_item(item)).collect()
-        }
-
-        fn convert_item(&mut self, item: &MenuBarItemImpl) -> RemoteMenuNode {
-            let is_separator = item.label.trim() == "---";
-            item.label.hash(&mut self.hasher);
-            item.enabled.hash(&mut self.hasher);
-            is_separator.hash(&mut self.hasher);
-            item.shortcut.hash(&mut self.hasher);
-            self.hasher.write_u64(item.submenu.len() as u64);
-
-            let id = self.next_id;
-            self.next_id += 1;
-
-            let children = self.convert_items(&item.submenu);
-
-            if item.submenu.is_empty() && !is_separator {
-                if let Some(callback) = item.on_activate.clone() {
-                    self.actions.insert(id, callback);
-                }
-            }
-
-            RemoteMenuNode {
-                id,
-                label: item.label.clone(),
-                enabled: item.enabled && !is_separator,
-                is_separator,
-                shortcut: item.shortcut.clone(),
-                children,
-            }
-        }
-    }
-
-    SnapshotBuilder::new().build(items)
-}
+use super::adapter::menu_template_to_snapshot;
 
 #[cfg(target_os = "linux")]
 fn current_window_x11_id(info: &AppInfo) -> Option<u32> {
@@ -188,7 +124,9 @@ impl MenuBar {
     /// Create a new menu bar
     pub fn new() -> Self {
         Self {
-            items: Vec::new(),
+            menu_templates: Vec::new(),
+            menu_manager: None,
+            menu_context: MenuContext::new(),
             layout_style: LayoutStyle {
                 size: nalgebra::Vector2::new(
                     Dimension::percent(1.0), // Full width
@@ -223,21 +161,34 @@ impl MenuBar {
             open_menu_index: None,
             hovered_submenu_index: None,
             text_render_context: TextRenderContext::new(),
-            popup_data: None,
+            open_template: None,
+            open_submenu_index: None,
+            open_submenu_template: None,
             user_visibility_override: None,
         }
     }
 
-    /// Add a menu item to the menu bar
-    pub fn with_item(mut self, item: MenuBarItemImpl) -> Self {
-        self.items.push(item);
+    /// Add a menu template to the menu bar
+    pub fn with_template(mut self, template: MenuTemplate) -> Self {
+        self.menu_templates.push(template);
         self
     }
 
-    /// Set multiple menu items
-    pub fn with_items(mut self, items: Vec<MenuBarItemImpl>) -> Self {
-        self.items = items;
+    /// Set multiple menu templates
+    pub fn with_templates(mut self, templates: Vec<MenuTemplate>) -> Self {
+        self.menu_templates = templates;
         self
+    }
+
+    /// Set the menu manager for command routing
+    pub fn with_menu_manager(mut self, manager: MenuManager) -> Self {
+        self.menu_manager = Some(manager);
+        self
+    }
+
+    /// Update the menu context for dynamic enabling/disabling
+    pub fn set_menu_context(&mut self, context: MenuContext) {
+        self.menu_context = context;
     }
 
     /// Set the layout style for this menu bar
@@ -325,29 +276,31 @@ impl MenuBar {
 
     /// Show a menu popup for the given menu item
     fn show_menu_popup(&mut self, menu_index: usize) {
-        if let Some(item) = self.get_item_by_index(menu_index).cloned() {
-            if !item.submenu.is_empty() {
-                // Close any existing popup first
-                self.popup_data = None;
-                self.open_menu_index = None;
-                self.hovered_submenu_index = None;
-
-                // Create menu popup widget
-                let menu_popup = MenuPopup::new()
-                    .with_items(item.submenu.clone())
-                    .with_on_item_selected(move |_index| {
-                        // This will be handled by the popup's on_activate callbacks
-                        Update::DRAW
-                    })
-                    .with_on_close(move || {
-                        // Close the popup when an item is selected
-                        Update::DRAW
-                    });
-
-                self.popup_data = Some(menu_popup);
-                self.open_menu_index = Some(menu_index);
+        // Try unified menu template first
+        if menu_index < self.menu_templates.len() {
+            let template = self.menu_templates[menu_index].clone();
+            
+            // Apply context-aware initialization
+            let mut template = template;
+            
+            // Initialize Edit menu items if this is an Edit menu
+            if template.id == "Edit" || template.id == "edit_menu" {
+                init_edit_commands(&mut template, &self.menu_context);
             }
+            
+            // Initialize View menu items if this is a View menu
+            if template.id == "View" || template.id == "view_menu" {
+                init_view_menu(&mut template, &self.menu_context);
+            }
+            
+            self.open_template = Some(template);
+            self.open_menu_index = Some(menu_index);
         }
+    }
+
+    /// Get the label for a menu template at the given index
+    fn get_template_label(&self, index: usize) -> Option<&str> {
+        self.menu_templates.get(index).map(|template| template.id.as_str())
     }
 
     fn get_item_bounds(&self, layout: &LayoutNode, item_index: usize) -> Rect {
@@ -358,24 +311,22 @@ impl MenuBar {
 
         let mut current_x = layout.layout.location.x as f64 + 2.0; // Start with minimal left margin
 
-        #[allow(unused_variables)]
-        let items = &self.items;
-
         // Calculate x position by summing widths of previous items
-        for item in items.iter().take(item_index) {
-            let text_width = item.label.len() as f64 * (font_size * 0.6);
-            let item_width = (text_width + horizontal_padding).max(min_width);
-            current_x += item_width;
+        for i in 0..item_index {
+            if let Some(label) = self.get_template_label(i) {
+                let text_width = label.len() as f64 * (font_size * 0.6);
+                let item_width = (text_width + horizontal_padding).max(min_width);
+                current_x += item_width;
+            }
         }
 
         // Calculate this item's width with precise text measurement
-        let item_width = items
-            .get(item_index)
-            .map(|item| {
-                let text_width = item.label.len() as f64 * (font_size * 0.6);
-                (text_width + horizontal_padding).max(min_width)
-            })
-            .unwrap_or(min_width);
+        let item_width = if let Some(label) = self.get_template_label(item_index) {
+            let text_width = label.len() as f64 * (font_size * 0.6);
+            (text_width + horizontal_padding).max(min_width)
+        } else {
+            min_width
+        };
 
         Rect::new(
             current_x,
@@ -512,11 +463,17 @@ impl Widget for MenuBar {
         );
 
         // Draw menu items
-        for (i, item) in self.items.iter().enumerate() {
+        for i in 0..self.menu_templates.len() {
             let item_bounds = self.get_item_bounds(layout, i);
+            
+            // Get label and enabled state from template
+            let template = &self.menu_templates[i];
+            let label = self.get_template_label(i).unwrap_or(template.id.as_str());
+            let enabled = true;
+            let has_submenu = !template.items.is_empty();
 
             // Determine item colors using pre-calculated colors
-            let (item_text_color, item_bg_color) = if !item.enabled {
+            let (item_text_color, item_bg_color) = if !enabled {
                 (disabled_color, Color::TRANSPARENT)
             } else if Some(i) == self.open_menu_index {
                 (text_color, selected_color)
@@ -547,18 +504,20 @@ impl Widget for MenuBar {
             // Draw item text centered in the item bounds
             let text_x = item_bounds.x0 + 6.0; // Small left padding
             let text_y = item_bounds.y0 + 2.0; // Adjust for proper baseline
+            // Create temporary text render context to avoid borrow conflicts
+            let mut temp_text_render_context = TextRenderContext::new();
             Self::render_text(
-                &mut self.text_render_context,
+                &mut temp_text_render_context,
                 &mut info.font_context,
                 graphics,
-                &item.label,
+                &label,
                 text_x,
                 text_y,
                 item_text_color,
             );
 
             // Draw submenu indicator below the text if item has submenu
-            if item.has_submenu() {
+            if has_submenu {
                 let arrow_x = item_bounds.x0 + (item_bounds.width() / 2.0); // Center horizontally
                 let arrow_y = item_bounds.y1 - 6.0; // Position at bottom with small margin
 
@@ -617,22 +576,39 @@ impl Widget for MenuBar {
             let popup_x = item_bounds.x0;
             let popup_y = item_bounds.y1;
 
-            // Create layout node for the popup
-            let mut popup_layout = LayoutNode {
-                layout: Layout::default(),
-                children: Vec::new(),
-            };
-
-            // Set position and size based on popup's calculated size
-            if let Some(ref mut popup) = self.popup_data {
-                let (popup_width, popup_height) = popup.calculate_size();
-                popup_layout.layout.location.x = popup_x as f32;
-                popup_layout.layout.location.y = popup_y as f32;
-                popup_layout.layout.size.width = popup_width as f32;
-                popup_layout.layout.size.height = popup_height as f32;
-
-                // Render the popup
-                popup.render(graphics, theme, &popup_layout, info, _context);
+            // Render using unified menu template renderer
+            if let Some(ref template) = self.open_template {
+                let popup_position = Point::new(popup_x, popup_y);
+                let cursor_pos = info.cursor_pos.map(|p| Point::new(p.x, p.y));
+                
+                render_menu(
+                    graphics,
+                    template,
+                    popup_position,
+                    theme,
+                    &mut self.text_render_context,
+                    &mut info.font_context,
+                    cursor_pos,
+                    self.hovered_submenu_index,
+                );
+                
+                // Render submenu if open
+                if let (Some(submenu_idx), Some(ref submenu_template)) = (self.open_submenu_index, &self.open_submenu_template) {
+                    use nptk_core::menu::render::MenuGeometry;
+                    let geometry = MenuGeometry::new(template, popup_position, &mut self.text_render_context, &mut info.font_context);
+                    let submenu_position = geometry.submenu_origin(submenu_idx);
+                    
+                    render_menu(
+                        graphics,
+                        submenu_template,
+                        submenu_position,
+                        theme,
+                        &mut self.text_render_context,
+                        &mut info.font_context,
+                        cursor_pos,
+                        None, // Submenu hover tracking could be added if needed
+                    );
+                }
             }
         }
     }
@@ -722,8 +698,8 @@ impl Widget for MenuBar {
         self.hovered_submenu_index = None;
 
         if let Some(pos) = cursor_pos {
-            // Check main menu items
-            for i in 0..self.items.len() {
+            // Check menu templates
+            for i in 0..self.menu_templates.len() {
                 let item_bounds = self.get_item_bounds(layout, i);
                 if pos.x as f64 >= item_bounds.x0
                     && pos.x as f64 <= item_bounds.x1
@@ -731,23 +707,16 @@ impl Widget for MenuBar {
                     && pos.y as f64 <= item_bounds.y1
                 {
                     self.hovered_index = Some(i);
-
+                    
                     // If a menu is already open and we hover over a different menu item,
                     // switch to that menu (standard GUI behavior)
+                    // But only if a menu is already open - don't open on hover
                     if self.open_menu_index.is_some() && self.open_menu_index != Some(i) {
-                        if let Some(item) = self.get_item_by_index(i) {
-                            if item.enabled && item.has_submenu() {
-                                // Close current popup and show new one
-                                self.popup_data = None;
-                                self.open_menu_index = None;
-                                self.hovered_submenu_index = None;
-
-                                // Show new popup
-                                self.show_menu_popup(i);
-                                update |= Update::DRAW;
-                            }
-                        }
+                        // Switch to different menu when another menu is already open
+                        self.show_menu_popup(i);
+                        update |= Update::DRAW;
                     }
+                    // Don't open menu on hover - wait for click
                     break;
                 }
             }
@@ -761,66 +730,116 @@ impl Widget for MenuBar {
         for (_, button, state) in &info.buttons {
             if *button == MouseButton::Left && *state == ElementState::Pressed {
                 if let Some(hovered) = self.hovered_index {
-                    if let Some(item) = self.get_item_by_index(hovered) {
-                        if item.enabled {
-                            if item.has_submenu() {
-                                // Toggle submenu
-                                if self.open_menu_index == Some(hovered) {
-                                    // Close current popup
-                                    self.popup_data = None;
-                                    self.open_menu_index = None;
-                                    self.hovered_submenu_index = None;
+                    // Handle unified menu template clicks
+                    if hovered < self.menu_templates.len() {
+                        // Check if clicking on open menu template popup
+                        if let Some(ref template) = self.open_template {
+                            let item_bounds = self.get_item_bounds(layout, hovered);
+                            let popup_x = item_bounds.x0;
+                            let popup_y = item_bounds.y1;
+                            let popup_position = Point::new(popup_x, popup_y);
+                            
+                            // Check if click is in the popup area
+                            if let Some(cursor_pos) = cursor_pos {
+                                let cursor = Point::new(cursor_pos.x, cursor_pos.y);
+                                // Use unified renderer's geometry to check if click is in popup
+                                use nptk_core::menu::render::MenuGeometry;
+                                let geometry = MenuGeometry::new(template, popup_position, &mut self.text_render_context, &mut info.font_context);
+                                
+                                if let Some(item_index) = geometry.hit_test_index(cursor) {
+                                    if item_index < template.items.len() {
+                                        let item = &template.items[item_index];
+                                        if item.enabled && !item.is_separator() {
+                                            // Route command through MenuManager
+                                            if let Some(ref mut manager) = self.menu_manager {
+                                                update |= manager.handle_command(item.id);
+                                            } else if let Some(ref action) = item.action {
+                                                update |= action();
+                                            }
+                                            
+                                            // Close popup after action
+                                            self.open_template = None;
+                                            self.open_menu_index = None;
+                                            update |= Update::DRAW;
+                                        }
+                                    }
                                 } else {
-                                    // Show new popup
-                                    self.show_menu_popup(hovered);
+                                    // Click outside popup - close it
+                                    self.open_template = None;
+                                    self.open_menu_index = None;
+                                    update |= Update::DRAW;
                                 }
+                            }
+                        } else {
+                            // Click on menu bar item - toggle popup
+                            if self.open_menu_index == Some(hovered) {
+                                self.open_template = None;
+                                self.open_menu_index = None;
                                 update |= Update::DRAW;
-                            } else if let Some(ref callback) = item.on_activate {
-                                update |= callback();
+                            } else {
+                                self.show_menu_popup(hovered);
+                                update |= Update::DRAW;
                             }
                         }
+                        continue;
                     }
                 } else {
                     // Click outside - close popup
-                    if self.popup_data.is_some() {
-                        self.popup_data = None;
+                    if self.open_template.is_some() {
+                        self.open_template = None;
                         self.open_menu_index = None;
                         self.hovered_submenu_index = None;
+                        self.open_submenu_index = None;
+                        self.open_submenu_template = None;
                         update |= Update::DRAW;
                     }
                 }
             }
         }
 
-        // Update popup if open
+        // Update popup if open (unified template or legacy)
         if let Some(open_index) = self.open_menu_index {
-            // Calculate position below the menu item first
-            let item_bounds = self.get_item_bounds(layout, open_index);
-            let popup_x = item_bounds.x0;
-            let popup_y = item_bounds.y1;
-
-            // Create layout node for the popup
-            let mut popup_layout = LayoutNode {
-                layout: Layout::default(),
-                children: Vec::new(),
-            };
-
-            // Set position and size based on popup's calculated size
-            if let Some(ref mut popup) = self.popup_data {
-                let (popup_width, popup_height) = popup.calculate_size();
-                popup_layout.layout.location.x = popup_x as f32;
-                popup_layout.layout.location.y = popup_y as f32;
-                popup_layout.layout.size.width = popup_width as f32;
-                popup_layout.layout.size.height = popup_height as f32;
-
-                // Now update the popup
-                let popup_update = popup.update(&popup_layout, _context, info);
-                update |= popup_update;
-
-                // Check if popup wants to close itself
-                if popup_update.contains(Update::DRAW) {
-                    // This is a simple way to detect if popup was closed
-                    // In a real implementation, you'd have a proper close signal
+            // Unified menu template handling
+            if let Some(ref template) = self.open_template {
+                // Check hover state for unified menu template
+                let item_bounds = self.get_item_bounds(layout, open_index);
+                let popup_x = item_bounds.x0;
+                let popup_y = item_bounds.y1;
+                let popup_position = Point::new(popup_x, popup_y);
+                
+                if let Some(cursor_pos) = cursor_pos {
+                    let cursor = Point::new(cursor_pos.x, cursor_pos.y);
+                    use nptk_core::menu::render::MenuGeometry;
+                    let geometry = MenuGeometry::new(template, popup_position, &mut self.text_render_context, &mut info.font_context);
+                    let new_hovered = geometry.hit_test_index(cursor);
+                    
+                    // Handle submenu opening/closing on hover
+                    if new_hovered != self.hovered_submenu_index {
+                        self.hovered_submenu_index = new_hovered;
+                        
+                        // Check if the hovered item has a submenu
+                        if let Some(hovered_idx) = new_hovered {
+                            if let Some(item) = template.items.get(hovered_idx) {
+                                if item.has_submenu() {
+                                    // Open submenu
+                                    if let Some(submenu) = item.submenu.clone() {
+                                        self.open_submenu_index = Some(hovered_idx);
+                                        self.open_submenu_template = Some(submenu);
+                                    }
+                                } else {
+                                    // Close submenu if hovering over non-submenu item
+                                    self.open_submenu_index = None;
+                                    self.open_submenu_template = None;
+                                }
+                            }
+                        } else {
+                            // Cursor left the menu, close submenu
+                            self.open_submenu_index = None;
+                            self.open_submenu_template = None;
+                        }
+                        
+                        update |= Update::DRAW;
+                    }
                 }
             }
         }
@@ -831,9 +850,11 @@ impl Widget for MenuBar {
                 match key_event.physical_key {
                     PhysicalKey::Code(KeyCode::Escape) => {
                         if self.open_menu_index.is_some() {
-                            self.popup_data = None;
+                            self.open_template = None;
                             self.open_menu_index = None;
                             self.hovered_submenu_index = None;
+                            self.open_submenu_index = None;
+                            self.open_submenu_template = None;
                             update |= Update::DRAW;
                         }
                     },
@@ -883,10 +904,6 @@ impl WidgetLayoutExt for MenuBar {
 }
 
 impl MenuBar {
-    fn get_item_by_index(&self, index: usize) -> Option<&MenuBarItemImpl> {
-        self.items.get(index)
-    }
-
     #[cfg(feature = "global-menu")]
     fn process_global_menu(&mut self, info: &AppInfo) -> Update {
         if !self.global_menu_enabled {
@@ -923,8 +940,18 @@ impl MenuBar {
             }
         }
 
-        // Build menu snapshot first to ensure it's available before window registration
-        let (snapshot, actions, signature) = build_menu_snapshot(&self.items);
+        // Build menu snapshot from unified menu templates
+        let (snapshot, actions, signature) = if !self.menu_templates.is_empty() {
+            if let Some(ref manager) = self.menu_manager {
+                menu_template_to_snapshot(&self.menu_templates, manager)
+            } else {
+                // No manager, create empty snapshot
+                (MenuSnapshot { entries: Vec::new() }, HashMap::new(), 0)
+            }
+        } else {
+            // No templates, empty snapshot
+            (MenuSnapshot { entries: Vec::new() }, HashMap::new(), 0)
+        };
         let menu_changed = self.global_menu_signature != signature;
 
         // Always send menu on first bridge initialization or when menu changes
