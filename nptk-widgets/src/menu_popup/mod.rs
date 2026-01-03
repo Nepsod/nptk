@@ -253,7 +253,9 @@ impl Widget for MenuPopup {
             if let Some(open_index) = self.open_item_index {
                 if let Some(item) = self.template.items.get(open_index) {
                     if let Some(ref submenu_template) = item.submenu {
-                        let item_y = popup_position.y + (open_index as f64 * 24.0) + 4.0;
+                        // Align submenu with the item (ITEM_HEIGHT = 24.0, PADDING = 4.0)
+                        // Use same calculation as submenu_origin for consistency
+                        let item_y = popup_position.y + (open_index as f64 * 24.0);
                         // Position submenu directly adjacent to parent menu (no gap)
                         let child_position = Point::new(popup_position.x + layout.layout.size.width as f64, item_y);
                         
