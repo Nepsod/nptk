@@ -133,6 +133,7 @@ impl SelfContainedThemeResolver {
         match name.to_lowercase().as_str() {
             "light" | "celeste" => Ok(Box::new(CelesteTheme::light())),
             "dark" => Ok(Box::new(DarkTheme::new())),
+            "sweet" => Ok(Box::new(SweetTheme::new())),
             _ => {
                 // Check if it's a custom theme
                 if let Some(_theme) = self.theme_registry.get(name) {
@@ -308,6 +309,7 @@ impl SelfContainedThemeResolver {
         match name.to_lowercase().as_str() {
             "light" | "celeste" => Ok(Box::new(CelesteTheme::light())),
             "dark" => Ok(Box::new(DarkTheme::new())),
+            "sweet" => Ok(Box::new(SweetTheme::new())),
             _ => Err(format!("Theme '{}' not found", name).into()),
         }
     }

@@ -298,11 +298,7 @@ impl Theme for DarkTheme {
                             .get_color("text-muted")
                             .unwrap_or(Color::from_rgb8(140, 140, 140)),
                     ),
-                    crate::properties::ThemeProperty::ColorToggleDisabled => Some(
-                        self.variables
-                            .get_color("text-muted")
-                            .unwrap_or(Color::from_rgb8(140, 140, 140)),
-                    ),
+
                     _ => None,
                 },
                 "Toolbar" => match property {
@@ -321,11 +317,7 @@ impl Theme for DarkTheme {
                             .get_color("border-primary")
                             .unwrap_or(Color::from_rgb8(80, 80, 80)),
                     ),
-                    crate::properties::ThemeProperty::ColorToolbarSeparator => Some(
-                        self.variables
-                            .get_color("border-primary")
-                            .unwrap_or(Color::from_rgb8(80, 80, 80)),
-                    ),
+
                     _ => None,
                 },
                 "ToolbarButton" => match property {
@@ -344,6 +336,50 @@ impl Theme for DarkTheme {
                         self.variables
                             .get_color("primary")
                             .unwrap_or(Color::from_rgb8(100, 150, 255)),
+                    ),
+                    _ => None,
+                },
+                "FileList" => match property {
+                    crate::properties::ThemeProperty::ColorBackground => Some(
+                        self.variables
+                            .get_color("bg-primary")
+                            .unwrap_or(Color::from_rgb8(30, 30, 30)),
+                    ),
+                    _ => None,
+                },
+                "FileListContent" => match property {
+                    crate::properties::ThemeProperty::ColorBackground => Some(
+                        self.variables
+                            .get_color("bg-primary")
+                            .unwrap_or(Color::from_rgb8(30, 30, 30)),
+                    ),
+                    crate::properties::ThemeProperty::ColorText => Some(
+                        self.variables
+                            .get_color("text-primary")
+                            .unwrap_or(Color::from_rgb8(220, 220, 220)),
+                    ),
+                    crate::properties::ThemeProperty::ColorBackgroundSelected => Some(
+                        self.variables
+                            .get_color("primary")
+                            .unwrap_or(Color::from_rgb8(100, 150, 255)),
+                    ),
+                    crate::properties::ThemeProperty::ColorMenuHovered => Some(
+                        self.variables
+                            .get_color("bg-tertiary")
+                            .unwrap_or(Color::from_rgb8(50, 50, 50)),
+                    ),
+                    _ => None,
+                },
+                "FileListProperties" => match property {
+                    crate::properties::ThemeProperty::ColorText => Some(
+                        self.variables
+                            .get_color("text-primary")
+                            .unwrap_or(Color::from_rgb8(220, 220, 220)),
+                    ),
+                    crate::properties::ThemeProperty::ColorTextDisabled => Some(
+                        self.variables
+                            .get_color("text-muted")
+                            .unwrap_or(Color::from_rgb8(140, 140, 140)),
                     ),
                     _ => None,
                 },

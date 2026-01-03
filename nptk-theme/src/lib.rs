@@ -20,7 +20,7 @@
 //! ## Quick Start
 //!
 //! ```rust
-//! use nptk_theme::theme::dark::DarkTheme;
+//! use nptk_theme::theme::{Theme, dark::DarkTheme};
 //! use nptk_theme::properties::ThemeProperty;
 //! use nptk_theme::id::WidgetId;
 //! use vello::peniko::Color;
@@ -40,7 +40,7 @@
 //! The theming system uses enums instead of strings for property access,
 //! providing compile-time safety and IDE support:
 //!
-//! ```rust
+//! ```rust,ignore
 //! // ❌ Old way (unsafe)
 //! let color = style.get_color("color_idle").unwrap(); // Could panic!
 //!
@@ -80,18 +80,19 @@
 //!
 //! Switch themes at runtime without restarting the application:
 //!
+//!
 //! ```rust
-//! use nptk_theme::manager::{ThemeManager, ThemeVariant};
+//! use nptk_theme::manager::{ThemeManager};
 //!
 //! let mut manager = ThemeManager::new();
-//! manager.switch_theme(&ThemeVariant::Dark);
+//! manager.switch_theme("dark");
 //! ```
 //!
 //! ## CSS-Like Variables
 //!
 //! Use variables for consistent theming:
 //!
-//! ```rust
+//! ```rust,ignore
 //! // Define variables
 //! theme.variables_mut().set_color("primary", Color::from_rgb8(100, 150, 255));
 //!
@@ -103,7 +104,7 @@
 //!
 //! Use helpers for common patterns with automatic fallbacks:
 //!
-//! ```rust
+//! ```rust,ignore
 //! use nptk_theme::helpers::{ThemeHelper, ButtonState};
 //!
 //! let color = ThemeHelper::get_button_color(

@@ -1,13 +1,13 @@
 use nptk::color::color::palette;
 use nptk::color::kurbo::{Affine, Circle, Point, Stroke};
 use nptk::color::Brush;
+use nptk::color::kurbo::Shape;
 use nptk::prelude::*;
 use nptk::widgets::canvas::Canvas;
 
 struct MyApp;
 
 impl Application for MyApp {
-    type Theme = SystemTheme;
     type State = ();
 
     fn build(_: AppContext, _: Self::State) -> impl Widget {
@@ -17,7 +17,7 @@ impl Application for MyApp {
                 Affine::default(),
                 &Brush::Solid(palette::css::GREEN),
                 None,
-                &Circle::new(Point::new(100.0, 100.0), 50.0),
+                &Circle::new(Point::new(100.0, 100.0), 50.0).to_path(0.1),
             );
         })
     }

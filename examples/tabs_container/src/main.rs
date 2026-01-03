@@ -4,7 +4,6 @@ use nptk::widgets::tabs_container::{TabItem, TabPosition, TabsContainer};
 struct TabsApp;
 
 impl Application for TabsApp {
-    type Theme = SystemTheme;
     type State = ();
 
     fn build(context: AppContext, _config: Self::State) -> impl Widget {

@@ -12,6 +12,7 @@ pub enum CelesteTheme {
 }
 
 #[derive(Debug, Clone)]
+/// Data for the Celeste theme.
 pub struct CelesteThemeData {
     globals: Globals,
     palette: ThemePalette,
@@ -148,9 +149,7 @@ impl Theme for CelesteTheme {
                     crate::properties::ThemeProperty::ColorToggleDisabled => {
                         Some(palette.text_muted)
                     },
-                    crate::properties::ThemeProperty::ColorToggleDisabled => {
-                        Some(palette.text_muted)
-                    },
+
                     _ => None,
                 },
                 "Toolbar" => match property {
@@ -159,7 +158,7 @@ impl Theme for CelesteTheme {
                     },
                     crate::properties::ThemeProperty::ColorToolbarBorder => Some(palette.border),
                     crate::properties::ThemeProperty::ColorToolbarSeparator => Some(palette.border),
-                    crate::properties::ThemeProperty::ColorToolbarSeparator => Some(palette.border),
+
                     _ => None,
                 },
                 "ToolbarButton" => match property {
@@ -178,6 +177,11 @@ impl Theme for CelesteTheme {
                     crate::properties::ThemeProperty::ColorMenuHovered => {
                         Some(palette.background_elevated)
                     },
+                    _ => None,
+                },
+                "FileListProperties" => match property {
+                    crate::properties::ThemeProperty::ColorText => Some(palette.text),
+                    crate::properties::ThemeProperty::ColorTextDisabled => Some(palette.text_muted),
                     _ => None,
                 },
                 _ => None,

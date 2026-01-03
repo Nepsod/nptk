@@ -33,7 +33,7 @@
 //! let mut manager = ThemeManager::new();
 //!
 //! // Switch to dark theme
-//! manager.switch_theme(&ThemeVariant::Dark);
+//! manager.switch_theme("dark");
 //!
 //! // Get theme properties with caching
 //! let button_id = WidgetId::new("nptk-widgets", "Button");
@@ -43,7 +43,7 @@
 //! ### Thread-Safe Theme Management
 //!
 //! ```rust
-//! use nptk_theme::manager::{create_shared_theme_manager, ThemeVariant};
+//! use nptk_theme::manager::{create_shared_theme_manager};
 //! use std::sync::Arc;
 //! use std::thread;
 //!
@@ -56,7 +56,7 @@
 //!
 //! let handle1 = thread::spawn(move || {
 //!     if let Ok(mut manager) = manager1.write() {
-//!         manager.switch_theme(&ThemeVariant::Dark);
+//!         manager.switch_theme("dark");
 //!     }
 //! });
 //!
@@ -74,7 +74,7 @@
 //! ### Custom Theme Management
 //!
 //! ```rust
-//! use nptk_theme::manager::{ThemeManager, ThemeVariant};
+//! use nptk_theme::manager::{ThemeManager};
 //! use nptk_theme::theme::dark::DarkTheme;
 //! use std::sync::Arc;
 //!
@@ -83,10 +83,10 @@
 //! let mut manager = ThemeManager::with_theme(custom_theme);
 //!
 //! // Add additional themes
-//! manager.add_theme(ThemeVariant::Custom("MyTheme".to_string()), Box::new(DarkTheme::new()));
+//! manager.add_theme("MyTheme", Box::new(DarkTheme::new()));
 //!
 //! // Switch to custom theme
-//! manager.switch_theme(&ThemeVariant::Custom("MyTheme".to_string()));
+//! manager.switch_theme("MyTheme");
 //! ```
 //!
 //! ### Theme Variable Access
@@ -158,17 +158,20 @@
 //!
 //! ## Theme Variants
 //!
-//! The [ThemeVariant] enum represents different theme types:
+//! Themes are identified by string names:
 //!
 //! ```rust
-//! use nptk_theme::manager::ThemeVariant;
+//! use nptk_theme::manager::ThemeManager;
+//!
+//! let mut manager = ThemeManager::new();
 //!
 //! // Built-in variants
-//! let light = ThemeVariant::Light;
-//! let dark = ThemeVariant::Dark;
+//! manager.switch_theme("light");
+//! manager.switch_theme("dark");
 //!
 //! // Custom variants
-//! let custom = ThemeVariant::Custom("MyCustomTheme".to_string());
+//! manager.add_theme("MyCustomTheme", Box::new(crate::theme::dark::DarkTheme::new()));
+//! manager.switch_theme("MyCustomTheme");
 //! ```
 //!
 //! ## Best Practices
@@ -187,50 +190,45 @@
 //! - **Lock Contention**: Minimize lock contention by using appropriate lock types
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, mpsc};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::id::WidgetId;
 use crate::properties::{ThemeProperty, ThemeValue};
-use crate::theme::{celeste::CelesteTheme, dark::DarkTheme, Theme};
+use crate::theme::{celeste::CelesteTheme, dark::DarkTheme, sweet::SweetTheme, Theme};
 
-/// A theme variant that can be switched at runtime.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ThemeVariant {
-    /// Light theme variant.
-    Light,
-    /// Dark theme variant.
-    Dark,
-    /// Custom theme variant with a name.
-    Custom(String),
-}
 
-impl Default for ThemeVariant {
-    fn default() -> Self {
-        Self::Light
-    }
-}
+// ThemeVariant enum is removed in favor of simple strings
+
 
 /// A theme manager that supports runtime theme switching and caching.
 pub struct ThemeManager {
     current_theme: Arc<RwLock<Box<dyn Theme + Send + Sync>>>,
+    current_variant_internal: Arc<RwLock<String>>,
     theme_cache: Arc<RwLock<HashMap<(WidgetId, ThemeProperty), ThemeValue>>>,
     variables_cache: Arc<RwLock<HashMap<String, ThemeValue>>>,
-    available_themes: HashMap<ThemeVariant, Box<dyn Theme + Send + Sync>>,
+    available_themes: HashMap<String, Box<dyn Theme + Send + Sync>>,
+    change_notifiers: Arc<RwLock<Vec<mpsc::Sender<String>>>>,
+    notify_counter: AtomicUsize,
 }
 
 impl ThemeManager {
-    /// Create a new theme manager with the default light theme.
+    /// Create a new theme manager with the default Sweet theme.
     pub fn new() -> Self {
         let mut manager = Self {
-            current_theme: Arc::new(RwLock::new(Box::new(CelesteTheme::light()))),
+            current_theme: Arc::new(RwLock::new(Box::new(SweetTheme::new()))),
+            current_variant_internal: Arc::new(RwLock::new("sweet".to_string())),
             theme_cache: Arc::new(RwLock::new(HashMap::new())),
             variables_cache: Arc::new(RwLock::new(HashMap::new())),
             available_themes: HashMap::new(),
+            change_notifiers: Arc::new(RwLock::new(Vec::new())),
+            notify_counter: AtomicUsize::new(0),
         };
 
         // Add default themes
-        manager.add_theme(ThemeVariant::Light, Box::new(CelesteTheme::light()));
-        manager.add_theme(ThemeVariant::Dark, Box::new(DarkTheme::new()));
+        manager.add_theme("light", Box::new(CelesteTheme::light()));
+        manager.add_theme("dark", Box::new(DarkTheme::new()));
+        manager.add_theme("sweet", Box::new(SweetTheme::new()));
 
         manager
     }
@@ -239,46 +237,86 @@ impl ThemeManager {
     pub fn with_theme(theme: Box<dyn Theme + Send + Sync>) -> Self {
         let mut manager = Self {
             current_theme: Arc::new(RwLock::new(theme)),
+            current_variant_internal: Arc::new(RwLock::new("custom".to_string())),
             theme_cache: Arc::new(RwLock::new(HashMap::new())),
             variables_cache: Arc::new(RwLock::new(HashMap::new())),
             available_themes: HashMap::new(),
+            change_notifiers: Arc::new(RwLock::new(Vec::new())),
+            notify_counter: AtomicUsize::new(0),
         };
 
         // Add default themes
-        manager.add_theme(ThemeVariant::Light, Box::new(CelesteTheme::light()));
-        manager.add_theme(ThemeVariant::Dark, Box::new(DarkTheme::new()));
+        manager.add_theme("light", Box::new(CelesteTheme::light()));
+        manager.add_theme("dark", Box::new(DarkTheme::new()));
+        manager.add_theme("sweet", Box::new(SweetTheme::new()));
 
         manager
     }
 
     /// Add a theme variant to the manager.
-    pub fn add_theme(&mut self, variant: ThemeVariant, theme: Box<dyn Theme + Send + Sync>) {
-        self.available_themes.insert(variant, theme);
+    pub fn add_theme<S: Into<String>>(&mut self, name: S, theme: Box<dyn Theme + Send + Sync>) {
+        self.available_themes.insert(name.into(), theme);
     }
 
     /// Switch to a different theme variant.
-    pub fn switch_theme(&mut self, variant: &ThemeVariant) -> bool {
-        if let Some(theme) = self.available_themes.get(variant) {
+    pub fn switch_theme(&mut self, name: &str) -> bool {
+        if let Some(theme) = self.available_themes.get(name) {
             // Clone the theme (themes should be lightweight to clone)
             let new_theme = self.clone_theme(theme.as_ref());
             if let Ok(mut current) = self.current_theme.write() {
                 *current = new_theme;
                 // Clear caches when switching themes
                 self.clear_caches();
+                
+                // Update current variant
+                if let Ok(mut current_var) = self.current_variant_internal.write() {
+                    *current_var = name.to_string();
+                }
+                
+                // Notify all subscribers of theme change
+                self.notify_theme_changed(name.to_string());
                 return true;
             }
         }
         false
     }
 
-    /// Get the current theme variant.
-    pub fn current_variant(&self) -> ThemeVariant {
-        // This is a simplified implementation - in practice, you'd track the current variant
-        ThemeVariant::Light // Default fallback
+    /// Notify all subscribers that the theme has changed.
+    fn notify_theme_changed(&self, name: String) {
+        let mut notifiers = match self.change_notifiers.write() {
+            Ok(n) => n,
+            Err(_) => return,
+        };
+        
+        // Remove dead receivers and send notifications
+        notifiers.retain(|sender| {
+            sender.send(name.clone()).is_ok()
+        });
+        
+        self.notify_counter.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Subscribe to theme change notifications.
+    /// Returns a receiver that will receive notifications when the theme changes.
+    pub fn subscribe_theme_changes(&self) -> mpsc::Receiver<String> {
+        let (sender, receiver) = mpsc::channel();
+        
+        if let Ok(mut notifiers) = self.change_notifiers.write() {
+            notifiers.push(sender);
+        }
+        
+        receiver
+    }
+
+    /// Get the current theme variant name.
+    pub fn current_variant(&self) -> String {
+        self.current_variant_internal.read()
+            .map(|v| v.clone())
+            .unwrap_or_else(|_| "sweet".to_string())
     }
 
     /// Get all available theme variants.
-    pub fn available_variants(&self) -> Vec<ThemeVariant> {
+    pub fn available_variants(&self) -> Vec<String> {
         self.available_themes.keys().cloned().collect()
     }
 
@@ -350,6 +388,27 @@ impl ThemeManager {
         self.current_theme.clone()
     }
 
+    /// Access the current theme through a closure for rendering.
+    /// This allows widgets to access theme properties without cloning.
+    pub fn access_theme<F, R>(&self, f: F) -> Option<R>
+    where
+        F: FnOnce(&dyn Theme) -> R,
+    {
+        self.current_theme.read().ok().map(|theme| {
+            f(theme.as_ref())
+        })
+    }
+
+    /// Access the current theme mutably through a closure.
+    pub fn access_theme_mut<F, R>(&self, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut dyn Theme) -> R,
+    {
+        self.current_theme.write().ok().map(|mut theme| {
+            f(theme.as_mut())
+        })
+    }
+
     /// Clone a theme (helper method).
     fn clone_theme(&self, theme: &dyn Theme) -> Box<dyn Theme + Send + Sync> {
         // Try to downcast to known theme types and clone them
@@ -357,11 +416,13 @@ impl ThemeManager {
             Box::new(celeste_theme.clone())
         } else if let Some(dark_theme) = theme.as_any().downcast_ref::<DarkTheme>() {
             Box::new(dark_theme.clone())
+        } else if let Some(sweet_theme) = theme.as_any().downcast_ref::<SweetTheme>() {
+            Box::new(sweet_theme.clone())
         } else {
-            // Fallback: create a new Celeste theme
+            // Fallback: create a new Sweet theme
             // This is not ideal but ensures we always return a valid theme
-            log::warn!("Unknown theme type, falling back to Celeste theme");
-            Box::new(CelesteTheme::light())
+            log::warn!("Unknown theme type, falling back to Sweet theme");
+            Box::new(SweetTheme::new())
         }
     }
 }
@@ -378,6 +439,43 @@ pub type SharedThemeManager = Arc<RwLock<ThemeManager>>;
 /// Create a new shared theme manager.
 pub fn create_shared_theme_manager() -> SharedThemeManager {
     Arc::new(RwLock::new(ThemeManager::new()))
+}
+
+/// Create a shared theme manager from a theme configuration.
+///
+/// This function resolves the theme from the configuration and initializes
+/// the theme manager with it. If resolution fails, it falls back to the default theme.
+pub fn create_shared_theme_manager_from_config(
+    config: &crate::config::ThemeConfig,
+) -> SharedThemeManager {
+    use crate::config::ThemeSource;
+    use crate::theme_resolver::SelfContainedThemeResolver;
+    
+    let resolver = SelfContainedThemeResolver::new();
+    let mut manager = ThemeManager::new();
+    
+    // Try to resolve the theme from config
+    if let Some(ref default_source) = config.default_theme {
+        if let Ok(theme) = resolver.resolve_theme_source(default_source) {
+            // Determine the variant based on the source
+            let variant = match default_source {
+                ThemeSource::Light => "light",
+                ThemeSource::Dark => "dark",
+                ThemeSource::Sweet => "sweet",
+                ThemeSource::Custom(name) => name.as_str(),
+                ThemeSource::File(_) => "custom", // File themes default to custom
+            };
+            
+            // Add the theme and switch to it
+            manager.add_theme(variant, theme);
+            manager.switch_theme(variant);
+        }
+    } else {
+        // No default theme specified, use Sweet as default
+        manager.switch_theme("sweet");
+    }
+    
+    Arc::new(RwLock::new(manager))
 }
 
 /// Create a shared theme manager with a specific theme.

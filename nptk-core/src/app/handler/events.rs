@@ -7,9 +7,8 @@ use nalgebra::Vector2;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 
-impl<T, W, S, F> AppHandler<T, W, S, F>
+impl<W, S, F> AppHandler<W, S, F>
 where
-    T: Theme + Clone,
     W: Widget,
     F: Fn(AppContext, S) -> W,
 {

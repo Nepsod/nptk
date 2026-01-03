@@ -192,7 +192,7 @@ pub trait ThemeConfigurable {
 ///
 /// ```rust
 /// use nptk_theme::app_integration::DefaultThemeProvider;
-/// use nptk_theme::theme::dark::DarkTheme;
+/// use nptk_theme::theme::{Theme, dark::DarkTheme};
 ///
 /// struct MyApp;
 ///
@@ -212,7 +212,7 @@ pub trait DefaultThemeProvider {
     ///
     /// ```rust
     /// use nptk_theme::app_integration::DefaultThemeProvider;
-    /// use nptk_theme::theme::dark::DarkTheme;
+    /// use nptk_theme::theme::{Theme, dark::DarkTheme};
     ///
     /// struct MyApp;
     ///
@@ -235,7 +235,7 @@ pub trait DefaultThemeProvider {
 /// ```rust
 /// use nptk_theme::app_integration::{ThemeConfigurable, DefaultThemeProvider, ThemeAware};
 /// use nptk_theme::config::ThemeConfig;
-/// use nptk_theme::theme::dark::DarkTheme;
+/// use nptk_theme::theme::{Theme, dark::DarkTheme};
 ///
 /// struct MyApp;
 ///
@@ -264,7 +264,7 @@ pub trait ThemeAware: ThemeConfigurable + DefaultThemeProvider {
     /// ```rust
     /// use nptk_theme::app_integration::{ThemeConfigurable, DefaultThemeProvider, ThemeAware};
     /// use nptk_theme::config::ThemeConfig;
-    /// use nptk_theme::theme::dark::DarkTheme;
+    /// use nptk_theme::theme::{Theme, dark::DarkTheme};
     ///
     /// struct MyApp;
     ///
@@ -301,7 +301,7 @@ pub trait ThemeAware: ThemeConfigurable + DefaultThemeProvider {
     /// ```rust
     /// use nptk_theme::app_integration::{ThemeConfigurable, DefaultThemeProvider, ThemeAware};
     /// use nptk_theme::config::ThemeConfig;
-    /// use nptk_theme::theme::dark::DarkTheme;
+    /// use nptk_theme::theme::{Theme, dark::DarkTheme};
     ///
     /// struct MyApp;
     ///

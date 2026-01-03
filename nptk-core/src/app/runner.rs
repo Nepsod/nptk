@@ -5,21 +5,20 @@ use crate::app::update::UpdateManager;
 use crate::config::MayConfig;
 use crate::plugin::PluginManager;
 use crate::widget::Widget;
-use nptk_theme::theme::Theme;
 use vello::peniko::FontData;
 use winit::dpi::{LogicalPosition, LogicalSize, Position, Size};
 use winit::event_loop::EventLoopBuilder;
 use winit::window::WindowAttributes;
 
 /// The core Application structure.
-pub struct MayRunner<T: Theme> {
-    config: MayConfig<T>,
+pub struct MayRunner {
+    config: MayConfig,
     font_ctx: FontContext,
 }
 
-impl<T: Theme + Clone> MayRunner<T> {
+impl MayRunner {
     /// Create a new App with the given [MayConfig].
-    pub fn new(config: MayConfig<T>) -> Self {
+    pub fn new(config: MayConfig) -> Self {
         Self::initialize_task_runner(&config);
         let font_ctx = Self::create_font_context(&config);
 
@@ -27,7 +26,7 @@ impl<T: Theme + Clone> MayRunner<T> {
     }
 
     /// Initialize the task runner if configured.
-    fn initialize_task_runner(config: &MayConfig<T>) {
+    fn initialize_task_runner(config: &MayConfig) {
         if let Some(task_config) = &config.tasks {
             log::info!("initializing task runner");
             crate::tasks::init(*task_config);
@@ -35,7 +34,7 @@ impl<T: Theme + Clone> MayRunner<T> {
     }
 
     /// Create a font context based on the configuration.
-    fn create_font_context(_config: &MayConfig<T>) -> FontContext {
+    fn create_font_context(_config: &MayConfig) -> FontContext {
         FontContext::new()
     }
 
@@ -54,7 +53,7 @@ impl<T: Theme + Clone> MayRunner<T> {
     }
 
     /// Run the application with given widget and state.
-    pub fn run<S, W, F>(mut self, state: S, builder: F, mut plugins: PluginManager<T>)
+    pub fn run<S, W, F>(mut self, state: S, builder: F, mut plugins: PluginManager)
     where
         W: Widget,
         F: Fn(AppContext, S) -> W,
@@ -87,7 +86,7 @@ impl<T: Theme + Clone> MayRunner<T> {
     }
 
     /// Build window attributes from configuration.
-    fn build_window_attributes(config: &MayConfig<T>) -> WindowAttributes {
+    fn build_window_attributes(config: &MayConfig) -> WindowAttributes {
         let attrs = WindowAttributes::default()
             .with_inner_size(LogicalSize::new(config.window.size.x, config.window.size.y))
             .with_resizable(config.window.resizable)
@@ -114,7 +113,7 @@ impl<T: Theme + Clone> MayRunner<T> {
     ///
     /// These attributes don't have builder methods that accept `Option` values,
     /// so they must be set directly on the attributes struct.
-    fn apply_optional_window_attributes(config: &MayConfig<T>, attrs: &mut WindowAttributes) {
+    fn apply_optional_window_attributes(config: &MayConfig, attrs: &mut WindowAttributes) {
         Self::set_optional_size(&mut attrs.max_inner_size, &config.window.max_size);
         Self::set_optional_size(&mut attrs.min_inner_size, &config.window.min_size);
         Self::set_optional_position(&mut attrs.position, &config.window.position);
@@ -141,12 +140,12 @@ impl<T: Theme + Clone> MayRunner<T> {
     fn run_app_handler<S, W, F>(
         event_loop: winit::event_loop::EventLoop<()>,
         attrs: WindowAttributes,
-        config: MayConfig<T>,
+        config: MayConfig,
         builder: F,
         state: S,
         font_ctx: FontContext,
         update: UpdateManager,
-        plugins: PluginManager<T>,
+        plugins: PluginManager,
     ) where
         W: Widget,
         F: Fn(AppContext, S) -> W,

@@ -8,9 +8,8 @@ use vello::wgpu::{CommandEncoderDescriptor, TextureViewDescriptor};
 use vello::RenderParams;
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
 
-impl<T, W, S, F> AppHandler<T, W, S, F>
+impl<W, S, F> AppHandler<W, S, F>
 where
-    T: Theme + Clone,
     W: Widget,
     F: Fn(AppContext, S) -> W,
 {
@@ -70,13 +69,19 @@ where
         let context = self.context();
         let mut graphics =
             graphics_from_scene(&mut self.scene).expect("Failed to create graphics from scene");
-        self.widget.as_mut().unwrap().render(
-            graphics.as_mut(),
-            &mut self.config.theme,
-            layout_node,
-            &mut self.info,
-            context,
-        );
+        
+        // Access theme from manager for rendering
+        // We need &mut dyn Theme, so we'll use access_theme_mut to get mutable access
+        let theme_manager = self.config.theme_manager.clone();
+        theme_manager.read().unwrap().access_theme_mut(|theme| {
+            self.widget.as_mut().unwrap().render(
+                graphics.as_mut(),
+                theme,
+                layout_node,
+                &mut self.info,
+                context,
+            );
+        });
 
         start.elapsed()
     }
@@ -87,13 +92,16 @@ where
         let context = self.context();
         if let Some(mut graphics) = graphics_from_scene(&mut self.scene) {
             if let Some(widget) = &mut self.widget {
-                widget.render_postfix(
-                    &mut *graphics,
-                    &mut self.config.theme,
-                    layout_node,
-                    &mut self.info,
-                    context,
-                );
+                let theme_manager = self.config.theme_manager.clone();
+                theme_manager.read().unwrap().access_theme_mut(|theme| {
+                    widget.render_postfix(
+                        &mut *graphics,
+                        theme,
+                        layout_node,
+                        &mut self.info,
+                        context,
+                    );
+                });
             }
         }
         start.elapsed()
@@ -144,16 +152,19 @@ where
                 .info
                 .cursor_pos
                 .map(|p| vello::kurbo::Point::new(p.x, p.y));
+            let theme_manager = self.config.theme_manager.clone();
             for (menu, position) in context.menu_manager.get_menu_stack() {
-                crate::menu::render_context_menu(
-                    graphics.as_mut(),
-                    &menu,
-                    position,
-                    &mut self.config.theme,
-                    &mut self.text_render,
-                    &mut self.info.font_context,
-                    cursor_pos,
-                );
+                theme_manager.read().unwrap().access_theme_mut(|theme| {
+                    crate::menu::render_context_menu(
+                        graphics.as_mut(),
+                        &menu,
+                        position,
+                        theme,
+                        &mut self.text_render,
+                        &mut self.info.font_context,
+                        cursor_pos,
+                    );
+                });
             }
         }
     }
@@ -291,13 +302,17 @@ where
         }
 
         let gpu_render_start = Instant::now();
+        let base_color = self.config.theme_manager.read().unwrap()
+            .access_theme(|theme| theme.window_background())
+            .unwrap_or_else(|| vello::peniko::Color::WHITE);
+        
         if let Err(e) = renderer.render_to_view(
             &device_handle.device,
             &device_handle.queue,
             &self.scene,
             &render_view,
             &RenderParams {
-                base_color: self.config.theme.window_background(),
+                base_color,
                 width,
                 height,
                 antialiasing_method: self.config.render.antialiasing,

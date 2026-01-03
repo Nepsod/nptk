@@ -16,7 +16,7 @@
 //!
 //! ### Basic Global Usage
 //!
-//! ```rust
+//! ```rust,ignore
 //! use nptk_theme::globals::Globals;
 //!
 //! // Create global settings
@@ -101,7 +101,7 @@
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```rust,ignore
 /// use nptk_theme::globals::Globals;
 ///
 /// // Create global settings

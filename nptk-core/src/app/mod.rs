@@ -3,7 +3,6 @@ use crate::app::runner::MayRunner;
 use crate::config::MayConfig;
 use crate::plugin::PluginManager;
 use crate::widget::Widget;
-use nptk_theme::theme::Theme;
 
 /// Contains diagnostics data for the application.
 pub mod diagnostics;
@@ -40,11 +39,6 @@ pub mod popup;
 ///
 /// Contains basic functions for the [MayRunner] to create and run an application.
 pub trait Application: Sized {
-    /// The theme of the application and its widgets.
-    ///
-    /// See [nptk_theme::theme] for built-in themes.
-    type Theme: Theme + Default + Clone;
-
     /// The global state of the application.
     type State;
 
@@ -54,15 +48,12 @@ pub trait Application: Sized {
     fn build(context: AppContext, state: Self::State) -> impl Widget;
 
     /// Returns the [MayConfig] for the application.
-    fn config(&self) -> MayConfig<Self::Theme> {
-        MayConfig {
-            theme: Self::Theme::default(),
-            ..Default::default()
-        }
+    fn config(&self) -> MayConfig {
+        MayConfig::default()
     }
 
     /// Builds and returns the [PluginManager] for the application.
-    fn plugins(&self) -> PluginManager<Self::Theme> {
+    fn plugins(&self) -> PluginManager {
         PluginManager::new()
     }
 
@@ -70,6 +61,6 @@ pub trait Application: Sized {
     ///
     /// Override this method if you want to use a custom event loop.
     fn run(self, state: Self::State) {
-        MayRunner::<Self::Theme>::new(self.config()).run(state, Self::build, self.plugins());
+        MayRunner::new(self.config()).run(state, Self::build, self.plugins());
     }
 }

@@ -3,7 +3,6 @@ use nptk::prelude::*;
 struct ValueInputApp;
 
 impl Application for ValueInputApp {
-    type Theme = SystemTheme;
     type State = ();
 
     fn build(_context: AppContext, _: Self::State) -> impl Widget {

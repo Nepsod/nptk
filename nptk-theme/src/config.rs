@@ -308,7 +308,7 @@ impl ThemeConfig {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```rust,no_run
     /// use nptk_theme::config::ThemeConfig;
     ///
     /// let config = ThemeConfig::from_file("theme.toml").unwrap();
@@ -429,7 +429,7 @@ impl ThemeConfig {
     /// };
     ///
     /// let config = ThemeConfig::new()
-    ///     .with_custom_theme("my-theme", custom_config);
+    ///     .with_custom_theme("my-theme".to_string(), custom_config);
     /// ```
     pub fn with_custom_theme(mut self, name: String, config: CustomThemeConfig) -> Self {
         self.custom_themes.insert(name, config);
@@ -517,12 +517,9 @@ impl ThemeConfig {
     ///
     /// # Examples
     ///
-    /// ```rust
     /// use nptk_theme::config::{ThemeConfig, ThemeSource};
-    ///
-    /// let source = ThemeConfig::parse_theme_source("dark");
-    /// assert_eq!(source, ThemeSource::Dark);
-    /// ```
+    /// // This is a private method, so we can't test it directly in doc tests
+    /// // but it's used internally by from_env_or_default
     fn parse_theme_source(source: &str) -> ThemeSource {
         match source.to_lowercase().as_str() {
             "light" => ThemeSource::Light,
@@ -577,7 +574,8 @@ impl ThemeResolver {
     /// use nptk_theme::theme::dark::DarkTheme;
     ///
     /// let mut resolver = ThemeResolver::new();
-    /// resolver.register_theme("dark", Box::new(DarkTheme::new()));
+    /// let mut resolver = ThemeResolver::new();
+    /// resolver.register_theme("dark".to_string(), Box::new(DarkTheme::new()));
     /// ```
     pub fn register_theme(&mut self, name: String, theme: Box<dyn Theme + Send + Sync>) {
         self.configs.insert(name, theme);

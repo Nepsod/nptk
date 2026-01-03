@@ -15,7 +15,6 @@ struct PopupExample {
 }
 
 impl Application for PopupExample {
-    type Theme = DarkTheme;
     type State = ();
 
     fn build(context: AppContext, _state: Self::State) -> impl Widget {

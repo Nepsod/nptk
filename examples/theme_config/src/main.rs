@@ -68,9 +68,9 @@ impl Default for ConfigurableTheme {
 
 impl ConfigurableTheme {
     pub fn from_config(config: &ThemeConfig) -> Self {
-        match &config.default_theme {
-            ThemeSource::Light => ConfigurableTheme::Light(CelesteTheme::light()),
-            ThemeSource::Dark => ConfigurableTheme::Dark(DarkTheme::new()),
+        match config.default_theme.as_ref() {
+            Some(ThemeSource::Light) => ConfigurableTheme::Light(CelesteTheme::light()),
+            Some(ThemeSource::Dark) => ConfigurableTheme::Dark(DarkTheme::new()),
             _ => ConfigurableTheme::Dark(DarkTheme::new()), // Default fallback
         }
     }
@@ -79,7 +79,6 @@ impl ConfigurableTheme {
 struct ThemeConfigApp;
 
 impl Application for ThemeConfigApp {
-    type Theme = ConfigurableTheme;
     type State = ();
 
     fn build(_context: AppContext, _config: Self::State) -> impl Widget {
@@ -144,15 +143,22 @@ impl Application for ThemeConfigApp {
         })
     }
 
-    fn config(&self) -> MayConfig<Self::Theme> {
-        // Load theme configuration and create the appropriate theme
+    fn config(&self) -> MayConfig {
+        // Load theme configuration and set it in the theme manager
         let config = ThemeConfig::from_env_or_default();
         let theme = ConfigurableTheme::from_config(&config);
-
-        MayConfig {
-            theme,
-            ..Default::default()
+        
+        let mut may_config = MayConfig::default();
+        
+        // Set the theme in the manager
+        // Set the theme in the manager
+        {
+            let mut manager = may_config.theme_manager.write().unwrap();
+            manager.add_theme("configurable", Box::new(theme));
+            manager.switch_theme("configurable");
         }
+        
+        may_config
     }
 }
 
@@ -190,12 +196,13 @@ fn main() {
 
     // Demonstrate theme resolver
     let resolver = SelfContainedThemeResolver::new();
-    let theme_name = match &config.default_theme {
-        nptk::theme::config::ThemeSource::Light => "light",
-        nptk::theme::config::ThemeSource::Dark => "dark",
-        nptk::theme::config::ThemeSource::Sweet => "sweet",
-        nptk::theme::config::ThemeSource::Custom(name) => name,
-        nptk::theme::config::ThemeSource::File(path) => path,
+    let theme_name = match config.default_theme.as_ref() {
+        Some(nptk::theme::config::ThemeSource::Light) => "light",
+        Some(nptk::theme::config::ThemeSource::Dark) => "dark",
+        Some(nptk::theme::config::ThemeSource::Sweet) => "sweet",
+        Some(nptk::theme::config::ThemeSource::Custom(name)) => name,
+        Some(nptk::theme::config::ThemeSource::File(path)) => path,
+        None => "sweet", // Default
     };
     match resolver.resolve_theme(theme_name) {
         Ok(_) => println!("  Successfully resolved theme: {}", theme_name),

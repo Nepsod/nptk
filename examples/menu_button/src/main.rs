@@ -3,7 +3,6 @@ use nptk::prelude::*;
 struct MenuButtonApp;
 
 impl Application for MenuButtonApp {
-    type Theme = SystemTheme;
     type State = ();
 
     fn build(_context: AppContext, _config: Self::State) -> impl Widget {

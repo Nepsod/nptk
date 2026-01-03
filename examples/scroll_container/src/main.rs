@@ -6,7 +6,6 @@ use nptk::widgets::scroll_container::{
 struct ScrollContainerApp;
 
 impl Application for ScrollContainerApp {
-    type Theme = SystemTheme;
     type State = ();
 
     fn build(context: AppContext, _config: Self::State) -> impl Widget {

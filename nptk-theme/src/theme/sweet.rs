@@ -389,11 +389,7 @@ impl Theme for SweetTheme {
                             .get_color("text-muted")
                             .unwrap_or(Color::from_rgb8(102, 106, 115)),
                     ),
-                    crate::properties::ThemeProperty::ColorToggleDisabled => Some(
-                        self.variables
-                            .get_color("text-muted")
-                            .unwrap_or(Color::from_rgb8(102, 106, 115)),
-                    ),
+
                     _ => None,
                 },
                 "Toolbar" => match property {
@@ -412,11 +408,7 @@ impl Theme for SweetTheme {
                             .get_color("border-primary")
                             .unwrap_or(Color::from_rgb8(102, 106, 115)),
                     ),
-                    crate::properties::ThemeProperty::ColorToolbarSeparator => Some(
-                        self.variables
-                            .get_color("border-primary")
-                            .unwrap_or(Color::from_rgb8(102, 106, 115)),
-                    ),
+
                     _ => None,
                 },
                 "ToolbarButton" => match property {
@@ -438,6 +430,7 @@ impl Theme for SweetTheme {
                     ),
                     _ => None,
                 },
+
                 "TabsContainer" => match property {
                     crate::properties::ThemeProperty::ColorBackground => Some(
                         self.variables
@@ -549,6 +542,19 @@ impl Theme for SweetTheme {
                         self.variables
                             .get_color("bg-secondary")
                             .unwrap_or(Color::from_rgb8(30, 34, 51)),
+                    ),
+                    _ => None,
+                },
+                "FileListProperties" => match property {
+                    crate::properties::ThemeProperty::ColorText => Some(
+                        self.variables
+                            .get_color("text-primary")
+                            .unwrap_or(Color::from_rgb8(211, 218, 227)),
+                    ),
+                    crate::properties::ThemeProperty::ColorTextDisabled => Some(
+                        self.variables
+                            .get_color("text-muted")
+                            .unwrap_or(Color::from_rgb8(102, 106, 115)),
                     ),
                     _ => None,
                 },
@@ -914,8 +920,8 @@ impl Theme for SweetTheme {
 
     fn window_background(&self) -> Color {
         self.variables
-            .get_color("bg-tertiary")
-            .unwrap_or(Color::from_rgb8(24, 27, 40))
+            .get_color("bg-primary")
+            .unwrap_or(Color::from_rgb8(22, 25, 37))
     }
 
     fn globals(&self) -> &Globals {

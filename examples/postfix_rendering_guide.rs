@@ -420,12 +420,7 @@ impl Widget for SimpleDropdown {
 struct PostfixGuideApp;
 
 impl Application for PostfixGuideApp {
-    type Theme = CelesteTheme;
     type State = ();
-
-    fn config(&self) -> MayConfig<Self::Theme> {
-        MayConfig::default()
-    }
 
     fn build(_context: AppContext, _config: Self::State) -> impl Widget {
         Container::new(vec![

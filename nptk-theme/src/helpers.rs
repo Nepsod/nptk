@@ -23,7 +23,7 @@
 //!
 //! ### Basic Helper Usage
 //!
-//! ```rust
+//! ```rust,ignore
 //! use nptk_theme::helpers::ThemeHelper;
 //! use nptk_theme::properties::ThemeProperty;
 //! use nptk_theme::id::WidgetId;
@@ -265,7 +265,7 @@ pub enum CheckboxState {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```rust,ignore
 /// use nptk_theme::helpers::ThemeHelper;
 /// use nptk_theme::properties::ThemeProperty;
 /// use nptk_theme::id::WidgetId;

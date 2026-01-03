@@ -20,9 +20,8 @@ use winit::keyboard::{
     Key, KeyCode, ModifiersState, NamedKey, NativeKey, NativeKeyCode, PhysicalKey,
 };
 
-impl<T, W, S, F> AppHandler<T, W, S, F>
+impl<W, S, F> AppHandler<W, S, F>
 where
-    T: Theme + Clone,
     W: Widget,
     F: Fn(AppContext, S) -> W,
 {
@@ -800,13 +799,16 @@ where
                                 self.settings.clone(),
                             );
 
-                            popup.widget.render(
-                                graphics.as_mut(),
-                                &mut popup.config.theme,
-                                &layout_node,
-                                &mut popup.info,
-                                context,
-                            );
+                            let theme_manager = popup.config.theme_manager.clone();
+                            theme_manager.read().unwrap().access_theme_mut(|theme| {
+                                popup.widget.render(
+                                    graphics.as_mut(),
+                                    theme,
+                                    &layout_node,
+                                    &mut popup.info,
+                                    context,
+                                );
+                            });
                         },
                         Err(e) => eprintln!("Failed to collect popup layout: {}", e),
                     }
@@ -827,13 +829,17 @@ where
                 },
             };
 
+            let base_color = popup.config.theme_manager.read().unwrap()
+                .access_theme(|theme| theme.window_background())
+                .unwrap_or_else(|| vello::peniko::Color::WHITE);
+            
             if let Err(e) = popup.renderer.render_to_view(
                 &device_handle.device,
                 &device_handle.queue,
                 &builder,
                 &render_view,
                 &RenderParams {
-                    base_color: popup.config.theme.window_background(),
+                    base_color,
                     width: physical_width,
                     height: physical_height,
                     antialiasing_method: popup.config.render.antialiasing,

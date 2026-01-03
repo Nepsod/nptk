@@ -45,13 +45,12 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use taffy::style::Display;
 
 /// The core application handler. You should use [MayApp](crate::app::MayApp) instead for running applications.
-pub struct AppHandler<T, W, S, F>
+pub struct AppHandler<W, S, F>
 where
-    T: Theme + Clone,
     W: Widget,
     F: Fn(AppContext, S) -> W,
 {
-    config: MayConfig<T>,
+    config: MayConfig,
     attrs: WindowAttributes,
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
@@ -66,7 +65,7 @@ where
     gpu_context: Option<Arc<GpuContext>>,
     update: UpdateManager,
     last_update: Instant,
-    plugins: PluginManager<T>,
+    plugins: PluginManager,
     selected_device: usize,
     /// Tracks whether async initialization is complete
     async_init_complete: Arc<AtomicBool>,
@@ -77,17 +76,21 @@ where
     text_render: crate::text_render::TextRenderContext,
     menu_manager: crate::menu::ContextMenuManager,
     popup_manager: crate::app::popup::PopupManager,
-    popup_windows: std::collections::HashMap<WindowId, PopupWindow<T>>,
+    popup_windows: std::collections::HashMap<WindowId, PopupWindow>,
     /// Native Wayland popups (indexed by surface key u32)
     #[cfg(all(target_os = "linux", feature = "wayland"))]
-    wayland_popups: std::collections::HashMap<u32, PopupWindow<T>>,
+    wayland_popups: std::collections::HashMap<u32, PopupWindow>,
     /// Counter for generating unique Wayland popup IDs
     #[cfg(all(target_os = "linux", feature = "wayland"))]
     wayland_popup_id_counter: u32,
     settings: Arc<SettingsRegistry>,
+    /// Cached theme reference for rendering (updated when theme changes)
+    theme_cache: Option<Arc<std::sync::RwLock<Box<dyn nptk_theme::theme::Theme + Send + Sync>>>>,
+    /// Receiver for theme change notifications
+    theme_change_rx: Option<std::sync::mpsc::Receiver<String>>,
 }
 
-struct PopupWindow<T: Theme + Clone> {
+struct PopupWindow {
     /// Winit window (only for X11/Winit-based popups, None for native Wayland)
     window: Option<Arc<Window>>,
     renderer: Renderer,
@@ -97,25 +100,24 @@ struct PopupWindow<T: Theme + Clone> {
     root_node: NodeId,
     widget: Box<dyn Widget>,
     info: AppInfo,
-    config: MayConfig<T>, // Each window needs its own config copy/ref for theme access
+    config: MayConfig, // Each window needs its own config copy/ref for theme access
     /// Scale factor for HiDPI (1.0 for X11/Winit, 2.0 or higher for Wayland HiDPI)
     scale_factor: f32,
 }
-impl<T, W, S, F> AppHandler<T, W, S, F>
+impl<W, S, F> AppHandler<W, S, F>
 where
-    T: Theme + Clone,
     W: Widget,
     F: Fn(AppContext, S) -> W,
 {
     /// Create a new handler with given window attributes, config, widget and state.
     pub fn new(
         attrs: WindowAttributes,
-        config: MayConfig<T>,
+        config: MayConfig,
         builder: F,
         state: S,
         font_context: FontContext,
         update: UpdateManager,
-        plugins: PluginManager<T>,
+        plugins: PluginManager,
         settings: Arc<SettingsRegistry>,
     ) -> Self {
         let mut taffy = TaffyTree::with_capacity(16);
@@ -134,6 +136,18 @@ where
             crate::app::keymap::XkbKeymapManager::default()
         });
 
+        // Subscribe to theme changes
+        let theme_change_rx = {
+            let manager_read = config.theme_manager.read().unwrap();
+            Some(manager_read.subscribe_theme_changes())
+        };
+        
+        // Cache the current theme reference
+        let theme_cache = {
+            let manager_read = config.theme_manager.read().unwrap();
+            Some(manager_read.current_theme())
+        };
+
         Self {
             attrs,
             window: None,
@@ -142,6 +156,8 @@ where
             scene: Scene::new(backend, 0, 0), // Will be updated on resize
             surface: None,
             taffy,
+            theme_cache,
+            theme_change_rx,
             widget: None,
             info: AppInfo {
                 font_context,
@@ -425,6 +441,9 @@ where
 
     /// Update the app and process events (internal implementation).
     fn update_internal(&mut self, event_loop: &ActiveEventLoop) {
+        // Check for theme changes and trigger redraw if needed
+        self.check_theme_changes();
+        
         self.update_plugins(event_loop);
 
         let mut layout_node = self.ensure_layout_initialized();
@@ -475,6 +494,23 @@ where
     }
 
     /// Update plugins with current state.
+    /// Check for theme changes and trigger redraw if the theme has changed.
+    fn check_theme_changes(&mut self) {
+        if let Some(ref mut rx) = self.theme_change_rx {
+            // Non-blocking check for theme changes
+            while let Ok(_variant) = rx.try_recv() {
+                log::debug!("Theme changed, triggering redraw");
+                // Update cached theme reference
+                self.theme_cache = {
+                    let manager_read = self.config.theme_manager.read().unwrap();
+                    Some(manager_read.current_theme())
+                };
+                // Request redraw to apply new theme
+                self.update.insert(Update::DRAW);
+            }
+        }
+    }
+
     fn update_plugins(&mut self, event_loop: &ActiveEventLoop) {
         // For Wayland, window is None - skip plugin updates that require window
         let platform = Platform::detect();
@@ -723,7 +759,7 @@ where
     }
 
     /// Build renderer options from configuration.
-    fn build_renderer_options(config: &MayConfig<T>) -> RendererOptions {
+    fn build_renderer_options(config: &MayConfig) -> RendererOptions {
         RendererOptions {
             antialiasing_support: Self::convert_antialiasing_config(&config.render.antialiasing),
             num_init_threads: config.render.init_threads,
@@ -1156,9 +1192,8 @@ where
     }
 }
 
-impl<T, W, S, F> ApplicationHandler for AppHandler<T, W, S, F>
+impl<W, S, F> ApplicationHandler for AppHandler<W, S, F>
 where
-    T: Theme + Clone,
     W: Widget,
     F: Fn(AppContext, S) -> W,
 {
@@ -1284,13 +1319,16 @@ where
                                         self.popup_manager.clone(),
                                         self.settings.clone(),
                                     );
-                                    popup.widget.render(
-                                        graphics.as_mut(),
-                                        &mut popup.config.theme,
-                                        &layout_node,
-                                        &mut popup.info,
-                                        context,
-                                    );
+                                    let theme_manager = popup.config.theme_manager.clone();
+                                    theme_manager.read().unwrap().access_theme_mut(|theme| {
+                                        popup.widget.render(
+                                            graphics.as_mut(),
+                                            theme,
+                                            &layout_node,
+                                            &mut popup.info,
+                                            context,
+                                        );
+                                    });
                                 },
                                 Err(e) => eprintln!("Failed to collect popup layout: {}", e),
                             }
@@ -1323,7 +1361,9 @@ where
                                 &builder,
                                 &render_view,
                                 &RenderParams {
-                                    base_color: popup.config.theme.window_background(),
+                                    base_color: popup.config.theme_manager.read().unwrap()
+                                        .access_theme(|theme| theme.window_background())
+                                        .unwrap_or_else(|| vello::peniko::Color::WHITE),
                                     width,
                                     height,
                                     antialiasing_method: popup.config.render.antialiasing,

@@ -2,7 +2,6 @@ use nptk::prelude::*;
 struct ProgressApp;
 
 impl Application for ProgressApp {
-    type Theme = SystemTheme;
     type State = ();
 
     fn build(context: AppContext, _config: Self::State) -> impl Widget {

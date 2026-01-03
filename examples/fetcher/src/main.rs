@@ -67,9 +67,9 @@ impl Default for ConfigurableTheme {
 
 impl ConfigurableTheme {
     pub fn from_config(config: &ThemeConfig) -> Self {
-        match &config.default_theme {
-            ThemeSource::Light => ConfigurableTheme::Light(CelesteTheme::light()),
-            ThemeSource::Dark => ConfigurableTheme::Dark(DarkTheme::new()),
+        match config.default_theme.as_ref() {
+            Some(ThemeSource::Light) => ConfigurableTheme::Light(CelesteTheme::light()),
+            Some(ThemeSource::Dark) => ConfigurableTheme::Dark(DarkTheme::new()),
             _ => ConfigurableTheme::Dark(DarkTheme::new()), // Default fallback
         }
     }
@@ -77,7 +77,6 @@ impl ConfigurableTheme {
 struct MyApp;
 
 impl Application for MyApp {
-    type Theme = ConfigurableTheme;
     type State = ();
 
     fn build(_: AppContext, _: Self::State) -> impl Widget {
@@ -90,7 +89,7 @@ impl Application for MyApp {
         })
     }
 
-    fn config(&self) -> MayConfig<Self::Theme> {
+    fn config(&self) -> MayConfig {
         MayConfig {
             tasks: Some(TasksConfig::default()),
             ..Default::default()

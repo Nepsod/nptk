@@ -5,7 +5,6 @@ use std::path::PathBuf;
 struct FileListApp;
 
 impl Application for FileListApp {
-    type Theme = SystemTheme;
     type State = ();
 
     fn build(_: AppContext, _: Self::State) -> impl Widget {
@@ -17,7 +16,6 @@ impl Application for FileListApp {
 struct FileListGridIconsApp;
 
 impl Application for FileListGridIconsApp {
-    type Theme = SystemTheme;
     type State = ();
 
     fn build(_: AppContext, _: Self::State) -> impl Widget {
@@ -29,7 +27,6 @@ impl Application for FileListGridIconsApp {
 struct FileListCompactApp;
 
 impl Application for FileListCompactApp {
-    type Theme = SystemTheme;
     type State = ();
 
     fn build(_: AppContext, _: Self::State) -> impl Widget {

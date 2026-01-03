@@ -3,7 +3,6 @@ use nptk::prelude::*;
 struct FocusApp;
 
 impl Application for FocusApp {
-    type Theme = SystemTheme;
     type State = ();
 
     fn build(context: AppContext, _: Self::State) -> impl Widget {

@@ -3,7 +3,6 @@ use nptk::prelude::*;
 struct RadioButtonApp;
 
 impl Application for RadioButtonApp {
-    type Theme = SystemTheme;
     type State = ();
 
     fn build(_context: AppContext, _config: Self::State) -> impl Widget {

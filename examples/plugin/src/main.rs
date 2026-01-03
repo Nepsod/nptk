@@ -68,9 +68,9 @@ impl Default for ConfigurableTheme {
 
 impl ConfigurableTheme {
     pub fn from_config(config: &ThemeConfig) -> Self {
-        match &config.default_theme {
-            ThemeSource::Light => ConfigurableTheme::Light(CelesteTheme::light()),
-            ThemeSource::Dark => ConfigurableTheme::Dark(DarkTheme::new()),
+        match config.default_theme.as_ref() {
+            Some(ThemeSource::Light) => ConfigurableTheme::Light(CelesteTheme::light()),
+            Some(ThemeSource::Dark) => ConfigurableTheme::Dark(DarkTheme::new()),
             _ => ConfigurableTheme::Dark(DarkTheme::new()), // Default fallback
         }
     }
@@ -79,25 +79,31 @@ impl ConfigurableTheme {
 struct MyApp;
 
 impl Application for MyApp {
-    type Theme = ConfigurableTheme;
     type State = ();
 
     fn build(_: AppContext, _: Self::State) -> impl Widget {
         Text::new("Drop a file!".to_string())
     }
 
-    fn config(&self) -> MayConfig<Self::Theme> {
-        // Load theme configuration and create the appropriate theme
+    fn config(&self) -> MayConfig {
+        // Load theme configuration and set it in the theme manager
         let config = ThemeConfig::from_env_or_default();
         let theme = ConfigurableTheme::from_config(&config);
-
-        MayConfig {
-            theme,
-            ..Default::default()
+        
+        let mut may_config = MayConfig::default();
+        
+        // Set the theme in the manager
+        // Set the theme in the manager
+        {
+            let mut manager = may_config.theme_manager.write().unwrap();
+            manager.add_theme("configurable", Box::new(theme));
+            manager.switch_theme("configurable");
         }
+        
+        may_config
     }
 
-    fn plugins(&self) -> PluginManager<Self::Theme> {
+    fn plugins(&self) -> PluginManager {
         let mut plugins = PluginManager::new();
 
         plugins.register(MyPlugin);

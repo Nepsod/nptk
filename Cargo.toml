@@ -12,12 +12,14 @@ categories = ["gui", "graphics", "rendering", "virtualization", "rendering::engi
 keywords = ["ui", "gui", "interface", "graphics", "user-interface"]
 
 [workspace.dependencies]
-bytemuck = "1.23.0"
+async-trait = "0.1"
+bytemuck = "1.24.0"
 vello = "0.6.0"
-nalgebra = { version = "0.33.2", default-features = false, features = ["std"] }
-indexmap = "2.9.0"
-log = "0.4.27"
+nalgebra = { version = "0.34", default-features = false, features = ["std"] }
+indexmap = "2.12.0"
+log = "0.4.29"
 smol = "2.0"
+tokio = { version = "1.48", features = ["parking_lot", "sync", "fs", "rt", "rt-multi-thread"] }
 npio = { version = "0.0", path = "../npio" }
 nptk-core = { version = "0.5.0", path = "nptk-core" }
 nptk-macros = { version = "0.5.0", path = "nptk-macros" }
@@ -43,8 +45,10 @@ nptk-core = { workspace = true }
 nptk-theme = { workspace = true }
 nptk-widgets = { workspace = true }
 nptk-macros = { workspace = true, optional = true }
+async-trait = { workspace = true }
 vello = { workspace = true }
 nalgebra = { workspace = true }
+tokio = { workspace = true }
 
 [features]
 default = ["macros", "global-menu"]
