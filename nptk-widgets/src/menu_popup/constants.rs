@@ -1,69 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
 //! Constants for menu popup widget
+//!
+//! Re-exports constants from nptk-core::menu::constants for convenience.
+//! Widget-specific constants are defined here if needed.
 
-/// Height of each menu item in pixels
-pub const ITEM_HEIGHT: f64 = 24.0;
-
-/// Top and bottom padding for the popup
-pub const POPUP_PADDING: f64 = 8.0;
-
-/// Left and right padding for text in menu items
-pub const TEXT_PADDING: f64 = 16.0;
-
-/// Minimum width of the popup menu
-pub const MIN_WIDTH: f64 = 120.0;
-
-/// Maximum width of the popup menu
-pub const MAX_WIDTH: f64 = 400.0;
-
-/// Label used to identify separator items
-pub const SEPARATOR_LABEL: &str = "---";
-
-/// Border radius for the popup background
-pub const BORDER_RADIUS: f64 = 4.0;
-
-/// Border radius for individual menu item backgrounds
-pub const ITEM_BORDER_RADIUS: f64 = 2.0;
-
-/// Size of the submenu arrow indicator
-pub const ARROW_SIZE: f64 = 3.0;
-
-/// Font size for menu item text
-pub const FONT_SIZE: f64 = 14.0;
-
-/// Estimated pixels per character for regular text (used in width calculation)
-pub const TEXT_CHAR_WIDTH: f64 = 8.0;
-
-/// Estimated pixels per character for shortcut text (slightly smaller)
-pub const SHORTCUT_CHAR_WIDTH: f64 = 7.0;
-
-/// Minimum gap between text and shortcut to avoid overlap
-pub const MIN_TEXT_SHORTCUT_GAP: f64 = 20.0;
-
-/// Right padding for shortcuts
-pub const SHORTCUT_RIGHT_PADDING: f64 = 8.0;
-
-/// Top padding offset for items (from popup top)
-pub const ITEM_TOP_PADDING: f64 = 4.0;
-
-/// Horizontal padding for item text
-pub const ITEM_TEXT_X_OFFSET: f64 = 8.0;
-
-/// Vertical offset for item text
-pub const ITEM_TEXT_Y_OFFSET: f64 = 2.0;
-
-/// Horizontal offset for submenu arrow from right edge
-pub const ARROW_X_OFFSET: f64 = 12.0;
-
-/// Horizontal margin for item background
-pub const ITEM_BG_MARGIN: f64 = 2.0;
-
-/// Horizontal padding for separator lines
-pub const SEPARATOR_PADDING: f64 = 8.0;
-
-/// Small overlap between parent and child popup
-pub const CHILD_POPUP_OVERLAP: f64 = 2.0;
-
-/// Border stroke width
-pub const BORDER_STROKE_WIDTH: f64 = 1.0;
+pub use nptk_core::menu::constants::*;

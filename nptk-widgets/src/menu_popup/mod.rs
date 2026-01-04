@@ -19,7 +19,7 @@ use nptk_core::menu::render::{render_menu, calculate_menu_size, MenuGeometry};
 use nptk_core::menu::manager::MenuManager;
 use nptk_core::signal::MaybeSignal;
 use nptk_core::text_render::TextRenderContext;
-use nptk_core::vg::kurbo::{Point, Rect};
+use nptk_core::vg::kurbo::Point;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
@@ -99,12 +99,22 @@ impl MenuPopup {
     }
 
     /// Calculate the size needed for the popup
+    /// 
+    /// Note: For accurate sizing with actual font context, use the version that takes font contexts.
+    /// This method uses temporary contexts and may not match rendered size exactly.
     pub fn calculate_size(&self) -> (f64, f64) {
         // Create temporary contexts for measurement
         // In a real scenario, we'd pass this from the widget tree
         let mut temp_text_render = TextRenderContext::new();
         let mut font_ctx = nptk_core::app::font_ctx::FontContext::new();
         calculate_menu_size(&self.template.items, &mut temp_text_render, &mut font_ctx)
+    }
+
+    /// Calculate the size needed for the popup using provided font contexts
+    /// 
+    /// This is the preferred method as it uses actual font context from the widget tree.
+    pub fn calculate_size_with_contexts(&self, text_render: &mut TextRenderContext, font_cx: &mut nptk_core::app::font_ctx::FontContext) -> (f64, f64) {
+        calculate_menu_size(&self.template.items, text_render, font_cx)
     }
 
     /// Get the menu template
@@ -125,10 +135,9 @@ impl Widget for MenuPopup {
     }
 
     fn layout_style(&self) -> StyleNode {
-        // Create temporary contexts for size calculation
-        let mut temp_text_render = TextRenderContext::new();
-        let mut temp_font_ctx = nptk_core::app::font_ctx::FontContext::new();
-        let (width, height) = calculate_menu_size(&self.template.items, &mut temp_text_render, &mut temp_font_ctx);
+        // Calculate size using temporary contexts (layout_style is called before we have font context)
+        // Actual rendering will use the app's font context for more accurate sizing
+        let (width, height) = self.calculate_size();
         let mut style = self.layout_style.get().clone();
 
         style.size = nalgebra::Vector2::new(
@@ -171,20 +180,28 @@ impl Widget for MenuPopup {
         // Render child popup if open
         if let Some(ref mut child) = self.child_popup {
             if let Some(open_index) = self.open_item_index {
-                if let Some(submenu_template) = self.template.items.get(open_index)
+                if let Some(_submenu_template) = self.template.items.get(open_index)
                     .and_then(|item| item.submenu.as_ref())
                 {
-                    let mut temp_text_render = TextRenderContext::new();
-                    let mut temp_font_ctx = nptk_core::app::font_ctx::FontContext::new();
-                    let (_, popup_height) = calculate_menu_size(&self.template.items, &mut temp_text_render, &mut temp_font_ctx);
-                    let item_y = popup_position.y + (open_index as f64 * 24.0) + 4.0;
-                    let child_position = Point::new(popup_position.x + layout.layout.size.width as f64 + 8.0, item_y);
+                    // Calculate submenu position using geometry helper
+                    let geometry = MenuGeometry::new(
+                        &self.template,
+                        popup_position,
+                        &mut self.text_render_context,
+                        &mut info.font_context,
+                    );
+                    let child_position = geometry.submenu_origin(open_index);
+                    
+                    let (child_width, child_height) = child.calculate_size_with_contexts(
+                        &mut self.text_render_context,
+                        &mut info.font_context,
+                    );
                     
                     let mut child_layout_struct = nptk_core::layout::Layout::default();
                     child_layout_struct.location.x = child_position.x as f32;
                     child_layout_struct.location.y = child_position.y as f32;
-                    child_layout_struct.size.width = 200.0;
-                    child_layout_struct.size.height = 100.0;
+                    child_layout_struct.size.width = child_width as f32;
+                    child_layout_struct.size.height = child_height as f32;
                     let child_layout = LayoutNode {
                         layout: child_layout_struct,
                         children: Vec::new(),
@@ -225,12 +242,10 @@ impl Widget for MenuPopup {
                         if item.has_submenu() {
                             // Open new submenu
                             if let Some(submenu_template) = item.submenu.clone() {
-                                let mut child = MenuPopup::new(submenu_template);
-                                if let Some(ref manager) = self.menu_manager {
-                                    // MenuManager doesn't implement Clone, so we need to create a new one
-                                    // In practice, MenuManager should be shared via Arc or similar
-                                    // For now, we'll just create a new empty one - actions are stored in MenuItem.action
-                                }
+                                let child = MenuPopup::new(submenu_template);
+                                // Note: MenuManager doesn't implement Clone, so we can't share it
+                                // In practice, MenuManager should be shared via Arc or similar
+                                // Actions are stored in MenuItem.action, so child popup doesn't need manager
                                 self.child_popup = Some(Box::new(child));
                                 self.open_item_index = Some(hovered);
                                 update |= Update::DRAW;
@@ -251,27 +266,30 @@ impl Widget for MenuPopup {
         // Update child popup
         if let Some(ref mut child) = self.child_popup {
             if let Some(open_index) = self.open_item_index {
-                if let Some(item) = self.template.items.get(open_index) {
-                    if let Some(ref submenu_template) = item.submenu {
-                        // Align submenu with the item (ITEM_HEIGHT = 24.0, PADDING = 4.0)
-                        // Use same calculation as submenu_origin for consistency
-                        let item_y = popup_position.y + (open_index as f64 * 24.0);
-                        // Position submenu directly adjacent to parent menu (no gap)
-                        let child_position = Point::new(popup_position.x + layout.layout.size.width as f64, item_y);
-                        
-                        let (child_width, child_height) = child.calculate_size();
-                        let mut child_layout_struct = nptk_core::layout::Layout::default();
-                        child_layout_struct.location.x = child_position.x as f32;
-                        child_layout_struct.location.y = child_position.y as f32;
-                        child_layout_struct.size.width = child_width as f32;
-                        child_layout_struct.size.height = child_height as f32;
-                        let child_layout = LayoutNode {
-                            layout: child_layout_struct,
-                            children: Vec::new(),
-                        };
-                        update |= child.update(&child_layout, context.clone(), info);
-                    }
-                }
+                // Calculate submenu position using geometry helper for consistency
+                let geometry = MenuGeometry::new(
+                    &self.template,
+                    popup_position,
+                    &mut self.text_render_context,
+                    &mut info.font_context,
+                );
+                let child_position = geometry.submenu_origin(open_index);
+                
+                let (child_width, child_height) = child.calculate_size_with_contexts(
+                    &mut self.text_render_context,
+                    &mut info.font_context,
+                );
+                
+                let mut child_layout_struct = nptk_core::layout::Layout::default();
+                child_layout_struct.location.x = child_position.x as f32;
+                child_layout_struct.location.y = child_position.y as f32;
+                child_layout_struct.size.width = child_width as f32;
+                child_layout_struct.size.height = child_height as f32;
+                let child_layout = LayoutNode {
+                    layout: child_layout_struct,
+                    children: Vec::new(),
+                };
+                update |= child.update(&child_layout, context.clone(), info);
             }
         }
 

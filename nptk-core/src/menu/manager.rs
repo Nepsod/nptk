@@ -81,6 +81,11 @@ impl Default for MenuManager {
 }
 
 /// Builder for creating menu templates with registered actions
+///
+/// This builder helps create menu templates while simultaneously
+/// registering actions in a MenuManager. Useful for building menus
+/// with many items that need action registration.
+#[allow(dead_code)] // May be used in future or by applications
 pub struct MenuTemplateBuilder {
     template: MenuTemplate,
     actions: Vec<(MenuCommand, Arc<dyn Fn() -> Update + Send + Sync>)>,

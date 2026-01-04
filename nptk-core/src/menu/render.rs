@@ -4,30 +4,16 @@
 //! and context menus.
 
 use crate::app::font_ctx::FontContext;
+use crate::menu::constants::*;
+use crate::menu::theme::MenuThemeColors;
 use crate::menu::unified::{MenuTemplate, MenuItem};
 use crate::text_render::TextRenderContext;
 use crate::vgi::Graphics;
 use crate::vgi::shape_to_path;
 use nptk_theme::id::WidgetId;
-use nptk_theme::properties::ThemeProperty;
 use nptk_theme::theme::Theme;
 use vello::kurbo::{Affine, Line, Point, Rect, RoundedRect, RoundedRectRadii};
 use vello::peniko::{Brush, Color, Fill};
-
-// Rendering constants
-const ITEM_HEIGHT: f64 = 24.0;
-const PADDING: f64 = 4.0;
-const TEXT_PADDING: f64 = 10.0;
-const SHORTCUT_RIGHT_PADDING: f64 = 12.0;
-const MIN_TEXT_SHORTCUT_GAP: f64 = 40.0;
-const MIN_WIDTH: f64 = 120.0;
-const MAX_WIDTH: f64 = 400.0;
-const BORDER_RADIUS: f64 = 4.0;
-const FONT_SIZE: f64 = 14.0;
-const SEPARATOR_LABEL: &str = "---";
-const TEXT_CHAR_WIDTH: f64 = 7.0; // Approximate character width
-const SHORTCUT_CHAR_WIDTH: f64 = 8.0; // Slightly wider for monospace shortcuts
-const ARROW_SIZE: f64 = 3.0;
 
 /// Menu geometry information for hit testing and layout
 pub struct MenuGeometry {
@@ -131,7 +117,7 @@ pub fn calculate_menu_size(
 
             // Add space for submenu arrow or checkmark
             if item.has_submenu() || item.checked {
-                total_width += 20.0;
+                total_width += crate::menu::constants::CHECKMARK_ARROW_WIDTH;
             }
 
             max_total_width = max_total_width.max(total_width);
@@ -142,48 +128,16 @@ pub fn calculate_menu_size(
     (width, height)
 }
 
-/// Render a menu template to graphics
-pub fn render_menu(
+/// Render the menu background (shadow, background, border)
+///
+/// Draws the drop shadow, rounded background, and border for the menu.
+/// This is called once per menu before rendering items.
+fn render_menu_background(
     graphics: &mut dyn Graphics,
-    template: &MenuTemplate,
-    position: Point,
-    theme: &mut dyn Theme,
-    text_render: &mut TextRenderContext,
-    font_cx: &mut FontContext,
-    cursor_pos: Option<Point>,
-    hovered_index: Option<usize>,
-) -> Rect {
-    let geometry = MenuGeometry::new(template, position, text_render, font_cx);
-    let rect = geometry.rect;
-
-    let menu_id = WidgetId::new("nptk-widgets", "MenuPopup");
-
-    // Extract theme colors
-    let bg_color = theme
-        .get_property(menu_id.clone(), &ThemeProperty::ColorBackground)
-        .unwrap_or(Color::from_rgb8(255, 255, 255));
-    let border_color = theme
-        .get_property(menu_id.clone(), &ThemeProperty::ColorBorder)
-        .unwrap_or(Color::from_rgb8(200, 200, 200));
-    let text_color = theme
-        .get_property(menu_id.clone(), &ThemeProperty::ColorText)
-        .unwrap_or(Color::from_rgb8(0, 0, 0));
-    let hovered_color = theme
-        .get_property(menu_id.clone(), &ThemeProperty::ColorMenuHovered)
-        .unwrap_or(Color::from_rgb8(230, 230, 230));
-    let disabled_color = theme
-        .get_property(menu_id.clone(), &ThemeProperty::ColorText)
-        .map(|c| {
-            // Make disabled color more transparent
-            let components = c.components;
-            let r = (components[0] * 255.0).clamp(0.0, 255.0) as u8;
-            let g = (components[1] * 255.0).clamp(0.0, 255.0) as u8;
-            let b = (components[2] * 255.0).clamp(0.0, 255.0) as u8;
-            let alpha = (components[3] * 0.5 * 255.0).clamp(0.0, 255.0) as u8;
-            Color::from_rgba8(r, g, b, alpha)
-        })
-        .unwrap_or(Color::from_rgb8(128, 128, 128));
-
+    rect: Rect,
+    bg_color: Color,
+    border_color: Color,
+) {
     // Shadow
     let shadow_rect = RoundedRect::new(
         rect.x0 + 2.0,
@@ -222,6 +176,211 @@ pub fn render_menu(
         None,
         &shape_to_path(&rounded_rect),
     );
+}
+
+/// Render a separator line
+fn render_separator(
+    graphics: &mut dyn Graphics,
+    rect: Rect,
+    y: f64,
+    border_color: Color,
+) {
+    let sep_y = y + ITEM_HEIGHT / 2.0;
+    let line = Line::new(
+        Point::new(rect.x0 + SEPARATOR_PADDING, sep_y),
+        Point::new(rect.x1 - SEPARATOR_PADDING, sep_y),
+    );
+    graphics.stroke(
+        &vello::kurbo::Stroke::new(1.0),
+        Affine::IDENTITY,
+        &Brush::Solid(border_color),
+        None,
+        &shape_to_path(&line),
+    );
+}
+
+/// Render menu item content (checkmark, text, shortcut, submenu arrow)
+///
+/// This function handles all the visual elements of a menu item except for
+/// the hover background, which is rendered separately in `render_menu_item`.
+fn render_menu_item_content(
+    graphics: &mut dyn Graphics,
+    text_render: &mut TextRenderContext,
+    font_cx: &mut FontContext,
+    item: &MenuItem,
+    rect: Rect,
+    current_y: f64,
+    text_color: Color,
+    disabled_color: Color,
+) {
+    // Draw checkmark if checked
+    if item.checked {
+        let check_x = rect.x0 + ITEM_TEXT_X_OFFSET;
+        let check_y = current_y + ITEM_HEIGHT / 2.0;
+        let check_color = if item.enabled { text_color } else { disabled_color };
+        graphics.stroke(
+            &vello::kurbo::Stroke::new(1.5),
+            Affine::IDENTITY,
+            &Brush::Solid(check_color),
+            None,
+            &shape_to_path(&Line::new(
+                Point::new(check_x, check_y),
+                Point::new(check_x + 4.0, check_y + 4.0),
+            )),
+        );
+        graphics.stroke(
+            &vello::kurbo::Stroke::new(1.5),
+            Affine::IDENTITY,
+            &Brush::Solid(check_color),
+            None,
+            &shape_to_path(&Line::new(
+                Point::new(check_x + 4.0, check_y + 4.0),
+                Point::new(check_x + 10.0, check_y - 4.0),
+            )),
+        );
+    }
+
+    // Draw text
+    let item_text_color = if item.enabled { text_color } else { disabled_color };
+    let checkmark_offset = if item.checked { crate::menu::constants::CHECKMARK_ARROW_WIDTH } else { 0.0 };
+    let text_x = rect.x0 + TEXT_PADDING + checkmark_offset;
+    let text_y = current_y + crate::menu::constants::TEXT_Y_OFFSET;
+
+    text_render.render_text(
+        font_cx,
+        graphics,
+        &item.label,
+        None,
+        FONT_SIZE as f32,
+        Brush::Solid(item_text_color),
+        Affine::translate((text_x, text_y)),
+        true,
+        Some((rect.width() - TEXT_PADDING * 2.0 - crate::menu::constants::TEXT_RENDERING_RESERVE) as f32),
+    );
+
+    // Draw shortcut if present
+    if let Some(ref shortcut) = item.shortcut {
+        let shortcut_x = rect.x1 - SHORTCUT_RIGHT_PADDING - (shortcut.len() as f64 * SHORTCUT_CHAR_WIDTH);
+        text_render.render_text(
+            font_cx,
+            graphics,
+            shortcut,
+            None,
+            FONT_SIZE as f32,
+            Brush::Solid(item_text_color),
+            Affine::translate((shortcut_x, text_y)),
+            true,
+            None,
+        );
+    }
+
+    // Draw submenu arrow if present
+    if item.has_submenu() {
+        let arrow_x = rect.x1 - ARROW_X_OFFSET;
+        let arrow_y = current_y + ITEM_HEIGHT / 2.0;
+        let arrow_color = if item.enabled { text_color } else { disabled_color };
+
+        graphics.stroke(
+            &vello::kurbo::Stroke::new(1.0),
+            Affine::IDENTITY,
+            &Brush::Solid(arrow_color),
+            None,
+            &shape_to_path(&Line::new(
+                Point::new(arrow_x - ARROW_SIZE, arrow_y - ARROW_SIZE),
+                Point::new(arrow_x, arrow_y),
+            )),
+        );
+        graphics.stroke(
+            &vello::kurbo::Stroke::new(1.0),
+            Affine::IDENTITY,
+            &Brush::Solid(arrow_color),
+            None,
+            &shape_to_path(&Line::new(
+                Point::new(arrow_x, arrow_y),
+                Point::new(arrow_x - ARROW_SIZE, arrow_y + ARROW_SIZE),
+            )),
+        );
+    }
+}
+
+/// Render a single menu item (hover background and content)
+///
+/// Handles both the hover background and delegating to `render_menu_item_content`
+/// for the actual item visual elements. Separators are handled via `render_separator`.
+fn render_menu_item(
+    graphics: &mut dyn Graphics,
+    text_render: &mut TextRenderContext,
+    font_cx: &mut FontContext,
+    item: &MenuItem,
+    item_rect: Rect,
+    menu_rect: Rect,
+    current_y: f64,
+    is_hovered: bool,
+    hovered_color: Color,
+    text_color: Color,
+    disabled_color: Color,
+    border_color: Color,
+) {
+    // Draw hover background
+    if is_hovered && item.enabled && !item.is_separator() {
+        let item_rounded = RoundedRect::new(
+            item_rect.x0 + ITEM_BG_MARGIN,
+            item_rect.y0,
+            item_rect.x1 - ITEM_BG_MARGIN,
+            item_rect.y1,
+            RoundedRectRadii::new(ITEM_BORDER_RADIUS, ITEM_BORDER_RADIUS, ITEM_BORDER_RADIUS, ITEM_BORDER_RADIUS),
+        );
+        graphics.fill(
+            Fill::NonZero,
+            Affine::IDENTITY,
+            &Brush::Solid(hovered_color),
+            None,
+            &shape_to_path(&item_rounded),
+        );
+    }
+
+    if item.is_separator() {
+        render_separator(graphics, menu_rect, current_y, border_color);
+    } else {
+        render_menu_item_content(
+            graphics,
+            text_render,
+            font_cx,
+            item,
+            menu_rect,
+            current_y,
+            text_color,
+            disabled_color,
+        );
+    }
+}
+
+/// Render a menu template to graphics
+pub fn render_menu(
+    graphics: &mut dyn Graphics,
+    template: &MenuTemplate,
+    position: Point,
+    theme: &mut dyn Theme,
+    text_render: &mut TextRenderContext,
+    font_cx: &mut FontContext,
+    cursor_pos: Option<Point>,
+    hovered_index: Option<usize>,
+) -> Rect {
+    let geometry = MenuGeometry::new(template, position, text_render, font_cx);
+    let rect = geometry.rect;
+
+    let menu_id = WidgetId::new("nptk-widgets", "MenuPopup");
+
+    // Extract theme colors using centralized theme extractor
+    let theme_colors = MenuThemeColors::extract(theme, menu_id);
+
+    // Render background
+    render_menu_background(
+        graphics,
+        rect,
+        theme_colors.bg_color,
+        theme_colors.border_color,
+    );
 
     // Determine hovered item from cursor or parameter
     let hovered = hovered_index.or_else(|| cursor_pos.and_then(|cursor| geometry.hit_test_index(cursor)));
@@ -233,128 +392,20 @@ pub fn render_menu(
         let item_rect = geometry.item_rect(i);
         let is_hovered = Some(i) == hovered;
 
-        // Draw hover background
-        if is_hovered && item.enabled && !item.is_separator() {
-            let item_rounded = RoundedRect::new(
-                item_rect.x0 + 2.0,
-                item_rect.y0,
-                item_rect.x1 - 2.0,
-                item_rect.y1,
-                RoundedRectRadii::new(2.0, 2.0, 2.0, 2.0),
-            );
-            graphics.fill(
-                Fill::NonZero,
-                Affine::IDENTITY,
-                &Brush::Solid(hovered_color),
-                None,
-                &shape_to_path(&item_rounded),
-            );
-        }
-
-        if item.is_separator() {
-            // Draw separator
-            let sep_y = current_y + ITEM_HEIGHT / 2.0;
-            let line = Line::new(
-                Point::new(rect.x0 + 8.0, sep_y),
-                Point::new(rect.x1 - 8.0, sep_y),
-            );
-            graphics.stroke(
-                &vello::kurbo::Stroke::new(1.0),
-                Affine::IDENTITY,
-                &Brush::Solid(border_color),
-                None,
-                &shape_to_path(&line),
-            );
-        } else {
-            // Draw checkmark if checked
-            if item.checked {
-                let check_x = rect.x0 + 8.0;
-                let check_y = current_y + ITEM_HEIGHT / 2.0;
-                // Simple checkmark (can be improved)
-                let check_color = if item.enabled { text_color } else { disabled_color };
-                graphics.stroke(
-                    &vello::kurbo::Stroke::new(1.5),
-                    Affine::IDENTITY,
-                    &Brush::Solid(check_color),
-                    None,
-                    &shape_to_path(&Line::new(
-                        Point::new(check_x, check_y),
-                        Point::new(check_x + 4.0, check_y + 4.0),
-                    )),
-                );
-                graphics.stroke(
-                    &vello::kurbo::Stroke::new(1.5),
-                    Affine::IDENTITY,
-                    &Brush::Solid(check_color),
-                    None,
-                    &shape_to_path(&Line::new(
-                        Point::new(check_x + 4.0, check_y + 4.0),
-                        Point::new(check_x + 10.0, check_y - 4.0),
-                    )),
-                );
-            }
-
-            // Draw text
-            let item_text_color = if item.enabled { text_color } else { disabled_color };
-            let text_x = rect.x0 + TEXT_PADDING + if item.checked { 20.0 } else { 0.0 };
-            let text_y = current_y + 4.0;
-
-            text_render.render_text(
-                font_cx,
-                graphics,
-                &item.label,
-                None,
-                FONT_SIZE as f32,
-                Brush::Solid(item_text_color),
-                Affine::translate((text_x, text_y)),
-                true,
-                Some((rect.width() - TEXT_PADDING * 2.0 - 30.0) as f32),
-            );
-
-            // Draw shortcut if present
-            if let Some(ref shortcut) = item.shortcut {
-                let shortcut_x = rect.x1 - SHORTCUT_RIGHT_PADDING - (shortcut.len() as f64 * SHORTCUT_CHAR_WIDTH);
-                text_render.render_text(
-                    font_cx,
-                    graphics,
-                    shortcut,
-                    None,
-                    FONT_SIZE as f32,
-                    Brush::Solid(item_text_color),
-                    Affine::translate((shortcut_x, text_y)),
-                    true,
-                    None,
-                );
-            }
-
-            // Draw submenu arrow if present
-            if item.has_submenu() {
-                let arrow_x = rect.x1 - 12.0;
-                let arrow_y = current_y + ITEM_HEIGHT / 2.0;
-                let arrow_color = if item.enabled { text_color } else { disabled_color };
-
-                graphics.stroke(
-                    &vello::kurbo::Stroke::new(1.0),
-                    Affine::IDENTITY,
-                    &Brush::Solid(arrow_color),
-                    None,
-                    &shape_to_path(&Line::new(
-                        Point::new(arrow_x - ARROW_SIZE, arrow_y - ARROW_SIZE),
-                        Point::new(arrow_x, arrow_y),
-                    )),
-                );
-                graphics.stroke(
-                    &vello::kurbo::Stroke::new(1.0),
-                    Affine::IDENTITY,
-                    &Brush::Solid(arrow_color),
-                    None,
-                    &shape_to_path(&Line::new(
-                        Point::new(arrow_x, arrow_y),
-                        Point::new(arrow_x - ARROW_SIZE, arrow_y + ARROW_SIZE),
-                    )),
-                );
-            }
-        }
+        render_menu_item(
+            graphics,
+            text_render,
+            font_cx,
+            item,
+            item_rect,
+            rect,
+            current_y,
+            is_hovered,
+            theme_colors.hovered_color,
+            theme_colors.text_color,
+            theme_colors.disabled_color,
+            theme_colors.border_color,
+        );
 
         current_y += ITEM_HEIGHT;
     }
