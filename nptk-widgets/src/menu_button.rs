@@ -17,10 +17,10 @@ pub use crate::menu_popup::MenuPopup;
 use crate::text::Text;
 
 /// Represents a menu item in a popup menu
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone)]
 pub enum MenuItem {
-    /// A menu item with a label and optional keyboard shortcut
-    Item(String, Option<String>),
+    /// A menu item with a label, optional keyboard shortcut, and optional action callback
+    Item(String, Option<String>, Option<Arc<dyn Fn() -> Update + Send + Sync>>),
     /// A separator line between menu items
     Separator,
 }
@@ -28,12 +28,17 @@ pub enum MenuItem {
 impl MenuItem {
     /// Create a new menu item
     pub fn new(_id: impl ToString, label: impl ToString) -> Self {
-        Self::Item(label.to_string(), None)
+        Self::Item(label.to_string(), None, None)
+    }
+
+    /// Create a separator menu item
+    pub fn separator() -> Self {
+        Self::Separator
     }
 
     /// Set the keyboard shortcut for this item
     pub fn with_shortcut(mut self, shortcut: impl ToString) -> Self {
-        if let Self::Item(_, ref mut s) = self {
+        if let Self::Item(_, ref mut s, _) = self {
             *s = Some(shortcut.to_string());
         }
         self
@@ -41,19 +46,19 @@ impl MenuItem {
 
     /// Set whether this item is enabled
     pub fn with_enabled(self, _enabled: bool) -> Self {
-        if let Self::Item(_, _) = self {
+        if let Self::Item(_, _, _) = self {
             // No-op for now, as enabled state is not directly reflected in MenuItem
         }
         self
     }
 
     /// Set the callback for when this item is activated
-    pub fn with_on_activate<F>(self, _callback: F) -> Self
+    pub fn with_on_activate<F>(mut self, callback: F) -> Self
     where
         F: Fn() -> Update + Send + Sync + 'static,
     {
-        if let Self::Item(_, _) = self {
-            // No-op for now, as on_activate is not directly reflected in MenuItem
+        if let Self::Item(_, _, ref mut action) = self {
+            *action = Some(Arc::new(callback));
         }
         self
     }
@@ -217,8 +222,9 @@ impl MenuButton {
                 .iter()
                 .enumerate()
                 .filter_map(|(idx, item)| match item {
-                    MenuItem::Item(label, shortcut) => {
-                        let menu_items_clone = self.menu_items.clone();
+                    MenuItem::Item(label, shortcut, action) => {
+                        let item_action = action.clone();
+                        let item_label = label.clone();
                         let on_item_selected_clone = self.on_item_selected.clone();
                         
                         Some(UnifiedMenuItem::new(
@@ -228,12 +234,16 @@ impl MenuButton {
                         .with_shortcut(shortcut.clone().unwrap_or_default())
                         .with_enabled(true)
                         .with_action(move || {
-                            // Call user callback if provided
-                            if let Some(ref on_item_selected) = on_item_selected_clone {
-                                if let Some(MenuItem::Item(label, _)) = menu_items_clone.get(idx) {
-                                    on_item_selected(label.clone());
-                                }
+                            // Execute the item's own callback if provided
+                            if let Some(ref action_callback) = item_action {
+                                action_callback();
                             }
+                            
+                            // Also call the MenuButton's on_item_selected callback if provided
+                            if let Some(ref on_item_selected) = on_item_selected_clone {
+                                on_item_selected(item_label.clone());
+                            }
+                            
                             // Return FORCE to signal that an item was selected and menu should close
                             Update::FORCE
                         }))
@@ -243,18 +253,9 @@ impl MenuButton {
                 .collect();
 
             let template = MenuTemplate::from_items("menu_button", unified_items);
-            let mut menu_popup = MenuPopup::new(template);
+            let menu_popup = MenuPopup::new(template);
             
-            let menu_items_clone = self.menu_items.clone();
-            let on_item_selected_clone = self.on_item_selected.clone();
-            
-            // Set callback to close the menu when an item is selected
-            menu_popup = menu_popup.with_on_close(move || {
-                // Call user callback if provided
-                // Note: We can't easily track which item was clicked here,
-                // so the action callback in MenuItem handles that
-                Update::FORCE
-            });
+            // Note: Menu closing is handled by the action callbacks returning Update::FORCE
 
             self.popup_data = Some(menu_popup);
         }
@@ -282,7 +283,7 @@ impl Widget for MenuButton {
         info: &mut AppInfo,
         context: AppContext,
     ) {
-        // Render the child button with proper transform
+        // Render the child button - child layout coordinates are already in screen space
         if !layout.children.is_empty() {
             let mut child_scene = nptk_core::vg::Scene::new();
             let mut child_graphics = VelloGraphics::new(&mut child_scene);
@@ -293,13 +294,8 @@ impl Widget for MenuButton {
                 info,
                 context.clone(),
             );
-            graphics.append(
-                &child_scene,
-                Some(Affine::translate(Vec2::new(
-                    layout.layout.location.x as f64,
-                    layout.layout.location.y as f64,
-                ))),
-            );
+            // Append without translation - child layout coordinates are already in screen space
+            graphics.append(&child_scene, None);
         }
         // Popup rendering moved to render_postfix for proper z-ordering
     }

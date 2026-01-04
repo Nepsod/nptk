@@ -25,7 +25,7 @@ impl Application for MenuButtonApp {
                     println!("Save clicked!");
                     Update::empty()
                 }),
-            MenuItem::new("separator", "---"),
+            MenuItem::separator(),
             MenuItem::new("exit", "Exit").with_on_activate(|| {
                 println!("Exit clicked!");
                 Update::empty()
