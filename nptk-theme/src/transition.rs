@@ -169,14 +169,14 @@ mod tests {
 
     #[test]
     fn test_lerp_color() {
-        let start = Color::rgb8(0, 0, 0);
-        let end = Color::rgb8(255, 255, 255);
+        let start = Color::from_rgb8(0, 0, 0);
+        let end = Color::from_rgb8(255, 255, 255);
 
         let mid = lerp_color(start, end, 0.5);
         // Midpoint should be approximately gray
-        assert!(mid.r() > 120 && mid.r() < 140);
-        assert!(mid.g() > 120 && mid.g() < 140);
-        assert!(mid.b() > 120 && mid.b() < 140);
+        assert!((mid.components[0] as f32) > 120.0 && (mid.components[0] as f32) < 140.0);
+        assert!((mid.components[1] as f32) > 120.0 && (mid.components[1] as f32) < 140.0);
+        assert!((mid.components[2] as f32) > 120.0 && (mid.components[2] as f32) < 140.0);
     }
 
     #[test]

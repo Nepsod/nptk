@@ -16,19 +16,14 @@ nptk-theme = { workspace = true }
 nptk-services = { workspace = true }
 nptk-core = { workspace = true, features = ["vg"] }
 nptk-macros = { workspace = true }
-bytemuck = { workspace = true }
 nalgebra = { workspace = true }
 log = { workspace = true }
 zbus = { version = "5.12.0", default-features = false, features = ["async-io", "blocking-api"], optional = true }
-zvariant = { version = "5.1.0", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
 tokio = { version = "1.35", features = ["sync", "rt"] }
 x11-dl = { version = "2.21", optional = true }
-chrono = { version = "0.4", default-features = true }
-humansize = "2.1"
 smol = { workspace = true }
 npio = { workspace = true }
-urlencoding = "2.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 wayland-client = { version = "0.31", optional = true }
@@ -37,4 +32,4 @@ wayland-protocols-plasma = { version = "0.3", features = ["client"], optional = 
 [features]
 default = []
 canvas = []
-global-menu = ["zbus", "zvariant", "serde", "x11-dl", "wayland-client", "wayland-protocols-plasma", "nptk-core/global-menu"]
+global-menu = ["zbus", "serde", "x11-dl", "wayland-client", "wayland-protocols-plasma", "nptk-core/global-menu"]

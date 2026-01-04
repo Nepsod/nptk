@@ -26,7 +26,6 @@ md5 = "0.7"
 urlencoding = "2.1"
 dirs = "5.0"
 lru = "0.12"
-futures = "0.3"
 smol = { workspace = true }
 npio = { workspace = true }
 once_cell = "1.18"
