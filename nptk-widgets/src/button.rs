@@ -40,6 +40,8 @@ pub struct Button {
     press_start_time: Option<Instant>,
     last_repeat_time: Option<Instant>,
     style_id: &'static str,
+    // Text color inversion control
+    invert_text: bool,
 }
 
 impl Button {
@@ -70,6 +72,7 @@ impl Button {
             press_start_time: None,
             last_repeat_time: None,
             style_id: "Button",
+            invert_text: true, // Default: invert text for colored buttons
         }
     }
 
@@ -109,6 +112,11 @@ impl Button {
     /// For example, a toolbar button might use "ToolbarButton".
     pub fn with_style_id(self, id: &'static str) -> Self {
         self.apply_with(|s| s.style_id = id)
+    }
+
+    /// Set whether to invert text color (for transparent backgrounds, set to false)
+    pub fn with_invert_text(self, invert: bool) -> Self {
+        self.apply_with(|s| s.invert_text = invert)
     }
 
     /// Set the layout style for this button.
@@ -314,7 +322,7 @@ impl Widget for Button {
 
         // Render child widget
         {
-            theme.globals_mut().invert_text_color = true;
+            theme.globals_mut().invert_text_color = self.invert_text;
 
             let mut child_scene = nptk_core::vg::Scene::new();
             let mut child_graphics = VelloGraphics::new(&mut child_scene);

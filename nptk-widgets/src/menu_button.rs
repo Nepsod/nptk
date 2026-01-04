@@ -132,19 +132,22 @@ impl MenuButton {
                 ..Default::default()
             });
 
-        let button = Button::new(text).with_layout_style(LayoutStyle {
-            size: nalgebra::Vector2::new(
-                Dimension::length(button_width),
-                Dimension::length(bottom_padding + 4.0),
-            ),
-            padding: nptk_core::layout::Rect::<LengthPercentage> {
-                left: LengthPercentage::length(font_size / 2.0),
-                right: LengthPercentage::length(font_size / 2.0),
-                top: LengthPercentage::length(0.0),
-                bottom: LengthPercentage::length(bottom_padding),
-            },
-            ..Default::default()
-        });
+        let button = Button::new(text)
+            .with_style_id("MenuButton")
+            .with_invert_text(false) // Don't invert text - transparent background shows dark background
+            .with_layout_style(LayoutStyle {
+                size: nalgebra::Vector2::new(
+                    Dimension::length(button_width),
+                    Dimension::length(bottom_padding + 4.0),
+                ),
+                padding: nptk_core::layout::Rect::<LengthPercentage> {
+                    left: LengthPercentage::length(font_size / 2.0),
+                    right: LengthPercentage::length(font_size / 2.0),
+                    top: LengthPercentage::length(0.0),
+                    bottom: LengthPercentage::length(bottom_padding),
+                },
+                ..Default::default()
+            });
         Self {
             widget_id: WidgetId::new("nptk_widgets", "MenuButton"),
             child: Box::new(button),

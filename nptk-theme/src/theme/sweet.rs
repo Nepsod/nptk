@@ -430,6 +430,25 @@ impl Theme for SweetTheme {
                     ),
                     _ => None,
                 },
+                "MenuButton" => match property {
+                    crate::properties::ThemeProperty::ColorIdle => Some(Color::TRANSPARENT),
+                    crate::properties::ThemeProperty::ColorPressed => Some(
+                        self.variables
+                            .get_color("bg-secondary")
+                            .unwrap_or(Color::from_rgb8(30, 34, 51)),
+                    ),
+                    crate::properties::ThemeProperty::ColorHovered => Some(
+                        self.variables
+                            .get_color("bg-secondary")
+                            .unwrap_or(Color::from_rgb8(30, 34, 51)),
+                    ),
+                    crate::properties::ThemeProperty::ColorFocused => Some(
+                        self.variables
+                            .get_color("bg-secondary")
+                            .unwrap_or(Color::from_rgb8(30, 34, 51)),
+                    ),
+                    _ => None,
+                },
 
                 "TabsContainer" => match property {
                     crate::properties::ThemeProperty::ColorBackground => Some(
