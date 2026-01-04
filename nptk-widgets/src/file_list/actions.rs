@@ -6,7 +6,6 @@ use npio::service::filesystem::mime_detector::MimeDetector;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Arc;
 
 impl FileListContent {
     pub(super) fn launch_path(registry: MimeRegistry, path: PathBuf) {

@@ -1,4 +1,5 @@
 use super::FileListContent;
+use crate::file_icon::renderer::{render_image_icon, render_svg_icon_with_arc_cache};
 use crate::tabs_container::{TabItem, TabsContainer};
 use chrono::{DateTime, Local};
 use humansize::{format_size, BINARY};
@@ -506,69 +507,17 @@ impl Widget for PropertiesContent {
                             width,
                             height,
                         } => {
-                            let image_data = ImageData {
-                                data: Blob::from(data.as_ref().clone()),
-                                format: ImageFormat::Rgba8,
-                                alpha_type: ImageAlphaType::Alpha,
-                                width,
-                                height,
-                            };
-                            let image_brush = ImageBrush::new(image_data);
-                            let scale_x = icon_size_f64 / (width as f64);
-                            let scale_y = icon_size_f64 / (height as f64);
-                            let scale = scale_x.min(scale_y);
-                            let transform = Affine::scale_non_uniform(scale, scale)
-                                .then_translate(Vec2::new(icon_x, icon_y));
-                            if let Some(scene) = graphics.as_scene_mut() {
-                                scene.draw_image(&image_brush, transform);
-                                icon_rendered = true;
-                                break;
-                            }
+                            render_image_icon(graphics, data.as_ref(), width, height, icon_rect);
+                            icon_rendered = true;
+                            break;
                         },
                         npio::service::icon::CachedIcon::Svg(svg_source) => {
-                            let cached_scene = {
-                                let cache = self.svg_scene_cache.lock().unwrap();
-                                cache.get(svg_source.as_str()).cloned()
-                            };
-                            let (scene, svg_width, svg_height) =
-                                if let Some((scene, w, h)) = cached_scene {
-                                    (scene, w, h)
-                                } else {
-                                    use vello_svg::usvg::{
-                                        ImageRendering, Options, ShapeRendering, TextRendering, Tree,
-                                    };
-                                    if let Ok(tree) = Tree::from_str(
-                                        svg_source.as_str(),
-                                        &Options {
-                                            shape_rendering: ShapeRendering::GeometricPrecision,
-                                            text_rendering: TextRendering::OptimizeLegibility,
-                                            image_rendering: ImageRendering::OptimizeSpeed,
-                                            ..Default::default()
-                                        },
-                                    ) {
-                                        let scene = vello_svg::render_tree(&tree);
-                                        let svg_size = tree.size();
-                                        let w = svg_size.width() as f64;
-                                        let h = svg_size.height() as f64;
-                                        {
-                                            let mut cache = self.svg_scene_cache.lock().unwrap();
-                                            cache.insert(
-                                                svg_source.as_str().to_string(),
-                                                (scene.clone(), w, h),
-                                            );
-                                        }
-                                        (scene, w, h)
-                                    } else {
-                                        (Scene::new(), 1.0, 1.0)
-                                    }
-                                };
-
-                            let scale_x = icon_size_f64 / svg_width;
-                            let scale_y = icon_size_f64 / svg_height;
-                            let scale = scale_x.min(scale_y);
-                            let transform = Affine::scale_non_uniform(scale, scale)
-                                .then_translate(Vec2::new(icon_x, icon_y));
-                            graphics.append(&scene, Some(transform));
+                            render_svg_icon_with_arc_cache(
+                                graphics,
+                                &svg_source,
+                                icon_rect,
+                                &self.svg_scene_cache,
+                            );
                             icon_rendered = true;
                             break;
                         },
@@ -665,57 +614,23 @@ impl Widget for PropertiesContent {
                         if let Some(icon) =
                             smol::block_on(self.icon_registry.get_file_icon(&*file, icon_size as u32))
                         {
-                        let icon_x = icon_rect.x0;
-                        let icon_y = icon_rect.y0;
-                        let icon_size_f64 = icon_rect.width().min(icon_rect.height());
-
                         match icon {
                             npio::service::icon::CachedIcon::Image {
                                 data,
                                 width,
                                 height,
                             } => {
-                                let image_data = ImageData {
-                                    data: Blob::from(data.as_ref().clone()),
-                                    format: ImageFormat::Rgba8,
-                                    alpha_type: ImageAlphaType::Alpha,
-                                    width,
-                                    height,
-                                };
-                                let image_brush = ImageBrush::new(image_data);
-                                let scale_x = icon_size_f64 / (width as f64);
-                                let scale_y = icon_size_f64 / (height as f64);
-                                let scale = scale_x.min(scale_y);
-                                let transform = Affine::scale_non_uniform(scale, scale)
-                                    .then_translate(Vec2::new(icon_x, icon_y));
-                                if let Some(scene) = graphics.as_scene_mut() {
-                                    scene.draw_image(&image_brush, transform);
-                                    icon_rendered = true;
-                                }
+                                render_image_icon(graphics, data.as_ref(), width, height, icon_rect);
+                                icon_rendered = true;
                             },
                             npio::service::icon::CachedIcon::Svg(svg_source) => {
-                                use vello_svg::usvg::{
-                                    ImageRendering, Options, ShapeRendering, TextRendering, Tree,
-                                };
-                                if let Ok(tree) = Tree::from_str(
-                                    svg_source.as_str(),
-                                    &Options {
-                                        shape_rendering: ShapeRendering::GeometricPrecision,
-                                        text_rendering: TextRendering::OptimizeLegibility,
-                                        image_rendering: ImageRendering::OptimizeSpeed,
-                                        ..Default::default()
-                                    },
-                                ) {
-                                    let scene = vello_svg::render_tree(&tree);
-                                    let svg_size = tree.size();
-                                    let scale_x = icon_size_f64 / svg_size.width() as f64;
-                                    let scale_y = icon_size_f64 / svg_size.height() as f64;
-                                    let scale = scale_x.min(scale_y);
-                                    let transform = Affine::scale_non_uniform(scale, scale)
-                                        .then_translate(Vec2::new(icon_x, icon_y));
-                                    graphics.append(&scene, Some(transform));
-                                    icon_rendered = true;
-                                }
+                                render_svg_icon_with_arc_cache(
+                                    graphics,
+                                    &svg_source,
+                                    icon_rect,
+                                    &self.svg_scene_cache,
+                                );
+                                icon_rendered = true;
                             },
                             npio::service::icon::CachedIcon::Path(_) => {},
                         }

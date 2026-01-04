@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use nptk_core::vg::kurbo::{Affine, Rect, Shape, Vec2};
-use nptk_core::vg::peniko::{Blob, Brush, Color, Fill, ImageAlphaType, ImageBrush, ImageData, ImageFormat};
+use nptk_core::vg::peniko::{Brush, Fill};
 use nptk_core::vgi::Graphics;
 use npio::service::icon::CachedIcon;
 use nptk_services::filesystem::entry::{FileEntry, FileType};
@@ -150,4 +150,15 @@ pub fn render_cached_icon(
             render_fallback_icon(graphics, theme, widget_id, icon_rect, entry);
         },
     }
+}
+
+/// Render SVG icon with thread-safe cache (for properties widget).
+pub fn render_svg_icon_with_arc_cache(
+    graphics: &mut dyn Graphics,
+    svg_source: &str,
+    icon_rect: Rect,
+    svg_scene_cache: &std::sync::Arc<std::sync::Mutex<HashMap<String, (nptk_core::vg::Scene, f64, f64)>>>,
+) {
+    let mut cache = svg_scene_cache.lock().unwrap();
+    render_svg_icon(graphics, svg_source, icon_rect, &mut *cache);
 }

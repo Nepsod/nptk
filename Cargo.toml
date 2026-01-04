@@ -45,6 +45,7 @@ nptk-core = { workspace = true }
 nptk-theme = { workspace = true }
 nptk-widgets = { workspace = true }
 nptk-macros = { workspace = true, optional = true }
+nptk-services = { workspace = true }
 async-trait = { workspace = true }
 vello = { workspace = true }
 nalgebra = { workspace = true }

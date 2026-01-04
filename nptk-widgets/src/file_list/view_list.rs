@@ -1,4 +1,5 @@
 use super::FileListContent;
+use crate::file_icon::renderer::{render_cached_icon, render_fallback_icon};
 use nptk_core::app::info::AppInfo;
 use nptk_core::layout::LayoutNode;
 use nptk_core::signal::Signal;
@@ -6,7 +7,6 @@ use nptk_core::vg::kurbo::{Affine, Rect, Shape, Vec2};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::Widget;
-use nptk_services::filesystem::entry::FileType;
 use nptk_services::thumbnail::npio_adapter::{file_entry_to_uri, u32_to_thumbnail_size};
 use nptk_theme::theme::Theme;
 use npio::get_file_for_uri;
@@ -194,132 +194,22 @@ impl FileListContent {
             }
 
             if let Some(icon) = cached_icon {
-                let icon_x = icon_rect.x0;
-                let icon_y = icon_rect.y0;
-                let icon_size_f64 = icon_rect.width().min(icon_rect.height());
-
-                match icon {
-                    npio::service::icon::CachedIcon::Image {
-                        data,
-                        width,
-                        height,
-                    } => {
-                        use nptk_core::vg::peniko::{
-                            Blob, ImageAlphaType, ImageBrush, ImageData, ImageFormat,
-                        };
-                        let image_data = ImageData {
-                            data: Blob::from(data.as_ref().clone()),
-                            format: ImageFormat::Rgba8,
-                            alpha_type: ImageAlphaType::Alpha,
-                            width,
-                            height,
-                        };
-                        let image_brush = ImageBrush::new(image_data);
-                        let scale_x = icon_size_f64 / (width as f64);
-                        let scale_y = icon_size_f64 / (height as f64);
-                        let scale = scale_x.min(scale_y);
-                        let transform = Affine::scale_non_uniform(scale, scale)
-                            .then_translate(Vec2::new(icon_x, icon_y));
-                        if let Some(scene) = graphics.as_scene_mut() {
-                            scene.draw_image(&image_brush, transform);
-                        }
-                    },
-                    npio::service::icon::CachedIcon::Svg(svg_source) => {
-                        // Check SVG scene cache first
-                        let cached_scene =
-                            self.svg_scene_cache.get(svg_source.as_str()).cloned();
-                        let (scene, svg_width, svg_height) = if let Some((scene, w, h)) =
-                            cached_scene
-                        {
-                            (scene, w, h)
-                        } else {
-                            // Cache miss - parse and render SVG
-                            use vello_svg::usvg::{
-                                ImageRendering, Options, ShapeRendering, TextRendering, Tree,
-                            };
-                            if let Ok(tree) = Tree::from_str(
-                                svg_source.as_str(),
-                                &Options {
-                                    shape_rendering: ShapeRendering::GeometricPrecision,
-                                    text_rendering: TextRendering::OptimizeLegibility,
-                                    image_rendering: ImageRendering::OptimizeSpeed,
-                                    ..Default::default()
-                                },
-                            ) {
-                                let scene = vello_svg::render_tree(&tree);
-                                let svg_size = tree.size();
-                                let w = svg_size.width() as f64;
-                                let h = svg_size.height() as f64;
-                                self.svg_scene_cache.insert(
-                                    svg_source.as_str().to_string(),
-                                    (scene.clone(), w, h),
-                                );
-                                (scene, w, h)
-                            } else {
-                                (nptk_core::vg::Scene::new(), 1.0, 1.0)
-                            }
-                        };
-
-                        let scale_x = icon_size_f64 / svg_width;
-                        let scale_y = icon_size_f64 / svg_height;
-                        let scale = scale_x.min(scale_y);
-                        let transform = Affine::scale_non_uniform(scale, scale)
-                            .then_translate(Vec2::new(icon_x, icon_y));
-                        graphics.append(&scene, Some(transform));
-                    },
-                    npio::service::icon::CachedIcon::Path(_) => {
-                        let icon_color = theme
-                            .get_property(
-                                self.widget_id(),
-                                &nptk_theme::properties::ThemeProperty::ColorText,
-                            )
-                            .or_else(|| {
-                                theme.get_default_property(
-                                    &nptk_theme::properties::ThemeProperty::ColorText,
-                                )
-                            })
-                            .unwrap_or(Color::from_rgb8(150, 150, 150));
-
-                        let fallback_color = if entry.file_type == FileType::Directory {
-                            icon_color.with_alpha(0.6)
-                        } else {
-                            icon_color.with_alpha(0.4)
-                        };
-
-                        graphics.fill(
-                            Fill::NonZero,
-                            Affine::IDENTITY,
-                            &Brush::Solid(fallback_color),
-                            None,
-                            &icon_rect.to_path(0.1),
-                        );
-                    },
-                }
+                render_cached_icon(
+                    graphics,
+                    theme,
+                    self.widget_id(),
+                    icon,
+                    icon_rect,
+                    &entry,
+                    &mut self.svg_scene_cache,
+                );
             } else {
-                let icon_color = theme
-                    .get_property(
-                        self.widget_id(),
-                        &nptk_theme::properties::ThemeProperty::ColorText,
-                    )
-                    .or_else(|| {
-                        theme.get_default_property(
-                            &nptk_theme::properties::ThemeProperty::ColorText,
-                        )
-                    })
-                    .unwrap_or(Color::from_rgb8(150, 150, 150));
-
-                let fallback_color = if entry.file_type == FileType::Directory {
-                    icon_color.with_alpha(0.6)
-                } else {
-                    icon_color.with_alpha(0.4)
-                };
-
-                graphics.fill(
-                    Fill::NonZero,
-                    Affine::IDENTITY,
-                    &Brush::Solid(fallback_color),
-                    None,
-                    &icon_rect.to_path(0.1),
+                render_fallback_icon(
+                    graphics,
+                    theme,
+                    self.widget_id(),
+                    icon_rect,
+                    &entry,
                 );
             }
 

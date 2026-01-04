@@ -6,11 +6,11 @@ pub use nalgebra as math;
 pub use vello::peniko as color;
 
 pub use nptk_core as core;
-pub use nptk_theme as theme;
-pub use nptk_widgets as widgets;
-
 #[cfg(feature = "macros")]
 pub use nptk_macros as macros;
+pub use nptk_services as services;
+pub use nptk_theme as theme;
+pub use nptk_widgets as widgets;
 
 /// A "prelude" for users of the nptk toolkit.
 ///

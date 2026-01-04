@@ -5,7 +5,7 @@
 
 mod constants;
 mod loader;
-mod renderer;
+pub mod renderer;
 mod theme;
 
 use std::collections::HashMap;
@@ -18,7 +18,7 @@ use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::{Update, UpdateManager};
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::MaybeSignal;
-use nptk_core::vg::kurbo::{Affine, Rect, Shape, Vec2};
+use nptk_core::vg::kurbo::Rect;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use npio::service::icon::{CachedIcon, IconRegistry};
