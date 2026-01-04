@@ -32,9 +32,6 @@ pub mod fetcher;
 #[cfg(feature = "canvas")]
 pub mod canvas;
 
-/// Contains the [file_list::FileList] widget.
-pub mod file_list;
-
 /// Contains the [file_icon::FileIcon] widget.
 pub mod file_icon;
 
