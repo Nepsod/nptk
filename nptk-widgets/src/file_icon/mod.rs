@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
-use nptk_core::app::update::{Update, UpdateManager};
+use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vg::kurbo::Rect;
@@ -46,12 +46,6 @@ pub struct FileIcon {
     icon_cache: Arc<Mutex<HashMap<(PathBuf, u32), Option<CachedIcon>>>>,
     /// SVG scene cache: SVG source string -> (Scene, width, height).
     svg_scene_cache: HashMap<String, (nptk_core::vg::Scene, f64, f64)>,
-    /// Cache update sender for triggering redraws.
-    cache_update_tx: tokio::sync::mpsc::UnboundedSender<()>,
-    /// Cache update receiver for checking if cache was updated.
-    cache_update_rx: Arc<Mutex<tokio::sync::mpsc::UnboundedReceiver<()>>>,
-    /// Update manager for triggering redraws when cache updates.
-    update_manager: Arc<Mutex<Option<UpdateManager>>>,
 }
 
 impl FileIcon {
@@ -66,7 +60,6 @@ impl FileIcon {
             IconRegistry::new().unwrap_or_else(|_| IconRegistry::default())
         );
         let icon_cache = Arc::new(Mutex::new(HashMap::new()));
-        let (cache_update_tx, cache_update_rx) = tokio::sync::mpsc::unbounded_channel();
 
         Self {
             entry: entry.into(),
@@ -79,9 +72,6 @@ impl FileIcon {
             icon_registry,
             icon_cache,
             svg_scene_cache: HashMap::new(),
-            cache_update_tx,
-            cache_update_rx: Arc::new(Mutex::new(cache_update_rx)),
-            update_manager: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -130,23 +120,8 @@ impl Widget for FileIcon {
         }
     }
 
-    fn update(&mut self, _: &LayoutNode, context: AppContext, _: &mut AppInfo) -> Update {
-        // Store UpdateManager for triggering redraws when cache updates
-        {
-            let mut update_manager = self.update_manager.lock().unwrap();
-            *update_manager = Some(context.update());
-        }
-
-        let mut update = Update::empty();
-
-        // Poll cache update notifications (non-blocking)
-        if let Ok(mut rx) = self.cache_update_rx.try_lock() {
-            while rx.try_recv().is_ok() {
-                update.insert(Update::DRAW);
-            }
-        }
-
-        update
+    fn update(&mut self, _: &LayoutNode, _: AppContext, _: &mut AppInfo) -> Update {
+        Update::empty()
     }
 
     fn render(
@@ -155,7 +130,7 @@ impl Widget for FileIcon {
         theme: &mut dyn Theme,
         layout: &LayoutNode,
         _: &mut AppInfo,
-        _: AppContext,
+        context: AppContext,
     ) {
         let entry = self.entry.get().clone();
         let path = entry.path.clone();
@@ -175,7 +150,7 @@ impl Widget for FileIcon {
                 self.icon_registry.clone(),
                 entry.clone(),
                 size,
-                self.cache_update_tx.clone(),
+                context,
             );
         }
 

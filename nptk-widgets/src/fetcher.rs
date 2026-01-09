@@ -2,37 +2,26 @@ use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
-use nptk_core::tasks;
+use nptk_core::signal::{FutureSignal, Signal};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::Widget;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use std::future::Future;
-use std::sync::{Arc, Mutex};
 
-/// Widget builder to fetch data from an asynchronous task. The [TaskRunner](tasks::runner::TaskRunner) needs to be initialized.
-/// This is similar to the [FutureBuilder](https://api.flutter.dev/flutter/widgets/FutureBuilder-class.html) from Flutter.
+/// Widget builder to fetch data from an asynchronous task.
 ///
 /// ### Async + UI
-/// Normally, a UI Application is not able to asynchronously spawn tasks and will block the UI thread instead of running tasks in the background.
-/// The [WidgetFetcher] is able to spawn asynchronous tasks on a global runner and construct a widget based on the result of the task.
-/// You can use it to fetch asynchronous data and either return something like a loading screen or the actual data.
-///
-/// ### Workflow of a [WidgetFetcher].
-/// 1. Run the task in the background using the [TaskRunner](tasks::runner::TaskRunner).
-/// 2. Construct the widget with [None] as the result (task is still loading).
-/// 3. Once the task is done, update the UI with the new result and trigger an [Update].
-///
-/// ### Theming
-/// The widget itself only draws the underlying widget, so theming is useless.
-pub struct WidgetFetcher<T: Send + 'static, W: Widget, F: Fn(Option<T>) -> W> {
-    result: Arc<Mutex<Option<T>>>,
+/// The [WidgetFetcher] uses the application context to spawn asynchronous tasks on a global runner and construct a widget based on the result of the task.
+pub struct WidgetFetcher<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Option<T>) -> W> {
+    result: FutureSignal<T>,
     render: F,
     widget: Option<W>,
     update: Update,
+    has_rendered_result: bool,
 }
 
-impl<T: Send + 'static, W: Widget, F: Fn(Option<T>) -> W> WidgetFetcher<T, W, F> {
+impl<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Option<T>) -> W> WidgetFetcher<T, W, F> {
     /// Creates a new [WidgetFetcher] with parameters:
     /// - `future`: The future to execute.
     /// - `update`: The update to trigger when the data is updated (from loading to done).
@@ -41,24 +30,19 @@ impl<T: Send + 'static, W: Widget, F: Fn(Option<T>) -> W> WidgetFetcher<T, W, F>
     where
         Fut: Future<Output = T> + Send + 'static,
     {
-        let result = Arc::new(Mutex::new(None));
-
-        let result_clone = result.clone();
-        let _ = tasks::spawn(async move {
-            let out = future.await;
-            *result_clone.lock().expect("failed to lock result") = Some(out);
-        });
+        let signal = FutureSignal::new(future);
 
         Self {
-            result,
+            result: signal,
             render,
             widget: None,
             update,
+            has_rendered_result: false,
         }
     }
 }
 
-impl<T: Send + 'static, W: Widget, F: Fn(Option<T>) -> W> Widget for WidgetFetcher<T, W, F> {
+impl<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Option<T>) -> W> Widget for WidgetFetcher<T, W, F> {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
@@ -68,7 +52,7 @@ impl<T: Send + 'static, W: Widget, F: Fn(Option<T>) -> W> Widget for WidgetFetch
         context: AppContext,
     ) {
         if let Some(widget) = &mut self.widget {
-            widget.render(graphics, theme, layout_node, info, context.clone())
+            widget.render(graphics, theme, layout_node, info, context)
         }
     }
 
@@ -84,17 +68,24 @@ impl<T: Send + 'static, W: Widget, F: Fn(Option<T>) -> W> Widget for WidgetFetch
     }
 
     fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+        self.result.set_update_manager(context.update());
+        
         let mut update = Update::empty();
-
-        if let Some(result) = self.result.lock().expect("failed to lock result").take() {
-            self.widget = Some((self.render)(Some(result)));
-            update = self.update;
+        let async_state = self.result.get();
+        
+        if async_state.is_ready() {
+            if !self.has_rendered_result {
+                if let nptk_core::signal::async_state::AsyncState::Ready(val) = &*async_state {
+                    self.widget = Some((self.render)(Some(val.clone())));
+                    self.has_rendered_result = true;
+                    update = self.update;
+                }
+            }
         } else if self.widget.is_none() {
-            self.widget = Some((self.render)(None));
-            update = self.update;
+             self.widget = Some((self.render)(None));
+             update = self.update;
         }
 
-        // Widget is guaranteed to be some at this point
         self.widget.as_mut().unwrap().update(layout, context, info) | update
     }
 
