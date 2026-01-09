@@ -8,16 +8,20 @@
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode, Dimension, FlexDirection};
+use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode, Dimension, FlexDirection, Layout};
+use nptk_core::menu::unified::{MenuTemplate, MenuItem as UnifiedMenuItem};
+use nptk_core::menu::commands::MenuCommand;
 use nptk_core::signal::MaybeSignal;
 use nptk_core::text_render::TextRenderContext;
 use nptk_core::vgi::Graphics;
+use nptk_core::vg::kurbo::Rect;
 use nptk_core::vg::peniko::Color;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
 use nptk_theme::properties::ThemeProperty;
 use nptk_theme::theme::Theme;
+use crate::menu_popup::MenuPopup;
 use std::sync::Arc;
 
 /// Represents a single breadcrumb item in the navigation path
@@ -59,14 +63,22 @@ impl BreadcrumbItem {
 /// ### Theming
 /// The breadcrumbs widget supports the following theme properties:
 /// - `ColorText` - Text color for breadcrumb items
-/// - Custom theme properties for hover and current states
+/// - `ColorHovered` - Color for hovered items
+/// - `Border` - Color for separators between items
+///
+/// ### Neighbor Items
+/// Breadcrumb items can dynamically show neighbor items (e.g., sibling directories at the same level).
+/// When clicking on a separator (e.g., " > "), if a `neighbors_provider` callback is set and returns neighbors
+/// for the item before the separator, a popup menu will appear showing all available neighbors.
+/// This is useful for file managers where each directory level has different siblings that must be fetched on-the-fly.
+/// Clicking on the breadcrumb item itself navigates to it normally.
 ///
 /// ### Usage Examples
 ///
 /// ```rust
 /// use nptk_widgets_extra::breadcrumbs::{Breadcrumbs, BreadcrumbItem};
 ///
-/// // File system navigation
+/// // File system navigation with dynamic neighbors
 /// let breadcrumbs = Breadcrumbs::new()
 ///     .with_items(vec![
 ///         BreadcrumbItem::new("Home").with_id("/home/user"),
@@ -76,6 +88,27 @@ impl BreadcrumbItem {
 ///     ])
 ///     .with_on_click(|item| {
 ///         println!("Navigate to: {}", item.id.unwrap_or(item.label));
+///         Update::empty()
+///     })
+///     .with_neighbors_provider(|item| {
+///         // Dynamically fetch siblings based on the item's ID/path
+///         // For example, if item.id is "/home/user", return sibling directories
+///         if let Some(id) = &item.id {
+///             if id == "/home/user" {
+///                 Some(vec![
+///                     BreadcrumbItem::new("Documents").with_id("/home/user/Documents"),
+///                     BreadcrumbItem::new("Downloads").with_id("/home/user/Downloads"),
+///                     BreadcrumbItem::new("Pictures").with_id("/home/user/Pictures"),
+///                 ])
+///             } else {
+///                 None // No neighbors for this item
+///             }
+///         } else {
+///             None
+///         }
+///     })
+///     .with_on_neighbor_select(|original_item, selected_neighbor| {
+///         println!("Switching from {} to {}", original_item.label, selected_neighbor.label);
 ///         Update::empty()
 ///     });
 /// ```
@@ -92,7 +125,17 @@ pub struct Breadcrumbs {
     on_click: Option<Arc<dyn Fn(&BreadcrumbItem) -> Update + Send + Sync>>,
     hovered_index: Option<usize>,
     item_positions: Vec<(f32, f32, usize)>, // (x, width, original_index) for each visible item
+    separator_positions: Vec<(f32, f32, usize)>, // (x, width, item_index_before_separator) for each separator
     text_ctx: TextRenderContext,
+    /// Currently open neighbor popup menu
+    neighbor_popup: Option<MenuPopup>,
+    /// Index of the breadcrumb item that opened the popup
+    popup_item_index: Option<usize>,
+    /// Callback for when a neighbor item is selected
+    on_neighbor_select: Option<Arc<dyn Fn(&BreadcrumbItem, &BreadcrumbItem) -> Update + Send + Sync>>,
+    /// Callback to dynamically fetch neighbor items for a breadcrumb (e.g., sibling directories)
+    /// Returns None if no neighbors are available, or Some(neighbors) if available
+    neighbors_provider: Option<Arc<dyn Fn(&BreadcrumbItem) -> Option<Vec<BreadcrumbItem>> + Send + Sync>>,
 }
 
 impl std::fmt::Debug for Breadcrumbs {
@@ -124,13 +167,21 @@ impl Breadcrumbs {
             on_click: None,
             hovered_index: None,
             item_positions: Vec::new(),
+            separator_positions: Vec::new(),
             text_ctx: TextRenderContext::new(),
+            neighbor_popup: None,
+            popup_item_index: None,
+            on_neighbor_select: None,
+            neighbors_provider: None,
         }
     }
 
     /// Set the breadcrumb items
     pub fn with_items(mut self, items: Vec<BreadcrumbItem>) -> Self {
         self.items = items;
+        // Reset state when items change
+        self.hovered_index = None;
+        self.item_positions.clear();
         self
     }
 
@@ -185,6 +236,51 @@ impl Breadcrumbs {
         self
     }
 
+    /// Set the callback for when a neighbor item is selected from the popup
+    /// The callback receives (original_item, selected_neighbor)
+    pub fn with_on_neighbor_select<F>(mut self, callback: F) -> Self
+    where
+        F: Fn(&BreadcrumbItem, &BreadcrumbItem) -> Update + Send + Sync + 'static,
+    {
+        self.on_neighbor_select = Some(Arc::new(callback));
+        self
+    }
+
+    /// Set a callback to dynamically fetch neighbor items for each breadcrumb item.
+    /// This is called when clicking on a separator (e.g., " > ") to show neighbors of the item before the separator.
+    /// The callback receives the breadcrumb item and returns Some(neighbors) if neighbors are available,
+    /// or None if no neighbors should be shown for this item.
+    /// 
+    /// Clicking on the separator shows the popup menu with neighbors, while clicking on the item itself navigates to it.
+    /// 
+    /// This is useful for file managers where each directory level has different siblings
+    /// that cannot be hardcoded and must be fetched on-the-fly.
+    /// 
+    /// # Example
+    /// 
+    /// ```rust
+    /// use nptk_widgets_extra::breadcrumbs::{Breadcrumbs, BreadcrumbItem};
+    /// 
+    /// Breadcrumbs::new()
+    ///     .with_neighbors_provider(|item| {
+    ///         // Query filesystem for sibling directories
+    ///         // For example, if item.id is "/home/user/Documents", 
+    ///         // return siblings like ["Downloads", "Pictures", "Videos"]
+    ///         Some(vec![
+    ///             BreadcrumbItem::new("Downloads"),
+    ///             BreadcrumbItem::new("Pictures"),
+    ///             BreadcrumbItem::new("Videos"),
+    ///         ])
+    ///     });
+    /// ```
+    pub fn with_neighbors_provider<F>(mut self, provider: F) -> Self
+    where
+        F: Fn(&BreadcrumbItem) -> Option<Vec<BreadcrumbItem>> + Send + Sync + 'static,
+    {
+        self.neighbors_provider = Some(Arc::new(provider));
+        self
+    }
+
     /// Get the current breadcrumb items
     pub fn items(&self) -> &[BreadcrumbItem] {
         &self.items
@@ -197,18 +293,39 @@ impl Breadcrumbs {
 
     /// Remove the last breadcrumb item (navigate back)
     pub fn pop_item(&mut self) -> Option<BreadcrumbItem> {
-        self.items.pop()
+        let result = self.items.pop();
+        // Reset state when items change
+        self.hovered_index = None;
+        self.item_positions.clear();
+        self.separator_positions.clear();
+        result
     }
 
     /// Clear all breadcrumb items
     pub fn clear(&mut self) {
         self.items.clear();
+        // Reset state when items change
+        self.hovered_index = None;
+        self.item_positions.clear();
+        self.separator_positions.clear();
     }
 
     /// Navigate to a specific breadcrumb by index (removes items after it)
     pub fn navigate_to_index(&mut self, index: usize) {
         if index < self.items.len() {
+            let old_len = self.items.len();
             self.items.truncate(index + 1);
+            // Reset hovered_index if it's now out of bounds or if items changed
+            if old_len != self.items.len() {
+                self.hovered_index = None;
+                self.item_positions.clear();
+            } else if let Some(hovered) = self.hovered_index {
+                if hovered >= self.items.len() {
+                    self.hovered_index = None;
+                    self.item_positions.clear();
+                    self.separator_positions.clear();
+                }
+            }
         }
     }
 
@@ -225,14 +342,21 @@ impl Breadcrumbs {
                     if max_items > 2 {
                         visible.push((usize::MAX, true)); // Ellipsis placeholder (using MAX as sentinel)
                         let start_idx = self.items.len().saturating_sub(max_items - 2);
+                        // Ensure start_idx > 0 to avoid duplicating root item
+                        let start_idx = start_idx.max(1);
                         for i in start_idx..self.items.len() {
                             visible.push((i, false));
                         }
                     } else if max_items == 2 {
                         visible.push((usize::MAX, true)); // Ellipsis
-                        if !self.items.is_empty() {
+                        // Skip last item if it's the same as root (max_items == 2 means only room for root + last)
+                        // But if there are more than 2 items, we want root + ellipsis + last
+                        if self.items.len() > 1 {
                             visible.push((self.items.len() - 1, false)); // Last item
                         }
+                    } else if max_items == 1 {
+                        // Only show root, no ellipsis or last item
+                        // visible already contains root, we're done
                     }
                 } else {
                     if max_items > 1 {
@@ -242,6 +366,7 @@ impl Breadcrumbs {
                             visible.push((i, false));
                         }
                     } else {
+                        // max_items == 1, show only last item
                         if !self.items.is_empty() {
                             visible.push((self.items.len() - 1, false)); // Last item only
                         }
@@ -270,12 +395,57 @@ impl Breadcrumbs {
             return None;
         }
         
+        // If item_positions is empty, render hasn't happened yet - can't detect clicks accurately
+        // This can happen if update() is called before the first render()
+        if self.item_positions.is_empty() {
+            return None;
+        }
+        
+        // Validate that hovered_index is still valid if set
+        if let Some(hovered) = self.hovered_index {
+            if hovered >= self.items.len() {
+                // This shouldn't happen with proper state management, but guard against it
+                return None;
+            }
+        }
+        
         // Now check which item the x coordinate falls within
         // Items are stored in render order, so we check in reverse to prioritize later (rightmost) items
         // This handles cases where items might overlap slightly
         for &(item_x, item_width, original_index) in self.item_positions.iter().rev() {
-            if x >= item_x && x <= item_x + item_width {
+            // Validate original_index is in bounds before checking bounds
+            if original_index < self.items.len() && x >= item_x && x < item_x + item_width {
                 return Some(original_index);
+            }
+        }
+        None
+    }
+
+    /// Find which separator is at the given position
+    /// Returns the index of the item that comes before the separator
+    fn find_separator_at_position(&self, layout: &LayoutNode, x: f32, y: f32) -> Option<usize> {
+        // First check if the click is within the widget bounds
+        let layout_x = layout.layout.location.x;
+        let layout_y = layout.layout.location.y;
+        let layout_width = layout.layout.size.width;
+        let layout_height = layout.layout.size.height;
+        
+        if x < layout_x || x > layout_x + layout_width 
+            || y < layout_y || y > layout_y + layout_height {
+            return None;
+        }
+        
+        // If separator_positions is empty, render hasn't happened yet or no separators
+        if self.separator_positions.is_empty() {
+            return None;
+        }
+        
+        // Check which separator the x coordinate falls within
+        // Check in reverse order to prioritize later (rightmost) separators
+        for &(sep_x, sep_width, item_index_before) in self.separator_positions.iter().rev() {
+            // Validate item_index_before is in bounds
+            if item_index_before < self.items.len() && x >= sep_x && x < sep_x + sep_width {
+                return Some(item_index_before);
             }
         }
         None
@@ -323,6 +493,81 @@ impl Breadcrumbs {
             .unwrap_or_else(|| Color::from_rgb8(150, 150, 150))
             .with_alpha(0.6)
     }
+
+    /// Show neighbor popup for the given item index
+    fn show_neighbor_popup(&mut self, item_index: usize) {
+        if item_index >= self.items.len() {
+            return;
+        }
+
+        let item = &self.items[item_index];
+        
+        // Get neighbors using the provider callback
+        let neighbors = if let Some(ref provider) = self.neighbors_provider {
+            provider(item)
+        } else {
+            None
+        };
+
+        let neighbors = match neighbors {
+            Some(neighbors) if !neighbors.is_empty() => neighbors,
+            _ => return, // No neighbors available
+        };
+
+        // Convert neighbor items to menu items
+        let menu_items: Vec<UnifiedMenuItem> = neighbors
+            .iter()
+            .enumerate()
+            .map(|(idx, neighbor)| {
+                let neighbor_clone = neighbor.clone();
+                let item_clone = item.clone();
+                let on_neighbor_select_clone = self.on_neighbor_select.clone();
+
+                UnifiedMenuItem::new(
+                    MenuCommand::Custom(idx as u32),
+                    neighbor.label.clone(),
+                )
+                .with_enabled(true)
+                .with_action(move || {
+                    // Call the neighbor select callback if provided
+                    if let Some(ref callback) = on_neighbor_select_clone {
+                        callback(&item_clone, &neighbor_clone);
+                    }
+                    Update::FORCE // Signal that menu should close
+                })
+            })
+            .collect();
+
+        let template = MenuTemplate::from_items("breadcrumbs_neighbors", menu_items);
+        let popup = MenuPopup::new(template);
+        self.neighbor_popup = Some(popup);
+        self.popup_item_index = Some(item_index);
+    }
+
+    /// Close the neighbor popup if open
+    fn close_neighbor_popup(&mut self) {
+        self.neighbor_popup = None;
+        self.popup_item_index = None;
+    }
+
+    /// Get the position and bounds for a breadcrumb item at the given index
+    fn get_item_bounds(&self, layout: &LayoutNode, item_index: usize) -> Option<(f64, f64, f64, f64)> {
+        // Find the position for this item in item_positions
+        for &(item_x, item_width, original_index) in &self.item_positions {
+            if original_index == item_index {
+                let layout_y = layout.layout.location.y as f64;
+                let item_height = (self.font_size * 1.5) as f64;
+                
+                return Some((
+                    item_x as f64,
+                    layout_y,
+                    item_width as f64,
+                    item_height,
+                ));
+            }
+        }
+        None
+    }
 }
 
 impl Default for Breadcrumbs {
@@ -365,8 +610,9 @@ impl Widget for Breadcrumbs {
         // Similar to how the Text widget renders text
         let text_y = base_y;
 
-        // Clear item positions for accurate click detection
+        // Clear item and separator positions for accurate click detection
         self.item_positions.clear();
+        self.separator_positions.clear();
 
         let mut current_x = base_x;
         let separator_color = self.get_separator_color(theme);
@@ -400,6 +646,19 @@ impl Widget for Breadcrumbs {
                         font_size as f32,
                     ) as f64;
                     
+                    // Store separator position for click detection
+                    // The separator is associated with the item that comes before it
+                    let prev_orig_idx = if vis_idx > 0 {
+                        visible_items[vis_idx - 1].0
+                    } else {
+                        0
+                    };
+                    
+                    // Only store separator position if the previous item is valid (not ellipsis)
+                    if prev_orig_idx != usize::MAX && prev_orig_idx < self.items.len() {
+                        self.separator_positions.push((current_x as f32, sep_width as f32, prev_orig_idx));
+                    }
+                    
                     let sep_transform = nptk_core::vg::kurbo::Affine::translate((
                         current_x,
                         text_y,
@@ -428,12 +687,7 @@ impl Widget for Breadcrumbs {
                 let item_color = self.get_item_color(theme, *orig_idx, is_current, is_hovered);
 
                 // Measure text width for click detection
-                let text = if *orig_idx == 0 && self.show_home_icon && item.label.to_lowercase() == "home" {
-                    // If home icon is shown, we might skip the "Home" text or render it after icon
-                    &item.label
-                } else {
-                    &item.label
-                };
+                let text = &item.label;
 
                 // Measure text width accurately using TextRenderContext
                 let text_width = self.text_ctx.measure_text_width(
@@ -519,6 +773,14 @@ impl Widget for Breadcrumbs {
     fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
+        // Validate hovered_index is still valid (items might have changed)
+        if let Some(hovered) = self.hovered_index {
+            if hovered >= self.items.len() {
+                self.hovered_index = None;
+                update |= Update::DRAW;
+            }
+        }
+
         // Handle mouse hover for visual feedback
         if let Some(cursor_pos) = info.cursor_pos {
             let new_hovered = self.find_item_at_position(
@@ -536,15 +798,118 @@ impl Widget for Breadcrumbs {
             update |= Update::DRAW;
         }
 
-        // Handle clicks on breadcrumb items
+        // Handle neighbor popup updates if open
+        if let Some(popup_item_index) = self.popup_item_index {
+            // Get item bounds before borrowing self mutably
+            let item_bounds = self.get_item_bounds(layout, popup_item_index);
+            
+            if let Some(ref mut popup) = self.neighbor_popup {
+                if let Some((item_x, item_y, _item_width, item_height)) = item_bounds {
+                    let (popup_width, popup_height) = popup.calculate_size_with_contexts(&mut self.text_ctx, &mut info.font_context);
+                    let popup_x = item_x;
+                    let popup_y = item_y + item_height;
+
+                    let mut popup_layout = LayoutNode {
+                        layout: Layout::default(),
+                        children: Vec::new(),
+                    };
+                    popup_layout.layout.location.x = popup_x as f32;
+                    popup_layout.layout.location.y = popup_y as f32;
+                    popup_layout.layout.size.width = popup_width as f32;
+                    popup_layout.layout.size.height = popup_height as f32;
+
+                    let popup_update = popup.update(&popup_layout, _context.clone(), info);
+                    update |= popup_update;
+
+                    // If popup returns FORCE, it means an item was selected - close the popup
+                    if popup_update.contains(Update::FORCE) {
+                        drop(popup); // Release mutable borrow
+                        self.close_neighbor_popup();
+                        update |= Update::DRAW;
+                    } else {
+                        // Check if clicking outside the popup should close it
+                        if let Some(cursor_pos) = info.cursor_pos {
+                            let popup_rect = Rect::new(
+                                popup_x,
+                                popup_y,
+                                popup_x + popup_width,
+                                popup_y + popup_height,
+                            );
+                            
+                            // Also check if clicking on breadcrumb items
+                            for (_, button, state) in &info.buttons {
+                                if *button == MouseButton::Left && *state == ElementState::Released {
+                                    if !popup_rect.contains((cursor_pos.x, cursor_pos.y)) {
+                                        drop(popup); // Release mutable borrow before calling methods
+                                        // Check if click is on a different breadcrumb item
+                                        if let Some(clicked_index) = self.find_item_at_position(
+                                            layout,
+                                            cursor_pos.x as f32,
+                                            cursor_pos.y as f32,
+                                        ) {
+                                            if clicked_index != popup_item_index {
+                                                self.close_neighbor_popup();
+                                                update |= Update::DRAW;
+                                            }
+                                        } else {
+                                            // Click outside both popup and breadcrumbs - close popup
+                                            self.close_neighbor_popup();
+                                            update |= Update::DRAW;
+                                        }
+                                        break; // Exit after handling click
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Handle clicks on breadcrumb items and separators
         for (_, button, state) in &info.buttons {
             if *button == MouseButton::Left && *state == ElementState::Released {
                 if let Some(cursor_pos) = info.cursor_pos {
-                    if let Some(item_index) = self.find_item_at_position(
+                    // First check if clicking on a separator
+                    if let Some(item_index_before_separator) = self.find_separator_at_position(
                         layout,
                         cursor_pos.x as f32,
                         cursor_pos.y as f32,
                     ) {
+                        if item_index_before_separator < self.items.len() {
+                            let item = &self.items[item_index_before_separator];
+                            
+                            // Check if neighbors are available using the provider
+                            let has_neighbors = if let Some(ref provider) = self.neighbors_provider {
+                                provider(item).map(|n| !n.is_empty()).unwrap_or(false)
+                            } else {
+                                false
+                            };
+
+                            // Show popup if neighbors are available
+                            if has_neighbors {
+                                // Toggle popup: if already open for this item, close it; otherwise open it
+                                if self.popup_item_index == Some(item_index_before_separator) {
+                                    // Popup is already open for this separator - close it
+                                    self.close_neighbor_popup();
+                                } else {
+                                    // Close any existing popup first
+                                    if self.popup_item_index.is_some() {
+                                        self.close_neighbor_popup();
+                                    }
+                                    // Open popup for this item
+                                    self.show_neighbor_popup(item_index_before_separator);
+                                }
+                                update |= Update::DRAW;
+                            }
+                            // If no neighbors, clicking on separator does nothing
+                        }
+                    } else if let Some(item_index) = self.find_item_at_position(
+                        layout,
+                        cursor_pos.x as f32,
+                        cursor_pos.y as f32,
+                    ) {
+                        // Clicked on an item (not separator) - navigate normally
                         if item_index < self.items.len() {
                             let item = &self.items[item_index];
                             if item.clickable {
@@ -554,6 +919,7 @@ impl Widget for Breadcrumbs {
                                 }
                                 
                                 // Navigate to this item (remove items after it)
+                                // Note: navigate_to_index will reset hovered_index and item_positions if needed
                                 self.navigate_to_index(item_index);
                                 update |= Update::DRAW;
                             }
@@ -564,6 +930,40 @@ impl Widget for Breadcrumbs {
         }
 
         update
+    }
+
+    fn render_postfix(
+        &mut self,
+        graphics: &mut dyn Graphics,
+        theme: &mut dyn Theme,
+        layout: &LayoutNode,
+        info: &mut AppInfo,
+        context: AppContext,
+    ) {
+        // Render neighbor popup if open
+        if let Some(popup_item_index) = self.popup_item_index {
+            // Get item bounds before borrowing self mutably
+            let item_bounds = self.get_item_bounds(layout, popup_item_index);
+            
+            if let Some(ref mut popup) = self.neighbor_popup {
+                if let Some((item_x, item_y, _item_width, item_height)) = item_bounds {
+                    let (popup_width, popup_height) = popup.calculate_size_with_contexts(&mut self.text_ctx, &mut info.font_context);
+                    let popup_x = item_x;
+                    let popup_y = item_y + item_height;
+
+                    let mut popup_layout = LayoutNode {
+                        layout: Layout::default(),
+                        children: Vec::new(),
+                    };
+                    popup_layout.layout.location.x = popup_x as f32;
+                    popup_layout.layout.location.y = popup_y as f32;
+                    popup_layout.layout.size.width = popup_width as f32;
+                    popup_layout.layout.size.height = popup_height as f32;
+
+                    popup.render(graphics, theme, &popup_layout, info, context);
+                }
+            }
+        }
     }
 
     fn widget_id(&self) -> WidgetId {

@@ -56,6 +56,25 @@ impl Application for BreadcrumbsApp {
                         },
                         ..Default::default()
                     })
+                    .with_neighbors_provider(|item| {
+                        // Dynamically fetch siblings based on the item's ID/path
+                        // For example, query filesystem for sibling directories
+                        if let Some(path) = &item.id {
+                            // Query filesystem or data source here
+                            // Return sibling directories/files at this level
+                            Some(vec![
+                                BreadcrumbItem::new("Downloads").with_id("/home/user/Downloads"),
+                                BreadcrumbItem::new("Pictures").with_id("/home/user/Pictures"),
+                            ])
+                        } else {
+                            None
+                        }
+                    })
+                    .with_on_neighbor_select(|original_item, selected_neighbor| {
+                        // Handle neighbor selection (e.g., navigate to new directory)
+                        println!("Switching to: {}", selected_neighbor.label);
+                        Update::empty()
+                    })
             )
             .with_child(
                 Text::new("Web Navigation:".to_string())
