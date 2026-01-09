@@ -5,6 +5,7 @@ use crate::app::update::{Update, UpdateManager};
 use crate::menu::ContextMenuState;
 use crate::signal::eval::EvalSignal;
 use crate::signal::fixed::FixedSignal;
+use crate::signal::future::FutureSignal;
 use crate::signal::memoized::MemoizedSignal;
 use crate::signal::state::StateSignal;
 use crate::signal::Signal;
@@ -112,6 +113,37 @@ impl AppContext {
     /// Shortcut for creating and hooking an [EvalSignal] into the application lifecycle.
     pub fn use_eval<T: 'static>(&self, eval: impl Fn() -> T + 'static) -> EvalSignal<T> {
         self.use_signal(EvalSignal::new(eval))
+    }
+
+    /// Shortcut for creating and hooking a [FutureSignal] into the application lifecycle.
+    pub fn use_future<T, F>(&self, future: F) -> FutureSignal<T>
+    where
+        T: Send + Sync + 'static,
+        F: std::future::Future<Output = T> + Send + 'static,
+    {
+        let signal = FutureSignal::new(future);
+        signal.set_update_manager(self.update());
+        self.use_signal(signal)
+    }
+
+    /// Spawns the given future on the background task runner.
+    pub fn spawn<F>(&self, future: F)
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        crate::tasks::spawn(future);
+    }
+
+    /// Spawns a future that triggers an app update when complete.
+    pub fn spawn_with_update<F>(&self, future: F, update_type: Update)
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let update_manager = self.update.clone();
+        crate::tasks::spawn(async move {
+            future.await;
+            update_manager.insert(update_type);
+        });
     }
 
     /// Get the shared focus manager.

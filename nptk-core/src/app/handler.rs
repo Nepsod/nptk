@@ -1284,8 +1284,16 @@ where
         #[cfg(all(target_os = "linux", feature = "wayland"))]
         {
             if crate::platform::Platform::detect() == crate::platform::Platform::Wayland {
+                // If we have a waker, we don't need to force polling unless we're waiting for something specific
+                // However, native wayland event loop needs to be pumped
+                
+                // If update flags are set, we might need to process them immediately
+                // but usually user event wakes us up
+                
                 // Always poll when running native Wayland so we can pump the custom
                 // event queue even when winit has no Wayland windows to watch.
+                // NOTE: This might be redundant if we use winit's event loop proxy correctly
+                // but winit might not be aware of our native wayland fd
                 event_loop.set_control_flow(ControlFlow::Poll);
 
                 // If we have a configured surface but haven't drawn yet, force a draw so
@@ -1309,6 +1317,12 @@ where
         #[cfg(all(target_os = "linux", feature = "wayland"))]
         self.render_wayland_popups();
 
+        self.update(event_loop);
+    }
+
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, _event: ()) {
+        // Waker was called (from async thread)
+        // Just run update to process flags
         self.update(event_loop);
     }
 

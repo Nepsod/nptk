@@ -19,6 +19,12 @@ pub mod map;
 /// Contains the [eval::EvalSignal] signal.
 pub mod eval;
 
+/// Contains the [AsyncState] enum.
+pub mod async_state;
+
+/// Contains the [FutureSignal] signal.
+pub mod future;
+
 /// Listener function for [Signal].
 pub type Listener<T> = Box<dyn Fn(Ref<T>)>;
 

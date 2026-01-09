@@ -5,6 +5,7 @@ use crate::app::update::UpdateManager;
 use crate::config::MayConfig;
 use crate::plugin::PluginManager;
 use crate::widget::Widget;
+use std::sync::Arc;
 use vello::peniko::FontData;
 use winit::dpi::{LogicalPosition, LogicalSize, Position, Size};
 use winit::event_loop::EventLoopBuilder;
@@ -59,11 +60,18 @@ impl MayRunner {
         F: Fn(AppContext, S) -> W,
     {
         let mut event_loop = Self::create_event_loop();
+        let event_loop_proxy = event_loop.create_proxy();
         let mut attrs = Self::build_window_attributes(&self.config);
         Self::apply_optional_window_attributes(&self.config, &mut attrs);
 
         log::info!("Launching Application...");
-        let update = UpdateManager::new();
+        
+        let waker = Arc::new(move || {
+            event_loop_proxy.send_event(()).ok();
+        });
+        
+        let update = UpdateManager::new(Some(waker));
+        
         plugins.run(|pl| pl.init(&mut event_loop, &update, &mut attrs, &mut self.config));
 
         Self::run_app_handler(

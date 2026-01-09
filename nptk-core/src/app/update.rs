@@ -31,22 +31,38 @@ bitflags! {
 /// Manages updates for the application lifecycle.
 ///
 /// It's using atomic operations to ensure lockless thread-safety.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct UpdateManager {
     update: Arc<AtomicU8>,
+    waker: Option<Arc<dyn Fn() + Send + Sync>>,
+}
+
+impl std::fmt::Debug for UpdateManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UpdateManager")
+            .field("update", &self.update)
+            .field("waker", &self.waker.is_some())
+            .finish()
+    }
 }
 
 impl UpdateManager {
     /// Creates a new `UpdateManager`.
-    pub fn new() -> Self {
+    pub fn new(waker: Option<Arc<dyn Fn() + Send + Sync>>) -> Self {
         Self {
             update: Arc::new(AtomicU8::new(0)),
+            waker,
         }
     }
 
     /// Inserts the given `Update` into the `UpdateManager` using bitwise OR.
     pub fn insert(&self, update: Update) {
         self.update.fetch_or(update.bits(), Ordering::AcqRel);
+        
+        // Wake up the event loop if a waker is configured
+        if let Some(waker) = &self.waker {
+            waker();
+        }
     }
 
     /// Removes the given `Update` from the `UpdateManager` using bitwise AND.
@@ -73,6 +89,6 @@ impl UpdateManager {
 
 impl Default for UpdateManager {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
