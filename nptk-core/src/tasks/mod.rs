@@ -46,3 +46,20 @@ where
     let runner = RUNNER.load().clone();
     async move { runner.spawn_blocking(fut).await }
 }
+
+/// Shuts down the task runner gracefully.
+/// This should be called during application shutdown to prevent hanging.
+pub fn shutdown() {
+    log::debug!("Shutting down task runner...");
+    
+    // Take the current runner and replace with None
+    let current_runner = RUNNER.swap(Arc::new(TaskRunner::None));
+    
+    // Shutdown the runner if it's not None
+    match Arc::try_unwrap(current_runner) {
+        Ok(runner) => runner.shutdown(),
+        Err(_) => {
+            log::warn!("Could not shutdown task runner - still has active references");
+        }
+    }
+}

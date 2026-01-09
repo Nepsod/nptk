@@ -77,7 +77,10 @@ where
                 self.info.ime_events.push(ime_event);
                 self.request_redraw();
             },
-            WindowEvent::Destroyed => log::info!("Window destroyed! Exiting..."),
+            WindowEvent::Destroyed => {
+                log::info!("Window destroyed! Cleaning up and exiting...");
+                self.cleanup_resources();
+            },
             _ => (),
         }
     }
@@ -120,8 +123,46 @@ where
         log::debug!("Cleaning up resources...");
 
         if self.config.window.close_on_request {
+            // Perform cleanup before exiting
+            self.cleanup_resources();
             event_loop.exit();
         }
+    }
+
+    /// Cleanup resources before application shutdown.
+    fn cleanup_resources(&mut self) {
+        log::debug!("Starting resource cleanup...");
+
+        // Clear popup windows and their resources
+        for (_, popup) in self.popup_windows.drain() {
+            drop(popup);
+        }
+
+        #[cfg(all(target_os = "linux", feature = "wayland"))]
+        {
+            // Clear Wayland popups
+            for (_, popup) in self.wayland_popups.drain() {
+                drop(popup);
+            }
+        }
+
+        // Clear GPU resources
+        if let Some(renderer) = self.renderer.take() {
+            drop(renderer);
+        }
+        
+        if let Some(surface) = self.surface.take() {
+            drop(surface);
+        }
+
+        if let Some(gpu_context) = self.gpu_context.take() {
+            drop(gpu_context);
+        }
+
+        // Shutdown the task runner to prevent hanging
+        crate::tasks::shutdown();
+
+        log::debug!("Resource cleanup complete");
     }
 
     /// Handle keyboard input event.
@@ -250,6 +291,7 @@ where
         }
 
         if self.update.get().intersects(Update::EXIT) {
+            self.cleanup_resources();
             event_loop.exit();
             return;
         }

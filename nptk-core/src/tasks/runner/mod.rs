@@ -73,6 +73,18 @@ impl TaskRunner {
             },
         }
     }
+
+    /// Shuts down the task runner gracefully.
+    /// This method consumes self to ensure proper cleanup.
+    pub fn shutdown(self) {
+        match self {
+            #[cfg(feature = "tokio-runner")]
+            TaskRunner::Tokio(runner) => runner.shutdown(),
+            TaskRunner::None => {
+                log::debug!("No task runner to shutdown");
+            },
+        }
+    }
 }
 
 #[cfg(feature = "tokio-runner")]

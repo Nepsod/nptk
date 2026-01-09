@@ -1,5 +1,6 @@
 use crate::config::TasksConfig;
 use std::future::Future;
+use std::time::Duration;
 use tokio::runtime::{Builder, Runtime};
 
 /// A task runner using [tokio] as runtime.
@@ -66,5 +67,19 @@ impl TokioRunner {
             .spawn_blocking(fut)
             .await
             .expect("Failed to spawn task")
+    }
+
+    /// Shuts down the runtime gracefully with a timeout.
+    /// This ensures all spawned tasks complete and the runtime stops properly.
+    pub(crate) fn shutdown(self) {
+        log::debug!("Shutting down tokio runtime...");
+        
+        // Set a reasonable timeout for shutdown
+        let timeout = Duration::from_secs(2);
+        
+        // Shutdown the runtime with timeout
+        self.rt.shutdown_timeout(timeout);
+        
+        log::debug!("Tokio runtime shutdown complete");
     }
 }
