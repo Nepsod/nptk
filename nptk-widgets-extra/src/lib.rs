@@ -6,6 +6,9 @@
 /// Contains the [expandable_section::ExpandableSection] widget.
 pub mod expandable_section;
 
+/// Contains the [breadcrumbs::Breadcrumbs] widget.
+pub mod breadcrumbs;
+
 /// Contains the [file_icon::FileIcon] widget.
 pub mod file_icon;
 
