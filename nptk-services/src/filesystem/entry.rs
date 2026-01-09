@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-only
 //! File entry and metadata types.
 
 use std::path::{Path, PathBuf};

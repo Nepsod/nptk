@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-only
 //! In-memory cache for filesystem entries.
 
 use crate::filesystem::entry::FileEntry;

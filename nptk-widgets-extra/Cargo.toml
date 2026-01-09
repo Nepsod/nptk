@@ -1,0 +1,37 @@
+[package]
+name = "nptk-widgets-extra"
+description = "Extra widgets for nptk UI (LGPL-3.0) => See the `nptk` crate for more."
+version.workspace = true
+edition.workspace = true
+license = "LGPL-3.0-only"
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+nptk-widgets = { workspace = true }
+nptk-theme = { workspace = true }
+nptk-services = { workspace = true }
+nptk-core = { workspace = true, features = ["vg"] }
+nptk-macros = { workspace = true }
+nalgebra = { workspace = true }
+log = { workspace = true }
+vello_svg = { version = "0.8.0", default-features = false }
+smol = { workspace = true }
+npio = { workspace = true }
+tokio = { version = "1.35", features = ["sync", "rt"] }
+
+# Dependencies moved from nptk-widgets for global-menu
+zbus = { version = "5.12.0", default-features = false, features = ["async-io", "blocking-api"], optional = true }
+serde = { version = "1.0", features = ["derive"], optional = true }
+x11-dl = { version = "2.21", optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+wayland-client = { version = "0.31", optional = true }
+wayland-protocols-plasma = { version = "0.3", features = ["client"], optional = true }
+
+[features]
+default = []
+global-menu = ["zbus", "serde", "x11-dl", "wayland-client", "wayland-protocols-plasma", "nptk-core/global-menu"]

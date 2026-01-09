@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-only
 //! Adapter functions for converting between NPTK types and npio types.
 
 use crate::filesystem::entry::FileEntry;

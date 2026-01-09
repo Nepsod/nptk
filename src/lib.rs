@@ -10,7 +10,13 @@ pub use nptk_core as core;
 pub use nptk_macros as macros;
 pub use nptk_services as services;
 pub use nptk_theme as theme;
-pub use nptk_widgets as widgets;
+
+/// Widgets module aggregating core and extra widgets.
+pub mod widgets {
+    pub use nptk_widgets::*;
+    #[cfg(feature = "lgpl-widgets")]
+    pub use nptk_widgets_extra::*;
+}
 
 /// A "prelude" for users of the nptk toolkit.
 ///
@@ -43,7 +49,7 @@ pub mod prelude {
     // Color
     pub use crate::core::vg::*;
 
-    // Widgets
+    // Widgets (MIT)
     pub use crate::widgets::animator::Animator;
     pub use crate::widgets::button::Button;
     #[cfg(feature = "canvas")]
@@ -54,18 +60,38 @@ pub mod prelude {
     pub use crate::widgets::gesture_detector::GestureDetector;
     pub use crate::widgets::icon::Icon;
     pub use crate::widgets::image::{Image, ImageData};
-    pub use crate::widgets::menu_button::*;
-    pub use crate::widgets::menu_popup::MenuPopup;
-    pub use crate::widgets::menubar::*;
-    pub use crate::widgets::progress::Progress;
-    pub use crate::widgets::radio_button::{RadioButton, RadioButtonState};
-    pub use crate::widgets::scroll_container::ScrollContainer;
-    pub use crate::widgets::secret_input::SecretInput;
     pub use crate::widgets::slider::Slider;
-    pub use crate::widgets::tabs_container::TabsContainer;
     pub use crate::widgets::text::Text;
+
+    // Widgets (LGPL)
+    #[cfg(feature = "lgpl-widgets")]
+    pub use crate::widgets::menu_button::*;
+    #[cfg(feature = "lgpl-widgets")]
+    pub use crate::widgets::menu_popup::MenuPopup;
+    #[cfg(feature = "lgpl-widgets")]
+    pub use crate::widgets::menubar::*;
+    #[cfg(feature = "lgpl-widgets")]
+    pub use crate::widgets::progress::Progress;
+    #[cfg(feature = "lgpl-widgets")]
+    pub use crate::widgets::radio_button::{RadioButton, RadioButtonState};
+    #[cfg(feature = "lgpl-widgets")]
+    pub use crate::widgets::scroll_container::ScrollContainer;
+    #[cfg(feature = "lgpl-widgets")]
+    pub use crate::widgets::secret_input::SecretInput;
+    #[cfg(feature = "lgpl-widgets")]
+    pub use crate::widgets::tabs_container::TabsContainer;
+    #[cfg(feature = "lgpl-widgets")]
     pub use crate::widgets::text_input::TextInput;
+    #[cfg(feature = "lgpl-widgets")]
     pub use crate::widgets::toggle::Toggle;
+    #[cfg(feature = "lgpl-widgets")]
     pub use crate::widgets::toolbar::{Toolbar, ToolbarButton, ToolbarSeparator, ToolbarSpacer};
+    #[cfg(feature = "lgpl-widgets")]
     pub use crate::widgets::value_input::ValueInput;
+    #[cfg(feature = "lgpl-widgets")]
+    pub use crate::widgets::file_icon::FileIcon;
+    #[cfg(feature = "lgpl-widgets")]
+    pub use crate::widgets::expandable_section::ExpandableSection;
+    #[cfg(feature = "lgpl-widgets")]
+    pub use crate::widgets::sidebar::{Sidebar, SidebarItem, SidebarSection};
 }

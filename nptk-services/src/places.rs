@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-only
 //! User directory helpers (GIO-compatible)
 //!
 //! Provides helper functions to get user directories, matching GLib's `g_get_user_special_dir()`

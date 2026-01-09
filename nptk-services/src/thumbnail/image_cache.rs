@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-only
 //! LRU cache for decoded thumbnail images.
 //!
 //! This module provides a shared cache for decoded thumbnail images that can

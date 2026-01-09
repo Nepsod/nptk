@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-only
 use std::path::PathBuf;
 use std::collections::HashMap;
 use tokio::fs;

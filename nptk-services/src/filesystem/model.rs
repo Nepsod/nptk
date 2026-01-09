@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-only
 //! Main filesystem model implementation.
 
 use crate::filesystem::cache::FileSystemCache;

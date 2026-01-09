@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-only
 //! Background task executor for thumbnail generation.
 
 use crate::filesystem::entry::FileEntry;

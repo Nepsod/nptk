@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-only
 //! Cache path computation and freshness checks for thumbnails.
 //!
 //! This module implements freedesktop.org Thumbnail Managing Standard

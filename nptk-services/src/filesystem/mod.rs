@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-only
 //! Filesystem model for nptk, similar to Qt6's QFileSystemModel.
 //!
 //! Provides async filesystem operations, lazy loading, automatic file watching,

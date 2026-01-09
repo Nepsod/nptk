@@ -1,11 +1,11 @@
 [workspace]
-members = ["nptk-core", "nptk-macros", "nptk-theme", "nptk-widgets", "nptk-services", "examples/*"]
+members = ["nptk-core", "nptk-macros", "nptk-theme", "nptk-widgets", "nptk-widgets-extra", "nptk-services", "examples/*"]
 
 [workspace.package]
 version = "0.5.0"
 edition = "2021"
 authors = ["Dominik Adrian Grzywak <starterx4@gmail.com>"]
-license = "MIT OR Apache-2.0"
+license = "MIT AND LGPL-3.0 OR Apache-2.0 AND LGPL-3.0"
 repository = "https://github.com/Nepsod/nptk"
 homepage = ""
 categories = ["gui", "graphics", "rendering", "virtualization", "rendering::engine"]
@@ -24,6 +24,7 @@ nptk-core = { version = "0.5.0", path = "nptk-core" }
 nptk-macros = { version = "0.5.0", path = "nptk-macros" }
 nptk-theme = { version = "0.5.0", path = "nptk-theme" }
 nptk-widgets = { version = "0.5.0", path = "nptk-widgets" }
+nptk-widgets-extra = { version = "0.5.0", path = "nptk-widgets-extra" }
 nptk-services = { version = "0.5.0", path = "nptk-services" }
 
 [package]
@@ -43,6 +44,7 @@ npio = { workspace = true }
 nptk-core = { workspace = true }
 nptk-theme = { workspace = true }
 nptk-widgets = { workspace = true }
+nptk-widgets-extra = { workspace = true, optional = true }
 nptk-macros = { workspace = true, optional = true }
 nptk-services = { workspace = true }
 async-trait = { workspace = true }
@@ -51,7 +53,7 @@ nalgebra = { workspace = true }
 tokio = { workspace = true }
 
 [features]
-default = ["macros", "global-menu"]
+default = ["macros", "global-menu", "lgpl-widgets"]
 
 # Exports useful macros for working with nptk.
 macros = ["nptk-macros"]
@@ -63,10 +65,13 @@ vg = ["nptk-core/vg"]
 canvas = ["nptk-widgets/canvas"]
 
 # Enables the dbus global menu feature (KDE Plasma 5/6); also enables "nptk-core/global-menu".
-global-menu = ["nptk-widgets/global-menu"]
+global-menu = ["nptk-widgets-extra/global-menu"]
 
 # Use the `tokio` runtime for running tasks inside a task runner.
 tokio-runner = ["nptk-core/tokio-runner"]
+
+# Enables extra widgets licensed under LGPL-3.0.
+lgpl-widgets = ["dep:nptk-widgets-extra"]
 
 [lib]
 name = "nptk"

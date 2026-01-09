@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-only
 //! Thumbnail provider implementation using the thumbnailify crate.
 
 use crate::filesystem::entry::FileEntry;

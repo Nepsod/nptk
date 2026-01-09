@@ -35,6 +35,31 @@ first.
 
 ## License
 
-This project is dual licensed under the [MIT license](LICENSE-MIT) and the [Apache License 2.0](LICENSE-APACHE).
+This project uses a mixed licensing model:
 
-Any contributions are, unless otherwise stated, licensed under the same terms.
+### Permissive License (MIT/Apache-2.0)
+
+The following crates are dual licensed under the [MIT license](LICENSE-MIT) and the [Apache License 2.0](LICENSE-APACHE):
+
+- `nptk-core` - Core framework and utilities
+- `nptk-theme` - Theme system
+- `nptk-macros` - Procedural macros
+- `nptk-widgets` - Core widget library (button, checkbox, container, icon, image, slider, text, etc.)
+
+### Copyleft License (LGPL-3.0-only)
+
+The following crates are licensed under the [GNU Lesser General Public License v3.0 only](LICENSE-LGPLv3):
+
+- `nptk-widgets-extra` - Additional widgets (menu, progress, text input, sidebar, tabs, toolbar, etc.)
+- `nptk-services` - Services layer (filesystem, bookmarks, thumbnails, etc.)
+
+### Main Crate (`nptk`)
+
+The main `nptk` crate facade is MIT/Apache-2.0, but by default includes optional LGPL-3.0 dependencies via the `lgpl-widgets` feature. To build a purely permissive version, disable this feature:
+
+```toml
+[dependencies]
+nptk = { version = "0.5.0", default-features = false, features = ["macros"] }
+```
+
+Any contributions are, unless otherwise stated, licensed under the same terms as the crate they modify.

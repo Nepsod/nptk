@@ -13,9 +13,6 @@ pub mod button;
 /// Contains the [container::Container] widget.
 pub mod container;
 
-/// Contains the [expandable_section::ExpandableSection] widget.
-pub mod expandable_section;
-
 /// Contains the [image::Image] widget.
 pub mod image;
 
@@ -32,9 +29,6 @@ pub mod fetcher;
 #[cfg(feature = "canvas")]
 pub mod canvas;
 
-/// Contains the [file_icon::FileIcon] widget.
-pub mod file_icon;
-
 /// Contains the [gesture_detector::GestureDetector] widget.
 pub mod gesture_detector;
 
@@ -44,47 +38,5 @@ pub mod icon;
 /// Contains the [animator::Animator] widget and associated structures.
 pub mod animator;
 
-/// Contains the [text_input::TextInput] widget.
-pub mod text_input;
-
-/// Contains the [secret_input::SecretInput] widget.
-pub mod secret_input;
-
-/// Contains the [value_input::ValueInput] widget.
-pub mod value_input;
-
-/// Contains the [radio_button::RadioButton] widget.
-pub mod radio_button;
-
-/// Contains the [menubar::MenuBar] widget and global menu integration.
-pub mod menubar;
-
-/// Contains the [menu_popup::MenuPopup] widget.
-pub mod menu_popup;
-
-/// Contains the [scroll_container::ScrollContainer] widget.
-pub mod scroll_container;
-
-/// Contains the [tabs_container::TabsContainer] widget.
-pub mod tabs_container;
-
-/// Contains the [menu_button::MenuButton] widget.
-pub mod menu_button;
-
-/// Contains the [progress::Progress] widget.
-pub mod progress;
-
-/// Contains the [toggle::Toggle] widget.
-pub mod toggle;
-
 /// Contains theme rendering bridge functionality.
 pub mod theme_rendering;
-
-/// Contains the [toolbar::Toolbar] widget.
-pub mod toolbar;
-
-/// Contains the [sidebar::Sidebar] widget.
-pub mod sidebar;
-
-// Re-export public types
-pub use sidebar::{Sidebar, SidebarItem, SidebarSection};

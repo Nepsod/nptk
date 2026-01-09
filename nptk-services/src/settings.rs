@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-only
 use anyhow::Result;
 use nptk_theme::config::ThemeConfig;
 use serde::Deserialize;

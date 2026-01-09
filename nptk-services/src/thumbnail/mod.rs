@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-only
 //! Thumbnail generation and caching system.
 //!
 //! This module provides adapter functions for using npio's ThumbnailService

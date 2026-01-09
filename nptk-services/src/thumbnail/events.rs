@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-only
 //! Event system for thumbnail generation notifications.
 
 use std::path::PathBuf;
