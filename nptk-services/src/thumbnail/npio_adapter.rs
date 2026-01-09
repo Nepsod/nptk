@@ -3,8 +3,17 @@
 
 use crate::filesystem::entry::FileEntry;
 use std::path::PathBuf;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
-/// Convert a FileEntry to a file:// URI.
+/// Cache for converted URIs to avoid repeated allocations
+static URI_CACHE: std::sync::LazyLock<Arc<Mutex<HashMap<PathBuf, String>>>> = 
+    std::sync::LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+/// Maximum number of cached URIs
+const MAX_URI_CACHE_SIZE: usize = 1000;
+
+/// Convert a FileEntry to a file:// URI with caching.
 ///
 /// Uses the same logic as the existing file_uri() function from cache.rs.
 ///
@@ -24,9 +33,28 @@ pub fn file_entry_to_uri(entry: &FileEntry) -> String {
             .join(&entry.path)
     };
 
+    // Check cache first
+    if let Ok(cache) = URI_CACHE.lock() {
+        if let Some(cached_uri) = cache.get(&absolute_path) {
+            return cached_uri.clone();
+        }
+    }
+
+    // Generate URI
     let path_str = absolute_path.to_string_lossy();
     let encoded = urlencoding::encode(&path_str);
-    format!("file://{}", encoded)
+    let uri = format!("file://{}", encoded);
+
+    // Cache the result
+    if let Ok(mut cache) = URI_CACHE.lock() {
+        // Prevent unbounded cache growth
+        if cache.len() >= MAX_URI_CACHE_SIZE {
+            cache.clear();
+        }
+        cache.insert(absolute_path, uri.clone());
+    }
+
+    uri
 }
 
 /// Convert a file:// URI back to a PathBuf.

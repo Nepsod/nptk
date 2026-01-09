@@ -6,6 +6,9 @@ use std::time::{Duration, Instant};
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
 
+/// Maximum number of layout computations to cache
+const MAX_LAYOUT_CACHE_SIZE: usize = 10;
+
 mod events;
 mod render;
 #[cfg(all(target_os = "linux", feature = "wayland"))]
@@ -95,6 +98,8 @@ where
     dirty_region_tracker: DirtyRegionTracker,
     /// Cache for layout computation to avoid redundant calculations
     layout_cache: Option<(u64, LayoutNode)>, // (hash, cached_layout)
+    /// Counter for cache management
+    layout_cache_hits: usize,
 }
 
 struct PopupWindow {
@@ -195,6 +200,7 @@ where
             settings,
             dirty_region_tracker: DirtyRegionTracker::new(),
             layout_cache: None,
+            layout_cache_hits: 0,
         }
     }
 
@@ -269,6 +275,7 @@ where
         if let Some((cached_hash, ref cached_layout)) = &self.layout_cache {
             if *cached_hash == layout_hash {
                 log::debug!("Using cached layout (hash: {})", layout_hash);
+                self.layout_cache_hits += 1;
                 return Ok(cached_layout.clone());
             }
         }
