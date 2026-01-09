@@ -223,20 +223,20 @@ impl Breadcrumbs {
                     visible.push((0, false)); // Root item
                     
                     if max_items > 2 {
-                        visible.push((0, true)); // Ellipsis placeholder
+                        visible.push((usize::MAX, true)); // Ellipsis placeholder (using MAX as sentinel)
                         let start_idx = self.items.len().saturating_sub(max_items - 2);
                         for i in start_idx..self.items.len() {
                             visible.push((i, false));
                         }
                     } else if max_items == 2 {
-                        visible.push((0, true)); // Ellipsis
+                        visible.push((usize::MAX, true)); // Ellipsis
                         if !self.items.is_empty() {
                             visible.push((self.items.len() - 1, false)); // Last item
                         }
                     }
                 } else {
                     if max_items > 1 {
-                        visible.push((0, true)); // Ellipsis
+                        visible.push((usize::MAX, true)); // Ellipsis (using MAX as sentinel)
                         let start_idx = self.items.len().saturating_sub(max_items - 1);
                         for i in start_idx..self.items.len() {
                             visible.push((i, false));
@@ -258,8 +258,22 @@ impl Breadcrumbs {
     }
 
     /// Find which breadcrumb item is at the given position
-    fn find_item_at_position(&self, x: f32, y: f32) -> Option<usize> {
-        for &(item_x, item_width, original_index) in &self.item_positions {
+    fn find_item_at_position(&self, layout: &LayoutNode, x: f32, y: f32) -> Option<usize> {
+        // First check if the click is within the widget bounds
+        let layout_x = layout.layout.location.x;
+        let layout_y = layout.layout.location.y;
+        let layout_width = layout.layout.size.width;
+        let layout_height = layout.layout.size.height;
+        
+        if x < layout_x || x > layout_x + layout_width 
+            || y < layout_y || y > layout_y + layout_height {
+            return None;
+        }
+        
+        // Now check which item the x coordinate falls within
+        // Items are stored in render order, so we check in reverse to prioritize later (rightmost) items
+        // This handles cases where items might overlap slightly
+        for &(item_x, item_width, original_index) in self.item_positions.iter().rev() {
             if x >= item_x && x <= item_x + item_width {
                 return Some(original_index);
             }
@@ -268,7 +282,7 @@ impl Breadcrumbs {
     }
 
     /// Get color for a breadcrumb item based on its state
-    fn get_item_color(&self, theme: &mut dyn Theme, index: usize, is_current: bool, is_hovered: bool) -> Color {
+    fn get_item_color(&self, theme: &mut dyn Theme, _index: usize, is_current: bool, is_hovered: bool) -> Color {
         let widget_id = self.widget_id.clone();
         if is_current {
             // Current (last) item - use ColorText (same as normal, but could be styled differently)
@@ -346,6 +360,10 @@ impl Widget for Breadcrumbs {
         let font_size = self.font_size as f64;
         let spacing = self.spacing as f64;
         let last_index = self.items.len() - 1;
+        
+        // Use base_y directly - Parley's render_text handles baseline positioning internally
+        // Similar to how the Text widget renders text
+        let text_y = base_y;
 
         // Clear item positions for accurate click detection
         self.item_positions.clear();
@@ -356,12 +374,9 @@ impl Widget for Breadcrumbs {
         // Render home icon if enabled and first item is "Home"
         if self.show_home_icon && !visible_items.is_empty() {
             let (first_idx, is_ellipsis) = visible_items[0];
-            if !is_ellipsis && first_idx < self.items.len() && self.items[first_idx].label.to_lowercase() == "home" {
+            if !is_ellipsis && first_idx != usize::MAX && first_idx < self.items.len() && self.items[first_idx].label.to_lowercase() == "home" {
                 // Draw a simple house icon (square with triangle roof)
                 let icon_size = font_size * 0.8;
-                let icon_y = base_y + font_size * 0.6;
-                
-                let item_color = self.get_item_color(theme, first_idx, first_idx == last_index, self.hovered_index == Some(first_idx));
                 
                 // Simple house shape using lines/path (simplified - could use SVG icon)
                 // For now, just render a placeholder or skip
@@ -374,32 +389,39 @@ impl Widget for Breadcrumbs {
         // Render breadcrumb items
         for (vis_idx, (orig_idx, is_ellipsis)) in visible_items.iter().enumerate() {
             if vis_idx > 0 {
-                // Render separator
-                let sep_text = if *is_ellipsis { "..." } else { &self.separator };
-                // Estimate separator width (rough approximation)
-                let sep_width = sep_text.len() as f64 * font_size * 0.6;
-                
-                let sep_transform = nptk_core::vg::kurbo::Affine::translate((
-                    current_x,
-                    base_y + font_size * 1.2,
-                ));
-                
-                self.text_ctx.render_text(
-                    &mut info.font_context,
-                    graphics,
-                    sep_text,
-                    None, // No specific font
-                    font_size as f32,
-                    nptk_core::vg::peniko::Brush::Solid(separator_color),
-                    sep_transform,
-                    true, // hinting
-                    None, // No max width
-                );
-                
-                current_x += sep_width + spacing;
+                // Render separator (don't render separator before ellipsis, ellipsis acts as separator)
+                if !*is_ellipsis {
+                    let sep_text = &self.separator;
+                    // Measure separator width accurately
+                    let sep_width = self.text_ctx.measure_text_width(
+                        &mut info.font_context,
+                        sep_text,
+                        None, // No specific font
+                        font_size as f32,
+                    ) as f64;
+                    
+                    let sep_transform = nptk_core::vg::kurbo::Affine::translate((
+                        current_x,
+                        text_y,
+                    ));
+                    
+                    self.text_ctx.render_text(
+                        &mut info.font_context,
+                        graphics,
+                        sep_text,
+                        None, // No specific font
+                        font_size as f32,
+                        nptk_core::vg::peniko::Brush::Solid(separator_color),
+                        sep_transform,
+                        true, // hinting
+                        None, // No max width
+                    );
+                    
+                    current_x += sep_width + spacing;
+                }
             }
 
-            if !is_ellipsis {
+            if !is_ellipsis && *orig_idx != usize::MAX && *orig_idx < self.items.len() {
                 let item = &self.items[*orig_idx];
                 let is_current = *orig_idx == last_index;
                 let is_hovered = self.hovered_index == Some(*orig_idx);
@@ -413,16 +435,21 @@ impl Widget for Breadcrumbs {
                     &item.label
                 };
 
-                // Estimate text width (rough approximation - could use TextRenderContext::measure_text_width with font_context)
-                let text_width = text.len() as f64 * font_size * 0.6;
+                // Measure text width accurately using TextRenderContext
+                let text_width = self.text_ctx.measure_text_width(
+                    &mut info.font_context,
+                    text,
+                    None, // No specific font
+                    font_size as f32,
+                ) as f64;
 
-                // Store position for click detection
+                // Store position for click detection (x, width, original_index)
                 self.item_positions.push((current_x as f32, text_width as f32, *orig_idx));
 
                 // Render text
                 let text_transform = nptk_core::vg::kurbo::Affine::translate((
                     current_x,
-                    base_y + font_size * 1.2,
+                    text_y,
                 ));
                 
                 self.text_ctx.render_text(
@@ -441,12 +468,17 @@ impl Widget for Breadcrumbs {
             } else {
                 // Render ellipsis
                 let ellipsis_text = "...";
-                // Estimate ellipsis width
-                let ellipsis_width = 3.0 * font_size * 0.6;
+                // Measure ellipsis width accurately
+                let ellipsis_width = self.text_ctx.measure_text_width(
+                    &mut info.font_context,
+                    ellipsis_text,
+                    None, // No specific font
+                    font_size as f32,
+                ) as f64;
                 
                 let ellipsis_transform = nptk_core::vg::kurbo::Affine::translate((
                     current_x,
-                    base_y + font_size * 1.2,
+                    text_y,
                 ));
                 
                 self.text_ctx.render_text(
@@ -472,9 +504,11 @@ impl Widget for Breadcrumbs {
                 let mut style = self.layout_style.get().clone();
                 // Ensure horizontal layout
                 style.flex_direction = FlexDirection::Row;
+                // Calculate proper height: use line height calculation (font_size * 1.2) plus padding
+                let line_height = self.font_size * 1.2;
                 style.size = nalgebra::Vector2::new(
                     Dimension::percent(1.0),
-                    Dimension::length(self.font_size * 1.5), // Height based on font size
+                    Dimension::length(line_height + 4.0), // Height with padding for visual spacing
                 );
                 style
             },
@@ -482,12 +516,13 @@ impl Widget for Breadcrumbs {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         // Handle mouse hover for visual feedback
         if let Some(cursor_pos) = info.cursor_pos {
             let new_hovered = self.find_item_at_position(
+                layout,
                 cursor_pos.x as f32,
                 cursor_pos.y as f32,
             );
@@ -506,6 +541,7 @@ impl Widget for Breadcrumbs {
             if *button == MouseButton::Left && *state == ElementState::Released {
                 if let Some(cursor_pos) = info.cursor_pos {
                     if let Some(item_index) = self.find_item_at_position(
+                        layout,
                         cursor_pos.x as f32,
                         cursor_pos.y as f32,
                     ) {
