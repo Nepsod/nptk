@@ -5,8 +5,8 @@
 //! for cache paths and naming conventions.
 
 use crate::filesystem::entry::FileEntry;
-use std::fs;
 use std::path::{Path, PathBuf};
+use tokio::fs;
 
 /// Compute the cache directory path for thumbnails of a given size.
 ///
@@ -107,15 +107,15 @@ pub fn file_uri_to_md5(uri: &str) -> String {
 ///
 /// * `true` - If the thumbnail exists and is fresh
 /// * `false` - If the thumbnail doesn't exist or is stale
-pub fn is_thumbnail_fresh(thumbnail_path: &Path, file_path: &Path) -> bool {
+pub async fn is_thumbnail_fresh(thumbnail_path: &Path, file_path: &Path) -> bool {
     // Check if thumbnail exists
-    let thumbnail_metadata = match fs::metadata(thumbnail_path) {
+    let thumbnail_metadata = match fs::metadata(thumbnail_path).await {
         Ok(m) => m,
         Err(_) => return false,
     };
 
     // Check if file exists
-    let file_metadata = match fs::metadata(file_path) {
+    let file_metadata = match fs::metadata(file_path).await {
         Ok(m) => m,
         Err(_) => return false,
     };
@@ -147,9 +147,9 @@ pub fn is_thumbnail_fresh(thumbnail_path: &Path, file_path: &Path) -> bool {
 ///
 /// * `Ok(())` - If the directory was created or already exists
 /// * `Err(std::io::Error)` - If directory creation failed
-pub fn ensure_cache_dir(size: u32) -> std::io::Result<()> {
+pub async fn ensure_cache_dir(size: u32) -> std::io::Result<()> {
     let cache_dir = thumbnail_cache_dir(size);
-    fs::create_dir_all(&cache_dir)?;
+    fs::create_dir_all(&cache_dir).await?;
     log::debug!("Thumbnail cache directory ensured: {:?}", cache_dir);
     Ok(())
 }

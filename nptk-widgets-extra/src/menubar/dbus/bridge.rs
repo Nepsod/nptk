@@ -1,5 +1,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 //! DBus menu bridge implementation.
+//!
+//! This module uses `zbus::blocking` for simplicity in handling D-Bus messages.
+//! While `nptk` is moving towards async, the global menu integration currently relies
+//! on a dedicated thread and blocking I/O for D-Bus communication to ensure responsiveness
+//! independent of the main UI loop and to simplify the synchronous D-Bus interface.
+//!
+//! Future refactoring could move this to `zbus::connection` (async) and integrate it
+//! into the main async runtime, but for now, the threaded blocking approach is intentional
+//! and isolated.
 
 use log::{error, warn};
 use std::collections::HashMap;

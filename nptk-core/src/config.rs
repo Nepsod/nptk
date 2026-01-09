@@ -10,6 +10,7 @@ pub use winit::window::{
 use nptk_services::settings::SettingsRegistry;
 use nptk_theme::manager::SharedThemeManager;
 use nptk_theme::manager::create_shared_theme_manager_from_config;
+// use futures_util::future::TryFutureExt; // Removing this dependency as it's not strictly needed if we use Result method
 
 /// nptk Application Configuration Structure.
 #[derive(Clone)]
@@ -29,20 +30,16 @@ pub struct MayConfig {
 impl Default for MayConfig {
     fn default() -> Self {
         // Create settings registry first to load theme configuration
-        let settings = std::sync::Arc::new(SettingsRegistry::new().unwrap_or_else(|e| {
-            log::error!("Failed to initialize settings registry: {}", e);
-            // Return a default registry if loading fails (it has a default impl internally)
-            // But SettingsRegistry::new() calls load(), so we might need a fallback constructor
-            // For now, let's assume we can construct a default one or handle the error.
-            // Since SettingsRegistry doesn't derive Default publicly (it has a new() that returns Result),
-            // we might need to expose a safe default or panic.
-            // Given this is core config, panicking might be too harsh, but running without settings is also bad.
-            // Let's modify SettingsRegistry to derive Default or have a safe default.
-            // Wait, I implemented new() -> Result<Self>.
-            // I should probably implement Default for SettingsRegistry in nptk-services.
-            // For now, I'll use a hack to create an empty one if it fails, or just panic if it's critical.
-            // Actually, let's just panic for now as it shouldn't fail unless filesystem is broken.
-            panic!("Failed to initialize settings registry: {}", e);
+        // Use smol::block_on for async initialization in synchronous context
+        // This is necessary because Default trait is synchronous but SettingsRegistry::new() is async
+        let settings = std::sync::Arc::new(smol::block_on(async {
+            // We await the new() call which returns a Result.
+            // Then we use synchronous Result::unwrap_or_else on the output.
+            // We don't need futures_util::TryFutureExt here if we await first.
+            SettingsRegistry::new().await.unwrap_or_else(|e| {
+                log::error!("Failed to initialize settings registry: {}", e);
+                panic!("Failed to initialize settings registry: {}", e);
+            })
         }));
         
         // Create theme manager from the loaded theme configuration

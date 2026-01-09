@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 //! Background task executor for thumbnail generation.
+//!
+//! This module manages the background generation of thumbnails.
+//! It uses a blocking task pool for CPU-bound thumbnail generation and
+//! async messaging for coordination.
 
 use crate::filesystem::entry::FileEntry;
 use npio::service::io_helpers;
@@ -78,14 +82,11 @@ impl ThumbnailExecutor {
             let entry_path = task.entry.path.clone();
             let size = task.size;
 
-            // Generate thumbnail in blocking task
-            let result = tokio::task::spawn_blocking(move || {
-                Self::generate_thumbnail(&task.entry, task.size)
-            })
-            .await;
+            // Generate thumbnail in async context (since cache checks are now async)
+            let result = Self::generate_thumbnail_async(&task.entry, task.size).await;
 
             match result {
-                Ok(Ok(thumbnail_path)) => {
+                Ok(thumbnail_path) => {
                     let event = ThumbnailEvent::ThumbnailReady {
                         entry_path,
                         thumbnail_path,
@@ -93,18 +94,10 @@ impl ThumbnailExecutor {
                     };
                     let _ = event_tx.send(event);
                 },
-                Ok(Err(e)) => {
-                    let event = ThumbnailEvent::ThumbnailFailed {
-                        entry_path,
-                        error: e.to_string(),
-                        size,
-                    };
-                    let _ = event_tx.send(event);
-                },
                 Err(e) => {
                     let event = ThumbnailEvent::ThumbnailFailed {
                         entry_path,
-                        error: format!("Task execution error: {}", e),
+                        error: e.to_string(),
                         size,
                     };
                     let _ = event_tx.send(event);
@@ -113,18 +106,22 @@ impl ThumbnailExecutor {
         }
     }
 
-    /// Generate a thumbnail for a file entry.
+    /// Generate a thumbnail for a file entry (Async version).
     ///
-    /// This is called from the blocking task pool.
-    fn generate_thumbnail(entry: &FileEntry, size: u32) -> Result<PathBuf, ThumbnailError> {
-        // Ensure cache directory exists
-        ensure_cache_dir(size)?;
+    /// This orchestrates the generation process, calling async cache checks
+    /// and offloading blocking generation work.
+    async fn generate_thumbnail_async(entry: &FileEntry, size: u32) -> Result<PathBuf, ThumbnailError> {
+        // Ensure cache directory exists (now async)
+        ensure_cache_dir(size).await.map_err(|e| ThumbnailError::CacheError(e.to_string()))?;
 
         // Get cache path
         let thumbnail_path = thumbnail_cache_path(entry, size);
 
-        // Check if thumbnail already exists and is fresh
-        if thumbnail_path.exists() && is_thumbnail_fresh(&thumbnail_path, &entry.path) {
+        // Check if thumbnail already exists and is fresh (now async)
+        // Note: thumbnail_path.exists() is synchronous, but we can use tokio::fs::metadata
+        // inside is_thumbnail_fresh which is fully async.
+        // We can skip the separate exists check as is_thumbnail_fresh handles it.
+        if is_thumbnail_fresh(&thumbnail_path, &entry.path).await {
             log::debug!("Thumbnail cache hit: {:?}", thumbnail_path);
             return Ok(thumbnail_path);
         }
@@ -132,21 +129,30 @@ impl ThumbnailExecutor {
         log::debug!("Generating thumbnail for {:?} at size {}", entry.path, size);
 
         // Generate thumbnail using thumbnailify
-        // thumbnailify uses ThumbnailSize enum, map our size to it
-        let thumbnail_size = if size <= 128 {
-            thumbnailify::ThumbnailSize::Normal
-        } else {
-            thumbnailify::ThumbnailSize::Large
-        };
+        // thumbnailify operations are blocking, so we offload them to spawn_blocking
+        let entry_path = entry.path.clone();
+        let thumbnail_path_clone = thumbnail_path.clone();
+        
+        let generated_path = tokio::task::spawn_blocking(move || {
+            // thumbnailify uses ThumbnailSize enum, map our size to it
+            let thumbnail_size = if size <= 128 {
+                thumbnailify::ThumbnailSize::Normal
+            } else {
+                thumbnailify::ThumbnailSize::Large
+            };
 
-        let generated_path = thumbnailify::generate_thumbnail(&entry.path, thumbnail_size)
-            .map_err(|e| {
-                ThumbnailError::GenerationFailed(format!("thumbnailify error: {:?}", e))
-            })?;
+            thumbnailify::generate_thumbnail(&entry_path, thumbnail_size)
+                .map_err(|e| {
+                    ThumbnailError::GenerationFailed(format!("thumbnailify error: {:?}", e))
+                })
+        })
+        .await
+        .map_err(|e| ThumbnailError::Unknown(format!("Task execution error: {}", e)))??;
 
         // Copy generated thumbnail to our cache location
-        // Use smol::block_on which works even within tokio runtime
-        smol::block_on(io_helpers::copy_file(&generated_path, &thumbnail_path))
+        // Use async file copy helper
+        io_helpers::copy_file(&generated_path, &thumbnail_path)
+            .await
             .map_err(|e| {
                 ThumbnailError::CacheError(format!("Failed to copy thumbnail to cache: {}", e))
             })?;

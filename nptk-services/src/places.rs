@@ -16,6 +16,7 @@ use directories::UserDirs;
 use npio::get_file_for_uri;
 use npio::NpioResult;
 use npio::File;
+use tokio::fs;
 
 /// User directory types, matching GLib's `GUserDirectory` enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -193,7 +194,7 @@ static USER_SPECIAL_DIRS: Lazy<Mutex<Option<HashMap<UserDirectory, PathBuf>>>> =
 /// if the file doesn't exist or can't be parsed.
 ///
 /// Results are cached after first load (matching GLib's `g_get_user_special_dir()` behavior).
-fn load_user_special_dirs() -> HashMap<UserDirectory, PathBuf> {
+async fn load_user_special_dirs() -> HashMap<UserDirectory, PathBuf> {
     // Check cache first
     {
         match USER_SPECIAL_DIRS.lock() {
@@ -214,7 +215,7 @@ fn load_user_special_dirs() -> HashMap<UserDirectory, PathBuf> {
     }
     
     // Load directories
-    let dirs = load_user_special_dirs_impl();
+    let dirs = load_user_special_dirs_impl().await;
     
     // Cache the result
     {
@@ -235,7 +236,7 @@ fn load_user_special_dirs() -> HashMap<UserDirectory, PathBuf> {
 }
 
 /// Internal implementation that actually loads the directories.
-fn load_user_special_dirs_impl() -> HashMap<UserDirectory, PathBuf> {
+async fn load_user_special_dirs_impl() -> HashMap<UserDirectory, PathBuf> {
     let mut dirs = HashMap::new();
     
     // Get home directory
@@ -253,7 +254,7 @@ fn load_user_special_dirs_impl() -> HashMap<UserDirectory, PathBuf> {
     
     // Try to read user-dirs.dirs file
     if let Some(config_file) = get_user_dirs_file_path() {
-        if let Ok(content) = std::fs::read_to_string(&config_file) {
+        if let Ok(content) = fs::read_to_string(&config_file).await {
             dirs = parse_user_dirs_file(&content, &home_dir);
         }
     }
@@ -350,14 +351,14 @@ pub fn get_home_file() -> NpioResult<Box<dyn File>> {
 /// use npio::service::places::{get_user_special_file, UserDirectory};
 ///
 /// # async fn example() -> npio::NpioResult<()> {
-/// if let Some(docs_file) = get_user_special_file(UserDirectory::Documents)? {
+/// if let Some(docs_file) = get_user_special_file(UserDirectory::Documents).await? {
 ///     println!("Documents directory: {}", docs_file.uri());
 /// }
 /// # Ok(())
 /// # }
 /// ```
-pub fn get_user_special_file(directory: UserDirectory) -> NpioResult<Option<Box<dyn File>>> {
-    let dirs = load_user_special_dirs();
+pub async fn get_user_special_file(directory: UserDirectory) -> NpioResult<Option<Box<dyn File>>> {
+    let dirs = load_user_special_dirs().await;
     
     if let Some(path) = dirs.get(&directory) {
         let uri = format!("file://{}", path.to_string_lossy());

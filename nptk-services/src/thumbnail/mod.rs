@@ -31,10 +31,10 @@ pub mod image_cache;
 pub mod thumbnailify_provider;
 
 // Re-export deprecated types for backward compatibility
-#[deprecated(note = "Use npio::ThumbnailService instead")]
+#[allow(deprecated)]
 pub use image_cache::{CachedThumbnail, ThumbnailImageCache};
 
-#[deprecated(note = "Use npio::ThumbnailService instead")]
+#[allow(deprecated)]
 pub use thumbnailify_provider::ThumbnailifyProvider;
 
 /// Trait for thumbnail providers.
