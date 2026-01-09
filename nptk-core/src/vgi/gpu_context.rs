@@ -61,7 +61,42 @@ impl GpuContext {
         &self.instance
     }
 
-    /// Request an adapter with a compatible surface.
+    /// Request an adapter with a compatible surface asynchronously.
+    ///
+    /// On Wayland, this is the recommended way to get an adapter that's compatible
+    /// with the surface. The surface must be created with this context's Instance.
+    ///
+    /// # Arguments
+    /// * `surface` - The wgpu surface to check compatibility with
+    ///
+    /// # Returns
+    /// * `Some(Adapter)` if an adapter was found
+    /// * `None` if no compatible adapter was found
+    pub async fn request_adapter_with_surface_async(
+        &self,
+        surface: &wgpu::Surface<'static>,
+    ) -> Option<wgpu::Adapter> {
+        log::debug!("Requesting adapter with surface...");
+
+        let adapter_result = self.instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::default(),
+            compatible_surface: Some(surface),
+            force_fallback_adapter: false,
+        }).await;
+
+        match adapter_result {
+            Ok(adapter) => {
+                log::debug!("Successfully requested adapter with surface");
+                Some(adapter)
+            },
+            Err(err) => {
+                log::warn!("No adapter found with surface: {:?}", err);
+                None
+            },
+        }
+    }
+
+    /// Request an adapter with a compatible surface (blocking version for compatibility).
     ///
     /// On Wayland, this is the recommended way to get an adapter that's compatible
     /// with the surface. The surface must be created with this context's Instance.

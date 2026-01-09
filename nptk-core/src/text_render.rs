@@ -4,11 +4,15 @@
 
 use crate::app::font_ctx::FontContext;
 use crate::vgi::Graphics;
-use parley::fontique::QueryFont;
+use lru::LruCache;
 use parley::{Alignment, Layout, LayoutContext, StyleProperty};
+use std::num::NonZeroUsize;
 use vello::kurbo::Affine;
 use vello::peniko::{Brush, Fill};
 use vello::Scene;
+
+/// Maximum number of text layouts to cache
+const LAYOUT_CACHE_CAPACITY: usize = 1000;
 
 /// Brush index type for Parley integration
 #[derive(Clone, PartialEq, Default, Debug)]
@@ -17,10 +21,9 @@ pub struct BrushIndex(pub usize);
 /// Text rendering context that manages layout contexts
 pub struct TextRenderContext {
     layout_cx: LayoutContext,
-    /// Cache for text layouts to avoid expensive rebuilding
+    /// LRU cache for text layouts to prevent memory leaks
     /// Key: (text, font_family, max_width_u32, font_size_u32, max_lines, center_align)
-    layout_cache:
-        std::collections::HashMap<(String, String, u32, u32, Option<usize>, bool), Layout<[u8; 4]>>,
+    layout_cache: LruCache<(String, String, u32, u32, Option<usize>, bool), Layout<[u8; 4]>>,
 }
 
 impl TextRenderContext {
@@ -28,7 +31,7 @@ impl TextRenderContext {
     pub fn new() -> Self {
         Self {
             layout_cx: LayoutContext::new(),
-            layout_cache: std::collections::HashMap::new(),
+            layout_cache: LruCache::new(NonZeroUsize::new(LAYOUT_CACHE_CAPACITY).unwrap()),
         }
     }
 
@@ -338,7 +341,7 @@ impl TextRenderContext {
         };
         layout.align(max_width, align, Default::default());
 
-        self.layout_cache.insert(cache_key, layout.clone());
+        self.layout_cache.put(cache_key, layout.clone());
         layout
     }
 

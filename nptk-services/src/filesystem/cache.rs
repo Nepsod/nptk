@@ -2,24 +2,30 @@
 //! In-memory cache for filesystem entries.
 
 use crate::filesystem::entry::FileEntry;
-use std::collections::HashMap;
+use lru::LruCache;
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-/// Thread-safe cache for filesystem entries.
+/// Maximum number of directory entries to cache
+const CHILDREN_CACHE_SIZE: usize = 500;
+/// Maximum number of file entries to cache
+const ENTRIES_CACHE_SIZE: usize = 2000;
+
+/// Thread-safe cache for filesystem entries with LRU eviction.
 pub struct FileSystemCache {
-    /// Map from directory path to its children entries.
-    children: Arc<Mutex<HashMap<PathBuf, Vec<FileEntry>>>>,
-    /// Map from file path to its entry (for quick lookup).
-    entries: Arc<Mutex<HashMap<PathBuf, FileEntry>>>,
+    /// LRU cache from directory path to its children entries.
+    children: Arc<Mutex<LruCache<PathBuf, Vec<FileEntry>>>>,
+    /// LRU cache from file path to its entry (for quick lookup).
+    entries: Arc<Mutex<LruCache<PathBuf, FileEntry>>>,
 }
 
 impl FileSystemCache {
-    /// Create a new empty cache.
+    /// Create a new empty cache with LRU eviction.
     pub fn new() -> Self {
         Self {
-            children: Arc::new(Mutex::new(HashMap::new())),
-            entries: Arc::new(Mutex::new(HashMap::new())),
+            children: Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(CHILDREN_CACHE_SIZE).unwrap()))),
+            entries: Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(ENTRIES_CACHE_SIZE).unwrap()))),
         }
     }
 
@@ -33,12 +39,12 @@ impl FileSystemCache {
         let mut children = self.children.lock().unwrap();
         let mut entry_map = self.entries.lock().unwrap();
 
-        // Update children map
-        children.insert(path.to_path_buf(), entries.clone());
+        // Update children cache
+        children.put(path.to_path_buf(), entries.clone());
 
-        // Update entry map for quick lookups
+        // Update entry cache for quick lookups
         for entry in entries {
-            entry_map.insert(entry.path.clone(), entry);
+            entry_map.put(entry.path.clone(), entry);
         }
     }
 
@@ -52,7 +58,7 @@ impl FileSystemCache {
         self.entries
             .lock()
             .unwrap()
-            .insert(entry.path.clone(), entry);
+            .put(entry.path.clone(), entry);
     }
 
     /// Invalidate (remove) a directory and its children from the cache.
@@ -60,21 +66,21 @@ impl FileSystemCache {
         let mut children = self.children.lock().unwrap();
         let mut entries = self.entries.lock().unwrap();
 
-        // Remove directory from children map
-        if let Some(dir_entries) = children.remove(path) {
-            // Remove all child entries from entry map
+        // Remove directory from children cache
+        if let Some(dir_entries) = children.pop(path) {
+            // Remove all child entries from entry cache
             for entry in dir_entries {
-                entries.remove(&entry.path);
+                entries.pop(&entry.path);
             }
         }
 
         // Also remove the directory entry itself if it exists
-        entries.remove(path);
+        entries.pop(path);
     }
 
     /// Remove a specific entry from the cache.
     pub fn remove_entry(&self, path: &Path) {
-        self.entries.lock().unwrap().remove(path);
+        self.entries.lock().unwrap().pop(path);
 
         // Also remove from parent's children list if we can find it
         if let Some(parent) = path.parent() {

@@ -3,7 +3,6 @@ use crate::app::context::AppContext;
 use crate::app::info::AppKeyEvent;
 use crate::app::update::Update;
 use crate::menu::render::MenuGeometry;
-use crate::menu::manager::MenuManager;
 use nalgebra::Vector2;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;

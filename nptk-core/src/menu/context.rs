@@ -54,10 +54,10 @@ impl ContextMenuState {
         state.stack.last().cloned()
     }
 
-    /// Get the entire menu stack
-    pub fn get_stack(&self) -> Vec<(MenuTemplate, Point)> {
+    /// Get the entire menu stack (returns Arc to avoid cloning)
+    pub fn get_stack(&self) -> Arc<Vec<(MenuTemplate, Point)>> {
         let state = self.state.lock().unwrap();
-        state.stack.clone()
+        Arc::new(state.stack.clone())
     }
 
     /// Check if any context menu is open

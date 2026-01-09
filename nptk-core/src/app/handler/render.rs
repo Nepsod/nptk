@@ -26,32 +26,23 @@ where
         self.scene.reset();
         let scene_reset_time = render_start.elapsed();
 
-        // Mask cursor during widget rendering to prevent hover effects on widgets below menu
-        let widget_cursor_pos = if cursor_over_menu {
-            // Temporarily mask cursor during widget render
-            let saved = self.info.cursor_pos;
-            self.info.cursor_pos = None;
-            saved
+        // Use a single cursor state variable to avoid repeated masking/unmasking
+        let effective_cursor_pos = if cursor_over_menu {
+            None // Mask cursor for widget rendering when menu is active
         } else {
             self.info.cursor_pos
         };
         
+        // Temporarily set cursor state for widget rendering
+        let original_cursor_state = self.info.cursor_pos;
+        self.info.cursor_pos = effective_cursor_pos;
+        
         let widget_render_time = self.render_widget(layout_node);
         let postfix_render_time = self.render_postfix(layout_node);
         
-        // Restore cursor for menu rendering
-        if cursor_over_menu {
-            self.info.cursor_pos = widget_cursor_pos;
-        }
-        
-        // Menu rendering uses the restored cursor position
-        let menu_cursor_pos = widget_cursor_pos;
-        self.render_context_menu(menu_cursor_pos);
-        
-        // Restore cursor after menu render (it will be reset by info.reset() anyway)
-        if cursor_over_menu {
-            self.info.cursor_pos = widget_cursor_pos;
-        }
+        // Restore original cursor state for menu rendering
+        self.info.cursor_pos = original_cursor_state;
+        self.render_context_menu(original_cursor_pos);
 
         if let Some(render_times) = self.render_to_surface(
             render_start,
@@ -202,13 +193,13 @@ where
             let cursor_pos = cursor_pos_for_menu
                 .map(|p| vello::kurbo::Point::new(p.x, p.y));
             let theme_manager = self.config.theme_manager.clone();
-            for (template, position) in context.menu_manager.get_stack() {
+            for (template, position) in context.menu_manager.get_stack().iter() {
                 theme_manager.read().unwrap().access_theme_mut(|theme| {
                     // Calculate hovered index for this menu
                     use crate::menu::render::MenuGeometry;
                     let geometry = MenuGeometry::new(
                         &template,
-                        position,
+                        *position,
                         &mut self.text_render,
                         &mut self.info.font_context,
                     );
@@ -223,7 +214,7 @@ where
                     crate::menu::render_menu(
                         graphics.as_mut(),
                         &template,
-                        position,
+                        *position,
                         theme,
                         &mut self.text_render,
                         &mut self.info.font_context,

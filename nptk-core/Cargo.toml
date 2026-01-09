@@ -28,6 +28,7 @@ indexmap = { workspace = true }
 nptk-services = { workspace = true }
 xdg = "2.5"
 log = "0.4.21"
+lru = "0.12"
 read-fonts = "0.29.2"
 parley = "0.7.0"
 harfrust = "0.2.0"
