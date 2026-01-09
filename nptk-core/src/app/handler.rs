@@ -205,16 +205,19 @@ where
     }
 
     /// Get the application context.
-    pub fn context(&self) -> AppContext {
-        AppContext::new(
-            self.update.clone(),
-            self.info.diagnostics.clone(),
-            self.gpu_context.clone().unwrap(),
-            self.info.focus_manager.clone(),
-            self.menu_manager.clone(),
-            self.popup_manager.clone(),
-            self.settings.clone(),
-        )
+    /// Returns None if GPU context is not available (e.g., during shutdown).
+    pub fn context(&self) -> Option<AppContext> {
+        self.gpu_context.as_ref().map(|gpu_ctx| {
+            AppContext::new(
+                self.update.clone(),
+                self.info.diagnostics.clone(),
+                gpu_ctx.clone(),
+                self.info.focus_manager.clone(),
+                self.menu_manager.clone(),
+                self.popup_manager.clone(),
+                self.settings.clone(),
+            )
+        })
     }
 
     /// Add the parent node and its children to the layout tree.
@@ -792,7 +795,10 @@ where
     /// Check if the cursor is over any open context menu
     /// This uses the same logic as render_context_menu to ensure consistency
     fn is_cursor_over_menu(&mut self) -> bool {
-        let context = self.context();
+        let Some(context) = self.context() else {
+            // GPU context not available (e.g., during shutdown) - no menu can be open
+            return false;
+        };
         if !context.menu_manager.is_open() {
             return false;
         }
@@ -842,7 +848,10 @@ where
         );
         
         // Note: cursor_pos masking is handled in update_internal() to persist through render phase
-        let context = self.context();
+        let Some(context) = self.context() else {
+            // GPU context not available (e.g., during shutdown) - skip widget update
+            return;
+        };
         self.update.insert(self.widget.as_mut().unwrap().update(
             layout_node,
             context,

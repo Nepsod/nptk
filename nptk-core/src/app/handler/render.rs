@@ -86,7 +86,10 @@ where
         log::debug!("Rendering root widget...");
         let start = Instant::now();
 
-        let context = self.context();
+        let Some(context) = self.context() else {
+            // GPU context not available (e.g., during shutdown) - skip rendering
+            return start.elapsed();
+        };
         let mut graphics =
             graphics_from_scene(&mut self.scene).expect("Failed to create graphics from scene");
         
@@ -109,7 +112,10 @@ where
     fn render_postfix(&mut self, layout_node: &LayoutNode) -> Duration {
         log::debug!("Rendering postfix content...");
         let start = Instant::now();
-        let context = self.context();
+        let Some(context) = self.context() else {
+            // GPU context not available (e.g., during shutdown) - skip rendering
+            return start.elapsed();
+        };
         if let Some(mut graphics) = graphics_from_scene(&mut self.scene) {
             if let Some(widget) = &mut self.widget {
                 let theme_manager = self.config.theme_manager.clone();
@@ -128,7 +134,10 @@ where
     }
 
     fn render_context_menu(&mut self, original_cursor_pos: Option<nalgebra::Vector2<f64>>) {
-        let context = self.context();
+        let Some(context) = self.context() else {
+            // GPU context not available (e.g., during shutdown) - skip rendering
+            return;
+        };
         let stack = context.menu_manager.get_stack();
         if stack.is_empty() {
             return;

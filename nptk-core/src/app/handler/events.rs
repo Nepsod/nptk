@@ -219,7 +219,10 @@ where
         state: ElementState,
     ) {
         if state == ElementState::Pressed {
-            let context = self.context();
+            let Some(context) = self.context() else {
+                // GPU context not available (e.g., during shutdown) - skip handling
+                return;
+            };
             if context.menu_manager.is_open() {
                 if let Some(cursor_pos) = self.info.cursor_pos {
                     let cursor = vello::kurbo::Point::new(cursor_pos.x, cursor_pos.y);
