@@ -20,6 +20,7 @@ pub struct WidgetFetcher<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Opti
     widget: Option<W>,
     update: Update,
     has_rendered_result: bool,
+    callback_registered: bool,
 }
 
 impl<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Option<T>) -> W> WidgetFetcher<T, W, F> {
@@ -39,6 +40,7 @@ impl<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Option<T>) -> W> WidgetF
             widget: None,
             update,
             has_rendered_result: false,
+            callback_registered: false,
         }
     }
 }
@@ -69,12 +71,15 @@ impl<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Option<T>) -> W> Widget 
     }
 
     fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
-        // Register notify callback to trigger update when future completes
-        let update_type = self.update;
-        let update_manager = context.update();
-        self.result.on_complete(move || {
-            update_manager.insert(update_type);
-        });
+        // Register notify callback only once to avoid duplicate callbacks
+        if !self.callback_registered {
+            let update_type = self.update;
+            let update_manager = context.update();
+            self.result.on_complete(move || {
+                update_manager.insert(update_type);
+            });
+            self.callback_registered = true;
+        }
         
         let mut update = Update::empty();
         let async_state = self.result.get();

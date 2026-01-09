@@ -2,6 +2,7 @@ use super::*;
 use crate::app::update::Update;
 use crate::layout::LayoutNode;
 use crate::vgi::graphics_from_scene;
+use crate::vgi::scene::SceneTrait;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use vello::wgpu::{CommandEncoderDescriptor, TextureViewDescriptor};

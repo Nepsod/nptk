@@ -14,6 +14,7 @@ use crate::layout::LayoutNode;
 use crate::vgi::graphics_from_scene;
 use crate::vgi::{DeviceHandle, GpuContext};
 use crate::vgi::{Renderer, RendererOptions, Scene, Surface, SurfaceTrait};
+use crate::vgi::scene::DirtyRegionTracker;
 use nalgebra::Vector2;
 use nptk_services::settings::SettingsRegistry;
 use taffy::prelude::*;
@@ -88,6 +89,8 @@ where
     theme_cache: Option<Arc<std::sync::RwLock<Box<dyn nptk_theme::theme::Theme + Send + Sync>>>>,
     /// Receiver for theme change notifications
     theme_change_rx: Option<std::sync::mpsc::Receiver<String>>,
+    /// Tracks dirty regions to avoid unnecessary scene resets
+    dirty_region_tracker: DirtyRegionTracker,
 }
 
 struct PopupWindow {
@@ -186,6 +189,7 @@ where
             #[cfg(all(target_os = "linux", feature = "wayland"))]
             wayland_popup_id_counter: 0,
             settings,
+            dirty_region_tracker: DirtyRegionTracker::new(),
         }
     }
 

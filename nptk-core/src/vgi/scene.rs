@@ -18,6 +18,14 @@ pub trait SceneTrait: 'static {
     /// The scene should be equal to a newly created scene after this call.
     fn reset(&mut self);
 
+    /// Reset only if needed based on dirty tracking.
+    fn reset_if_needed(&mut self, dirty_tracker: &mut DirtyRegionTracker) {
+        if dirty_tracker.full_reset_needed {
+            self.reset();
+            dirty_tracker.full_reset_needed = false;
+        }
+    }
+
     /// Get the width of the scene in pixels.
     fn width(&self) -> u32;
 
@@ -41,6 +49,41 @@ pub enum Scene {
     /// Vello Hybrid scene (CPU/GPU hybrid rendering)
     #[cfg(feature = "vello-hybrid")]
     Hybrid(HybridScene),
+}
+
+/// Tracks which regions of the scene need to be redrawn
+#[derive(Default)]
+pub struct DirtyRegionTracker {
+    /// Whether the entire scene needs to be reset
+    full_reset_needed: bool,
+    /// Specific regions that need updates (future optimization)
+    _dirty_regions: Vec<vello::kurbo::Rect>,
+}
+
+impl DirtyRegionTracker {
+    /// Create a new dirty region tracker
+    pub fn new() -> Self {
+        Self {
+            full_reset_needed: true, // Start with full reset needed
+            _dirty_regions: Vec::new(),
+        }
+    }
+
+    /// Mark that a full scene reset is needed
+    pub fn mark_full_reset_needed(&mut self) {
+        self.full_reset_needed = true;
+    }
+
+    /// Check if a full reset is needed
+    pub fn is_full_reset_needed(&self) -> bool {
+        self.full_reset_needed
+    }
+
+    /// Mark that the scene has been reset
+    pub fn mark_reset_complete(&mut self) {
+        self.full_reset_needed = false;
+        self._dirty_regions.clear();
+    }
 }
 
 impl Scene {
@@ -111,6 +154,7 @@ impl Scene {
         SceneTrait::height(self)
     }
 }
+
 
 impl SceneTrait for Scene {
     fn reset(&mut self) {

@@ -18,6 +18,8 @@ use nptk_theme::theme::Theme;
 pub struct Container {
     style: MaybeSignal<LayoutStyle>,
     children: Vec<BoxedWidget>,
+    /// Cache for visible child indices to avoid repeated Display::None checks
+    visible_children_cache: Option<Vec<usize>>,
 }
 
 impl Container {
@@ -26,6 +28,7 @@ impl Container {
         Self {
             style: LayoutStyle::default().into(),
             children: children.into_iter().collect(),
+            visible_children_cache: None,
         }
     }
 
@@ -34,18 +37,21 @@ impl Container {
         Self {
             style: LayoutStyle::default().into(),
             children: Vec::new(),
+            visible_children_cache: None,
         }
     }
 
     /// Adds a child and returns self for chaining.
     pub fn with_child(mut self, child: impl Widget + 'static) -> Self {
         self.children.push(Box::new(child));
+        self.visible_children_cache = None; // Invalidate cache
         self
     }
 
     /// Adds multiple children and returns self for chaining.
     pub fn with_children(mut self, children: Vec<BoxedWidget>) -> Self {
         self.children.extend(children);
+        self.visible_children_cache = None; // Invalidate cache
         self
     }
 
@@ -93,10 +99,12 @@ impl Container {
 impl WidgetChildrenExt for Container {
     fn set_children(&mut self, children: Vec<BoxedWidget>) {
         self.children = children.into_iter().collect();
+        self.visible_children_cache = None; // Invalidate cache
     }
 
     fn add_child(&mut self, child: impl Widget + 'static) {
         self.children.push(Box::new(child));
+        self.visible_children_cache = None; // Invalidate cache
     }
 }
 
