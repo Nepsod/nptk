@@ -8,15 +8,16 @@
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode, LengthPercentageAuto};
+use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode, Dimension, FlexDirection};
 use nptk_core::signal::MaybeSignal;
+use nptk_core::text_render::TextRenderContext;
 use nptk_core::vgi::Graphics;
+use nptk_core::vg::peniko::Color;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
+use nptk_theme::properties::ThemeProperty;
 use nptk_theme::theme::Theme;
-use nptk_widgets::container::Container;
-use nptk_widgets::text::Text;
 use std::sync::Arc;
 
 /// Represents a single breadcrumb item in the navigation path
@@ -53,16 +54,12 @@ impl BreadcrumbItem {
     }
 }
 
-/// A breadcrumbs navigation widget
+/// A breadcrumbs navigation widget that displays items horizontally with separators
 ///
 /// ### Theming
 /// The breadcrumbs widget supports the following theme properties:
-/// - `breadcrumb_text` - Text color for breadcrumb items
-/// - `breadcrumb_text_hover` - Text color when hovering over clickable items
-/// - `breadcrumb_text_current` - Text color for the current (last) item
-/// - `breadcrumb_separator` - Color for the separator between items
-/// - `breadcrumb_background` - Background color for the breadcrumbs container
-/// - `breadcrumb_spacing` - Spacing between breadcrumb items and separators
+/// - `ColorText` - Text color for breadcrumb items
+/// - Custom theme properties for hover and current states
 ///
 /// ### Usage Examples
 ///
@@ -77,22 +74,10 @@ impl BreadcrumbItem {
 ///         BreadcrumbItem::new("Projects").with_id("/home/user/Documents/Projects"),
 ///         BreadcrumbItem::new("MyApp").with_clickable(false), // Current location
 ///     ])
-///     .with_separator(" > ")
 ///     .with_on_click(|item| {
 ///         println!("Navigate to: {}", item.id.unwrap_or(item.label));
 ///         Update::empty()
 ///     });
-///
-/// // Web navigation
-/// let web_breadcrumbs = Breadcrumbs::new()
-///     .with_items(vec![
-///         BreadcrumbItem::new("Documentation").with_id("/docs"),
-///         BreadcrumbItem::new("API Reference").with_id("/docs/api"),
-///         BreadcrumbItem::new("Widgets").with_id("/docs/api/widgets"),
-///         BreadcrumbItem::new("Breadcrumbs").with_clickable(false),
-///     ])
-///     .with_separator(" / ")
-///     .with_max_items(4); // Limit visible items
 /// ```
 pub struct Breadcrumbs {
     widget_id: WidgetId,
@@ -100,10 +85,14 @@ pub struct Breadcrumbs {
     separator: String,
     max_items: Option<usize>,
     show_root: bool,
-    container: Container,
+    show_home_icon: bool,
+    font_size: f32,
+    spacing: f32,
     layout_style: MaybeSignal<LayoutStyle>,
     on_click: Option<Arc<dyn Fn(&BreadcrumbItem) -> Update + Send + Sync>>,
     hovered_index: Option<usize>,
+    item_positions: Vec<(f32, f32, usize)>, // (x, width, original_index) for each visible item
+    text_ctx: TextRenderContext,
 }
 
 impl std::fmt::Debug for Breadcrumbs {
@@ -128,45 +117,62 @@ impl Breadcrumbs {
             separator: " > ".to_string(),
             max_items: None,
             show_root: true,
-            container: Container::new_empty(),
+            show_home_icon: false,
+            font_size: 14.0,
+            spacing: 8.0,
             layout_style: MaybeSignal::value(LayoutStyle::default()),
             on_click: None,
             hovered_index: None,
+            item_positions: Vec::new(),
+            text_ctx: TextRenderContext::new(),
         }
     }
 
     /// Set the breadcrumb items
     pub fn with_items(mut self, items: Vec<BreadcrumbItem>) -> Self {
         self.items = items;
-        self.rebuild_container();
         self
     }
 
     /// Add a single breadcrumb item
     pub fn with_item(mut self, item: BreadcrumbItem) -> Self {
         self.items.push(item);
-        self.rebuild_container();
         self
     }
 
-    /// Set the separator between breadcrumb items
+    /// Set the separator between breadcrumb items (default: " > ")
     pub fn with_separator(mut self, separator: impl Into<String>) -> Self {
         self.separator = separator.into();
-        self.rebuild_container();
         self
     }
 
     /// Set the maximum number of visible items (older items will be collapsed)
     pub fn with_max_items(mut self, max_items: usize) -> Self {
         self.max_items = Some(max_items);
-        self.rebuild_container();
         self
     }
 
     /// Set whether to show the root item when items are collapsed
     pub fn with_show_root(mut self, show_root: bool) -> Self {
         self.show_root = show_root;
-        self.rebuild_container();
+        self
+    }
+
+    /// Set whether to show a home icon for the first item
+    pub fn with_home_icon(mut self, show: bool) -> Self {
+        self.show_home_icon = show;
+        self
+    }
+
+    /// Set the font size for breadcrumb items
+    pub fn with_font_size(mut self, size: f32) -> Self {
+        self.font_size = size;
+        self
+    }
+
+    /// Set the spacing between items
+    pub fn with_spacing(mut self, spacing: f32) -> Self {
+        self.spacing = spacing;
         self
     }
 
@@ -187,175 +193,118 @@ impl Breadcrumbs {
     /// Add a breadcrumb item
     pub fn add_item(&mut self, item: BreadcrumbItem) {
         self.items.push(item);
-        self.rebuild_container();
     }
 
     /// Remove the last breadcrumb item (navigate back)
     pub fn pop_item(&mut self) -> Option<BreadcrumbItem> {
-        let item = self.items.pop();
-        if item.is_some() {
-            self.rebuild_container();
-        }
-        item
+        self.items.pop()
     }
 
     /// Clear all breadcrumb items
     pub fn clear(&mut self) {
         self.items.clear();
-        self.rebuild_container();
     }
 
     /// Navigate to a specific breadcrumb by index (removes items after it)
     pub fn navigate_to_index(&mut self, index: usize) {
         if index < self.items.len() {
             self.items.truncate(index + 1);
-            self.rebuild_container();
         }
-    }
-
-    /// Rebuild the internal container with current items
-    fn rebuild_container(&mut self) {
-        use nptk_core::layout::{Dimension, FlexDirection, LengthPercentage};
-
-        let mut children = Vec::new();
-        let visible_items = self.get_visible_items();
-
-        for (i, (item, is_ellipsis)) in visible_items.iter().enumerate() {
-            // Add separator before item (except for first item)
-            if i > 0 {
-                let separator_text = Text::new(self.separator.clone())
-                    .with_layout_style(LayoutStyle {
-                        margin: nptk_core::layout::Rect {
-                            left: LengthPercentageAuto::length(4.0),
-                            right: LengthPercentageAuto::length(4.0),
-                            top: LengthPercentageAuto::length(0.0),
-                            bottom: LengthPercentageAuto::length(0.0),
-                        },
-                        ..Default::default()
-                    });
-                children.push(Box::new(separator_text) as Box<dyn Widget>);
-            }
-
-            // Create the breadcrumb item text
-            let text_content = if *is_ellipsis {
-                "...".to_string()
-            } else {
-                item.label.clone()
-            };
-
-            let item_text = Text::new(text_content)
-                .with_layout_style(LayoutStyle {
-                    margin: nptk_core::layout::Rect {
-                        left: LengthPercentageAuto::length(2.0),
-                        right: LengthPercentageAuto::length(2.0),
-                        top: LengthPercentageAuto::length(0.0),
-                        bottom: LengthPercentageAuto::length(0.0),
-                    },
-                    ..Default::default()
-                });
-
-            children.push(Box::new(item_text) as Box<dyn Widget>);
-        }
-
-        // Create horizontal container for breadcrumbs
-        self.container = Container::new(children)
-            .with_layout_style(LayoutStyle {
-                flex_direction: FlexDirection::Row,
-                size: nalgebra::Vector2::new(Dimension::auto(), Dimension::auto()),
-                padding: nptk_core::layout::Rect {
-                    left: LengthPercentage::length(8.0),
-                    right: LengthPercentage::length(8.0),
-                    top: LengthPercentage::length(4.0),
-                    bottom: LengthPercentage::length(4.0),
-                },
-                ..Default::default()
-            });
     }
 
     /// Get the visible items considering max_items constraint
-    fn get_visible_items(&self) -> Vec<(&BreadcrumbItem, bool)> {
+    fn get_visible_items(&self) -> Vec<(usize, bool)> {
+        // Returns (original_index, is_ellipsis)
         if let Some(max_items) = self.max_items {
             if self.items.len() > max_items {
                 let mut visible = Vec::new();
                 
                 if self.show_root && !self.items.is_empty() {
-                    // Show root item
-                    visible.push((&self.items[0], false));
+                    visible.push((0, false)); // Root item
                     
                     if max_items > 2 {
-                        // Add ellipsis
-                        visible.push((&self.items[0], true)); // Dummy item for ellipsis
-                        
-                        // Show last (max_items - 2) items
+                        visible.push((0, true)); // Ellipsis placeholder
                         let start_idx = self.items.len().saturating_sub(max_items - 2);
-                        for item in &self.items[start_idx..] {
-                            visible.push((item, false));
+                        for i in start_idx..self.items.len() {
+                            visible.push((i, false));
                         }
                     } else if max_items == 2 {
-                        // Show root and last item only
-                        visible.push((&self.items[0], true)); // Ellipsis
-                        if let Some(last) = self.items.last() {
-                            visible.push((last, false));
+                        visible.push((0, true)); // Ellipsis
+                        if !self.items.is_empty() {
+                            visible.push((self.items.len() - 1, false)); // Last item
                         }
                     }
                 } else {
-                    // No root, show ellipsis and last items
                     if max_items > 1 {
-                        visible.push((&self.items[0], true)); // Ellipsis
+                        visible.push((0, true)); // Ellipsis
                         let start_idx = self.items.len().saturating_sub(max_items - 1);
-                        for item in &self.items[start_idx..] {
-                            visible.push((item, false));
+                        for i in start_idx..self.items.len() {
+                            visible.push((i, false));
                         }
                     } else {
-                        // Show only the last item
-                        if let Some(last) = self.items.last() {
-                            visible.push((last, false));
+                        if !self.items.is_empty() {
+                            visible.push((self.items.len() - 1, false)); // Last item only
                         }
                     }
                 }
                 
                 visible
             } else {
-                self.items.iter().map(|item| (item, false)).collect()
+                (0..self.items.len()).map(|i| (i, false)).collect()
             }
         } else {
-            self.items.iter().map(|item| (item, false)).collect()
+            (0..self.items.len()).map(|i| (i, false)).collect()
         }
     }
 
     /// Find which breadcrumb item is at the given position
-    fn find_item_at_position(&self, layout: &LayoutNode, x: f32, y: f32) -> Option<usize> {
-        let visible_items = self.get_visible_items();
-        
-        // Check if click is within the breadcrumbs area
-        if x < layout.layout.location.x 
-            || x > layout.layout.location.x + layout.layout.size.width
-            || y < layout.layout.location.y
-            || y > layout.layout.location.y + layout.layout.size.height {
-            return None;
-        }
-
-        // Simple approximation: divide the width by number of visible items
-        // In a real implementation, you'd want to track individual item positions
-        let item_width = layout.layout.size.width / visible_items.len() as f32;
-        let relative_x = x - layout.layout.location.x;
-        let item_index = (relative_x / item_width) as usize;
-        
-        if item_index < visible_items.len() {
-            // Map back to original item index
-            let (_, is_ellipsis) = visible_items[item_index];
-            if !is_ellipsis {
-                // Find the actual item index in the original items
-                let visible_item = visible_items[item_index].0;
-                for (i, item) in self.items.iter().enumerate() {
-                    if std::ptr::eq(item, visible_item) {
-                        return Some(i);
-                    }
-                }
+    fn find_item_at_position(&self, x: f32, y: f32) -> Option<usize> {
+        for &(item_x, item_width, original_index) in &self.item_positions {
+            if x >= item_x && x <= item_x + item_width {
+                return Some(original_index);
             }
         }
-        
         None
+    }
+
+    /// Get color for a breadcrumb item based on its state
+    fn get_item_color(&self, theme: &mut dyn Theme, index: usize, is_current: bool, is_hovered: bool) -> Color {
+        let widget_id = self.widget_id.clone();
+        if is_current {
+            // Current (last) item - use default text color
+            theme
+                .get_property(widget_id, &ThemeProperty::ColorText)
+                .or_else(|| theme.get_default_property(&ThemeProperty::ColorText))
+                .unwrap_or(Color::from_rgb8(200, 60, 60)) // Default reddish-orange
+        } else if is_hovered {
+            // Hovered item - slightly brighter
+            let widget_id = self.widget_id.clone();
+            theme
+                .get_property(widget_id.clone(), &ThemeProperty::ColorHovered)
+                .or_else(|| {
+                    theme
+                        .get_property(widget_id, &ThemeProperty::ColorText)
+                        .or_else(|| theme.get_default_property(&ThemeProperty::ColorText))
+                })
+                .unwrap_or(Color::from_rgb8(220, 80, 80))
+        } else {
+            // Normal clickable item
+            let widget_id = self.widget_id.clone();
+            theme
+                .get_property(widget_id, &ThemeProperty::ColorText)
+                .or_else(|| theme.get_default_property(&ThemeProperty::ColorText))
+                .unwrap_or(Color::from_rgb8(200, 60, 60)) // Default reddish-orange
+        }
+    }
+
+    /// Get separator color
+    fn get_separator_color(&self, theme: &mut dyn Theme) -> Color {
+        let widget_id = self.widget_id.clone();
+        theme
+            .get_property(widget_id, &ThemeProperty::ColorText)
+            .or_else(|| theme.get_default_property(&ThemeProperty::ColorText))
+            .unwrap_or(Color::from_rgb8(150, 150, 150)) // Default gray
+            .with_alpha(0.6)
     }
 }
 
@@ -378,16 +327,155 @@ impl Widget for Breadcrumbs {
         theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
-        context: AppContext,
+        _: AppContext,
     ) {
-        // Render the container with all breadcrumb items
-        self.container.render(graphics, theme, layout, info, context);
+        if self.items.is_empty() {
+            return;
+        }
+
+        let visible_items = self.get_visible_items();
+        if visible_items.is_empty() {
+            return;
+        }
+
+        let base_x = layout.layout.location.x as f64;
+        let base_y = layout.layout.location.y as f64;
+        let font_size = self.font_size as f64;
+        let spacing = self.spacing as f64;
+        let last_index = self.items.len() - 1;
+
+        // Clear item positions for accurate click detection
+        self.item_positions.clear();
+
+        let mut current_x = base_x;
+        let separator_color = self.get_separator_color(theme);
+
+        // Render home icon if enabled and first item is "Home"
+        if self.show_home_icon && !visible_items.is_empty() {
+            let (first_idx, is_ellipsis) = visible_items[0];
+            if !is_ellipsis && first_idx < self.items.len() && self.items[first_idx].label.to_lowercase() == "home" {
+                // Draw a simple house icon (square with triangle roof)
+                let icon_size = font_size * 0.8;
+                let icon_y = base_y + font_size * 0.6;
+                
+                let item_color = self.get_item_color(theme, first_idx, first_idx == last_index, self.hovered_index == Some(first_idx));
+                
+                // Simple house shape using lines/path (simplified - could use SVG icon)
+                // For now, just render a placeholder or skip
+                // TODO: Add proper home icon rendering
+                
+                current_x += icon_size + spacing;
+            }
+        }
+
+        // Render breadcrumb items
+        for (vis_idx, (orig_idx, is_ellipsis)) in visible_items.iter().enumerate() {
+            if vis_idx > 0 {
+                // Render separator
+                let sep_text = if *is_ellipsis { "..." } else { &self.separator };
+                // Estimate separator width (rough approximation)
+                let sep_width = sep_text.len() as f64 * font_size * 0.6;
+                
+                let sep_transform = nptk_core::vg::kurbo::Affine::translate((
+                    current_x,
+                    base_y + font_size * 1.2,
+                ));
+                
+                self.text_ctx.render_text(
+                    &mut info.font_context,
+                    graphics,
+                    sep_text,
+                    None, // No specific font
+                    font_size as f32,
+                    nptk_core::vg::peniko::Brush::Solid(separator_color),
+                    sep_transform,
+                    true, // hinting
+                    None, // No max width
+                );
+                
+                current_x += sep_width + spacing;
+            }
+
+            if !is_ellipsis {
+                let item = &self.items[*orig_idx];
+                let is_current = *orig_idx == last_index;
+                let is_hovered = self.hovered_index == Some(*orig_idx);
+                let item_color = self.get_item_color(theme, *orig_idx, is_current, is_hovered);
+
+                // Measure text width for click detection
+                let text = if *orig_idx == 0 && self.show_home_icon && item.label.to_lowercase() == "home" {
+                    // If home icon is shown, we might skip the "Home" text or render it after icon
+                    &item.label
+                } else {
+                    &item.label
+                };
+
+                // Estimate text width (rough approximation - could use TextRenderContext::measure_text_width with font_context)
+                let text_width = text.len() as f64 * font_size * 0.6;
+
+                // Store position for click detection
+                self.item_positions.push((current_x as f32, text_width as f32, *orig_idx));
+
+                // Render text
+                let text_transform = nptk_core::vg::kurbo::Affine::translate((
+                    current_x,
+                    base_y + font_size * 1.2,
+                ));
+                
+                self.text_ctx.render_text(
+                    &mut info.font_context,
+                    graphics,
+                    text,
+                    None, // No specific font
+                    font_size as f32,
+                    nptk_core::vg::peniko::Brush::Solid(item_color),
+                    text_transform,
+                    true, // hinting
+                    None, // No max width
+                );
+
+                current_x += text_width + spacing;
+            } else {
+                // Render ellipsis
+                let ellipsis_text = "...";
+                // Estimate ellipsis width
+                let ellipsis_width = 3.0 * font_size * 0.6;
+                
+                let ellipsis_transform = nptk_core::vg::kurbo::Affine::translate((
+                    current_x,
+                    base_y + font_size * 1.2,
+                ));
+                
+                self.text_ctx.render_text(
+                    &mut info.font_context,
+                    graphics,
+                    ellipsis_text,
+                    None, // No specific font
+                    font_size as f32,
+                    nptk_core::vg::peniko::Brush::Solid(separator_color),
+                    ellipsis_transform,
+                    true, // hinting
+                    None, // No max width
+                );
+
+                current_x += ellipsis_width + spacing;
+            }
+        }
     }
 
     fn layout_style(&self) -> StyleNode {
         StyleNode {
-            style: self.layout_style.get().clone(),
-            children: vec![self.container.layout_style()],
+            style: {
+                let mut style = self.layout_style.get().clone();
+                // Ensure horizontal layout
+                style.flex_direction = FlexDirection::Row;
+                style.size = nalgebra::Vector2::new(
+                    Dimension::percent(1.0),
+                    Dimension::length(self.font_size * 1.5), // Height based on font size
+                );
+                style
+            },
+            children: vec![],
         }
     }
 
@@ -397,9 +485,8 @@ impl Widget for Breadcrumbs {
         // Handle mouse hover for visual feedback
         if let Some(cursor_pos) = info.cursor_pos {
             let new_hovered = self.find_item_at_position(
-                layout, 
-                cursor_pos.x as f32, 
-                cursor_pos.y as f32
+                cursor_pos.x as f32,
+                cursor_pos.y as f32,
             );
             
             if new_hovered != self.hovered_index {
@@ -416,7 +503,6 @@ impl Widget for Breadcrumbs {
             if *button == MouseButton::Left && *state == ElementState::Released {
                 if let Some(cursor_pos) = info.cursor_pos {
                     if let Some(item_index) = self.find_item_at_position(
-                        layout,
                         cursor_pos.x as f32,
                         cursor_pos.y as f32,
                     ) {
@@ -436,11 +522,6 @@ impl Widget for Breadcrumbs {
                     }
                 }
             }
-        }
-
-        // Update the container
-        if !layout.children.is_empty() {
-            update |= self.container.update(&layout.children[0], context, info);
         }
 
         update
