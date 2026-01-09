@@ -271,14 +271,13 @@ impl Breadcrumbs {
     fn get_item_color(&self, theme: &mut dyn Theme, index: usize, is_current: bool, is_hovered: bool) -> Color {
         let widget_id = self.widget_id.clone();
         if is_current {
-            // Current (last) item - use default text color
+            // Current (last) item - use ColorText (same as normal, but could be styled differently)
             theme
-                .get_property(widget_id, &ThemeProperty::ColorText)
+                .get_property(widget_id.clone(), &ThemeProperty::ColorText)
                 .or_else(|| theme.get_default_property(&ThemeProperty::ColorText))
-                .unwrap_or(Color::from_rgb8(200, 60, 60)) // Default reddish-orange
+                .unwrap_or_else(|| Color::from_rgb8(211, 218, 227)) // Fallback to theme text color
         } else if is_hovered {
-            // Hovered item - slightly brighter
-            let widget_id = self.widget_id.clone();
+            // Hovered item - use ColorHovered if available, otherwise ColorText
             theme
                 .get_property(widget_id.clone(), &ThemeProperty::ColorHovered)
                 .or_else(|| {
@@ -286,24 +285,28 @@ impl Breadcrumbs {
                         .get_property(widget_id, &ThemeProperty::ColorText)
                         .or_else(|| theme.get_default_property(&ThemeProperty::ColorText))
                 })
-                .unwrap_or(Color::from_rgb8(220, 80, 80))
+                .unwrap_or_else(|| Color::from_rgb8(211, 218, 227))
         } else {
-            // Normal clickable item
-            let widget_id = self.widget_id.clone();
+            // Normal clickable item - use ColorText
             theme
                 .get_property(widget_id, &ThemeProperty::ColorText)
                 .or_else(|| theme.get_default_property(&ThemeProperty::ColorText))
-                .unwrap_or(Color::from_rgb8(200, 60, 60)) // Default reddish-orange
+                .unwrap_or_else(|| Color::from_rgb8(211, 218, 227))
         }
     }
 
-    /// Get separator color
+    /// Get separator color - use muted text color
     fn get_separator_color(&self, theme: &mut dyn Theme) -> Color {
         let widget_id = self.widget_id.clone();
+        // Try to get a border or muted color, fallback to text with reduced alpha
         theme
-            .get_property(widget_id, &ThemeProperty::ColorText)
-            .or_else(|| theme.get_default_property(&ThemeProperty::ColorText))
-            .unwrap_or(Color::from_rgb8(150, 150, 150)) // Default gray
+            .get_property(widget_id.clone(), &ThemeProperty::Border)
+            .or_else(|| {
+                theme
+                    .get_property(widget_id, &ThemeProperty::ColorText)
+                    .or_else(|| theme.get_default_property(&ThemeProperty::ColorText))
+            })
+            .unwrap_or_else(|| Color::from_rgb8(150, 150, 150))
             .with_alpha(0.6)
     }
 }

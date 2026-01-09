@@ -95,6 +95,27 @@ impl Theme for DarkTheme {
         property: &crate::properties::ThemeProperty,
     ) -> Option<Color> {
         match id.namespace() {
+            "nptk_widgets_extra" | "nptk-widgets-extra" => match id.id() {
+                "Breadcrumbs" => match property {
+                    crate::properties::ThemeProperty::ColorText => Some(
+                        self.variables
+                            .get_color("text-primary")
+                            .unwrap_or(Color::WHITE),
+                    ),
+                    crate::properties::ThemeProperty::ColorHovered => Some(
+                        self.variables
+                            .get_color("primary")
+                            .unwrap_or(Color::from_rgb8(100, 150, 255)),
+                    ),
+                    crate::properties::ThemeProperty::Border => Some(
+                        self.variables
+                            .get_color("border-primary")
+                            .unwrap_or(Color::from_rgb8(80, 80, 80)),
+                    ),
+                    _ => None,
+                },
+                _ => None,
+            },
             "nptk-widgets" => match id.id() {
                 "Text" => match property {
                     crate::properties::ThemeProperty::Color => Some(

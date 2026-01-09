@@ -116,6 +116,27 @@ impl Theme for SweetTheme {
         property: &crate::properties::ThemeProperty,
     ) -> Option<Color> {
         match id.namespace() {
+            "nptk_widgets_extra" | "nptk-widgets-extra" => match id.id() {
+                "Breadcrumbs" => match property {
+                    crate::properties::ThemeProperty::ColorText => Some(
+                        self.variables
+                            .get_color("text-primary")
+                            .unwrap_or(Color::from_rgb8(211, 218, 227)),
+                    ),
+                    crate::properties::ThemeProperty::ColorHovered => Some(
+                        self.variables
+                            .get_color("primary")
+                            .unwrap_or(Color::from_rgb8(197, 14, 210)),
+                    ),
+                    crate::properties::ThemeProperty::Border => Some(
+                        self.variables
+                            .get_color("border-primary")
+                            .unwrap_or(Color::from_rgb8(102, 106, 115)),
+                    ),
+                    _ => None,
+                },
+                _ => None,
+            },
             "nptk-widgets" => match id.id() {
                 "Text" => match property {
                     crate::properties::ThemeProperty::Color => Some(
@@ -430,6 +451,24 @@ impl Theme for SweetTheme {
                     ),
                     _ => None,
                 },
+                "Breadcrumbs" => match property {
+                    crate::properties::ThemeProperty::ColorText => Some(
+                        self.variables
+                            .get_color("text-primary")
+                            .unwrap_or(Color::from_rgb8(211, 218, 227)),
+                    ),
+                    crate::properties::ThemeProperty::ColorHovered => Some(
+                        self.variables
+                            .get_color("primary")
+                            .unwrap_or(Color::from_rgb8(197, 14, 210)),
+                    ),
+                    crate::properties::ThemeProperty::Border => Some(
+                        self.variables
+                            .get_color("border-primary")
+                            .unwrap_or(Color::from_rgb8(102, 106, 115)),
+                    ),
+                    _ => None,
+                },
                 "MenuButton" => match property {
                     crate::properties::ThemeProperty::ColorIdle => Some(Color::TRANSPARENT),
                     crate::properties::ThemeProperty::ColorPressed => Some(
@@ -585,6 +624,23 @@ impl Theme for SweetTheme {
 
     fn style(&self, id: WidgetId) -> Option<ThemeStyle> {
         match id.namespace() {
+            "nptk_widgets_extra" | "nptk-widgets-extra" => match id.id() {
+                "Breadcrumbs" => Some(self.create_widget_style(&[
+                    (
+                        ThemeProperty::ColorText,
+                        self.variables.get_color("text-primary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorHovered,
+                        self.variables.get_color("primary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::Border,
+                        self.variables.get_color("border-primary").unwrap(),
+                    ),
+                ])),
+                _ => None,
+            },
             "nptk-widgets" => match id.id() {
                 "Text" => Some(self.create_widget_style(&[
                     (

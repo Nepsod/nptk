@@ -65,6 +65,15 @@ impl Theme for CelesteTheme {
         };
 
         match id.namespace() {
+            "nptk_widgets_extra" | "nptk-widgets-extra" => match id.id() {
+                "Breadcrumbs" => match property {
+                    crate::properties::ThemeProperty::ColorText => Some(palette.text),
+                    crate::properties::ThemeProperty::ColorHovered => Some(palette.primary),
+                    crate::properties::ThemeProperty::Border => Some(palette.border),
+                    _ => None,
+                },
+                _ => None,
+            },
             "nptk-widgets" => match id.id() {
                 "Text" => match property {
                     crate::properties::ThemeProperty::Color => Some(palette.text),
