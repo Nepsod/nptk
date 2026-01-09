@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::os::unix::fs::PermissionsExt;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, mpsc};
+use smol::fs;
 
 /// Events emitted by the filesystem model for UI updates.
 #[derive(Debug, Clone)]
@@ -94,7 +95,8 @@ impl FileSystemModel {
         // Initialize icon provider
         let icon_provider: Arc<MimeIconProvider> = Arc::new(MimeIconProvider::new());
 
-        // Spawn async worker task
+        // Spawn async worker task using tokio (since we use tokio::select! and tokio channels)
+        // The task will exit cleanly when task_tx is dropped (channel closes)
         let cache_clone = cache.clone();
         let watcher_clone = watcher.clone();
         let event_tx_clone = event_tx.clone();
@@ -169,9 +171,12 @@ impl FileSystemModel {
     async fn load_directory(path: &Path) -> Result<Vec<FileEntry>, FileSystemError> {
         // First pass: collect all directory entry paths
         let mut dir_entries = Vec::new();
-        let mut dir = tokio::fs::read_dir(path).await?;
+        // Use smol::fs::read_dir instead of tokio::fs::read_dir
+        let mut dir = fs::read_dir(path).await?;
 
-        while let Some(entry) = dir.next_entry().await? {
+        use smol::stream::StreamExt;
+        while let Some(entry) = dir.next().await {
+            let entry = entry?;
             let entry_path = entry.path();
             dir_entries.push((entry, entry_path));
         }
@@ -205,7 +210,7 @@ impl FileSystemModel {
                     metadata.permissions().mode(),
                 )
             } else {
-                // Fallback to tokio::fs::metadata if io_uring failed
+                // Fallback to smol::fs::metadata if io_uring failed
                 let metadata = entry.metadata().await?;
                 let ft = if metadata.is_dir() {
                     FileType::Directory
@@ -278,9 +283,11 @@ impl FileSystemModel {
     ) {
         loop {
             tokio::select! {
-                // Handle tasks
+                // Prioritize checking for channel close - this branch is checked first
+                biased;
+                
+                // Handle tasks - this branch will return None when channel is closed
                 task = task_rx.recv() => {
-                    println!("FileSystemModel: Worker received task {:?}", task);
                     match task {
                         Some(FileSystemTask::LoadDirectory(path)) => {
                             println!("FileSystemModel: Worker loading directory {:?}", path);
@@ -336,10 +343,14 @@ impl FileSystemModel {
                             };
                             let _ = tx.send(entries).await;
                         }
-                        None => break, // Channel closed, exit worker
+                        None => {
+                            // Channel closed - sender was dropped, exit cleanly
+                            log::debug!("FileSystemModel: Task channel closed, worker task exiting");
+                            return;
+                        }
                     }
                 }
-                // Poll watcher events periodically
+                // Poll watcher events periodically - lower priority
                 _ = tokio::time::sleep(tokio::time::Duration::from_millis(100)) => {
                     let changes = watcher.lock().unwrap().poll_events();
                     for change in changes {
@@ -429,7 +440,8 @@ impl FileSystemModel {
                 metadata.permissions().mode(),
             )
         } else {
-            let metadata = tokio::fs::metadata(path).await?;
+            // Use smol::fs instead of tokio::fs
+            let metadata = fs::metadata(path).await?;
             let ft = if metadata.is_dir() {
                 FileType::Directory
             } else if metadata.is_symlink() {
@@ -476,5 +488,15 @@ impl FileSystemModel {
             file_metadata,
             path.parent().map(|p| p.to_path_buf()),
         ))
+    }
+}
+
+impl Drop for FileSystemModel {
+    fn drop(&mut self) {
+        // Drop the sender to close the channel, which will cause the worker task to exit
+        // This ensures clean shutdown when the model is dropped
+        // The sender will be dropped automatically when self is dropped,
+        // but we log it for debugging
+        log::debug!("FileSystemModel dropped, channel will close and worker task should exit");
     }
 }

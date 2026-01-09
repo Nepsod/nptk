@@ -16,7 +16,7 @@ use directories::UserDirs;
 use npio::get_file_for_uri;
 use npio::NpioResult;
 use npio::File;
-use tokio::fs;
+use smol::fs;
 
 /// User directory types, matching GLib's `GUserDirectory` enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

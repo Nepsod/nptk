@@ -5,7 +5,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 use xdg::BaseDirectories;
-use tokio::fs;
+use smol::fs;
 
 /// The main configuration structure for the application.
 #[derive(Debug, Clone, Default, Deserialize)]

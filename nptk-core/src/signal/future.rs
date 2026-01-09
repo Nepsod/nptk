@@ -1,4 +1,3 @@
-use crate::app::update::{Update, UpdateManager};
 use crate::reference::Ref;
 use crate::signal::async_state::AsyncState;
 use crate::signal::{BoxedSignal, Listener, Signal};
@@ -9,7 +8,8 @@ use std::sync::{Arc, RwLock};
 pub struct FutureSignal<T: Send + Sync + 'static> {
     state: Arc<RwLock<AsyncState<T>>>,
     listeners: Arc<RwLock<Vec<Listener<AsyncState<T>>>>>,
-    update_manager: Arc<RwLock<Option<UpdateManager>>>,
+    /// Callback to notify when the future completes.
+    notify_callback: Arc<RwLock<Option<Box<dyn Fn() + Send + Sync>>>>,
 }
 
 impl<T: Send + Sync + 'static> FutureSignal<T> {
@@ -20,10 +20,11 @@ impl<T: Send + Sync + 'static> FutureSignal<T> {
     {
         let state = Arc::new(RwLock::new(AsyncState::Loading));
         let listeners = Arc::new(RwLock::new(Vec::new()));
-        let update_manager: Arc<RwLock<Option<UpdateManager>>> = Arc::new(RwLock::new(None));
+        let notify_callback: Arc<RwLock<Option<Box<dyn Fn() + Send + Sync>>>> =
+            Arc::new(RwLock::new(None));
 
         let state_clone = state.clone();
-        let update_clone = update_manager.clone();
+        let callback_clone = notify_callback.clone();
 
         tasks::spawn(async move {
             let result = future.await;
@@ -33,22 +34,25 @@ impl<T: Send + Sync + 'static> FutureSignal<T> {
                 *write = AsyncState::Ready(result);
             }
 
-            if let Some(manager) = update_clone.read().unwrap().as_ref() {
-                manager.insert(Update::EVAL | Update::DRAW);
+            if let Some(callback) = callback_clone.read().unwrap().as_ref() {
+                callback();
             }
         });
 
         Self {
             state,
             listeners,
-            update_manager,
+            notify_callback,
         }
     }
 
-    /// Sets the update manager to trigger when the future completes.
-    pub fn set_update_manager(&self, manager: UpdateManager) {
-        let mut lock = self.update_manager.write().unwrap();
-        *lock = Some(manager);
+    /// Sets a callback to be invoked when the future completes.
+    pub fn on_complete<F>(&self, callback: F)
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        let mut lock = self.notify_callback.write().unwrap();
+        *lock = Some(Box::new(callback));
     }
 }
 
@@ -83,7 +87,7 @@ impl<T: Send + Sync + 'static> Clone for FutureSignal<T> {
         Self {
             state: self.state.clone(),
             listeners: self.listeners.clone(),
-            update_manager: self.update_manager.clone(),
+            notify_callback: self.notify_callback.clone(),
         }
     }
 }

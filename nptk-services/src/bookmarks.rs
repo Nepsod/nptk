@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 use std::path::PathBuf;
 use std::collections::HashMap;
-use tokio::fs;
+use smol::fs;
 use directories::{ProjectDirs, UserDirs};
 use npio::NpioResult;
 
@@ -154,4 +154,3 @@ impl Default for BookmarksService {
         Self::new()
     }
 }
-

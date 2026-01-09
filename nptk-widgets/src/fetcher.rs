@@ -69,7 +69,12 @@ impl<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Option<T>) -> W> Widget 
     }
 
     fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
-        self.result.set_update_manager(context.update());
+        // Register notify callback to trigger update when future completes
+        let update_type = self.update;
+        let update_manager = context.update();
+        self.result.on_complete(move || {
+            update_manager.insert(update_type);
+        });
         
         let mut update = Update::empty();
         let async_state = self.result.get();

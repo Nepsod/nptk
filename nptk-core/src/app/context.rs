@@ -122,7 +122,13 @@ impl AppContext {
         F: std::future::Future<Output = T> + Send + 'static,
     {
         let signal = FutureSignal::new(future);
-        signal.set_update_manager(self.update());
+        let update = self.update.clone();
+        
+        // Notify the update manager when the future completes
+        signal.on_complete(move || {
+            update.insert(Update::EVAL | Update::DRAW);
+        });
+
         self.use_signal(signal)
     }
 

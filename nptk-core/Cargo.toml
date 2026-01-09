@@ -43,7 +43,7 @@ raw-window-handle = "0.6"
 tempfile = { version = "3.10.1", optional = true }
 xkbcommon-dl = { version = "0.4", optional = true }
 libc = { version = "0.2", optional = true }
-ashpd = { version = "0.7", optional = true }
+ashpd = { version = "0.12", optional = true }
 
 [target.'cfg(all(unix, not(any(target_os = "redox", target_family = "wasm", target_os = "android", target_os = "ios", target_os = "macos"))))'.dependencies.wayland-backend]
 version = "0.3.10"
