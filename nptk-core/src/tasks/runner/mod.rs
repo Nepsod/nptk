@@ -29,7 +29,22 @@ impl TaskRunner {
         }
     }
 
-    /// Spawns the given future.
+    /// Spawns the given future (fire-and-forget).
+    pub fn spawn_detached<F>(&self, fut: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        match self {
+            #[cfg(feature = "tokio-runner")]
+            TaskRunner::Tokio(runner) => runner.spawn_detached(fut),
+            TaskRunner::None => {
+                // For None runner, spawn using smol
+                smol::spawn(fut).detach();
+            },
+        }
+    }
+
+    /// Spawns the given future and waits for its result.
     pub async fn spawn<F>(&self, fut: F) -> F::Output
     where
         F: Future + Send + 'static,
@@ -59,5 +74,7 @@ impl TaskRunner {
         }
     }
 }
+
 #[cfg(feature = "tokio-runner")]
+/// Tokio-based task runner implementation.
 pub mod tokio_runner;

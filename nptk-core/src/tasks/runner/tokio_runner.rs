@@ -17,14 +17,14 @@ impl TokioRunner {
             Builder::new_multi_thread()
         };
 
-        Self {
-            rt: builder
-                .enable_all()
-                .worker_threads(config.workers.get())
-                .thread_stack_size(config.stack_size)
-                .build()
-                .expect("Failed to create tokio runtime"),
-        }
+        let rt = builder
+            .enable_all()
+            .worker_threads(config.workers.get())
+            .thread_stack_size(config.stack_size)
+            .build()
+            .expect("Failed to create tokio runtime");
+
+        Self { rt }
     }
 
     /// Blocks on the given future.
@@ -35,7 +35,19 @@ impl TokioRunner {
         self.rt.block_on(fut)
     }
 
-    /// Spawns the given future.
+    /// Spawns the given future (fire-and-forget).
+    /// Uses smol to avoid keeping the tokio runtime alive indefinitely.
+    pub(crate) fn spawn_detached<F>(&self, fut: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        // Use smol::spawn to avoid keeping tokio runtime alive
+        // Tokio runtimes can keep threads alive even after tasks complete,
+        // causing the process to hang. smol tasks complete naturally.
+        smol::spawn(fut).detach();
+    }
+
+    /// Spawns the given future and waits for its result.
     pub(crate) async fn spawn<F>(&self, fut: F) -> F::Output
     where
         F: Future + Send + 'static,

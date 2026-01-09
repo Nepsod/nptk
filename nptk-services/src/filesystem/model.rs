@@ -12,6 +12,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, mpsc};
 use smol::fs;
+use futures::select;
+use futures::future::FutureExt;
 
 /// Events emitted by the filesystem model for UI updates.
 #[derive(Debug, Clone)]
@@ -95,14 +97,14 @@ impl FileSystemModel {
         // Initialize icon provider
         let icon_provider: Arc<MimeIconProvider> = Arc::new(MimeIconProvider::new());
 
-        // Spawn async worker task using tokio (since we use tokio::select! and tokio channels)
+        // Spawn async worker task using smol (to avoid keeping tokio runtime alive)
         // The task will exit cleanly when task_tx is dropped (channel closes)
         let cache_clone = cache.clone();
         let watcher_clone = watcher.clone();
         let event_tx_clone = event_tx.clone();
-        tokio::spawn(async move {
+        smol::spawn(async move {
             Self::worker_task(task_rx, event_tx_clone, cache_clone, watcher_clone).await;
-        });
+        }).detach();
 
         let model = Self {
             root_path: root_path.clone(),
@@ -281,112 +283,24 @@ impl FileSystemModel {
         cache: Arc<FileSystemCache>,
         watcher: Arc<Mutex<FileSystemWatcher>>,
     ) {
-        loop {
-            tokio::select! {
-                // Prioritize checking for channel close - this branch is checked first
-                biased;
-                
-                // Handle tasks - this branch will return None when channel is closed
-                task = task_rx.recv() => {
-                    match task {
-                        Some(FileSystemTask::LoadDirectory(path)) => {
-                            println!("FileSystemModel: Worker loading directory {:?}", path);
-                            match Self::load_directory(&path).await {
-                                Ok(entries) => {
-                                    println!("FileSystemModel: Worker loaded {} entries for {:?}", entries.len(), path);
-                                    // Update cache
-                                    cache.insert_children(&path, entries.clone());
+        let mut last_watcher_poll = std::time::Instant::now();
+        let watcher_poll_interval = std::time::Duration::from_millis(100);
 
-                                    // Emit event
-                                    let _ = event_tx.send(FileSystemEvent::DirectoryLoaded {
-                                        path,
-                                        entries,
-                                    });
-                                }
-                                Err(e) => {
-                                    println!("FileSystemModel: Worker failed to load directory {:?}: {:?}", path, e);
-                                    // Error occurred, but we don't emit an error event (just log it)
-                                }
-                            }
-                        }
-                        Some(FileSystemTask::RefreshDirectory(path)) => {
-                            println!("FileSystemModel: Worker refreshing directory {:?}", path);
-                            match Self::load_directory(&path).await {
-                                Ok(entries) => {
-                                    cache.insert_children(&path, entries.clone());
-                                    let _ = event_tx.send(FileSystemEvent::DirectoryLoaded {
-                                        path,
-                                        entries,
-                                    });
-                                }
-                                Err(e) => {
-                                    println!("FileSystemModel: Worker failed to refresh directory {:?}: {:?}", path, e);
-                                    // Error occurred, but we don't emit an error event (just log it)
-                                }
-                            }
-                        }
-                        Some(FileSystemTask::GetChildren(path, tx)) => {
-                            let entries = if let Some(cached) = cache.get_children(&path) {
-                                cached
-                            } else {
-                                match Self::load_directory(&path).await {
-                                    Ok(loaded) => {
-                                        cache.insert_children(&path, loaded.clone());
-                                        let _ = event_tx.send(FileSystemEvent::DirectoryLoaded {
-                                            path: path.clone(),
-                                            entries: loaded.clone(),
-                                        });
-                                        loaded
-                                    }
-                                    Err(_) => Vec::new(),
-                                }
-                            };
-                            let _ = tx.send(entries).await;
-                        }
-                        None => {
-                            // Channel closed - sender was dropped, exit cleanly
-                            log::debug!("FileSystemModel: Task channel closed, worker task exiting");
-                            return;
-                        }
-                    }
-                }
-                // Poll watcher events periodically - lower priority
-                _ = tokio::time::sleep(tokio::time::Duration::from_millis(100)) => {
-                    let changes = watcher.lock().unwrap().poll_events();
-                    for change in changes {
-                        match change {
-                            FileSystemChange::Created(path) => {
-                                // Try to load the new entry
-                                if let Ok(entry) = Self::load_entry(&path).await {
-                                    cache.insert_entry(entry.clone());
-                                    // Also update parent directory
-                                    if let Some(parent) = path.parent() {
-                                        if let Ok(entries) = Self::load_directory(parent).await {
-                                            cache.insert_children(parent, entries.clone());
-                                            let _ = event_tx.send(FileSystemEvent::DirectoryLoaded {
-                                                path: parent.to_path_buf(),
-                                                entries,
-                                            });
-                                        }
-                                    }
-                                    let _ = event_tx.send(FileSystemEvent::EntryAdded {
-                                        path: path.clone(),
-                                        entry,
-                                    });
-                                }
-                            }
-                            FileSystemChange::Modified(path) => {
-                                // Reload the entry
-                                if let Ok(entry) = Self::load_entry(&path).await {
-                                    cache.insert_entry(entry.clone());
-                                    let _ = event_tx.send(FileSystemEvent::EntryModified {
-                                        path: path.clone(),
-                                        entry,
-                                    });
-                                }
-                            }
-                            FileSystemChange::Removed(path) => {
-                                cache.remove_entry(&path);
+        loop {
+            // Check if we need to poll watcher
+            let time_since_last_poll = last_watcher_poll.elapsed();
+            let should_poll_watcher = time_since_last_poll >= watcher_poll_interval;
+            
+            if should_poll_watcher {
+                // Poll watcher first, then check for tasks
+                let changes = watcher.lock().unwrap().poll_events();
+                last_watcher_poll = std::time::Instant::now();
+                for change in changes {
+                    match change {
+                        FileSystemChange::Created(path) => {
+                            // Try to load the new entry
+                            if let Ok(entry) = Self::load_entry(&path).await {
+                                cache.insert_entry(entry.clone());
                                 // Also update parent directory
                                 if let Some(parent) = path.parent() {
                                     if let Ok(entries) = Self::load_directory(parent).await {
@@ -397,22 +311,133 @@ impl FileSystemModel {
                                         });
                                     }
                                 }
-                                let _ = event_tx.send(FileSystemEvent::EntryRemoved {
-                                    path,
-                                });
-                            }
-                            FileSystemChange::Renamed { old, new } => {
-                                cache.remove_entry(&old);
-                                if let Ok(entry) = Self::load_entry(&new).await {
-                                    cache.insert_entry(entry.clone());
-                                }
-                                let _ = event_tx.send(FileSystemEvent::EntryRenamed {
-                                    old_path: old,
-                                    new_path: new,
+                                let _ = event_tx.send(FileSystemEvent::EntryAdded {
+                                    path: path.clone(),
+                                    entry,
                                 });
                             }
                         }
+                        FileSystemChange::Modified(path) => {
+                            // Reload the entry
+                            if let Ok(entry) = Self::load_entry(&path).await {
+                                cache.insert_entry(entry.clone());
+                                let _ = event_tx.send(FileSystemEvent::EntryModified {
+                                    path: path.clone(),
+                                    entry,
+                                });
+                            }
+                        }
+                        FileSystemChange::Removed(path) => {
+                            cache.remove_entry(&path);
+                            // Also update parent directory
+                            if let Some(parent) = path.parent() {
+                                if let Ok(entries) = Self::load_directory(parent).await {
+                                    cache.insert_children(parent, entries.clone());
+                                    let _ = event_tx.send(FileSystemEvent::DirectoryLoaded {
+                                        path: parent.to_path_buf(),
+                                        entries,
+                                    });
+                                }
+                            }
+                            let _ = event_tx.send(FileSystemEvent::EntryRemoved {
+                                path,
+                            });
+                        }
+                        FileSystemChange::Renamed { old, new } => {
+                            cache.remove_entry(&old);
+                            if let Ok(entry) = Self::load_entry(&new).await {
+                                cache.insert_entry(entry.clone());
+                            }
+                            let _ = event_tx.send(FileSystemEvent::EntryRenamed {
+                                old_path: old,
+                                new_path: new,
+                            });
+                        }
                     }
+                }
+            }
+
+            // Wait for task with a timeout to periodically check watcher
+            let wait_time = watcher_poll_interval.saturating_sub(time_since_last_poll);
+            let timer = smol::Timer::after(wait_time).fuse();
+            
+            // Use futures::select! macro - both futures need to be FusedFuture
+            let recv_fut = task_rx.recv().fuse();
+            futures::pin_mut!(recv_fut);
+            futures::pin_mut!(timer);
+            
+            futures::select! {
+                task_opt = recv_fut => {
+                    match task_opt {
+                        Some(task) => {
+                            // Process the task
+                            match task {
+                                FileSystemTask::LoadDirectory(path) => {
+                                    println!("FileSystemModel: Worker loading directory {:?}", path);
+                                    match Self::load_directory(&path).await {
+                                        Ok(entries) => {
+                                            println!("FileSystemModel: Worker loaded {} entries for {:?}", entries.len(), path);
+                                            // Update cache
+                                            cache.insert_children(&path, entries.clone());
+
+                                            // Emit event
+                                            let _ = event_tx.send(FileSystemEvent::DirectoryLoaded {
+                                                path,
+                                                entries,
+                                            });
+                                        }
+                                        Err(e) => {
+                                            println!("FileSystemModel: Worker failed to load directory {:?}: {:?}", path, e);
+                                            // Error occurred, but we don't emit an error event (just log it)
+                                        }
+                                    }
+                                }
+                                FileSystemTask::RefreshDirectory(path) => {
+                                    println!("FileSystemModel: Worker refreshing directory {:?}", path);
+                                    match Self::load_directory(&path).await {
+                                        Ok(entries) => {
+                                            cache.insert_children(&path, entries.clone());
+                                            let _ = event_tx.send(FileSystemEvent::DirectoryLoaded {
+                                                path,
+                                                entries,
+                                            });
+                                        }
+                                        Err(e) => {
+                                            println!("FileSystemModel: Worker failed to refresh directory {:?}: {:?}", path, e);
+                                            // Error occurred, but we don't emit an error event (just log it)
+                                        }
+                                    }
+                                }
+                                FileSystemTask::GetChildren(path, tx) => {
+                                    let entries = if let Some(cached) = cache.get_children(&path) {
+                                        cached
+                                    } else {
+                                        match Self::load_directory(&path).await {
+                                            Ok(loaded) => {
+                                                cache.insert_children(&path, loaded.clone());
+                                                let _ = event_tx.send(FileSystemEvent::DirectoryLoaded {
+                                                    path: path.clone(),
+                                                    entries: loaded.clone(),
+                                                });
+                                                loaded
+                                            }
+                                            Err(_) => Vec::new(),
+                                        }
+                                    };
+                                    let _ = tx.send(entries).await;
+                                }
+                            }
+                        }
+                        None => {
+                            // Channel closed - sender was dropped, exit cleanly
+                            log::debug!("FileSystemModel: Task channel closed, worker task exiting");
+                            return;
+                        }
+                    }
+                }
+                _ = timer => {
+                    // Timer expired - will poll watcher on next iteration
+                    continue;
                 }
             }
         }

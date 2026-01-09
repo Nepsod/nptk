@@ -20,14 +20,13 @@ pub fn init(config: TasksConfig) {
     RUNNER.store(Arc::new(runner));
 }
 
-/// Spawns the given future.
-pub fn spawn<F>(fut: F) -> impl Future<Output = F::Output>
+/// Spawns the given future (fire-and-forget).
+pub fn spawn<F>(fut: F)
 where
-    F: Future + Send + 'static,
-    F::Output: Send + 'static,
+    F: Future<Output = ()> + Send + 'static,
 {
     let runner = RUNNER.load().clone();
-    async move { runner.spawn(fut).await }
+    runner.spawn_detached(fut);
 }
 
 /// Blocks on the given future.
