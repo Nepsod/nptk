@@ -201,14 +201,14 @@ where
 
     /// Handle tab navigation for focus management.
     pub(super) fn handle_tab_navigation(&mut self) {
-        if let Ok(mut manager) = self.info.focus_manager.lock() {
+        let _ = self.info.batch_focus_operations(|manager| {
             if self.info.modifiers.shift_key() {
                 manager.focus_previous();
             } else {
                 manager.focus_next();
             }
             self.update.insert(Update::FOCUS | Update::DRAW);
-        }
+        });
     }
 
     /// Handle mouse input event.
@@ -266,11 +266,11 @@ where
 
         if button == MouseButton::Left && state == ElementState::Pressed {
             if let Some(cursor_pos) = self.info.cursor_pos {
-                if let Ok(mut manager) = self.info.focus_manager.lock() {
+                let _ = self.info.batch_focus_operations(|manager| {
                     if manager.handle_click(cursor_pos.x, cursor_pos.y) {
                         self.update.insert(Update::FOCUS | Update::DRAW);
                     }
-                }
+                });
             }
         }
 

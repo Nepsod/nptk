@@ -3,6 +3,9 @@ use std::future::Future;
 use std::time::Duration;
 use tokio::runtime::{Builder, Runtime};
 
+/// Timeout for graceful runtime shutdown
+const RUNTIME_SHUTDOWN_TIMEOUT_SECS: u64 = 2;
+
 /// A task runner using [tokio] as runtime.
 #[derive(Debug)]
 pub struct TokioRunner {
@@ -75,7 +78,7 @@ impl TokioRunner {
         log::debug!("Shutting down tokio runtime...");
         
         // Set a reasonable timeout for shutdown
-        let timeout = Duration::from_secs(2);
+        let timeout = Duration::from_secs(RUNTIME_SHUTDOWN_TIMEOUT_SECS);
         
         // Shutdown the runtime with timeout
         self.rt.shutdown_timeout(timeout);

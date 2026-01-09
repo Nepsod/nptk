@@ -2,6 +2,8 @@ use nalgebra::Vector2;
 use winit::event::{DeviceId, ElementState, Ime, KeyEvent, MouseButton, MouseScrollDelta};
 use winit::keyboard::{Key, ModifiersState, PhysicalKey};
 
+/// Maximum number of button events to store per frame
+const MAX_BUTTON_EVENTS_PER_FRAME: usize = 16;
 use crate::app::diagnostics::Diagnostics;
 use crate::app::focus::SharedFocusManager;
 use crate::app::font_ctx::FontContext;
@@ -80,6 +82,23 @@ impl AppInfo {
         self.keys.clear();
         self.mouse_scroll_delta = None;
         self.ime_events.clear();
+        
+        // Prevent unbounded growth of event vectors
+        if self.buttons.capacity() > MAX_BUTTON_EVENTS_PER_FRAME {
+            self.buttons.shrink_to(MAX_BUTTON_EVENTS_PER_FRAME);
+        }
+        if self.keys.capacity() > MAX_BUTTON_EVENTS_PER_FRAME {
+            self.keys.shrink_to(MAX_BUTTON_EVENTS_PER_FRAME);
+        }
+    }
+
+    /// Batch focus operations to reduce lock contention
+    pub fn batch_focus_operations<F, R>(&self, f: F) -> Result<R, std::sync::PoisonError<std::sync::MutexGuard<crate::app::focus::FocusManager>>>
+    where
+        F: FnOnce(&mut crate::app::focus::FocusManager) -> R,
+    {
+        let mut manager = self.focus_manager.lock()?;
+        Ok(f(&mut *manager))
     }
 
     #[cfg(target_os = "linux")]

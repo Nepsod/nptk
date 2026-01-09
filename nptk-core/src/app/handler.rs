@@ -3,6 +3,8 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 
 mod events;
 mod render;
@@ -91,6 +93,8 @@ where
     theme_change_rx: Option<std::sync::mpsc::Receiver<String>>,
     /// Tracks dirty regions to avoid unnecessary scene resets
     dirty_region_tracker: DirtyRegionTracker,
+    /// Cache for layout computation to avoid redundant calculations
+    layout_cache: Option<(u64, LayoutNode)>, // (hash, cached_layout)
 }
 
 struct PopupWindow {
@@ -190,6 +194,7 @@ where
             wayland_popup_id_counter: 0,
             settings,
             dirty_region_tracker: DirtyRegionTracker::new(),
+            layout_cache: None,
         }
     }
 
@@ -229,7 +234,66 @@ where
         Ok(())
     }
 
-    /// Compute the layout of the root node and its children.
+    /// Compute a hash for the current layout state to enable caching
+    fn compute_layout_hash(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        
+        // Hash window size
+        let (width, height) = if let Some(surface) = &self.surface {
+            surface.size()
+        } else if let Some(window) = self.window.as_ref() {
+            let s = window.inner_size();
+            (s.width, s.height)
+        } else {
+            let s = self.config.window.size;
+            (s.x as u32, s.y as u32)
+        };
+        
+        width.hash(&mut hasher);
+        height.hash(&mut hasher);
+        
+        // Hash widget structure (simplified - in practice would need deeper inspection)
+        if let Some(widget) = &self.widget {
+            // Use widget_id as a proxy for widget structure
+            widget.widget_id().hash(&mut hasher);
+        }
+        
+        hasher.finish()
+    }
+
+    /// Compute the layout of the root node and its children with caching.
+    fn compute_layout_cached(&mut self) -> TaffyResult<LayoutNode> {
+        let layout_hash = self.compute_layout_hash();
+        
+        // Check if we have a cached layout for this hash
+        if let Some((cached_hash, ref cached_layout)) = &self.layout_cache {
+            if *cached_hash == layout_hash {
+                log::debug!("Using cached layout (hash: {})", layout_hash);
+                return Ok(cached_layout.clone());
+            }
+        }
+        
+        log::debug!("Computing new layout (hash: {})", layout_hash);
+        
+        // Compute fresh layout
+        self.compute_layout()?;
+        
+        if let Some(widget) = &self.widget {
+            let style = widget.layout_style();
+            let layout_node = self.collect_layout(self.window_node, &style)?;
+            
+            // Cache the result
+            self.layout_cache = Some((layout_hash, layout_node.clone()));
+            
+            Ok(layout_node)
+        } else {
+            // No widget, return empty layout
+            Ok(LayoutNode {
+                layout: Default::default(),
+                children: vec![],
+            })
+        }
+    }
     fn compute_layout(&mut self) -> TaffyResult<()> {
         log::debug!("Computing root layout.");
 
