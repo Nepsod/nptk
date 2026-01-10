@@ -298,6 +298,10 @@ impl Breadcrumbs {
         self.hovered_index = None;
         self.item_positions.clear();
         self.separator_positions.clear();
+        // Close popup if open (item might be invalid now)
+        if self.popup_item_index.is_some() {
+            self.close_neighbor_popup();
+        }
         result
     }
 
@@ -308,6 +312,10 @@ impl Breadcrumbs {
         self.hovered_index = None;
         self.item_positions.clear();
         self.separator_positions.clear();
+        // Close popup since all items are cleared
+        if self.popup_item_index.is_some() {
+            self.close_neighbor_popup();
+        }
     }
 
     /// Navigate to a specific breadcrumb by index (removes items after it)
@@ -319,11 +327,31 @@ impl Breadcrumbs {
             if old_len != self.items.len() {
                 self.hovered_index = None;
                 self.item_positions.clear();
+                self.separator_positions.clear();
+                // Close popup if item index is now out of bounds
+                if let Some(popup_idx) = self.popup_item_index {
+                    if popup_idx >= self.items.len() {
+                        self.close_neighbor_popup();
+                    }
+                }
             } else if let Some(hovered) = self.hovered_index {
                 if hovered >= self.items.len() {
                     self.hovered_index = None;
                     self.item_positions.clear();
                     self.separator_positions.clear();
+                }
+            }
+            // Also check popup_item_index even if items.len() didn't change
+            if let Some(popup_idx) = self.popup_item_index {
+                if popup_idx >= self.items.len() {
+                    self.close_neighbor_popup();
+                }
+            }
+        } else {
+            // index >= self.items.len(), close popup if it references an invalid index
+            if let Some(popup_idx) = self.popup_item_index {
+                if popup_idx >= self.items.len() {
+                    self.close_neighbor_popup();
                 }
             }
         }
@@ -800,67 +828,79 @@ impl Widget for Breadcrumbs {
 
         // Handle neighbor popup updates if open
         if let Some(popup_item_index) = self.popup_item_index {
-            // Get item bounds before borrowing self mutably
-            let item_bounds = self.get_item_bounds(layout, popup_item_index);
-            
-            if let Some(ref mut popup) = self.neighbor_popup {
-                if let Some((item_x, item_y, _item_width, item_height)) = item_bounds {
-                    let (popup_width, popup_height) = popup.calculate_size_with_contexts(&mut self.text_ctx, &mut info.font_context);
-                    let popup_x = item_x;
-                    let popup_y = item_y + item_height;
+            // Validate popup_item_index is still valid (items might have changed)
+            if popup_item_index >= self.items.len() {
+                // Item index is out of bounds - close popup
+                self.close_neighbor_popup();
+                update |= Update::DRAW;
+            } else {
+                // Get item bounds before borrowing self mutably
+                let item_bounds = self.get_item_bounds(layout, popup_item_index);
+                
+                if let Some(ref mut popup) = self.neighbor_popup {
+                    if let Some((item_x, item_y, _item_width, item_height)) = item_bounds {
+                        let (popup_width, popup_height) = popup.calculate_size_with_contexts(&mut self.text_ctx, &mut info.font_context);
+                        let popup_x = item_x;
+                        let popup_y = item_y + item_height;
 
-                    let mut popup_layout = LayoutNode {
-                        layout: Layout::default(),
-                        children: Vec::new(),
-                    };
-                    popup_layout.layout.location.x = popup_x as f32;
-                    popup_layout.layout.location.y = popup_y as f32;
-                    popup_layout.layout.size.width = popup_width as f32;
-                    popup_layout.layout.size.height = popup_height as f32;
+                        let mut popup_layout = LayoutNode {
+                            layout: Layout::default(),
+                            children: Vec::new(),
+                        };
+                        popup_layout.layout.location.x = popup_x as f32;
+                        popup_layout.layout.location.y = popup_y as f32;
+                        popup_layout.layout.size.width = popup_width as f32;
+                        popup_layout.layout.size.height = popup_height as f32;
 
-                    let popup_update = popup.update(&popup_layout, _context.clone(), info);
-                    update |= popup_update;
+                        let popup_update = popup.update(&popup_layout, _context.clone(), info);
+                        update |= popup_update;
 
-                    // If popup returns FORCE, it means an item was selected - close the popup
-                    if popup_update.contains(Update::FORCE) {
-                        drop(popup); // Release mutable borrow
-                        self.close_neighbor_popup();
-                        update |= Update::DRAW;
-                    } else {
-                        // Check if clicking outside the popup should close it
-                        if let Some(cursor_pos) = info.cursor_pos {
-                            let popup_rect = Rect::new(
-                                popup_x,
-                                popup_y,
-                                popup_x + popup_width,
-                                popup_y + popup_height,
-                            );
-                            
-                            // Also check if clicking on breadcrumb items
-                            for (_, button, state) in &info.buttons {
-                                if *button == MouseButton::Left && *state == ElementState::Released {
-                                    if !popup_rect.contains((cursor_pos.x, cursor_pos.y)) {
-                                        drop(popup); // Release mutable borrow before calling methods
-                                        // Check if click is on a different breadcrumb item
-                                        if let Some(clicked_index) = self.find_item_at_position(
-                                            layout,
-                                            cursor_pos.x as f32,
-                                            cursor_pos.y as f32,
-                                        ) {
-                                            if clicked_index != popup_item_index {
+                        // If popup returns FORCE, it means an item was selected - close the popup
+                        if popup_update.contains(Update::FORCE) {
+                            drop(popup); // Release mutable borrow
+                            self.close_neighbor_popup();
+                            update |= Update::DRAW;
+                        } else {
+                            // Check if clicking outside the popup should close it
+                            if let Some(cursor_pos) = info.cursor_pos {
+                                let popup_rect = Rect::new(
+                                    popup_x,
+                                    popup_y,
+                                    popup_x + popup_width,
+                                    popup_y + popup_height,
+                                );
+                                
+                                // Also check if clicking on breadcrumb items
+                                for (_, button, state) in &info.buttons {
+                                    if *button == MouseButton::Left && *state == ElementState::Released {
+                                        if !popup_rect.contains((cursor_pos.x, cursor_pos.y)) {
+                                            drop(popup); // Release mutable borrow before calling methods
+                                            // Check if click is on a different breadcrumb item
+                                            if let Some(clicked_index) = self.find_item_at_position(
+                                                layout,
+                                                cursor_pos.x as f32,
+                                                cursor_pos.y as f32,
+                                            ) {
+                                                if clicked_index != popup_item_index {
+                                                    self.close_neighbor_popup();
+                                                    update |= Update::DRAW;
+                                                }
+                                            } else {
+                                                // Click outside both popup and breadcrumbs - close popup
                                                 self.close_neighbor_popup();
                                                 update |= Update::DRAW;
                                             }
-                                        } else {
-                                            // Click outside both popup and breadcrumbs - close popup
-                                            self.close_neighbor_popup();
-                                            update |= Update::DRAW;
+                                            break; // Exit after handling click
                                         }
-                                        break; // Exit after handling click
                                     }
                                 }
                             }
                         }
+                    } else {
+                        // Item is not visible (e.g., due to max_items) - close popup
+                        drop(popup);
+                        self.close_neighbor_popup();
+                        update |= Update::DRAW;
                     }
                 }
             }
@@ -919,6 +959,10 @@ impl Widget for Breadcrumbs {
                                 }
                                 
                                 // Navigate to this item (remove items after it)
+                                // Close any open popups since we're navigating
+                                if self.popup_item_index.is_some() {
+                                    self.close_neighbor_popup();
+                                }
                                 // Note: navigate_to_index will reset hovered_index and item_positions if needed
                                 self.navigate_to_index(item_index);
                                 update |= Update::DRAW;
@@ -942,6 +986,12 @@ impl Widget for Breadcrumbs {
     ) {
         // Render neighbor popup if open
         if let Some(popup_item_index) = self.popup_item_index {
+            // Validate popup_item_index is still valid and item is visible
+            if popup_item_index >= self.items.len() {
+                // Item index is out of bounds - popup won't render (will be cleaned up in update)
+                return;
+            }
+            
             // Get item bounds before borrowing self mutably
             let item_bounds = self.get_item_bounds(layout, popup_item_index);
             
@@ -962,6 +1012,8 @@ impl Widget for Breadcrumbs {
 
                     popup.render(graphics, theme, &popup_layout, info, context);
                 }
+                // If item_bounds is None, item is not visible (e.g., due to max_items)
+                // Popup won't render but will be cleaned up in update()
             }
         }
     }
