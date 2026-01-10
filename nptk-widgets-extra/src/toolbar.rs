@@ -208,6 +208,22 @@ impl Widget for Toolbar {
         }
     }
 
+    fn render_postfix(
+        &mut self,
+        graphics: &mut dyn Graphics,
+        theme: &mut dyn Theme,
+        layout: &LayoutNode,
+        info: &mut AppInfo,
+        context: AppContext,
+    ) {
+        // Propagate render_postfix to children (for overlays, popups, etc.)
+        for (i, child) in self.children.iter_mut().enumerate() {
+            if i < layout.children.len() {
+                child.render_postfix(graphics, theme, &layout.children[i], info, context.clone());
+            }
+        }
+    }
+
     fn layout_style(&self) -> StyleNode {
         let style = self.layout_style.get().clone();
         let children = self.children.iter().map(|c| c.layout_style()).collect();

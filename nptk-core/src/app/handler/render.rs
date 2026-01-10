@@ -2,7 +2,6 @@ use super::*;
 use crate::app::update::Update;
 use crate::layout::LayoutNode;
 use crate::vgi::graphics_from_scene;
-use crate::vgi::scene::SceneTrait;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use vello::wgpu::{CommandEncoderDescriptor, TextureViewDescriptor};
@@ -262,6 +261,21 @@ where
 
         let surface = self.surface.as_mut()?;
 
+        if surface.needs_event_dispatch() {
+            match surface.dispatch_events() {
+                Ok(needs_redraw) => {
+                    if needs_redraw {
+                        self.update.insert(Update::DRAW);
+                    }
+                },
+                Err(err) => {
+                    log::info!("Surface dispatch reported close: {}", err);
+                    self.handle_close_request(event_loop);
+                    return None;
+                },
+            }
+        }
+
         #[cfg(all(target_os = "linux", feature = "wayland"))]
         if let crate::vgi::Surface::Wayland(ref mut wayland_surface) = &mut *surface {
             if !wayland_surface.has_received_configure() {
@@ -308,21 +322,6 @@ where
         if width == 0 || height == 0 {
             log::warn!("Surface invalid ({}x{}). Skipping render.", width, height);
             return None;
-        }
-
-        if surface.needs_event_dispatch() {
-            match surface.dispatch_events() {
-                Ok(needs_redraw) => {
-                    if needs_redraw {
-                        self.update.insert(Update::DRAW);
-                    }
-                },
-                Err(err) => {
-                    log::info!("Surface dispatch reported close: {}", err);
-                    self.handle_close_request(event_loop);
-                    return None;
-                },
-            }
         }
 
         #[cfg(all(target_os = "linux", feature = "wayland"))]

@@ -433,4 +433,19 @@ impl Widget for ExpandableSection {
                 .render(graphics, theme, &layout.children[1], info, context);
         }
     }
+
+    fn render_postfix(
+        &mut self,
+        graphics: &mut dyn Graphics,
+        theme: &mut dyn Theme,
+        layout: &LayoutNode,
+        info: &mut AppInfo,
+        context: AppContext,
+    ) {
+        // Propagate render_postfix to content only (header is rendered inline, not as a child widget)
+        // Content overlays (popups, tooltips) should appear on top
+        if *self.expanded.get() && layout.children.len() > 1 {
+            self.content.render_postfix(graphics, theme, &layout.children[1], info, context);
+        }
+    }
 }

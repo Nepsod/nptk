@@ -42,13 +42,19 @@ impl PopupManager {
         size: (u32, u32),
         position: (i32, i32),
     ) {
+        let title_str: String = title.into();
         let mut requests = self.requests.lock().unwrap();
         requests.push(PopupRequest {
             widget,
-            title: title.into(),
+            title: title_str.clone(),
             size,
             position: Some(position),
         });
+        let request_count = requests.len();
+        drop(requests); // Release lock before logging
+        // Log for debugging
+        log::debug!("Popup requested: '{}' at {:?}, size: {:?}, total pending requests: {}", 
+                   title_str, position, size, request_count);
     }
 
     /// Drain all pending requests.

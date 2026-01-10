@@ -60,7 +60,25 @@ impl<C: Component> Widget for Composed<C> {
         if let Some(widget) = &mut self.widget {
             widget.render(graphics, theme, layout_node, info, context)
         } else {
+            // Build widget lazily and render it immediately
             self.widget = Some(Box::new(self.component.build(context.clone())));
+            if let Some(widget) = &mut self.widget {
+                widget.render(graphics, theme, layout_node, info, context);
+            }
+        }
+    }
+
+    fn render_postfix(
+        &mut self,
+        graphics: &mut dyn Graphics,
+        theme: &mut dyn Theme,
+        layout_node: &LayoutNode,
+        info: &mut AppInfo,
+        context: AppContext,
+    ) {
+        // Propagate render_postfix to inner widget if it exists
+        if let Some(widget) = &mut self.widget {
+            widget.render_postfix(graphics, theme, layout_node, info, context);
         }
     }
 

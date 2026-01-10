@@ -1424,6 +1424,47 @@ impl Widget for TabsContainer {
         }
     }
 
+    fn render_postfix(
+        &mut self,
+        graphics: &mut dyn Graphics,
+        theme: &mut dyn Theme,
+        layout: &LayoutNode,
+        info: &mut AppInfo,
+        context: AppContext,
+    ) {
+        // Propagate render_postfix to active tab content (for overlays, popups, etc.)
+        let active_tab_index = self.active_tab();
+        let content_bounds = self.get_content_bounds(layout);
+
+        if let Some(active_tab) = self.tabs.get_mut(active_tab_index) {
+            // Apply same clipping as in render() to ensure overlays are properly clipped
+            if !layout.children.is_empty() {
+                // Apply clipping to content area
+                graphics.push_layer(
+                    Mix::Clip,
+                    1.0,
+                    Affine::IDENTITY,
+                    &content_bounds.to_path(0.1),
+                );
+
+                // Propagate render_postfix to content
+                active_tab.content.render_postfix(
+                    graphics,
+                    theme,
+                    &layout.children[0],
+                    info,
+                    context,
+                );
+
+                // Pop the clipping layer
+                graphics.pop_layer();
+            } else {
+                // Fallback: render with original layout (content might overlap tabs)
+                active_tab.content.render_postfix(graphics, theme, layout, info, context);
+            }
+        }
+    }
+
     fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 

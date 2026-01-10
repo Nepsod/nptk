@@ -36,7 +36,11 @@ where
                 self.update.insert(Update::DRAW | Update::LAYOUT);
             },
             WindowEvent::CloseRequested => self.handle_close_request(event_loop),
-            WindowEvent::RedrawRequested => self.update_internal(event_loop),
+            WindowEvent::RedrawRequested => {
+                // Ensure we draw when the OS requests it
+                self.update.insert(Update::DRAW);
+                self.update_internal(event_loop);
+            },
             WindowEvent::CursorLeft { .. } => {
                 self.info.cursor_pos = None;
                 self.request_redraw();

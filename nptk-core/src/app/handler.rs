@@ -45,7 +45,6 @@ use crate::layout::StyleNode;
 use crate::platform::Platform;
 use crate::plugin::PluginManager;
 use crate::widget::Widget;
-use nptk_theme::theme::Theme;
 #[cfg(target_os = "linux")]
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use taffy::style::Display;
@@ -459,6 +458,9 @@ where
 
         if let Some(window) = self.window.as_ref() {
             window.request_redraw();
+        } else {
+            // For native Wayland or headless, we drive redraw via update flags
+            self.update.insert(Update::DRAW);
         }
     }
 
@@ -519,6 +521,10 @@ where
 
     /// Update the app and process events (internal implementation).
     fn update_internal(&mut self, event_loop: &ActiveEventLoop) {
+        // Process popup requests first (in case they were requested during widget updates)
+        // This ensures popups are created in the same update cycle
+        self.process_popup_requests(event_loop);
+        
         // Check for theme changes and trigger redraw if needed
         self.check_theme_changes();
         
@@ -1107,9 +1113,12 @@ where
         let requests = self.popup_manager.drain_requests();
         if !requests.is_empty() {
             log::debug!("Processing {} popup requests", requests.len());
+        } else {
+            return; // No requests to process
         }
         for req in requests {
-            log::debug!("Creating popup window: {}", req.title);
+            log::debug!("Creating popup window: '{}' with size {:?} at position {:?}", 
+                       req.title, req.size, req.position);
 
             let gpu_context = match self.gpu_context.as_ref() {
                 Some(ctx) => ctx,
@@ -1268,6 +1277,8 @@ where
             };
 
             if let Some(ref win) = window {
+                // Ensure popup window is visible (windows might be created hidden)
+                win.set_visible(true);
                 self.popup_windows.insert(win.id(), popup);
                 win.request_redraw();
             } else {
@@ -1356,6 +1367,49 @@ where
             log::debug!("Wayland: Update flags should already be set from configure handler");
         }
     }
+
+    fn pump_events(&mut self, event_loop: &ActiveEventLoop) {
+        if let Some(surface) = &mut self.surface {
+            if surface.needs_event_dispatch() {
+                match surface.dispatch_events() {
+                    Ok(needs_redraw) => {
+                        if needs_redraw {
+                            self.update.insert(Update::DRAW);
+                        }
+                    },
+                    Err(err) => {
+                        log::info!("Surface dispatch reported close: {}", err);
+                        self.handle_close_request(event_loop);
+                    },
+                }
+            }
+        }
+    }
+
+    fn update_app(&mut self, event_loop: &ActiveEventLoop) {
+        // Pump events first to ensure we handle inputs/configure events immediately
+        self.pump_events(event_loop);
+
+        #[cfg(all(target_os = "linux", feature = "wayland"))]
+        self.process_wayland_input_events();
+
+        // Process popup requests first (in case they were requested during widget updates)
+        self.process_popup_requests(event_loop);
+
+        // Render native Wayland popups
+        #[cfg(all(target_os = "linux", feature = "wayland"))]
+        self.render_wayland_popups();
+        
+        // Update window identity periodically to ensure it's set (important for Wayland)
+        #[cfg(target_os = "linux")]
+        {
+            if self.surface.is_some() || self.window.is_some() {
+                self.update_window_identity();
+            }
+        }
+
+        self.update_internal(event_loop);
+    }
 }
 
 impl<W, S, F> ApplicationHandler for AppHandler<W, S, F>
@@ -1395,19 +1449,14 @@ where
                 }
             }
         }
-        self.process_popup_requests(event_loop);
-
-        // Render native Wayland popups
-        #[cfg(all(target_os = "linux", feature = "wayland"))]
-        self.render_wayland_popups();
-
-        self.update(event_loop);
+        
+        self.update_app(event_loop);
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, _event: ()) {
         // Waker was called (from async thread)
         // Just run update to process flags
-        self.update(event_loop);
+        self.update_app(event_loop);
     }
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
