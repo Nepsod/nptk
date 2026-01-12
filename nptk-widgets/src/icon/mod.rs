@@ -1,50 +1,50 @@
 use nalgebra::Vector2;
+use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
-use nptk_core::vg::kurbo::{Affine, Vec2};
+use nptk_core::signal::MaybeSignal;
+use nptk_core::vg::kurbo::Rect;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use vello_svg::usvg;
 
-use crate::icon::svg::SvgIcon;
-use nptk_core::app::context::AppContext;
-use nptk_core::signal::MaybeSignal;
 pub use usvg::ImageRendering;
 pub use usvg::ShapeRendering;
 pub use usvg::TextRendering;
 
-/// Contains the [SvgIcon] struct for representing a rendered SVG Icon.
+mod constants;
+mod loader;
+mod renderer;
 pub mod svg;
+
+/// Contains the [SvgIcon] struct for representing a rendered SVG Icon.
+pub use svg::SvgIcon;
 
 /// Error type for parsing SVGs with [usvg].
 pub type SvgError = usvg::Error;
 
-/// Icon data that can be either SVG or Image format.
-#[derive(Clone)]
-enum IconData {
-    /// SVG icon (rendered as Scene).
-    Svg(SvgIcon),
-    /// Image icon (PNG/XPM - RGBA pixel data).
-    Image {
-        data: Arc<Vec<u8>>,
-        width: u32,
-        height: u32,
-    },
-}
-
 /// A simple icon widget to display icons from XDG icon theme or SVG sources.
 ///
 /// Supports both SVG icons (from XDG theme or direct SVG source) and Image icons (PNG/XPM from XDG theme).
+/// Icons are loaded asynchronously and cached for performance.
 ///
 /// ### Theming
 /// The widget itself only draws the underlying icon, so theming is useless.
 pub struct Icon {
     layout_style: MaybeSignal<LayoutStyle>,
-    icon: MaybeSignal<IconData>,
+    // For XDG icons
+    icon_name: Option<MaybeSignal<String>>,
+    size: MaybeSignal<u32>,
+    icon_registry: Option<Arc<npio::service::icon::IconRegistry>>,
+    icon_cache: Arc<Mutex<HashMap<(String, u32), Option<npio::service::icon::CachedIcon>>>>,
+    svg_scene_cache: HashMap<String, (nptk_core::vg::Scene, f64, f64)>,
+    // For SVG icons
+    svg_icon: Option<MaybeSignal<SvgIcon>>,
 }
 
 impl Icon {
@@ -57,91 +57,88 @@ impl Icon {
     /// * `size` - The desired icon size in pixels
     /// * `registry` - Optional shared icon registry. If None, a new registry will be created.
     pub fn new(
-        icon_name: impl Into<String>,
-        size: u32,
+        icon_name: impl Into<MaybeSignal<String>>,
+        size: impl Into<MaybeSignal<u32>>,
         registry: Option<Arc<npio::service::icon::IconRegistry>>,
     ) -> Self {
-        use npio::service::icon::{CachedIcon, IconRegistry};
+        use npio::service::icon::IconRegistry;
 
         let icon_name = icon_name.into();
+        let size = size.into();
         let registry = registry.unwrap_or_else(|| {
             Arc::new(
                 IconRegistry::new().unwrap_or_else(|_| IconRegistry::default()),
             )
         });
 
-        // Load icon from XDG theme
-        let cached_icon = registry.get_icon(&icon_name, size);
+        let initial_size = *size.get();
+        let initial_icon_name = icon_name.get().clone();
 
-        // Convert CachedIcon to IconData
-        let icon_data = match cached_icon {
-            Some(CachedIcon::Svg(svg_source)) => {
-                // Parse SVG string to SvgIcon
-                match SvgIcon::new(svg_source.as_str()) {
-                    Ok(svg_icon) => IconData::Svg(svg_icon),
-                    Err(e) => {
-                        log::warn!(
-                            "Failed to parse SVG for icon '{}': {}",
-                            icon_name,
-                            e
-                        );
-                        IconData::Svg(SvgIcon::from(nptk_core::vg::Scene::new()))
-                    },
-                }
-            },
-            Some(CachedIcon::Image { data, width, height }) => {
-                IconData::Image { data, width, height }
-            },
-            Some(CachedIcon::Path(_)) => {
-                // Path variant is for lazy loading, not supported here
-                log::warn!(
-                    "Icon '{}' returned Path variant (lazy loading not supported)",
-                    icon_name
-                );
-                IconData::Svg(SvgIcon::from(nptk_core::vg::Scene::new()))
-            },
-            None => {
-                log::warn!("Icon '{}' not found in XDG theme", icon_name);
-                IconData::Svg(SvgIcon::from(nptk_core::vg::Scene::new()))
-            },
-        };
+        // Initialize cache
+        let icon_cache = Arc::new(Mutex::new(HashMap::new()));
+
+        // Try to load icon synchronously if possible
+        let cached_icon = registry.get_icon(&initial_icon_name, initial_size);
+        {
+            let mut cache = icon_cache.lock().unwrap();
+            cache.insert((initial_icon_name, initial_size), cached_icon);
+        }
 
         Self {
             layout_style: LayoutStyle {
                 size: Vector2::new(
-                    Dimension::length(size as f32),
-                    Dimension::length(size as f32),
+                    Dimension::length(initial_size as f32),
+                    Dimension::length(initial_size as f32),
                 ),
                 ..Default::default()
             }
             .into(),
-            icon: MaybeSignal::value(icon_data),
+            icon_name: Some(icon_name),
+            size,
+            icon_registry: Some(registry),
+            icon_cache,
+            svg_scene_cache: HashMap::new(),
+            svg_icon: None,
         }
     }
 
     /// Creates a new icon widget from an SVG source string or file path.
     ///
-    /// This is the original constructor, renamed for clarity.
+    /// This constructor is for SVG icons that don't use XDG icon themes.
     pub fn from_svg(icon: impl Into<MaybeSignal<SvgIcon>>) -> Self {
+        let icon_signal = icon.into();
+        
         Self {
             layout_style: LayoutStyle {
                 size: Vector2::new(Dimension::length(8.0), Dimension::length(8.0)),
                 ..Default::default()
             }
             .into(),
-            icon: {
-                let icon_signal = icon.into();
-                // Convert MaybeSignal<SvgIcon> to MaybeSignal<IconData>
-                // We need to map the signal to wrap SvgIcon in IconData
-                icon_signal.map(|svg_icon_ref| {
-                    use nptk_core::reference::Ref;
-                    use std::rc::Rc;
-                    // Dereference Ref to get &SvgIcon, then clone and wrap in IconData
-                    let svg_icon = (*svg_icon_ref).clone();
-                    Ref::Rc(Rc::new(IconData::Svg(svg_icon)))
-                })
-            },
+            icon_name: None,
+            size: MaybeSignal::value(0),
+            icon_registry: None,
+            icon_cache: Arc::new(Mutex::new(HashMap::new())),
+            svg_scene_cache: HashMap::new(),
+            svg_icon: Some(icon_signal),
         }
+    }
+
+    fn apply_with(mut self, f: impl FnOnce(&mut Self)) -> Self {
+        f(&mut self);
+        self
+    }
+
+    /// Set the layout style for this icon.
+    pub fn with_layout_style(self, layout_style: impl Into<MaybeSignal<LayoutStyle>>) -> Self {
+        self.apply_with(|s| s.layout_style = layout_style.into())
+    }
+
+    /// Extract icon rectangle from layout.
+    fn icon_rect_from_layout(layout: &LayoutNode) -> Rect {
+        let x = layout.layout.location.x as f64;
+        let y = layout.layout.location.y as f64;
+        let size = layout.layout.size.width.min(layout.layout.size.height) as f64;
+        Rect::new(x, y, x + size, y + size)
     }
 }
 
@@ -149,104 +146,83 @@ impl Widget for Icon {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        _: &mut dyn Theme,
+        theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         _: &mut AppInfo,
-        _: AppContext,
+        context: AppContext,
     ) {
-        let icon_data_ref = self.icon.get();
+        let icon_rect = Self::icon_rect_from_layout(layout_node);
 
-        match *icon_data_ref {
-            IconData::Svg(ref svg_icon) => {
-                // Scale SVG to fit layout size while maintaining aspect ratio
-                // Use the smaller of width/height to ensure icon fits within layout
-                let svg_width = svg_icon.width();
-                let svg_height = svg_icon.height();
-                let layout_width = layout_node.layout.size.width as f64;
-                let layout_height = layout_node.layout.size.height as f64;
-                
-                // Safety check: ensure SVG has valid dimensions
-                if svg_width > 0.0 && svg_height > 0.0 && layout_width > 0.0 && layout_height > 0.0 {
-                    // Calculate scale to fit layout while maintaining aspect ratio
-                    // Use the pattern from tabs_container: scale based on max dimension
-                    let target_size = layout_width.min(layout_height);
-                    let svg_max_dim = svg_width.max(svg_height);
-                    let scale = target_size / svg_max_dim;
+        // Handle SVG icons (from_svg constructor)
+        if let Some(ref svg_signal) = self.svg_icon {
+            let svg_icon = svg_signal.get().clone();
+            
+            // Scale SVG to fit layout size while maintaining aspect ratio
+            let svg_width = svg_icon.width();
+            let svg_height = svg_icon.height();
+            let layout_width = layout_node.layout.size.width as f64;
+            let layout_height = layout_node.layout.size.height as f64;
+            
+            if svg_width > 0.0 && svg_height > 0.0 && layout_width > 0.0 && layout_height > 0.0 {
+                let target_size = layout_width.min(layout_height);
+                let svg_max_dim = svg_width.max(svg_height);
+                let scale = target_size / svg_max_dim;
 
-                    // Calculate scaled dimensions for centering
-                    let scaled_width = svg_width * scale;
-                    let scaled_height = svg_height * scale;
+                let scaled_width = svg_width * scale;
+                let scaled_height = svg_height * scale;
 
-                    // Center the icon within the layout bounds
-                    let offset_x = (layout_width - scaled_width) / 2.0;
-                    let offset_y = (layout_height - scaled_height) / 2.0;
-
-                    // Apply uniform scaling to maintain aspect ratio (same as tabs_container)
-                    let affine = Affine::scale(scale)
-                        .then_translate(Vec2::new(
-                            layout_node.layout.location.x as f64 + offset_x,
-                            layout_node.layout.location.y as f64 + offset_y,
-                        ));
-
-                    graphics.append(&svg_icon.scene(), Some(affine));
-                } else {
-                    // Fallback: render at layout position with default scale
-                    log::warn!(
-                        "Invalid SVG dimensions ({}x{}) or layout size ({}x{}), using fallback",
-                        svg_width,
-                        svg_height,
-                        layout_width,
-                        layout_height
-                    );
-                    let affine = Affine::translate(Vec2::new(
-                        layout_node.layout.location.x as f64,
-                        layout_node.layout.location.y as f64,
-                    ));
-                    graphics.append(&svg_icon.scene(), Some(affine));
-                }
-            },
-            IconData::Image { ref data, width, height } => {
-                use nptk_core::vg::peniko::{
-                    Blob, ImageAlphaType, ImageBrush, ImageData, ImageFormat,
-                };
-
-                let image_data = ImageData {
-                    data: Blob::from(data.as_ref().clone()),
-                    format: ImageFormat::Rgba8,
-                    alpha_type: ImageAlphaType::Alpha,
-                    width,
-                    height,
-                };
-                let image_brush = ImageBrush::new(image_data);
-
-                // Scale image to fit layout size while maintaining aspect ratio
-                let layout_width = layout_node.layout.size.width as f64;
-                let layout_height = layout_node.layout.size.height as f64;
-                let img_width = width as f64;
-                let img_height = height as f64;
-                
-                let scale_x = layout_width / img_width;
-                let scale_y = layout_height / img_height;
-                let scale = scale_x.min(scale_y);
-
-                // Calculate scaled dimensions
-                let scaled_width = img_width * scale;
-                let scaled_height = img_height * scale;
-
-                // Center the image within the layout bounds
                 let offset_x = (layout_width - scaled_width) / 2.0;
                 let offset_y = (layout_height - scaled_height) / 2.0;
 
-                let transform = Affine::scale(scale)
-                    .then_translate(Vec2::new(
+                let affine = nptk_core::vg::kurbo::Affine::scale(scale)
+                    .then_translate(nptk_core::vg::kurbo::Vec2::new(
                         layout_node.layout.location.x as f64 + offset_x,
                         layout_node.layout.location.y as f64 + offset_y,
                     ));
 
-                if let Some(scene) = graphics.as_scene_mut() {
-                    scene.draw_image(&image_brush, transform);
-                }
-            },
+                graphics.append(&svg_icon.scene(), Some(affine));
+            }
+            return;
+        }
+
+        // Handle XDG theme icons
+        if let (Some(ref icon_name_signal), Some(ref registry)) = (&self.icon_name, &self.icon_registry) {
+            let icon_name = icon_name_signal.get().clone();
+            let size = *self.size.get();
+
+            let cache_key = (icon_name.clone(), size);
+            let cached_icon = {
+                let cache = self.icon_cache.lock().unwrap();
+                cache.get(&cache_key).cloned().flatten()
+            };
+
+            // Request icon loading if not cached
+            if cached_icon.is_none() {
+                use crate::icon::loader::request_icon_loading;
+                request_icon_loading(
+                    self.icon_cache.clone(),
+                    registry.clone(),
+                    icon_name.clone(),
+                    size,
+                    context,
+                );
+            }
+
+            // Render icon or fallback
+            if let Some(icon) = cached_icon {
+                use crate::icon::renderer::render_cached_icon;
+                render_cached_icon(
+                    graphics,
+                    theme,
+                    self.widget_id(),
+                    icon,
+                    icon_rect,
+                    &mut self.svg_scene_cache,
+                );
+            } else {
+                use crate::icon::renderer::render_fallback_icon;
+                render_fallback_icon(graphics, theme, self.widget_id(), icon_rect);
+            }
         }
     }
 
@@ -257,7 +233,45 @@ impl Widget for Icon {
         }
     }
 
-    fn update(&mut self, _: &LayoutNode, _: AppContext, _: &mut AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, context: AppContext, _: &mut AppInfo) -> Update {
+        // Handle reactive icon_name and size changes for XDG icons
+        if let (Some(ref icon_name_signal), Some(ref registry)) = (&self.icon_name, &self.icon_registry) {
+            let icon_name = icon_name_signal.get().clone();
+            let size = *self.size.get();
+
+            let cache_key = (icon_name.clone(), size);
+            let needs_loading = {
+                let cache = self.icon_cache.lock().unwrap();
+                !cache.contains_key(&cache_key)
+            };
+
+            if needs_loading {
+                use crate::icon::loader::request_icon_loading;
+                request_icon_loading(
+                    self.icon_cache.clone(),
+                    registry.clone(),
+                    icon_name,
+                    size,
+                    context,
+                );
+            }
+
+            // Update layout size if size changed
+            let current_size = *self.size.get();
+            let expected_size = current_size as f32;
+            let layout_style_clone = self.layout_style.get().clone();
+            // Simple comparison: update if size changed (check if we need to update)
+            // For now, always update layout when size changes
+            self.layout_style = LayoutStyle {
+                size: Vector2::new(
+                    Dimension::length(expected_size),
+                    Dimension::length(expected_size),
+                ),
+                ..layout_style_clone
+            }
+            .into();
+        }
+
         Update::empty()
     }
 
