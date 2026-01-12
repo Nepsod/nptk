@@ -172,7 +172,7 @@ impl Button {
         x >= left && x <= right && y >= top && y <= bottom
     }
 
-    fn handle_keyboard_input(&mut self, info: &AppInfo, on_press_update: Update) -> Update {
+    fn handle_keyboard_input(&mut self, info: &AppInfo) -> Update {
         let mut update = Update::empty();
 
         if matches!(self.focus_state, FocusState::Focused | FocusState::Gained) {
@@ -180,7 +180,7 @@ impl Button {
                 match key_event.state {
                     ElementState::Pressed => match key_event.physical_key {
                         PhysicalKey::Code(KeyCode::Space) | PhysicalKey::Code(KeyCode::Enter) => {
-                            update |= on_press_update;
+                            update |= *self.on_pressed.get();
                             self.state = ButtonState::Pressed;
                         },
                         _ => {},
@@ -204,7 +204,6 @@ impl Button {
         &mut self,
         layout: &LayoutNode,
         info: &AppInfo,
-        on_press_update: Update,
     ) -> Update {
         let mut update = Update::empty();
 
@@ -232,7 +231,7 @@ impl Button {
                     if self.state != ButtonState::Pressed {
                         self.state = ButtonState::Pressed;
                         if self.repeat_enabled {
-                            update |= on_press_update;
+                            update |= *self.on_pressed.get();
                             self.press_start_time = Some(Instant::now());
                             self.last_repeat_time = None;
                         }
@@ -242,7 +241,7 @@ impl Button {
                     if self.state == ButtonState::Pressed {
                         self.state = ButtonState::Released;
                         if !self.repeat_enabled {
-                            update |= on_press_update;
+                            update |= *self.on_pressed.get();
                         }
                     }
                 },
@@ -374,13 +373,12 @@ impl Widget for Button {
         let mut update = Update::empty();
         let old_state = self.state;
         let old_focus_state = self.focus_state;
-        let on_press_update = *self.on_pressed.get();
 
         self.update_focus_state(layout, info, old_focus_state);
 
         if !self.disabled {
-            update |= self.handle_keyboard_input(info, on_press_update);
-            update |= self.handle_mouse_input(layout, info, on_press_update);
+            update |= self.handle_keyboard_input(info);
+            update |= self.handle_mouse_input(layout, info);
         } else {
             self.state = ButtonState::Idle;
             self.press_start_time = None;
