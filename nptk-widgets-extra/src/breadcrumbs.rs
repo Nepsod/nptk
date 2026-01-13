@@ -11,7 +11,7 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode, Dimension, FlexDirection, Layout};
 use nptk_core::menu::unified::{MenuTemplate, MenuItem as UnifiedMenuItem};
 use nptk_core::menu::commands::MenuCommand;
-use nptk_core::signal::MaybeSignal;
+use nptk_core::signal::{MaybeSignal, Signal, state::StateSignal};
 use nptk_core::text_render::TextRenderContext;
 use nptk_core::vgi::Graphics;
 use nptk_core::vg::kurbo::Rect;
@@ -114,7 +114,8 @@ impl BreadcrumbItem {
 /// ```
 pub struct Breadcrumbs {
     widget_id: WidgetId,
-    items: Vec<BreadcrumbItem>,
+    items: MaybeSignal<Vec<BreadcrumbItem>>,
+    items_signal: Option<StateSignal<Vec<BreadcrumbItem>>>,
     separator: String,
     max_items: Option<usize>,
     show_root: bool,
@@ -142,7 +143,7 @@ impl std::fmt::Debug for Breadcrumbs {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Breadcrumbs")
             .field("widget_id", &self.widget_id)
-            .field("items", &self.items)
+            .field("items", &self.get_items_vec())
             .field("separator", &self.separator)
             .field("max_items", &self.max_items)
             .field("show_root", &self.show_root)
@@ -156,7 +157,8 @@ impl Breadcrumbs {
     pub fn new() -> Self {
         Self {
             widget_id: WidgetId::new("nptk_widgets_extra", "Breadcrumbs"),
-            items: Vec::new(),
+            items: MaybeSignal::value(Vec::new()),
+            items_signal: None,
             separator: " > ".to_string(),
             max_items: None,
             show_root: true,
@@ -177,8 +179,20 @@ impl Breadcrumbs {
     }
 
     /// Set the breadcrumb items
-    pub fn with_items(mut self, items: Vec<BreadcrumbItem>) -> Self {
-        self.items = items;
+    pub fn with_items(mut self, items: impl Into<MaybeSignal<Vec<BreadcrumbItem>>>) -> Self {
+        self.items = items.into();
+        // Reset state when items change
+        self.hovered_index = None;
+        self.item_positions.clear();
+        self.items_signal = None; // Clear signal reference for static items
+        self
+    }
+
+    /// Set the breadcrumb items using a reactive signal
+    /// This allows external code to update breadcrumbs reactively
+    pub fn with_items_signal(mut self, items_signal: StateSignal<Vec<BreadcrumbItem>>) -> Self {
+        self.items = MaybeSignal::signal(Box::new(items_signal.clone()));
+        self.items_signal = Some(items_signal);
         // Reset state when items change
         self.hovered_index = None;
         self.item_positions.clear();
@@ -187,7 +201,12 @@ impl Breadcrumbs {
 
     /// Add a single breadcrumb item
     pub fn with_item(mut self, item: BreadcrumbItem) -> Self {
-        self.items.push(item);
+        if let Some(ref signal) = self.items_signal {
+            signal.mutate(|items| items.push(item));
+        } else {
+            // For fixed signals, we can't modify - this is a no-op
+            // Users should use with_items() or with_items_signal() instead
+        }
         self
     }
 
@@ -282,32 +301,50 @@ impl Breadcrumbs {
     }
 
     /// Get the current breadcrumb items
-    pub fn items(&self) -> &[BreadcrumbItem] {
-        &self.items
+    pub fn items(&self) -> Vec<BreadcrumbItem> {
+        self.items.get().iter().cloned().collect()
+    }
+
+    /// Get the items signal for observability (returns None if items are static)
+    pub fn get_items_signal(&self) -> Option<StateSignal<Vec<BreadcrumbItem>>> {
+        self.items_signal.clone()
     }
 
     /// Add a breadcrumb item
     pub fn add_item(&mut self, item: BreadcrumbItem) {
-        self.items.push(item);
+        if let Some(ref signal) = self.items_signal {
+            signal.mutate(|items| items.push(item));
+        }
+        // For fixed signals, this is a no-op - items are immutable
     }
 
     /// Remove the last breadcrumb item (navigate back)
     pub fn pop_item(&mut self) -> Option<BreadcrumbItem> {
-        let result = self.items.pop();
-        // Reset state when items change
-        self.hovered_index = None;
-        self.item_positions.clear();
-        self.separator_positions.clear();
-        // Close popup if open (item might be invalid now)
-        if self.popup_item_index.is_some() {
-            self.close_neighbor_popup();
+        if let Some(ref signal) = self.items_signal {
+            let mut result = None;
+            signal.mutate(|items| {
+                result = items.pop();
+            });
+            // Reset state when items change
+            self.hovered_index = None;
+            self.item_positions.clear();
+            self.separator_positions.clear();
+            // Close popup if open (item might be invalid now)
+            if self.popup_item_index.is_some() {
+                self.close_neighbor_popup();
+            }
+            result
+        } else {
+            // For fixed signals, this is a no-op
+            None
         }
-        result
     }
 
     /// Clear all breadcrumb items
     pub fn clear(&mut self) {
-        self.items.clear();
+        if let Some(ref signal) = self.items_signal {
+            signal.mutate(|items| items.clear());
+        }
         // Reset state when items change
         self.hovered_index = None;
         self.item_positions.clear();
@@ -320,67 +357,92 @@ impl Breadcrumbs {
 
     /// Navigate to a specific breadcrumb by index (removes items after it)
     pub fn navigate_to_index(&mut self, index: usize) {
-        if index < self.items.len() {
-            let old_len = self.items.len();
-            self.items.truncate(index + 1);
-            // Reset hovered_index if it's now out of bounds or if items changed
-            if old_len != self.items.len() {
-                self.hovered_index = None;
-                self.item_positions.clear();
-                self.separator_positions.clear();
-                // Close popup if item index is now out of bounds
-                if let Some(popup_idx) = self.popup_item_index {
-                    if popup_idx >= self.items.len() {
-                        self.close_neighbor_popup();
-                    }
-                }
-            } else if let Some(hovered) = self.hovered_index {
-                if hovered >= self.items.len() {
+        if let Some(ref signal) = self.items_signal {
+            let items_len = {
+                let items_ref = signal.get();
+                items_ref.len()
+            };
+            if index < items_len {
+                let old_len = items_len;
+                signal.mutate(|items| {
+                    items.truncate(index + 1);
+                });
+                let new_len = {
+                    let items_ref = signal.get();
+                    items_ref.len()
+                };
+                // Reset hovered_index if it's now out of bounds or if items changed
+                if old_len != new_len {
                     self.hovered_index = None;
                     self.item_positions.clear();
                     self.separator_positions.clear();
+                    // Close popup if item index is now out of bounds
+                    if let Some(popup_idx) = self.popup_item_index {
+                        if popup_idx >= new_len {
+                            self.close_neighbor_popup();
+                        }
+                    }
+                } else if let Some(hovered) = self.hovered_index {
+                    if hovered >= new_len {
+                        self.hovered_index = None;
+                        self.item_positions.clear();
+                        self.separator_positions.clear();
+                    }
                 }
-            }
-            // Also check popup_item_index even if items.len() didn't change
-            if let Some(popup_idx) = self.popup_item_index {
-                if popup_idx >= self.items.len() {
-                    self.close_neighbor_popup();
+                // Also check popup_item_index even if items.len() didn't change
+                if let Some(popup_idx) = self.popup_item_index {
+                    if popup_idx >= new_len {
+                        self.close_neighbor_popup();
+                    }
                 }
-            }
-        } else {
-            // index >= self.items.len(), close popup if it references an invalid index
-            if let Some(popup_idx) = self.popup_item_index {
-                if popup_idx >= self.items.len() {
-                    self.close_neighbor_popup();
+            } else {
+                // index >= items_len, close popup if it references an invalid index
+                if let Some(popup_idx) = self.popup_item_index {
+                    if popup_idx >= items_len {
+                        self.close_neighbor_popup();
+                    }
                 }
             }
         }
+        // For fixed signals, this is a no-op - items are immutable
+    }
+
+    /// Helper method to get the current items Vec
+    fn get_items_vec(&self) -> Vec<BreadcrumbItem> {
+        self.items.get().iter().cloned().collect()
     }
 
     /// Get the visible items considering max_items constraint
     fn get_visible_items(&self) -> Vec<(usize, bool)> {
+        let items = self.get_items_vec();
+        self.get_visible_items_from_slice(&items)
+    }
+
+    /// Get the visible items considering max_items constraint (internal helper)
+    fn get_visible_items_from_slice(&self, items: &[BreadcrumbItem]) -> Vec<(usize, bool)> {
+        let items_len = items.len();
         // Returns (original_index, is_ellipsis)
         if let Some(max_items) = self.max_items {
-            if self.items.len() > max_items {
+            if items_len > max_items {
                 let mut visible = Vec::new();
                 
-                if self.show_root && !self.items.is_empty() {
+                if self.show_root && !items.is_empty() {
                     visible.push((0, false)); // Root item
                     
                     if max_items > 2 {
                         visible.push((usize::MAX, true)); // Ellipsis placeholder (using MAX as sentinel)
-                        let start_idx = self.items.len().saturating_sub(max_items - 2);
+                        let start_idx = items_len.saturating_sub(max_items - 2);
                         // Ensure start_idx > 0 to avoid duplicating root item
                         let start_idx = start_idx.max(1);
-                        for i in start_idx..self.items.len() {
+                        for i in start_idx..items_len {
                             visible.push((i, false));
                         }
                     } else if max_items == 2 {
                         visible.push((usize::MAX, true)); // Ellipsis
                         // Skip last item if it's the same as root (max_items == 2 means only room for root + last)
                         // But if there are more than 2 items, we want root + ellipsis + last
-                        if self.items.len() > 1 {
-                            visible.push((self.items.len() - 1, false)); // Last item
+                        if items_len > 1 {
+                            visible.push((items_len - 1, false)); // Last item
                         }
                     } else if max_items == 1 {
                         // Only show root, no ellipsis or last item
@@ -389,24 +451,24 @@ impl Breadcrumbs {
                 } else {
                     if max_items > 1 {
                         visible.push((usize::MAX, true)); // Ellipsis (using MAX as sentinel)
-                        let start_idx = self.items.len().saturating_sub(max_items - 1);
-                        for i in start_idx..self.items.len() {
+                        let start_idx = items_len.saturating_sub(max_items - 1);
+                        for i in start_idx..items_len {
                             visible.push((i, false));
                         }
                     } else {
                         // max_items == 1, show only last item
-                        if !self.items.is_empty() {
-                            visible.push((self.items.len() - 1, false)); // Last item only
+                        if !items.is_empty() {
+                            visible.push((items_len - 1, false)); // Last item only
                         }
                     }
                 }
                 
                 visible
             } else {
-                (0..self.items.len()).map(|i| (i, false)).collect()
+                (0..items_len).map(|i| (i, false)).collect()
             }
         } else {
-            (0..self.items.len()).map(|i| (i, false)).collect()
+            (0..items_len).map(|i| (i, false)).collect()
         }
     }
 
@@ -429,9 +491,12 @@ impl Breadcrumbs {
             return None;
         }
         
+        let items = self.get_items_vec();
+        let items_len = items.len();
+        
         // Validate that hovered_index is still valid if set
         if let Some(hovered) = self.hovered_index {
-            if hovered >= self.items.len() {
+            if hovered >= items_len {
                 // This shouldn't happen with proper state management, but guard against it
                 return None;
             }
@@ -442,7 +507,7 @@ impl Breadcrumbs {
         // This handles cases where items might overlap slightly
         for &(item_x, item_width, original_index) in self.item_positions.iter().rev() {
             // Validate original_index is in bounds before checking bounds
-            if original_index < self.items.len() && x >= item_x && x < item_x + item_width {
+            if original_index < items_len && x >= item_x && x < item_x + item_width {
                 return Some(original_index);
             }
         }
@@ -468,11 +533,13 @@ impl Breadcrumbs {
             return None;
         }
         
+        let items_len = self.get_items_vec().len();
+        
         // Check which separator the x coordinate falls within
         // Check in reverse order to prioritize later (rightmost) separators
         for &(sep_x, sep_width, item_index_before) in self.separator_positions.iter().rev() {
             // Validate item_index_before is in bounds
-            if item_index_before < self.items.len() && x >= sep_x && x < sep_x + sep_width {
+            if item_index_before < items_len && x >= sep_x && x < sep_x + sep_width {
                 return Some(item_index_before);
             }
         }
@@ -524,11 +591,12 @@ impl Breadcrumbs {
 
     /// Show neighbor popup for the given item index
     fn show_neighbor_popup(&mut self, item_index: usize) {
-        if item_index >= self.items.len() {
+        let items = self.get_items_vec();
+        if item_index >= items.len() {
             return;
         }
 
-        let item = &self.items[item_index];
+        let item = &items[item_index];
         
         // Get neighbors using the provider callback
         let neighbors = if let Some(ref provider) = self.neighbors_provider {
@@ -619,11 +687,12 @@ impl Widget for Breadcrumbs {
         info: &mut AppInfo,
         _: AppContext,
     ) {
-        if self.items.is_empty() {
+        let items = self.get_items_vec();
+        if items.is_empty() {
             return;
         }
 
-        let visible_items = self.get_visible_items();
+        let visible_items = self.get_visible_items_from_slice(&items);
         if visible_items.is_empty() {
             return;
         }
@@ -632,7 +701,8 @@ impl Widget for Breadcrumbs {
         let base_y = layout.layout.location.y as f64;
         let font_size = self.font_size as f64;
         let spacing = self.spacing as f64;
-        let last_index = self.items.len() - 1;
+        let items_len = items.len();
+        let last_index = items_len - 1;
         
         // Use base_y directly - Parley's render_text handles baseline positioning internally
         // Similar to how the Text widget renders text
@@ -648,7 +718,7 @@ impl Widget for Breadcrumbs {
         // Render home icon if enabled and first item is "Home"
         if self.show_home_icon && !visible_items.is_empty() {
             let (first_idx, is_ellipsis) = visible_items[0];
-            if !is_ellipsis && first_idx != usize::MAX && first_idx < self.items.len() && self.items[first_idx].label.to_lowercase() == "home" {
+            if !is_ellipsis && first_idx != usize::MAX && first_idx < items_len && items[first_idx].label.to_lowercase() == "home" {
                 // Draw a simple house icon (square with triangle roof)
                 let icon_size = font_size * 0.8;
                 
@@ -683,7 +753,7 @@ impl Widget for Breadcrumbs {
                     };
                     
                     // Only store separator position if the previous item is valid (not ellipsis)
-                    if prev_orig_idx != usize::MAX && prev_orig_idx < self.items.len() {
+                    if prev_orig_idx != usize::MAX && prev_orig_idx < items_len {
                         self.separator_positions.push((current_x as f32, sep_width as f32, prev_orig_idx));
                     }
                     
@@ -708,8 +778,8 @@ impl Widget for Breadcrumbs {
                 }
             }
 
-            if !is_ellipsis && *orig_idx != usize::MAX && *orig_idx < self.items.len() {
-                let item = &self.items[*orig_idx];
+            if !is_ellipsis && *orig_idx != usize::MAX && *orig_idx < items_len {
+                let item = &items[*orig_idx];
                 let is_current = *orig_idx == last_index;
                 let is_hovered = self.hovered_index == Some(*orig_idx);
                 let item_color = self.get_item_color(theme, *orig_idx, is_current, is_hovered);
@@ -800,10 +870,12 @@ impl Widget for Breadcrumbs {
 
     fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
+        let items = self.get_items_vec();
+        let items_len = items.len();
 
         // Validate hovered_index is still valid (items might have changed)
         if let Some(hovered) = self.hovered_index {
-            if hovered >= self.items.len() {
+            if hovered >= items_len {
                 self.hovered_index = None;
                 update |= Update::DRAW;
             }
@@ -829,7 +901,7 @@ impl Widget for Breadcrumbs {
         // Handle neighbor popup updates if open
         if let Some(popup_item_index) = self.popup_item_index {
             // Validate popup_item_index is still valid (items might have changed)
-            if popup_item_index >= self.items.len() {
+            if popup_item_index >= items_len {
                 // Item index is out of bounds - close popup
                 self.close_neighbor_popup();
                 update |= Update::DRAW;
@@ -916,8 +988,8 @@ impl Widget for Breadcrumbs {
                         cursor_pos.x as f32,
                         cursor_pos.y as f32,
                     ) {
-                        if item_index_before_separator < self.items.len() {
-                            let item = &self.items[item_index_before_separator];
+                        if item_index_before_separator < items_len {
+                            let item = &items[item_index_before_separator];
                             
                             // Check if neighbors are available using the provider
                             let has_neighbors = if let Some(ref provider) = self.neighbors_provider {
@@ -950,8 +1022,8 @@ impl Widget for Breadcrumbs {
                         cursor_pos.y as f32,
                     ) {
                         // Clicked on an item (not separator) - navigate normally
-                        if item_index < self.items.len() {
-                            let item = &self.items[item_index];
+                        if item_index < items_len {
+                            let item = &items[item_index];
                             if item.clickable {
                                 // Execute callback if provided
                                 if let Some(ref callback) = self.on_click {
@@ -987,7 +1059,8 @@ impl Widget for Breadcrumbs {
         // Render neighbor popup if open
         if let Some(popup_item_index) = self.popup_item_index {
             // Validate popup_item_index is still valid and item is visible
-            if popup_item_index >= self.items.len() {
+            let items_len = self.get_items_vec().len();
+            if popup_item_index >= items_len {
                 // Item index is out of bounds - popup won't render (will be cleaned up in update)
                 return;
             }
