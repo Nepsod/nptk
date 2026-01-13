@@ -314,7 +314,7 @@ impl Widget for Button {
         context: AppContext,
     ) {
         // Update focus state from focus manager
-        if let Ok(manager) = info.focus_manager.lock() {
+        if let Ok(mut manager) = info.focus_manager.lock() {
             self.focus_state = manager.get_focus_state(self.focus_id);
         }
 

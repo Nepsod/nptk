@@ -100,6 +100,10 @@ pub struct FocusManager {
     tab_order_dirty: bool,
     /// Whether the last focus change was via keyboard.
     last_focus_via_keyboard: bool,
+    /// Cache of focus states to avoid recomputation.
+    focus_state_cache: HashMap<FocusId, FocusState>,
+    /// Whether the focus state cache is valid.
+    focus_cache_valid: bool,
 }
 
 impl FocusManager {
@@ -112,6 +116,8 @@ impl FocusManager {
             tab_order: Vec::new(),
             tab_order_dirty: false,
             last_focus_via_keyboard: false,
+            focus_state_cache: HashMap::new(),
+            focus_cache_valid: false,
         }
     }
 
@@ -138,16 +144,33 @@ impl FocusManager {
     }
 
     /// Get the current focus state for a widget.
-    pub fn get_focus_state(&self, id: FocusId) -> FocusState {
+    pub fn get_focus_state(&mut self, id: FocusId) -> FocusState {
+        // Use cached value if available and valid
+        if self.focus_cache_valid {
+            if let Some(&cached_state) = self.focus_state_cache.get(&id) {
+                return cached_state;
+            }
+        }
+
         let is_focused = self.focused_widget == Some(id);
         let was_focused = self.previous_focused == Some(id);
 
-        match (was_focused, is_focused) {
+        let state = match (was_focused, is_focused) {
             (false, true) => FocusState::Gained,
             (true, false) => FocusState::Lost,
             (true, true) => FocusState::Focused,
             (false, false) => FocusState::None,
-        }
+        };
+
+        // Cache the computed state
+        self.focus_state_cache.insert(id, state);
+        state
+    }
+
+    /// Invalidate the focus state cache.
+    fn invalidate_focus_cache(&mut self) {
+        self.focus_cache_valid = false;
+        self.focus_state_cache.clear();
     }
 
     /// Set focus to a specific widget.
@@ -165,6 +188,7 @@ impl FocusManager {
         self.previous_focused = self.focused_widget;
         self.focused_widget = id;
         self.last_focus_via_keyboard = via_keyboard;
+        self.invalidate_focus_cache();
     }
 
     /// Get the currently focused widget ID.
@@ -276,6 +300,7 @@ impl FocusManager {
     pub fn next_frame(&mut self) {
         // This is called at the beginning of each frame to update focus transitions
         self.previous_focused = self.focused_widget;
+        self.focus_cache_valid = true;
     }
 }
 

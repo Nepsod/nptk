@@ -56,8 +56,10 @@ pub enum Scene {
 pub struct DirtyRegionTracker {
     /// Whether the entire scene needs to be reset
     full_reset_needed: bool,
-    /// Specific regions that need updates (future optimization)
-    _dirty_regions: Vec<vello::kurbo::Rect>,
+    /// Specific regions that need updates
+    dirty_regions: Vec<vello::kurbo::Rect>,
+    /// Whether any regions are dirty
+    has_dirty_regions: bool,
 }
 
 impl DirtyRegionTracker {
@@ -65,13 +67,16 @@ impl DirtyRegionTracker {
     pub fn new() -> Self {
         Self {
             full_reset_needed: true, // Start with full reset needed
-            _dirty_regions: Vec::new(),
+            dirty_regions: Vec::new(),
+            has_dirty_regions: false,
         }
     }
 
     /// Mark that a full scene reset is needed
     pub fn mark_full_reset_needed(&mut self) {
         self.full_reset_needed = true;
+        self.has_dirty_regions = false;
+        self.dirty_regions.clear();
     }
 
     /// Check if a full reset is needed
@@ -79,10 +84,29 @@ impl DirtyRegionTracker {
         self.full_reset_needed
     }
 
-    /// Mark that the scene has been reset
-    pub fn mark_reset_complete(&mut self) {
+    /// Add a dirty region that needs to be redrawn
+    pub fn add_dirty_region(&mut self, rect: vello::kurbo::Rect) {
+        if !self.full_reset_needed {
+            self.dirty_regions.push(rect);
+            self.has_dirty_regions = true;
+        }
+    }
+
+    /// Check if there are any dirty regions
+    pub fn has_dirty_regions(&self) -> bool {
+        self.has_dirty_regions || self.full_reset_needed
+    }
+
+    /// Get all dirty regions
+    pub fn get_dirty_regions(&self) -> &[vello::kurbo::Rect] {
+        &self.dirty_regions
+    }
+
+    /// Clear all dirty state
+    pub fn clear(&mut self) {
         self.full_reset_needed = false;
-        self._dirty_regions.clear();
+        self.has_dirty_regions = false;
+        self.dirty_regions.clear();
     }
 }
 

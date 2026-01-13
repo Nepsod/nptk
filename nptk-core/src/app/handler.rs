@@ -265,13 +265,42 @@ where
         width.hash(&mut hasher);
         height.hash(&mut hasher);
         
-        // Hash widget structure (simplified - in practice would need deeper inspection)
+        // Hash widget structure and style information
         if let Some(widget) = &self.widget {
-            // Use widget_id as a proxy for widget structure
+            // Hash widget ID
             widget.widget_id().hash(&mut hasher);
+            
+            // Hash layout style to detect style changes
+            let style = widget.layout_style();
+            self.hash_style_node(&style, &mut hasher);
         }
         
         hasher.finish()
+    }
+
+    /// Recursively hash a style node and its children for layout cache invalidation
+    fn hash_style_node(&self, style: &crate::layout::StyleNode, hasher: &mut std::collections::hash_map::DefaultHasher) {
+        use std::hash::Hash;
+        
+        // Hash display property (critical for layout)
+        std::mem::discriminant(&style.style.display).hash(hasher);
+        
+        // Hash position using discriminant
+        std::mem::discriminant(&style.style.position).hash(hasher);
+        
+        // Hash flex properties using discriminant for enums
+        std::mem::discriminant(&style.style.flex_direction).hash(hasher);
+        std::mem::discriminant(&style.style.flex_wrap).hash(hasher);
+        
+        // Hash flex grow/shrink as bits
+        style.style.flex_grow.to_bits().hash(hasher);
+        style.style.flex_shrink.to_bits().hash(hasher);
+        
+        // Hash children count and recurse
+        style.children.len().hash(hasher);
+        for child in &style.children {
+            self.hash_style_node(child, hasher);
+        }
     }
 
     /// Compute the layout of the root node and its children with caching.

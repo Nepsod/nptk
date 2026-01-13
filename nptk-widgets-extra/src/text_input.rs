@@ -251,7 +251,7 @@ impl Widget for TextInput {
         context: AppContext,
     ) {
         // Update focus state
-        if let Ok(manager) = info.focus_manager.lock() {
+        if let Ok(mut manager) = info.focus_manager.lock() {
             self.focus_state = manager.get_focus_state(self.focus_id);
         }
 

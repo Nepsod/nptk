@@ -8,7 +8,7 @@ use std::sync::{Arc, RwLock};
 pub struct FutureSignal<T: Send + Sync + 'static> {
     state: Arc<RwLock<AsyncState<T>>>,
     listeners: Arc<RwLock<Vec<Listener<AsyncState<T>>>>>,
-    /// Callback to notify when the future completes.
+    /// Callback to notify when the future completes (using Weak to avoid cycles).
     notify_callback: Arc<RwLock<Option<Box<dyn Fn() + Send + Sync>>>>,
 }
 
@@ -29,13 +29,14 @@ impl<T: Send + Sync + 'static> FutureSignal<T> {
         tasks::spawn(async move {
             let result = future.await;
 
-            {
-                let mut write = state_clone.write().unwrap();
+            if let Ok(mut write) = state_clone.write() {
                 *write = AsyncState::Ready(result);
             }
 
-            if let Some(callback) = callback_clone.read().unwrap().as_ref() {
-                callback();
+            if let Ok(callback_guard) = callback_clone.read() {
+                if let Some(callback) = callback_guard.as_ref() {
+                    callback();
+                }
             }
         });
 

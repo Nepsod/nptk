@@ -83,7 +83,7 @@ impl PlasmaMenuClient {
             1..=2,
             (),
         ) {
-            Ok(manager) => {
+            Ok(mut manager) => {
                 let version = manager.version();
                 log::info!("Bound to org.kde.kwin.appmenu_manager version {}", version);
                 Some(manager)

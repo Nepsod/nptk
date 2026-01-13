@@ -150,7 +150,7 @@ impl<T: 'static> MaybeSignal<T> {
     /// Applies the given mapping function to the signal.
     ///
     /// Returns a [MaybeSignal] containing a [MapSignal] which maps the inner value of the signal.
-    pub fn map<U: 'static>(self, map: impl Fn(Ref<T>) -> Ref<U> + 'static) -> MaybeSignal<U> {
+    pub fn map<U: 'static + Clone>(self, map: impl Fn(Ref<T>) -> Ref<U> + 'static) -> MaybeSignal<U> {
         let signal = self.into_signal();
 
         MaybeSignal::signal(Box::new(MapSignal::new(signal, map)))
@@ -181,7 +181,7 @@ impl<'a, T: 'static> From<&'a BoxedSignal<T>> for MaybeSignal<T> {
     }
 }
 
-impl<T: 'static, U: 'static> From<MapSignal<T, U>> for MaybeSignal<U> {
+impl<T: 'static, U: 'static + Clone> From<MapSignal<T, U>> for MaybeSignal<U> {
     fn from(value: MapSignal<T, U>) -> Self {
         Self::signal(Box::new(value))
     }

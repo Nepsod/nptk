@@ -16,6 +16,10 @@ use std::sync::Arc;
 
 use nptk_services::settings::SettingsRegistry;
 
+/// Performance constants for async operations
+const DEFAULT_DEBOUNCE_DELAY_MS: u64 = 300;
+const DEFAULT_TIMEOUT_MS: u64 = 5000;
+
 /// The application context for managing the application lifecycle.
 #[derive(Clone)]
 pub struct AppContext {
@@ -116,7 +120,7 @@ impl AppContext {
     }
 
     /// Shortcut for creating and hooking an [EvalSignal] into the application lifecycle.
-    pub fn use_eval<T: 'static>(&self, eval: impl Fn() -> T + 'static) -> EvalSignal<T> {
+    pub fn use_eval<T: 'static + Clone>(&self, eval: impl Fn() -> T + 'static) -> EvalSignal<T> {
         self.use_signal(EvalSignal::new(eval))
     }
 
@@ -227,6 +231,14 @@ impl AppContext {
         });
     }
 
+    /// Spawns a debounced async operation with default delay.
+    pub fn spawn_debounced_default<F>(&self, future: F)
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        self.spawn_debounced(DEFAULT_DEBOUNCE_DELAY_MS, future);
+    }
+
     /// Spawns an async resource loading operation with caching.
     /// This is useful for loading resources like images, fonts, or other assets.
     pub fn spawn_resource_load<K, R, F, S, E>(&self, _cache_key: K, loader: F, on_success: S, on_error: E)
@@ -329,6 +341,17 @@ impl AppContext {
             
             update_manager.insert(Update::DRAW);
         });
+    }
+
+    /// Spawns async operations with default timeout.
+    pub fn spawn_with_default_timeout<F, T, S, E>(&self, future: F, on_success: S, on_timeout: E)
+    where
+        F: std::future::Future<Output = T> + Send + 'static,
+        T: Send + 'static,
+        S: FnOnce(T) + Send + 'static,
+        E: FnOnce() + Send + 'static,
+    {
+        self.spawn_with_timeout(DEFAULT_TIMEOUT_MS, future, on_success, on_timeout);
     }
 
     /// Get the shared focus manager.

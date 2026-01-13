@@ -61,7 +61,7 @@
 //! });
 //!
 //! let handle2 = thread::spawn(move || {
-//!     if let Ok(manager) = manager2.read() {
+//!     if let Ok(mut manager) = manager2.read() {
 //!         let variants = manager.available_variants();
 //!         println!("Available variants: {:?}", variants);
 //!     }
@@ -147,7 +147,7 @@
 //! for i in 0..4 {
 //!     let manager = shared_manager.clone();
 //!     thread::spawn(move || {
-//!         if let Ok(manager) = manager.read() {
+//!         if let Ok(mut manager) = manager.read() {
 //!             // Safe to read from multiple threads
 //!             let variants = manager.available_variants();
 //!             println!("Thread {}: {:?}", i, variants);
