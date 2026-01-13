@@ -35,6 +35,9 @@ pub mod keymap;
 /// Contains the overlay and popup management system.
 pub mod popup;
 
+/// Contains the tooltip management system.
+pub mod tooltip;
+
 /// The main application interface.
 ///
 /// Contains basic functions for the [MayRunner] to create and run an application.

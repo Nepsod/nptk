@@ -1,6 +1,7 @@
 use crate::app::diagnostics::Diagnostics;
 use crate::app::focus::{FocusId, SharedFocusManager};
 use crate::app::popup::PopupManager;
+use crate::app::tooltip::TooltipRequestManager;
 use crate::app::update::{Update, UpdateManager};
 use crate::menu::ContextMenuState;
 use crate::signal::eval::EvalSignal;
@@ -10,6 +11,7 @@ use crate::signal::memoized::MemoizedSignal;
 use crate::signal::state::StateSignal;
 use crate::signal::Signal;
 use crate::vgi::GpuContext;
+use nptk_theme::id::WidgetId;
 use std::sync::Arc;
 
 use nptk_services::settings::SettingsRegistry;
@@ -23,6 +25,7 @@ pub struct AppContext {
     focus_manager: SharedFocusManager,
     pub menu_manager: ContextMenuState,
     pub popup_manager: PopupManager,
+    pub tooltip_manager: TooltipRequestManager,
     pub settings: Arc<SettingsRegistry>,
 }
 
@@ -35,6 +38,7 @@ impl AppContext {
         focus_manager: SharedFocusManager,
         menu_manager: ContextMenuState,
         popup_manager: PopupManager,
+        tooltip_manager: TooltipRequestManager,
         settings: Arc<SettingsRegistry>,
     ) -> Self {
         Self {
@@ -44,6 +48,7 @@ impl AppContext {
             focus_manager,
             menu_manager,
             popup_manager,
+            tooltip_manager,
             settings,
         }
     }
@@ -195,5 +200,26 @@ impl AppContext {
             manager.clear_focus();
             self.update.insert(Update::FOCUS | Update::DRAW);
         }
+    }
+
+    /// Request to show a tooltip.
+    ///
+    /// The tooltip will be shown after a delay (700ms by default).
+    pub fn request_tooltip_show(
+        &self,
+        text: String,
+        source_widget_id: WidgetId,
+        cursor_pos: (f64, f64),
+    ) {
+        self.tooltip_manager.request_show(text, source_widget_id, cursor_pos);
+        // Request redraw to process tooltip requests
+        self.update.insert(Update::DRAW);
+    }
+
+    /// Request to hide the current tooltip.
+    pub fn request_tooltip_hide(&self) {
+        self.tooltip_manager.request_hide();
+        // Request redraw to process tooltip requests
+        self.update.insert(Update::DRAW);
     }
 }

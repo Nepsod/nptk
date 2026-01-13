@@ -394,10 +394,20 @@ impl Widget for ToolbarSpacer {
 /// A button specialized for toolbars.
 ///
 /// This is a convenience wrapper around `Button` that sets the style ID to "ToolbarButton".
+///
+/// # Tooltips
+///
+/// Tooltips can be added using the `with_tooltip()` method from the `Button` trait:
+///
+/// ```rust,ignore
+/// ToolbarButton::new(child).with_tooltip("Tooltip text")
+/// ```
 pub struct ToolbarButton;
 
 impl ToolbarButton {
     /// Create a new toolbar button with the given child widget.
+    ///
+    /// The returned button supports all `Button` methods including `with_tooltip()`.
     pub fn new(child: impl Widget + 'static) -> nptk_widgets::button::Button {
         use nptk_core::layout::{Dimension, LengthPercentage, LayoutStyle};
         

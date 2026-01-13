@@ -20,7 +20,7 @@ where
         cursor_over_menu: bool,
         original_cursor_pos: Option<nalgebra::Vector2<f64>>,
     ) {
-        log::debug!("Draw update detected!");
+        log::trace!("Draw update detected!");
         let render_start = Instant::now();
 
         self.scene.reset();
@@ -43,6 +43,7 @@ where
         // Restore original cursor state for menu rendering
         self.info.cursor_pos = original_cursor_state;
         self.render_context_menu(original_cursor_pos);
+        self.render_tooltip(original_cursor_pos);
 
         if let Some(render_times) = self.render_to_surface(
             render_start,
@@ -70,19 +71,19 @@ where
             };
 
             if surface_size.0 == 0 || surface_size.1 == 0 {
-                log::debug!(
+                log::trace!(
                     "render_frame() failed - surface size is 0x0, clearing DRAW flag to prevent infinite loop"
                 );
                 self.update.set(self.update.get() & !Update::DRAW);
             } else {
-                log::debug!("render_frame() failed - keeping DRAW flag for retry, clearing FORCE");
+                log::trace!("render_frame() failed - keeping DRAW flag for retry, clearing FORCE");
                 self.update.set(self.update.get() & !Update::FORCE);
             }
         }
     }
 
     fn render_widget(&mut self, layout_node: &LayoutNode) -> Duration {
-        log::debug!("Rendering root widget...");
+        log::trace!("Rendering root widget...");
         let start = Instant::now();
 
         let Some(context) = self.context() else {
@@ -109,7 +110,7 @@ where
     }
 
     fn render_postfix(&mut self, layout_node: &LayoutNode) -> Duration {
-        log::debug!("Rendering postfix content...");
+        log::trace!("Rendering postfix content...");
         let start = Instant::now();
         let Some(context) = self.context() else {
             // GPU context not available (e.g., during shutdown) - skip rendering
@@ -235,6 +236,131 @@ where
         }
     }
 
+    fn render_tooltip(&mut self, cursor_pos: Option<nalgebra::Vector2<f64>>) {
+        // Check if tooltip is showing
+        let Some((tooltip_text, _source_widget_id, tooltip_cursor_pos)) = self.tooltip_manager.current_tooltip() else {
+            return;
+        };
+
+        // Use the tooltip's stored cursor position, or fall back to current cursor
+        let cursor_pos = cursor_pos.unwrap_or_else(|| nalgebra::Vector2::new(tooltip_cursor_pos.0, tooltip_cursor_pos.1));
+
+        let Some(mut graphics) = graphics_from_scene(&mut self.scene) else {
+            return;
+        };
+
+        // Get window/surface size for bounds checking
+        let (window_width, window_height) = match &self.surface {
+            Some(crate::vgi::Surface::Winit(_)) => {
+                if let Some(window) = &self.window {
+                    let size = window.inner_size();
+                    (size.width as f64, size.height as f64)
+                } else {
+                    return;
+                }
+            },
+            #[cfg(all(target_os = "linux", feature = "wayland"))]
+            Some(crate::vgi::Surface::Wayland(wayland_surface)) => {
+                let (w, h) = wayland_surface.size();
+                (w as f64, h as f64)
+            },
+            None => return,
+        };
+
+        // Tooltip styling constants
+        const PADDING: f64 = 8.0;
+        const OFFSET_Y: f64 = 14.0; // Offset below cursor
+        const FONT_SIZE: f32 = 14.0;
+        const BORDER_RADIUS: f64 = 4.0;
+        const MARGIN: f64 = 30.0; // Margin from screen edges
+
+        // Measure text to get accurate size
+        let text_width = self.text_render.measure_text_width(
+            &mut self.info.font_context,
+            tooltip_text,
+            None,
+            FONT_SIZE,
+        ) as f64;
+        let tooltip_width = text_width + (PADDING);
+        let tooltip_height = FONT_SIZE as f64 + (PADDING);
+
+        // Calculate tooltip position (default: below cursor, offset right)
+        let mut tooltip_x = cursor_pos.x + OFFSET_Y;
+        let mut tooltip_y = cursor_pos.y + OFFSET_Y;
+
+        // Adjust position to stay within bounds
+        if tooltip_x + tooltip_width > window_width - MARGIN {
+            // Move left if would go off right edge
+            tooltip_x = cursor_pos.x - tooltip_width - OFFSET_Y;
+            if tooltip_x < MARGIN {
+                tooltip_x = MARGIN;
+            }
+        }
+        if tooltip_y + tooltip_height > window_height - MARGIN {
+            // Move above cursor if would go off bottom edge
+            tooltip_y = cursor_pos.y - tooltip_height - OFFSET_Y;
+            if tooltip_y < MARGIN {
+                tooltip_y = MARGIN;
+            }
+        }
+
+        // Clamp final position
+        tooltip_x = tooltip_x.max(MARGIN).min(window_width - tooltip_width - MARGIN);
+        tooltip_y = tooltip_y.max(MARGIN).min(window_height - tooltip_height - MARGIN);
+
+        use vello::kurbo::{RoundedRect, RoundedRectRadii, Shape};
+
+        let tooltip_rect = RoundedRect::new(
+            tooltip_x,
+            tooltip_y,
+            tooltip_x + tooltip_width,
+            tooltip_y + tooltip_height,
+            RoundedRectRadii::from_single_radius(BORDER_RADIUS),
+        );
+
+        // Render tooltip background and text with theme integration
+        let theme_manager = self.config.theme_manager.clone();
+        theme_manager.read().unwrap().access_theme_mut(|theme| {
+            // Use theme variables for tooltip colors (similar to menus)
+            // bg-tertiary is the elevated background used for popups/tooltips
+            // text-primary is the standard text color
+            let bg_color = theme
+                .variables()
+                .get_color("bg-tertiary")
+                .or_else(|| theme.variables().get_color("bg-elevated"))
+                .or_else(|| theme.variables().get_color("bg-secondary"))
+                .unwrap_or_else(|| vello::peniko::Color::from_rgba8(40, 40, 40, 230));
+            
+            graphics.fill(
+                vello::peniko::Fill::NonZero,
+                vello::kurbo::Affine::IDENTITY,
+                &vello::peniko::Brush::Solid(bg_color),
+                None,
+                &tooltip_rect.to_path(0.1),
+            );
+
+            // Get text color from theme variables
+            let text_color = theme
+                .variables()
+                .get_color("text-primary")
+                .unwrap_or_else(|| vello::peniko::Color::WHITE);
+            
+            // Render text - baseline is at tooltip_y + PADDING + FONT_SIZE * 0.8 (typical baseline offset)
+            let baseline_y = tooltip_y;
+            self.text_render.render_text(
+                &mut self.info.font_context,
+                graphics.as_mut(),
+                tooltip_text,
+                None,
+                FONT_SIZE,
+                vello::peniko::Brush::Solid(text_color),
+                vello::kurbo::Affine::translate((tooltip_x + (PADDING / 2.0), baseline_y)),
+                true,
+                None,
+            );
+        });
+    }
+
     fn render_to_surface(
         &mut self,
         render_start: Instant,
@@ -243,7 +369,7 @@ where
         postfix_render_time: Duration,
         event_loop: &ActiveEventLoop,
     ) -> Option<RenderTimes> {
-        log::debug!("render_to_surface() called");
+        log::trace!("render_to_surface() called");
 
         if !self.async_init_complete.load(Ordering::Relaxed) {
             log::warn!("Async initialization not complete. Skipping render.");

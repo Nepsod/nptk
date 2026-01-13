@@ -81,6 +81,8 @@ where
     text_render: crate::text_render::TextRenderContext,
     menu_manager: crate::menu::ContextMenuState,
     popup_manager: crate::app::popup::PopupManager,
+    tooltip_request_manager: crate::app::tooltip::TooltipRequestManager,
+    tooltip_manager: crate::app::tooltip::TooltipManager,
     popup_windows: std::collections::HashMap<WindowId, PopupWindow>,
     /// Native Wayland popups (indexed by surface key u32)
     #[cfg(all(target_os = "linux", feature = "wayland"))]
@@ -191,6 +193,8 @@ where
             text_render: crate::text_render::TextRenderContext::new(),
             menu_manager: crate::menu::ContextMenuState::new(),
             popup_manager: crate::app::popup::PopupManager::new(),
+            tooltip_request_manager: crate::app::tooltip::TooltipRequestManager::new(),
+            tooltip_manager: crate::app::tooltip::TooltipManager::new(),
             popup_windows: std::collections::HashMap::new(),
             #[cfg(all(target_os = "linux", feature = "wayland"))]
             wayland_popups: std::collections::HashMap::new(),
@@ -214,6 +218,7 @@ where
                 self.info.focus_manager.clone(),
                 self.menu_manager.clone(),
                 self.popup_manager.clone(),
+                self.tooltip_request_manager.clone(),
                 self.settings.clone(),
             )
         })
@@ -276,13 +281,13 @@ where
         // Check if we have a cached layout for this hash
         if let Some((cached_hash, ref cached_layout)) = &self.layout_cache {
             if *cached_hash == layout_hash {
-                log::debug!("Using cached layout (hash: {})", layout_hash);
+                log::trace!("Using cached layout (hash: {})", layout_hash);
                 self.layout_cache_hits += 1;
                 return Ok(cached_layout.clone());
             }
         }
         
-        log::debug!("Computing new layout (hash: {})", layout_hash);
+        log::trace!("Computing new layout (hash: {})", layout_hash);
         
         // Compute fresh layout
         self.compute_layout()?;
@@ -304,7 +309,7 @@ where
         }
     }
     fn compute_layout(&mut self) -> TaffyResult<()> {
-        log::debug!("Computing root layout.");
+        log::trace!("Computing root layout.");
 
         // Determine current size from Wayland surface if present, otherwise from window,
         // otherwise fall back to configured size.
@@ -467,7 +472,7 @@ where
     /// Update the app and process events.
     /// This is called by the winit event loop periodically.
     pub fn update(&mut self, event_loop: &ActiveEventLoop) {
-        log::debug!("update() called");
+        log::trace!("update() called");
 
         // For Wayland, process events first to trigger frame callbacks
         let platform = Platform::detect();
@@ -477,7 +482,7 @@ where
                     match surface.dispatch_events() {
                         Ok(needs_redraw) => {
                             if needs_redraw {
-                                log::debug!("Wayland events triggered redraw");
+                                log::trace!("Wayland events triggered redraw");
                                 self.update.insert(Update::DRAW);
                             }
                         },
@@ -493,7 +498,7 @@ where
                     if let crate::vgi::Surface::Wayland(ref wayland_surface) = surface {
                         // Keep scheduling redraws until the first frame callback is observed.
                         if wayland_surface.is_configured() && !wayland_surface.first_frame_seen() {
-                            log::debug!(
+                            log::trace!(
                                 "Wayland: first frame not seen yet; scheduling redraw fallback"
                             );
                             self.update.insert(Update::FORCE | Update::DRAW);
@@ -541,12 +546,15 @@ where
         // Cursor will be masked during render phase only
         self.update_widget(&layout_node);
 
+        // Process tooltip requests AFTER widget updates (so requests from widgets are processed)
+        self.process_tooltip_requests();
+
         // If widget update set LAYOUT or FORCE flags, rebuild the layout immediately
         // This ensures visibility changes take effect in the same frame
         layout_node = self.update_layout_if_needed(layout_node);
 
         let update_flags = self.update.get();
-        log::debug!(
+        log::trace!(
             "Update flags: {:?}, FORCE: {}, DRAW: {}",
             update_flags,
             update_flags.intersects(Update::FORCE),
@@ -554,7 +562,7 @@ where
         );
 
         if update_flags.intersects(Update::FORCE | Update::DRAW) {
-            log::info!(
+            log::trace!(
                 "Rendering frame (FORCE={}, DRAW={})",
                 update_flags.intersects(Update::FORCE),
                 update_flags.intersects(Update::DRAW)
@@ -582,7 +590,7 @@ where
             self.info.diagnostics.updates += 1;
         }
 
-        log::debug!("Updates per sec: {}", self.info.diagnostics.updates_per_sec);
+        log::trace!("Updates per sec: {}", self.info.diagnostics.updates_per_sec);
     }
 
     /// Update plugins with current state.
@@ -1103,10 +1111,25 @@ where
                 self.info.focus_manager.clone(),
                 self.menu_manager.clone(),
                 self.popup_manager.clone(),
+                self.tooltip_request_manager.clone(),
                 self.config.settings.clone(),
             ),
             self.state.take().unwrap(),
         ));
+    }
+
+    fn process_tooltip_requests(&mut self) {
+        let requests = self.tooltip_request_manager.drain_requests();
+        if !requests.is_empty() {
+            self.tooltip_manager.process_requests(requests);
+        }
+        
+        // Update tooltip state based on timers
+        let now = Instant::now();
+        if self.tooltip_manager.update(now) {
+            // Tooltip state changed - request redraw
+            self.update.insert(Update::DRAW);
+        }
     }
 
     fn process_popup_requests(&mut self, event_loop: &ActiveEventLoop) {
@@ -1546,6 +1569,7 @@ where
                                         self.info.focus_manager.clone(),
                                         self.menu_manager.clone(),
                                         self.popup_manager.clone(),
+                                        self.tooltip_request_manager.clone(),
                                         self.settings.clone(),
                                     );
                                     let theme_manager = popup.config.theme_manager.clone();

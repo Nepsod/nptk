@@ -33,6 +33,32 @@ And to be focused around my personal projects (maybe even a whole Desktop Enviro
 If you are new to [Rust](https://www.rust-lang.org), we recommend learning the [basics](https://www.rust-lang.org/learn)
 first.
 
+### Controlling Log Verbosity
+
+NPTK uses the `log` crate for logging. By default, the framework logs at `info` level and above. To control log verbosity, use the `RUST_LOG` environment variable:
+
+```bash
+# Show only errors and warnings
+RUST_LOG=warn cargo run
+
+# Show info, warnings, and errors (default)
+RUST_LOG=info cargo run
+
+# Show debug messages (verbose)
+RUST_LOG=debug cargo run
+
+# Show trace messages (very verbose, includes per-frame logs)
+RUST_LOG=trace cargo run
+
+# Filter by crate
+RUST_LOG=nptk_core=debug,my_app=info cargo run
+
+# Filter by module
+RUST_LOG=nptk_core::app::handler=debug cargo run
+```
+
+Most verbose per-frame logging is at the `trace` level, so it won't appear unless explicitly enabled.
+
 ## License
 
 This project uses a mixed licensing model:

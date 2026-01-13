@@ -310,6 +310,22 @@ pub trait Widget {
     fn context_menu(&self) -> Option<crate::menu::MenuTemplate> {
         None
     }
+
+    /// Get the tooltip text for this widget, if any.
+    ///
+    /// The default implementation returns `None`. Override this method
+    /// to provide tooltip text for your widget.
+    fn tooltip(&self) -> Option<String> {
+        None
+    }
+
+    /// Set the tooltip text for this widget.
+    ///
+    /// The default implementation does nothing. Override this method
+    /// if your widget supports tooltips.
+    fn set_tooltip(&mut self, _tooltip: Option<String>) {
+        // Default: do nothing
+    }
 }
 
 /// An extension trait for widgets with a single child widget.

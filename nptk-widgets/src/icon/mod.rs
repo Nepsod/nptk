@@ -57,13 +57,13 @@ impl Icon {
     /// * `size` - The desired icon size in pixels
     /// * `registry` - Optional shared icon registry. If None, a new registry will be created.
     pub fn new(
-        icon_name: impl Into<MaybeSignal<String>>,
+        icon_name: impl Into<String>,
         size: impl Into<MaybeSignal<u32>>,
         registry: Option<Arc<npio::service::icon::IconRegistry>>,
     ) -> Self {
         use npio::service::icon::IconRegistry;
 
-        let icon_name = icon_name.into();
+        let icon_name = MaybeSignal::value(icon_name.into());
         let size = size.into();
         let registry = registry.unwrap_or_else(|| {
             Arc::new(

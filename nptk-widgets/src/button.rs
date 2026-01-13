@@ -42,6 +42,10 @@ pub struct Button {
     style_id: &'static str,
     // Text color inversion control
     invert_text: bool,
+    // Tooltip text
+    tooltip: Option<String>,
+    // Tooltip state tracking to prevent rapid cycling
+    tooltip_hover_state: bool,
 }
 
 impl Button {
@@ -73,6 +77,8 @@ impl Button {
             last_repeat_time: None,
             style_id: "Button",
             invert_text: true, // Default: invert text for colored buttons
+            tooltip: None,
+            tooltip_hover_state: false,
         }
     }
 
@@ -117,6 +123,11 @@ impl Button {
     /// Set whether to invert text color (for transparent backgrounds, set to false)
     pub fn with_invert_text(self, invert: bool) -> Self {
         self.apply_with(|s| s.invert_text = invert)
+    }
+
+    /// Set the tooltip text for this button.
+    pub fn with_tooltip(self, tooltip: impl Into<String>) -> Self {
+        self.apply_with(|s| s.tooltip = Some(tooltip.into()))
     }
 
     /// Set the layout style for this button.
@@ -164,10 +175,12 @@ impl Button {
     fn hit_test(&self, layout: &LayoutNode, cursor: Vector2<f64>) -> bool {
         let x = cursor.x;
         let y = cursor.y;
-        let left = layout.layout.location.x as f64;
-        let top = layout.layout.location.y as f64;
-        let right = left + layout.layout.size.width as f64;
-        let bottom = top + layout.layout.size.height as f64;
+        // Add a small buffer zone to make tooltips less sensitive to cursor jitter
+        const TOOLTIP_BUFFER: f64 = 2.0;
+        let left = layout.layout.location.x as f64 - TOOLTIP_BUFFER;
+        let top = layout.layout.location.y as f64 - TOOLTIP_BUFFER;
+        let right = left + layout.layout.size.width as f64 + (TOOLTIP_BUFFER * 2.0);
+        let bottom = top + layout.layout.size.height as f64 + (TOOLTIP_BUFFER * 2.0);
 
         x >= left && x <= right && y >= top && y <= bottom
     }
@@ -369,7 +382,7 @@ impl Widget for Button {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
         let old_state = self.state;
         let old_focus_state = self.focus_state;
@@ -379,10 +392,36 @@ impl Widget for Button {
         if !self.disabled {
             update |= self.handle_keyboard_input(info);
             update |= self.handle_mouse_input(layout, info);
+
+            // Handle tooltip requests
+            if let Some(tooltip_text) = &self.tooltip {
+                let cursor_hit = info
+                    .cursor_pos
+                    .map(|cursor| self.hit_test(layout, cursor))
+                    .unwrap_or(false);
+
+                // Only send requests when hover state actually changes
+                if cursor_hit && !self.tooltip_hover_state {
+                    // Entering hover state
+                    self.tooltip_hover_state = true;
+                    if let Some(cursor_pos) = info.cursor_pos {
+                        context.request_tooltip_show(
+                            tooltip_text.clone(),
+                            self.widget_id(),
+                            (cursor_pos.x, cursor_pos.y),
+                        );
+                    }
+                } else if !cursor_hit && self.tooltip_hover_state {
+                    self.tooltip_hover_state = false;
+                    context.request_tooltip_hide();
+                }
+            }
         } else {
             self.state = ButtonState::Idle;
             self.press_start_time = None;
             self.last_repeat_time = None;
+            self.tooltip_hover_state = false;
+            context.request_tooltip_hide();
         }
 
         if old_state != self.state {
@@ -396,7 +435,7 @@ impl Widget for Button {
         self.handle_repeat(&mut update);
 
         if !layout.children.is_empty() {
-            update |= self.child.update(&layout.children[0], _context, info);
+            update |= self.child.update(&layout.children[0], context, info);
         }
 
         update
@@ -404,6 +443,14 @@ impl Widget for Button {
 
     fn widget_id(&self) -> WidgetId {
         WidgetId::new("nptk-widgets", self.style_id)
+    }
+
+    fn tooltip(&self) -> Option<String> {
+        self.tooltip.clone()
+    }
+
+    fn set_tooltip(&mut self, tooltip: Option<String>) {
+        self.tooltip = tooltip;
     }
 }
 

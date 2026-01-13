@@ -796,6 +796,7 @@ where
                                 self.info.focus_manager.clone(),
                                 self.menu_manager.clone(),
                                 self.popup_manager.clone(),
+                                self.tooltip_request_manager.clone(),
                                 self.settings.clone(),
                             );
 
