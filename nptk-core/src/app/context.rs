@@ -2,6 +2,7 @@ use crate::app::action::ActionCallbackManager;
 use crate::app::diagnostics::Diagnostics;
 use crate::app::focus::{FocusId, SharedFocusManager};
 use crate::app::popup::PopupManager;
+use crate::app::status_bar::StatusBarManager;
 use crate::app::tooltip::TooltipRequestManager;
 use crate::app::update::{Update, UpdateManager};
 use crate::menu::ContextMenuState;
@@ -34,6 +35,7 @@ pub struct AppContext {
     pub action_callbacks: ActionCallbackManager,
     pub popup_manager: PopupManager,
     pub tooltip_manager: TooltipRequestManager,
+    pub status_bar: StatusBarManager,
     pub settings: Arc<SettingsRegistry>,
 }
 
@@ -49,6 +51,7 @@ impl AppContext {
         action_callbacks: ActionCallbackManager,
         popup_manager: PopupManager,
         tooltip_manager: TooltipRequestManager,
+        status_bar: StatusBarManager,
         settings: Arc<SettingsRegistry>,
     ) -> Self {
         Self {
@@ -61,6 +64,7 @@ impl AppContext {
             action_callbacks,
             popup_manager,
             tooltip_manager,
+            status_bar,
             settings,
         }
     }
@@ -452,5 +456,18 @@ impl AppContext {
         self.tooltip_manager.request_hide();
         // Request redraw to process tooltip requests
         self.update.insert(Update::DRAW);
+    }
+
+    /// Set the status bar text.
+    ///
+    /// This is typically called by widgets (like buttons) when hovered to show
+    /// a status tip in the status bar.
+    pub fn set_status_bar_text(&self, text: String) {
+        self.status_bar.set_text(text);
+    }
+
+    /// Clear the status bar text.
+    pub fn clear_status_bar_text(&self) {
+        self.status_bar.clear();
     }
 }

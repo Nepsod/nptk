@@ -46,6 +46,10 @@ pub struct Button {
     tooltip: Option<String>,
     // Tooltip state tracking to prevent rapid cycling
     tooltip_hover_state: bool,
+    // Status bar tip text (shown in status bar when hovering)
+    status_tip: Option<String>,
+    // Status tip state tracking to prevent rapid cycling
+    status_tip_hover_state: bool,
 }
 
 impl Button {
@@ -79,6 +83,8 @@ impl Button {
             invert_text: true, // Default: invert text for colored buttons
             tooltip: None,
             tooltip_hover_state: false,
+            status_tip: None,
+            status_tip_hover_state: false,
         }
     }
 
@@ -128,6 +134,14 @@ impl Button {
     /// Set the tooltip text for this button.
     pub fn with_tooltip(self, tooltip: impl Into<String>) -> Self {
         self.apply_with(|s| s.tooltip = Some(tooltip.into()))
+    }
+
+    /// Set the status bar tip text for this button.
+    ///
+    /// The status tip is shown in the status bar when hovering over the button.
+    /// This is different from tooltips, which appear as popups near the cursor.
+    pub fn with_status_tip(self, status_tip: impl Into<String>) -> Self {
+        self.apply_with(|s| s.status_tip = Some(status_tip.into()))
     }
 
     /// Set the layout style for this button.
@@ -416,12 +430,33 @@ impl Widget for Button {
                     context.request_tooltip_hide();
                 }
             }
+
+            // Handle status bar tip updates
+            if let Some(status_tip_text) = &self.status_tip {
+                let cursor_hit = info
+                    .cursor_pos
+                    .map(|cursor| self.hit_test(layout, cursor))
+                    .unwrap_or(false);
+
+                // Only update status bar when hover state actually changes
+                if cursor_hit && !self.status_tip_hover_state {
+                    // Entering hover state
+                    self.status_tip_hover_state = true;
+                    context.set_status_bar_text(status_tip_text.clone());
+                } else if !cursor_hit && self.status_tip_hover_state {
+                    // Leaving hover state
+                    self.status_tip_hover_state = false;
+                    context.clear_status_bar_text();
+                }
+            }
         } else {
             self.state = ButtonState::Idle;
             self.press_start_time = None;
             self.last_repeat_time = None;
             self.tooltip_hover_state = false;
             context.request_tooltip_hide();
+            self.status_tip_hover_state = false;
+            context.clear_status_bar_text();
         }
 
         if old_state != self.state {

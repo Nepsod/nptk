@@ -44,6 +44,9 @@ pub mod tooltip;
 /// Contains the action callback system for status tips and hover tracking.
 pub mod action;
 
+/// Contains the status bar text management system.
+pub mod status_bar;
+
 /// The main application interface.
 ///
 /// Contains basic functions for the [MayRunner] to create and run an application.

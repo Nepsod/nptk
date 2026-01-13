@@ -85,6 +85,7 @@ where
     popup_manager: crate::app::popup::PopupManager,
     tooltip_request_manager: crate::app::tooltip::TooltipRequestManager,
     tooltip_manager: crate::app::tooltip::TooltipManager,
+    status_bar: crate::app::status_bar::StatusBarManager,
     popup_windows: std::collections::HashMap<WindowId, PopupWindow>,
     /// Native Wayland popups (indexed by surface key u32)
     #[cfg(all(target_os = "linux", feature = "wayland"))]
@@ -199,6 +200,7 @@ where
             popup_manager: crate::app::popup::PopupManager::new(),
             tooltip_request_manager: crate::app::tooltip::TooltipRequestManager::new(),
             tooltip_manager: crate::app::tooltip::TooltipManager::new(),
+            status_bar: crate::app::status_bar::StatusBarManager::default(),
             popup_windows: std::collections::HashMap::new(),
             #[cfg(all(target_os = "linux", feature = "wayland"))]
             wayland_popups: std::collections::HashMap::new(),
@@ -225,6 +227,7 @@ where
                 self.action_callbacks.clone(),
                 self.popup_manager.clone(),
                 self.tooltip_request_manager.clone(),
+                self.status_bar.clone(),
                 self.settings.clone(),
             )
         })
@@ -1154,6 +1157,7 @@ where
                 self.action_callbacks.clone(),
                 self.popup_manager.clone(),
                 self.tooltip_request_manager.clone(),
+                self.status_bar.clone(),
                 self.config.settings.clone(),
             ),
             self.state.take().unwrap(),
@@ -1650,6 +1654,7 @@ where
                                         self.action_callbacks.clone(),
                                         self.popup_manager.clone(),
                                         self.tooltip_request_manager.clone(),
+                                        self.status_bar.clone(),
                                         self.settings.clone(),
                                     );
                                     let theme_manager = popup.config.theme_manager.clone();

@@ -799,6 +799,7 @@ where
                                 self.action_callbacks.clone(),
                                 self.popup_manager.clone(),
                                 self.tooltip_request_manager.clone(),
+                                self.status_bar.clone(),
                                 self.settings.clone(),
                             );
 
