@@ -3,6 +3,9 @@
 //!
 //! Contains additional widgets that require LGPL-3.0 licensing.
 
+/// Contains shared helper functions for input widgets.
+mod input_helpers;
+
 /// Contains the [expandable_section::ExpandableSection] widget.
 pub mod expandable_section;
 

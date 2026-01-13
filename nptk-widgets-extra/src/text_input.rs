@@ -19,6 +19,8 @@ use nptk_theme::theme::Theme;
 use std::ops::Deref;
 use std::time::{Duration, Instant};
 
+use crate::input_helpers;
+
 /// A single-line text input widget.
 ///
 /// ### Theming
@@ -150,17 +152,6 @@ impl TextInput {
         }
     }
 
-    /// Calculate the actual width of text using Parley's font metrics
-    fn calculate_text_width(&self, text: &str, font_size: f32, info: &mut AppInfo) -> f32 {
-        if text.is_empty() {
-            return 0.0;
-        }
-
-        // Use TextRenderContext to get accurate measurements from Parley
-        // This handles all Unicode characters, emojis, and different scripts properly
-        self.text_render_context
-            .measure_text_width(&mut info.font_context, text, None, font_size)
-    }
 
     /// Calculate the X position of the cursor based on its character position.
     fn cursor_x_position(
@@ -179,70 +170,16 @@ impl TextInput {
 
         // Calculate actual width of text up to cursor position
         let text_up_to_cursor: String = text.chars().take(cursor_pos).collect();
-        let actual_width = self.calculate_text_width(&text_up_to_cursor, font_size, info);
+        let actual_width = input_helpers::calculate_text_width(
+            &text_up_to_cursor,
+            font_size,
+            &self.text_render_context,
+            info,
+        );
 
         text_start_x + actual_width
     }
 
-    /// Calculate cursor position from mouse coordinates (simple version without font context).
-    fn cursor_position_from_mouse_simple(&self, mouse_x: f32, layout_node: &LayoutNode) -> usize {
-        let font_size = 16.0;
-        let text_start_x = layout_node.layout.location.x + 8.0; // Padding
-        let relative_x = mouse_x - text_start_x;
-
-        if relative_x <= 0.0 {
-            return 0;
-        }
-
-        let text = self.buffer.text();
-        if text.is_empty() {
-            return 0;
-        }
-
-        // Simple character-based positioning (approximate)
-        let char_width = font_size * 0.6; // Approximate character width
-        let char_pos = (relative_x / char_width) as usize;
-
-        // Clamp to text length
-        let text_len = text.chars().count();
-        char_pos.min(text_len)
-    }
-
-    /// Calculate cursor position from mouse coordinates.
-    fn cursor_position_from_mouse(
-        &self,
-        mouse_x: f32,
-        layout_node: &LayoutNode,
-        info: &mut AppInfo,
-    ) -> usize {
-        let font_size = 16.0;
-        let text_start_x = layout_node.layout.location.x + 8.0; // Padding
-        let relative_x = mouse_x - text_start_x;
-
-        if relative_x <= 0.0 {
-            return 0;
-        }
-
-        let text = self.buffer.text();
-
-        // Find the character position by calculating cumulative text widths
-        let mut current_width = 0.0;
-        let mut char_position = 0;
-
-        for (i, c) in text.chars().enumerate() {
-            let char_text = c.to_string();
-            let char_width = self.calculate_text_width(&char_text, font_size, info);
-
-            if relative_x <= current_width + char_width / 2.0 {
-                return i;
-            }
-
-            current_width += char_width;
-            char_position = i + 1;
-        }
-
-        char_position
-    }
 
     /// Find word boundaries around a given position.
     fn find_word_boundaries(&self, pos: usize) -> (usize, usize) {
@@ -775,7 +712,13 @@ impl Widget for TextInput {
                 // Handle click positioning after button events loop (to avoid borrow conflicts)
                 if need_click_handling {
                     // Use accurate measurement for better positioning
-                    let click_pos = self.cursor_position_from_mouse(click_mouse_x, layout, info);
+                    let click_pos = input_helpers::cursor_position_from_mouse(
+                        self.buffer.text(),
+                        click_mouse_x,
+                        layout,
+                        &self.text_render_context,
+                        info,
+                    );
 
                     // Check for double-click first
                     if self.handle_double_click(click_pos, layout) {
@@ -799,7 +742,13 @@ impl Widget for TextInput {
                 if self.mouse_down {
                     if let Some(start_pos) = self.drag_start_pos {
                         let current_pos = if in_bounds {
-                            self.cursor_position_from_mouse(cursor_pos.x as f32, layout, info)
+                            input_helpers::cursor_position_from_mouse(
+                                self.buffer.text(),
+                                cursor_pos.x as f32,
+                                layout,
+                                &self.text_render_context,
+                                info,
+                            )
                         } else {
                             // Mouse is outside bounds - extend selection to beginning or end
                             let text_len = self.buffer.text().chars().count();
@@ -812,7 +761,13 @@ impl Widget for TextInput {
                                 text_len
                             } else {
                                 // This shouldn't happen if in_bounds is false, but just in case
-                                self.cursor_position_from_mouse(cursor_pos.x as f32, layout, info)
+                                input_helpers::cursor_position_from_mouse(
+                                    self.buffer.text(),
+                                    cursor_pos.x as f32,
+                                    layout,
+                                    &self.text_render_context,
+                                    info,
+                                )
                             }
                         };
 

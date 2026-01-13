@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 use std::time::Instant;
 
+use crate::input_helpers;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::focus::{FocusBounds, FocusId, FocusProperties, FocusState, FocusableWidget};
 use nptk_core::app::update::Update;
-use nptk_core::app::{font_ctx::FontContext, info::AppInfo};
+use nptk_core::app::info::AppInfo;
 use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::text_input::TextBuffer;
@@ -318,17 +319,6 @@ impl ValueInput {
         self.sync_text_from_value();
     }
 
-    /// Calculate the actual width of text using Parley's font metrics
-    fn calculate_text_width(&self, text: &str, font_size: f32, info: &mut AppInfo) -> f32 {
-        if text.is_empty() {
-            return 0.0;
-        }
-
-        // Use TextRenderContext to get accurate measurements from Parley
-        // This handles all Unicode characters, emojis, and different scripts properly
-        self.text_render_context
-            .measure_text_width(&mut info.font_context, text, None, font_size)
-    }
 
     /// Calculate the X position of the cursor based on its character position.
     fn cursor_x_position(
@@ -347,7 +337,12 @@ impl ValueInput {
 
         // Calculate actual width of text up to cursor position
         let text_up_to_cursor: String = text.chars().take(cursor_pos).collect();
-        let actual_width = self.calculate_text_width(&text_up_to_cursor, font_size, info);
+        let actual_width = input_helpers::calculate_text_width(
+            &text_up_to_cursor,
+            font_size,
+            &self.text_render_context,
+            info,
+        );
 
         text_start_x + actual_width
     }
@@ -384,73 +379,6 @@ impl ValueInput {
         false
     }
 
-    /// Calculate cursor position from mouse coordinates (simple version without font context).
-    fn cursor_position_from_mouse_simple(&self, mouse_x: f32, layout_node: &LayoutNode) -> usize {
-        let font_size = 16.0;
-        let text_start_x = layout_node.layout.location.x + 8.0; // Padding
-        let relative_x = mouse_x - text_start_x;
-
-        if relative_x <= 0.0 {
-            return 0;
-        }
-
-        let text = self.buffer.text();
-        if text.is_empty() {
-            return 0;
-        }
-
-        // Simple character-based positioning (approximate)
-        let char_width = font_size * 0.6; // Approximate character width
-        let char_pos = (relative_x / char_width) as usize;
-
-        // Clamp to text length
-        let text_len = text.chars().count();
-        char_pos.min(text_len)
-    }
-
-    /// Calculate cursor position from mouse coordinates.
-    fn cursor_position_from_mouse(
-        &self,
-        mouse_x: f64,
-        widget_left: f64,
-        _font_ctx: &FontContext,
-    ) -> usize {
-        let text = self.buffer.text();
-        if text.is_empty() {
-            return 0;
-        }
-
-        let _font_size = 16.0;
-        // Use approximate character width for text measurement
-        // TODO: Implement proper text measurement when needed
-
-        // For now, use a simple approximation based on character count
-        // TODO: Implement proper glyph-based cursor positioning
-        let relative_x = mouse_x - widget_left - 8.0; // Account for padding
-
-        // Improved approximation using character analysis
-        let avg_char_width = 16.0 * 0.6; // Use fixed font size for approximation
-        let mut current_x = 0.0;
-
-        for (i, c) in text.chars().enumerate() {
-            let char_width = match c {
-                'i' | 'l' | 'I' | '1' | '|' => avg_char_width * 0.5,
-                'm' | 'M' | 'W' | 'w' => avg_char_width * 1.2,
-                ' ' => avg_char_width * 0.8,
-                '.' | ',' => avg_char_width * 0.4, // Punctuation
-                '0'..='9' => avg_char_width * 0.8, // Numbers are typically narrower
-                _ => avg_char_width,
-            };
-
-            if relative_x <= current_x + char_width / 2.0 {
-                return i;
-            }
-            current_x += char_width;
-        }
-
-        // If we get here, the cursor is at the end
-        text.chars().count()
-    }
 }
 
 impl Default for ValueInput {
@@ -899,53 +827,43 @@ impl Widget for ValueInput {
         }
 
         // Handle mouse input
-        if let Some(cursor_pos) = info.cursor_pos {
-            let in_bounds = cursor_pos.x >= layout.layout.location.x as f64
-                && cursor_pos.x <= (layout.layout.location.x + layout.layout.size.width) as f64
-                && cursor_pos.y >= layout.layout.location.y as f64
-                && cursor_pos.y <= (layout.layout.location.y + layout.layout.size.height) as f64;
+        let cursor_pos = info.cursor_pos;
+        let button_events: Vec<_> = info.buttons.iter().collect();
 
-            // Handle mouse button events (only when in bounds)
-            if in_bounds {
-                for (_device_id, button, state) in &info.buttons {
+        // Process mouse events in a separate scope to avoid borrowing conflicts
+        {
+            if let Some(cursor_pos) = cursor_pos {
+                let in_bounds = cursor_pos.x >= layout.layout.location.x as f64
+                    && cursor_pos.x <= (layout.layout.location.x + layout.layout.size.width) as f64
+                    && cursor_pos.y >= layout.layout.location.y as f64
+                    && cursor_pos.y <= (layout.layout.location.y + layout.layout.size.height) as f64;
+
+                // Track if we need to handle a click after the button events loop
+                let mut need_click_handling = false;
+                let mut click_mouse_x = 0.0f32;
+
+                // Handle mouse button events
+                for (_, button, state) in button_events {
                     if *button == MouseButton::Left {
                         match state {
                             ElementState::Pressed => {
-                                if matches!(
-                                    self.focus_state,
-                                    FocusState::Focused | FocusState::Gained
-                                ) {
+                                if in_bounds
+                                    && matches!(
+                                        self.focus_state,
+                                        FocusState::Focused | FocusState::Gained
+                                    )
+                                {
                                     // Set focus first
                                     context.set_focus(Some(self.focus_id));
 
-                                    // Handle mouse click in bounds
-                                    let click_pos = self.cursor_position_from_mouse_simple(
-                                        cursor_pos.x as f32,
-                                        layout,
-                                    );
-
-                                    // Check for double-click first
-                                    if self.handle_double_click(click_pos, layout) {
-                                        // Double-click handled - selection already set, don't modify cursor position or drag
-                                        self.mouse_down = true;
-                                        // Don't set drag_start_pos for double-click to avoid interfering with selection
-                                        update |= Update::DRAW;
-                                    } else {
-                                        // Single click - clear selection and set cursor position
-                                        self.buffer.cursor.selection_start = None;
-                                        self.buffer.cursor.position = click_pos;
-                                        self.mouse_down = true;
-                                        self.drag_start_pos = Some(click_pos);
-
-                                        // Reset cursor blink
-                                        self.cursor_blink_timer = Instant::now();
-                                        self.cursor_visible = true;
-                                        update |= Update::DRAW;
-                                    }
+                                    // Store mouse position for accurate calculation after loop
+                                    need_click_handling = true;
+                                    click_mouse_x = cursor_pos.x as f32;
+                                    self.mouse_down = true;
                                 }
                             },
                             ElementState::Released => {
-                                // Always handle mouse release, regardless of bounds
+                                // Always handle mouse release
                                 self.mouse_down = false;
                                 self.drag_start_pos = None;
                             },
@@ -953,13 +871,69 @@ impl Widget for ValueInput {
                     }
                 }
 
-                // Handle mouse drag for selection (when in bounds and dragging)
+                // Handle click positioning after button events loop (to avoid borrow conflicts)
+                if need_click_handling {
+                    // Use accurate measurement for better positioning
+                    let click_pos = input_helpers::cursor_position_from_mouse(
+                        self.buffer.text(),
+                        click_mouse_x,
+                        layout,
+                        &self.text_render_context,
+                        info,
+                    );
+
+                    // Check for double-click first
+                    if self.handle_double_click(click_pos, layout) {
+                        // Double-click handled - selection already set, don't modify cursor position or drag
+                        // Don't set drag_start_pos for double-click to avoid interfering with selection
+                        update |= Update::DRAW;
+                    } else {
+                        // Single click - clear selection and set cursor position
+                        self.buffer.cursor.selection_start = None;
+                        self.buffer.cursor.position = click_pos;
+                        self.drag_start_pos = Some(click_pos);
+
+                        // Reset cursor blink
+                        self.cursor_blink_timer = Instant::now();
+                        self.cursor_visible = true;
+                        update |= Update::DRAW;
+                    }
+                }
+
+                // Handle mouse drag for selection (works both in and out of bounds)
                 if self.mouse_down
                     && matches!(self.focus_state, FocusState::Focused | FocusState::Gained)
                 {
                     if let Some(start_pos) = self.drag_start_pos {
-                        let current_pos =
-                            self.cursor_position_from_mouse_simple(cursor_pos.x as f32, layout);
+                        let current_pos = if in_bounds {
+                            input_helpers::cursor_position_from_mouse(
+                                self.buffer.text(),
+                                cursor_pos.x as f32,
+                                layout,
+                                &self.text_render_context,
+                                info,
+                            )
+                        } else {
+                            // Mouse is outside bounds - extend selection to beginning or end
+                            let text_len = self.buffer.text().chars().count();
+                            let widget_left = layout.layout.location.x as f64;
+                            let widget_right = widget_left + layout.layout.size.width as f64;
+
+                            if cursor_pos.x < widget_left {
+                                0
+                            } else if cursor_pos.x > widget_right {
+                                text_len
+                            } else {
+                                // This shouldn't happen if in_bounds is false, but just in case
+                                input_helpers::cursor_position_from_mouse(
+                                self.buffer.text(),
+                                cursor_pos.x as f32,
+                                layout,
+                                &self.text_render_context,
+                                info,
+                            )
+                            }
+                        };
 
                         if current_pos != self.buffer.cursor.position {
                             // Update selection
@@ -972,57 +946,26 @@ impl Widget for ValueInput {
             } else if self.mouse_down
                 && matches!(self.focus_state, FocusState::Focused | FocusState::Gained)
             {
-                // Mouse is outside bounds but we're still dragging - extend selection
+                // Mouse cursor left the window entirely but we're still dragging
+                // Continue selection to the end of text (most common behavior)
                 if let Some(start_pos) = self.drag_start_pos {
                     let text_len = self.buffer.text().chars().count();
-                    let widget_left = layout.layout.location.x as f64;
-                    let widget_right = widget_left + layout.layout.size.width as f64;
-
-                    let current_pos = if cursor_pos.x < widget_left {
-                        // Dragging to the left of widget - select to beginning
-                        0
-                    } else if cursor_pos.x > widget_right {
-                        // Dragging to the right of widget - select to end
-                        text_len
-                    } else {
-                        // This shouldn't happen since we're in the else branch, but handle it
-                        self.cursor_position_from_mouse(
-                            cursor_pos.x,
-                            layout.layout.location.x as f64,
-                            &info.font_context,
-                        )
-                    };
-
-                    if current_pos != self.buffer.cursor.position {
-                        // Update selection
+                    if text_len != self.buffer.cursor.position {
                         self.buffer.cursor.selection_start = Some(start_pos);
-                        self.buffer.cursor.position = current_pos;
+                        self.buffer.cursor.position = text_len;
                         update |= Update::DRAW;
                     }
                 }
             }
-        } else if self.mouse_down
-            && matches!(self.focus_state, FocusState::Focused | FocusState::Gained)
-        {
-            // Mouse cursor left the window entirely but we're still dragging
-            // Continue selection to the end of text (most common behavior)
-            if let Some(start_pos) = self.drag_start_pos {
-                let text_len = self.buffer.text().chars().count();
-                if text_len != self.buffer.cursor.position {
-                    self.buffer.cursor.selection_start = Some(start_pos);
-                    self.buffer.cursor.position = text_len;
-                    update |= Update::DRAW;
+
+            // Handle global mouse release events (in case mouse was released outside widget)
+            for (_, button, state) in &info.buttons {
+                if *button == MouseButton::Left && *state == ElementState::Released {
+                    self.mouse_down = false;
+                    self.drag_start_pos = None;
                 }
             }
-        }
-
-        // Also handle global mouse release events (in case mouse was released outside widget)
-        for (_device_id, button, state) in &info.buttons {
-            if *button == MouseButton::Left && *state == ElementState::Released {
-                self.mouse_down = false;
-                self.drag_start_pos = None;
-            }
-        }
+        } // End of mouse handling scope
 
         update
     }

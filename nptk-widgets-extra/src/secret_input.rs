@@ -196,30 +196,6 @@ impl SecretInput {
         text_start_x + actual_width
     }
 
-    /// Calculate cursor position from mouse coordinates (simple version without font context).
-    fn cursor_position_from_mouse_simple(&self, mouse_x: f32, layout_node: &LayoutNode) -> usize {
-        let font_size = 16.0;
-        let text_start_x = layout_node.layout.location.x + 8.0; // Padding
-        let relative_x = mouse_x - text_start_x;
-
-        if relative_x <= 0.0 {
-            return 0;
-        }
-
-        let text = self.buffer.text();
-        if text.is_empty() {
-            return 0;
-        }
-
-        // Simple character-based positioning (approximate)
-        let char_width = font_size * 0.6; // Approximate character width
-        let char_pos = (relative_x / char_width) as usize;
-
-        // Clamp to text length
-        let text_len = text.chars().count();
-        char_pos.min(text_len)
-    }
-
     /// Calculate cursor position from mouse coordinates.
     fn cursor_position_from_mouse(
         &self,
