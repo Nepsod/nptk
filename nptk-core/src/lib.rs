@@ -62,6 +62,9 @@ pub mod vgi;
 
 pub mod menu;
 
+/// Contains keyboard shortcut infrastructure
+pub mod shortcut;
+
 /// Contains platform abstraction for windowing and input.
 ///
 /// This module provides platform detection and windowing surface implementations
