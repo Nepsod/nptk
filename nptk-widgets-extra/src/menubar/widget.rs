@@ -614,7 +614,7 @@ impl Widget for MenuBar {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
+    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         // Detect visibility changes and trigger layout update
@@ -816,6 +816,18 @@ impl Widget for MenuBar {
                     
                     // Handle submenu opening/closing on hover
                     if new_hovered != self.hovered_submenu_index {
+                        // Trigger action callbacks for hover state changes
+                        if let Some(old_idx) = self.hovered_submenu_index {
+                            if let Some(old_item) = template.items.get(old_idx) {
+                                context.action_callbacks.trigger_leave(old_item.id);
+                            }
+                        }
+                        if let Some(new_idx) = new_hovered {
+                            if let Some(new_item) = template.items.get(new_idx) {
+                                context.action_callbacks.trigger_enter(new_item.id);
+                            }
+                        }
+
                         self.hovered_submenu_index = new_hovered;
                         
                         // Check if the hovered item has a submenu

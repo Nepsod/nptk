@@ -235,6 +235,18 @@ impl Widget for MenuPopup {
         if old_hovered != self.hovered_index {
             update |= Update::DRAW;
 
+            // Trigger action callbacks for hover state changes
+            if let Some(old_idx) = old_hovered {
+                if let Some(old_item) = self.template.items.get(old_idx) {
+                    context.action_callbacks.trigger_leave(old_item.id);
+                }
+            }
+            if let Some(new_idx) = self.hovered_index {
+                if let Some(new_item) = self.template.items.get(new_idx) {
+                    context.action_callbacks.trigger_enter(new_item.id);
+                }
+            }
+
             // Handle submenu opening/closing
             if let Some(hovered) = self.hovered_index {
                 if self.open_item_index != Some(hovered) {
