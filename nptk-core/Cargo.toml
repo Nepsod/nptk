@@ -34,6 +34,8 @@ parley = "0.7.0"
 harfrust = "0.2.0"
 futures-lite = { version = "2.0", optional = true }
 smol = { workspace = true }
+image = "0.24"
+futures = "0.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 smithay-client-toolkit = { version = "0.18", optional = true }

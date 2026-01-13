@@ -63,6 +63,30 @@ impl FontContext {
         log::debug!("Loaded font '{}' with {} families", font_name, result.len());
     }
 
+    /// Load a font from file asynchronously.
+    pub async fn load_from_file_async<P: AsRef<std::path::Path>>(&mut self, name: impl ToString, path: P) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let font_name = name.to_string();
+        let font_data = smol::fs::read(path).await?;
+        
+        let mut collection = self.collection.write().unwrap();
+        let result = collection.register_fonts(Blob::new(Arc::new(font_data)), None);
+        log::debug!("Loaded font '{}' from file with {} families", font_name, result.len());
+        
+        Ok(())
+    }
+
+    /// Load multiple fonts from files asynchronously.
+    pub async fn load_fonts_batch_async(&mut self, fonts: Vec<(String, std::path::PathBuf)>) -> Vec<Result<(), Box<dyn std::error::Error + Send + Sync>>> {
+        let mut results = Vec::new();
+        
+        for (name, path) in fonts {
+            let result = self.load_from_file_async(name, path).await;
+            results.push(result);
+        }
+        
+        results
+    }
+
     /// Get the default font.
     pub fn default_font(&self) -> Option<QueryFont> {
         self.query_with_families(

@@ -37,9 +37,15 @@ where
             },
             WindowEvent::CloseRequested => self.handle_close_request(event_loop),
             WindowEvent::RedrawRequested => {
-                // Ensure we draw when the OS requests it
+                log::trace!("RedrawRequested event received - rendering immediately");
+                // Render immediately in response to RedrawRequested
                 self.update.insert(Update::DRAW);
                 self.update_internal(event_loop);
+                
+                // Request another redraw to keep the loop going
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
             },
             WindowEvent::CursorLeft { .. } => {
                 self.info.cursor_pos = None;

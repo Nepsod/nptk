@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use vello::wgpu::{CommandEncoderDescriptor, TextureViewDescriptor};
 use vello::RenderParams;
-use winit::event_loop::{ActiveEventLoop, ControlFlow};
+use winit::event_loop::ActiveEventLoop;
 
 impl<W, S, F> AppHandler<W, S, F>
 where
@@ -387,6 +387,43 @@ where
 
         let surface = self.surface.as_mut()?;
 
+        // Configure Winit surface lazily on first render (avoids blocking event loop during init)
+        #[cfg(target_os = "linux")]
+        if let crate::vgi::Surface::Winit(ref mut winit_surface) = surface {
+            if winit_surface.config.is_none() {
+                log::debug!("Lazily configuring Winit surface on first render");
+                let (width, height) = if let Some(window) = &self.window {
+                    let size = window.inner_size();
+                    (size.width, size.height)
+                } else {
+                    log::warn!("No window available for Winit surface configuration");
+                    return None;
+                };
+                
+                let present_mode = match self.config.render.present_mode {
+                    wgpu_types::PresentMode::AutoVsync => vello::wgpu::PresentMode::AutoVsync,
+                    wgpu_types::PresentMode::AutoNoVsync => vello::wgpu::PresentMode::AutoNoVsync,
+                    wgpu_types::PresentMode::Immediate => vello::wgpu::PresentMode::Immediate,
+                    wgpu_types::PresentMode::Fifo => vello::wgpu::PresentMode::Fifo,
+                    wgpu_types::PresentMode::FifoRelaxed => vello::wgpu::PresentMode::Fifo,
+                    wgpu_types::PresentMode::Mailbox => vello::wgpu::PresentMode::Mailbox,
+                };
+                
+                if let Err(e) = winit_surface.configure(
+                    &device_handle.device,
+                    &device_handle.adapter,
+                    width,
+                    height,
+                    present_mode,
+                ) {
+                    log::error!("Failed to configure Winit surface: {}", e);
+                    return None;
+                } else {
+                    log::debug!("Winit surface configured successfully");
+                }
+            }
+        }
+
         if surface.needs_event_dispatch() {
             match surface.dispatch_events() {
                 Ok(needs_redraw) => {
@@ -557,7 +594,6 @@ where
             },
         }
 
-        event_loop.set_control_flow(ControlFlow::Poll);
         let present_time = present_start.elapsed();
 
         Some(RenderTimes {

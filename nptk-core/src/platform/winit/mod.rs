@@ -15,7 +15,7 @@ use vello::wgpu::{
 /// Wrapper around a winit surface that manages offscreen render targets.
 pub struct WinitSurface {
     surface: wgpu::Surface<'static>,
-    config: Option<SurfaceConfiguration>,
+    pub config: Option<SurfaceConfiguration>,
     format: TextureFormat,
     size: (u32, u32),
     offscreen: Option<OffscreenSurface>,
@@ -103,7 +103,7 @@ impl WinitSurface {
         height: u32,
     ) -> Result<TextureView, String> {
         if self.config.is_none() {
-            return Err("Surface not configured".to_string());
+            return Err("Surface not configured - skipping render".to_string());
         }
 
         let target_width = width.max(1);

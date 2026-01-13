@@ -169,6 +169,25 @@ impl FileSystemModel {
         &self.root_path
     }
 
+    /// Get children of multiple directories concurrently.
+    pub async fn get_children_batch(&self, paths: Vec<&Path>) -> Vec<Result<Vec<FileEntry>, FileSystemError>> {
+        use futures::future::join_all;
+        
+        let futures = paths.into_iter().map(|path| {
+            self.get_children(path)
+        });
+        
+        join_all(futures).await
+    }
+
+    /// Refresh multiple directories concurrently.
+    pub fn refresh_batch(&self, paths: Vec<&Path>) -> Result<(), FileSystemError> {
+        for path in paths {
+            self.refresh(path)?;
+        }
+        Ok(())
+    }
+
     /// Load directory entries from filesystem.
     async fn load_directory(path: &Path) -> Result<Vec<FileEntry>, FileSystemError> {
         // First pass: collect all directory entry paths

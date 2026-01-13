@@ -459,13 +459,14 @@ where
 
     /// Request a window redraw.
     fn request_redraw(&self) {
-        log::debug!("Requesting redraw...");
+        log::trace!("Requesting redraw via update flag");
 
+        // Set the DRAW flag which will be processed by user_event or about_to_wait
+        self.update.insert(Update::DRAW);
+        
+        // For winit windows, also call request_redraw in case RedrawRequested works
         if let Some(window) = self.window.as_ref() {
             window.request_redraw();
-        } else {
-            // For native Wayland or headless, we drive redraw via update flags
-            self.update.insert(Update::DRAW);
         }
     }
 
@@ -1065,12 +1066,16 @@ where
             .create_window(self.attrs.clone())
             .expect("Failed to create window");
 
-        // Ensure window is visible
-        // Windows might be created hidden, so we explicitly show them
+        log::debug!("Window created, setting visible");
         window.set_visible(true);
-
+        
+        log::debug!("Window visible, storing Arc");
         self.window = Some(Arc::new(window));
+        
+        log::debug!("Updating window identity");
         self.update_window_identity();
+        
+        log::debug!("Window creation complete");
     }
 
     /// Set up the window node in the layout tree.
@@ -1316,9 +1321,13 @@ where
         }
     }
     /// Initialize heavy components asynchronously in the background
-    fn initialize_async(&mut self, _event_loop: &ActiveEventLoop) {
+    fn initialize_async(&mut self, event_loop: &ActiveEventLoop) {
         log::debug!("Starting async initialization...");
 
+        let platform = Platform::detect();
+        log::info!("Detected platform: {:?}", platform);
+
+        // Create surface synchronously (needed for adapter selection)
         let mut gpu_context = match GpuContext::new() {
             Ok(ctx) => ctx,
             Err(e) => {
@@ -1327,11 +1336,9 @@ where
             },
         };
 
-        let platform = Platform::detect();
-        log::info!("Detected platform: {:?}", platform);
-
         self.create_surface(&gpu_context);
 
+        // Get adapter synchronously (needed for device creation)
         let adapter = if platform == Platform::Wayland {
             #[cfg(all(target_os = "linux", feature = "wayland"))]
             {
@@ -1357,15 +1364,28 @@ where
                 None
             }
         } else {
-            None
+            if let Some(ref mut surface) = self.surface {
+                if let crate::vgi::Surface::Winit(winit_surface) = surface {
+                    let wgpu_surface = winit_surface.surface();
+                    gpu_context.request_adapter_with_surface(wgpu_surface)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
         };
 
+        // For now, keep it synchronous but structured for future async work
+        // The heavy operations (device creation, shader compilation) happen here
+        log::debug!("Creating device (heavy operation)...");
+        
         let device_handle = match adapter {
-            Some(adapter) => gpu_context
-                .create_device_from_adapter(&adapter)
+            Some(adapter) => crate::tasks::block_on(gpu_context
+                .create_device_from_adapter(&adapter))
                 .expect("Failed to create device from adapter"),
-            None => gpu_context
-                .create_device_from_first_adapter(vello::wgpu::Backends::PRIMARY)
+            None => crate::tasks::block_on(gpu_context
+                .create_device_from_first_adapter(vello::wgpu::Backends::PRIMARY))
                 .expect("Failed to create device from default adapter"),
         };
 
@@ -1373,12 +1393,13 @@ where
         let devices = gpu_context.enumerate_devices();
         let device_handle_ref = devices.last().expect("Device should have been added");
 
+        log::debug!("Creating renderer (heavy operation)...");
         self.create_renderer(device_handle_ref);
 
         self.gpu_context = Some(Arc::new(gpu_context));
         self.async_init_complete.store(true, Ordering::Relaxed);
 
-        log::debug!("Async initialization complete");
+        log::debug!("Initialization complete");
 
         if platform != Platform::Wayland {
             self.update.insert(Update::FORCE);
@@ -1432,6 +1453,14 @@ where
         }
 
         self.update_internal(event_loop);
+        
+        // For X11/Winit, keep the render loop going by requesting another update
+        // This is needed because about_to_wait is never called with the current winit setup
+        let platform = crate::platform::Platform::detect();
+        if platform == crate::platform::Platform::Winit {
+            // Schedule another update to keep the loop going
+            self.update.insert(Update::EVAL);
+        }
     }
 }
 
@@ -1441,22 +1470,17 @@ where
     F: Fn(AppContext, S) -> W,
 {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        log::trace!("about_to_wait called");
+        
+        let platform = crate::platform::Platform::detect();
+        
+        // Use Poll mode for all platforms to ensure continuous updates
+        event_loop.set_control_flow(ControlFlow::Poll);
+        
         // Drive app updates even if no winit window exists (Wayland-native path)
         #[cfg(all(target_os = "linux", feature = "wayland"))]
         {
-            if crate::platform::Platform::detect() == crate::platform::Platform::Wayland {
-                // If we have a waker, we don't need to force polling unless we're waiting for something specific
-                // However, native wayland event loop needs to be pumped
-                
-                // If update flags are set, we might need to process them immediately
-                // but usually user event wakes us up
-                
-                // Always poll when running native Wayland so we can pump the custom
-                // event queue even when winit has no Wayland windows to watch.
-                // NOTE: This might be redundant if we use winit's event loop proxy correctly
-                // but winit might not be aware of our native wayland fd
-                event_loop.set_control_flow(ControlFlow::Poll);
-
+            if platform == crate::platform::Platform::Wayland {
                 // If we have a configured surface but haven't drawn yet, force a draw so
                 // the compositor receives our first buffer and maps the window.
                 if let Some(ref surface) = self.surface {
@@ -1477,25 +1501,40 @@ where
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, _event: ()) {
+        log::trace!("user_event called");
         // Waker was called (from async thread)
-        // Just run update to process flags
+        // Run update to process flags
         self.update_app(event_loop);
+        
+        // Keep the update loop going by requesting another redraw
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
     }
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         log::info!("Resuming/Starting app execution...");
+        
+        // Set Poll mode immediately for all platforms
+        event_loop.set_control_flow(ControlFlow::Poll);
+        log::debug!("Set control flow to Poll");
 
         self.notify_plugins_resume(event_loop);
 
-        // Only create winit window if not using native Wayland
         let platform = Platform::detect();
         if platform != Platform::Wayland {
+            log::debug!("Creating window for non-Wayland platform");
             self.create_window(event_loop);
+            log::debug!("Window created");
         }
 
+        log::debug!("Setting up window node");
         self.setup_window_node();
+        log::debug!("Creating initial widget");
         self.create_initial_widget();
+        log::debug!("Starting initialization");
         self.initialize_async(event_loop);
+        log::debug!("Initialization complete, resumed() returning");
     }
 
     fn window_event(
@@ -1504,6 +1543,8 @@ where
         window_id: WindowId,
         mut event: WindowEvent,
     ) {
+        log::trace!("window_event received: {:?} for window {:?}", event, window_id);
+        
         self.update_plugins_for_window_event(&mut event, event_loop);
 
         if let Some(window) = &self.window {

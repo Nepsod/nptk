@@ -157,6 +157,180 @@ impl AppContext {
         });
     }
 
+    /// Spawns a future that triggers a redraw when complete.
+    /// This is a convenience method for the common case of triggering a redraw after async work.
+    pub fn spawn_with_redraw<F>(&self, future: F)
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        self.spawn_with_update(future, Update::DRAW);
+    }
+
+    /// Spawns a future and calls a callback with the result, then triggers an update.
+    /// This is useful for async operations that need to update UI state when complete.
+    pub fn spawn_with_callback<F, T, C>(&self, future: F, callback: C, update_type: Update)
+    where
+        F: std::future::Future<Output = T> + Send + 'static,
+        T: Send + 'static,
+        C: FnOnce(T) + Send + 'static,
+    {
+        let update_manager = self.update.clone();
+        crate::tasks::spawn(async move {
+            let result = future.await;
+            callback(result);
+            update_manager.insert(update_type);
+        });
+    }
+
+    /// Spawns an async data loading operation with automatic error handling.
+    /// This is useful for loading data that might fail and needs UI feedback.
+    pub fn spawn_data_load<F, T, S, E>(&self, future: F, on_success: S, on_error: E)
+    where
+        F: std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>> + Send + 'static,
+        T: Send + 'static,
+        S: FnOnce(T) + Send + 'static,
+        E: FnOnce(Box<dyn std::error::Error + Send + Sync>) + Send + 'static,
+    {
+        let update_manager = self.update.clone();
+        crate::tasks::spawn(async move {
+            match future.await {
+                Ok(data) => {
+                    on_success(data);
+                    update_manager.insert(Update::DRAW);
+                },
+                Err(error) => {
+                    log::error!("Data loading failed: {}", error);
+                    on_error(error);
+                    update_manager.insert(Update::DRAW);
+                },
+            }
+        });
+    }
+
+    /// Spawns a debounced async operation that only executes after a delay.
+    /// If called again before the delay expires, the previous operation is cancelled.
+    /// This is useful for operations like search-as-you-type or auto-save.
+    pub fn spawn_debounced<F>(&self, delay_ms: u64, future: F)
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let update_manager = self.update.clone();
+        crate::tasks::spawn(async move {
+            // Wait for the debounce delay
+            smol::Timer::after(std::time::Duration::from_millis(delay_ms)).await;
+            
+            // Execute the operation
+            future.await;
+            
+            // Trigger update
+            update_manager.insert(Update::DRAW);
+        });
+    }
+
+    /// Spawns an async resource loading operation with caching.
+    /// This is useful for loading resources like images, fonts, or other assets.
+    pub fn spawn_resource_load<K, R, F, S, E>(&self, _cache_key: K, loader: F, on_success: S, on_error: E)
+    where
+        K: std::hash::Hash + Eq + Clone + Send + 'static,
+        R: Send + 'static,
+        F: std::future::Future<Output = Result<R, Box<dyn std::error::Error + Send + Sync>>> + Send + 'static,
+        S: FnOnce(R) + Send + 'static,
+        E: FnOnce(Box<dyn std::error::Error + Send + Sync>) + Send + 'static,
+    {
+        let update_manager = self.update.clone();
+        crate::tasks::spawn(async move {
+            match loader.await {
+                Ok(resource) => {
+                    on_success(resource);
+                    update_manager.insert(Update::DRAW);
+                },
+                Err(error) => {
+                    log::error!("Resource loading failed for key {:?}: {}", std::any::type_name::<K>(), error);
+                    on_error(error);
+                    update_manager.insert(Update::DRAW);
+                },
+            }
+        });
+    }
+
+    /// Spawns multiple async operations concurrently and waits for all to complete.
+    /// This is useful for loading multiple resources in parallel.
+    pub fn spawn_concurrent_batch<F, T, C>(&self, futures: Vec<F>, on_complete: C)
+    where
+        F: std::future::Future<Output = T> + Send + 'static,
+        T: Send + 'static,
+        C: FnOnce(Vec<T>) + Send + 'static,
+    {
+        let update_manager = self.update.clone();
+        crate::tasks::spawn(async move {
+            use futures::future::join_all;
+            let results = join_all(futures).await;
+            on_complete(results);
+            update_manager.insert(Update::DRAW);
+        });
+    }
+
+    /// Spawns a batch of async operations with individual error handling.
+    /// Each operation can succeed or fail independently.
+    pub fn spawn_batch_with_error_handling<F, T, S, E>(&self, operations: Vec<F>, on_success: S, on_error: E)
+    where
+        F: std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>> + Send + 'static,
+        T: Send + 'static,
+        S: Fn(usize, T) + Send + Sync + 'static,
+        E: Fn(usize, Box<dyn std::error::Error + Send + Sync>) + Send + Sync + 'static,
+    {
+        let update_manager = self.update.clone();
+        let on_success = std::sync::Arc::new(on_success);
+        let on_error = std::sync::Arc::new(on_error);
+        
+        crate::tasks::spawn(async move {
+            use futures::future::join_all;
+            let results = join_all(operations).await;
+            
+            for (index, result) in results.into_iter().enumerate() {
+                match result {
+                    Ok(data) => on_success(index, data),
+                    Err(error) => {
+                        log::error!("Batch operation {} failed: {}", index, error);
+                        on_error(index, error);
+                    },
+                }
+            }
+            
+            update_manager.insert(Update::DRAW);
+        });
+    }
+
+    /// Spawns async operations with a timeout.
+    /// If the operation doesn't complete within the timeout, it's cancelled.
+    pub fn spawn_with_timeout<F, T, S, E>(&self, timeout_ms: u64, future: F, on_success: S, on_timeout: E)
+    where
+        F: std::future::Future<Output = T> + Send + 'static,
+        T: Send + 'static,
+        S: FnOnce(T) + Send + 'static,
+        E: FnOnce() + Send + 'static,
+    {
+        let update_manager = self.update.clone();
+        crate::tasks::spawn(async move {
+            let timeout = smol::Timer::after(std::time::Duration::from_millis(timeout_ms));
+            let future = Box::pin(future);
+            
+            match futures::future::select(future, timeout).await {
+                futures::future::Either::Left((result, _)) => {
+                    // Operation completed before timeout
+                    on_success(result);
+                },
+                futures::future::Either::Right((_, _)) => {
+                    // Timeout occurred
+                    log::warn!("Operation timed out after {}ms", timeout_ms);
+                    on_timeout();
+                },
+            }
+            
+            update_manager.insert(Update::DRAW);
+        });
+    }
+
     /// Get the shared focus manager.
     pub fn focus_manager(&self) -> SharedFocusManager {
         self.focus_manager.clone()

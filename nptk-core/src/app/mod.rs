@@ -10,6 +10,9 @@ pub mod diagnostics;
 /// Contains the font context structure.
 pub mod font_ctx;
 
+/// Contains async image loading utilities.
+pub mod image_loader;
+
 /// Contains the application handler.
 pub mod handler;
 

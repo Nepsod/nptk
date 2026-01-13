@@ -82,7 +82,7 @@ impl SettingsRegistry {
         // Load input.toml
         self.load_config_type(&xdg_dirs, "input.toml").await;
 
-        self.load_theme_config(&xdg_dirs);
+        self.load_theme_config(&xdg_dirs).await;
 
         Ok(())
     }
@@ -110,38 +110,43 @@ impl SettingsRegistry {
     }
 
     /// Load theme configuration from standard locations.
-    fn load_theme_config(&mut self, xdg_dirs: &BaseDirectories) {
+    async fn load_theme_config(&mut self, xdg_dirs: &BaseDirectories) {
         let theme_filename = "theme.toml";
 
         // 1. Load from system data directories
         for path in xdg_dirs.find_data_files(theme_filename).rev() {
-            self.load_theme_file(&path);
+            self.load_theme_file(&path).await;
         }
 
         // 2. Load from system config directories
         for path in xdg_dirs.find_config_files(theme_filename).rev() {
-            self.load_theme_file(&path);
+            self.load_theme_file(&path).await;
         }
 
         // 3. Load from user config directory
         if let Some(user_config_path) = xdg_dirs.find_config_file(theme_filename) {
-            self.load_theme_file(&user_config_path);
+            self.load_theme_file(&user_config_path).await;
         } else {
             let user_config_path = xdg_dirs.get_config_home().join(theme_filename);
             if user_config_path.exists() {
-                self.load_theme_file(&user_config_path);
+                self.load_theme_file(&user_config_path).await;
             }
         }
     }
 
-    fn load_theme_file(&mut self, path: &Path) {
+    async fn load_theme_file(&mut self, path: &Path) {
         log::info!("Loading theme config from: {:?}", path);
-        match ThemeConfig::from_file(path) {
-            Ok(loaded_config) => {
-                self.theme_config.merge(loaded_config);
+        match fs::read_to_string(path).await {
+            Ok(content) => match ThemeConfig::from_toml(&content) {
+                Ok(loaded_config) => {
+                    self.theme_config.merge(loaded_config);
+                },
+                Err(e) => {
+                    log::warn!("Failed to parse theme config {:?}: {}", path, e);
+                },
             },
             Err(e) => {
-                log::warn!("Failed to load theme config {:?}: {}", path, e);
+                log::warn!("Failed to read theme config {:?}: {}", path, e);
             },
         }
     }
@@ -187,6 +192,50 @@ impl SettingsRegistry {
     /// Get the current configuration.
     pub fn get(&self) -> &Config {
         &self.config
+    }
+
+    /// Load configuration from multiple custom paths asynchronously.
+    pub async fn load_from_paths_async(&mut self, paths: Vec<std::path::PathBuf>) -> Vec<anyhow::Result<()>> {
+        let mut results = Vec::new();
+        
+        for path in paths {
+            let result = async {
+                let content = smol::fs::read_to_string(&path).await
+                    .map_err(|e| anyhow::anyhow!("Failed to read config file {:?}: {}", path, e))?;
+                
+                let loaded_config: Config = toml::from_str(&content)
+                    .map_err(|e| anyhow::anyhow!("Failed to parse config file {:?}: {}", path, e))?;
+                
+                self.merge(loaded_config);
+                Ok(())
+            }.await;
+            
+            results.push(result);
+        }
+        
+        results
+    }
+
+    /// Reload configuration asynchronously (re-runs the full load process).
+    pub async fn reload_async(&mut self) -> anyhow::Result<()> {
+        // Reset to defaults
+        *self = Self {
+            config: Config {
+                general: GeneralSettings {
+                    debug: Some(false),
+                    log_level: None,
+                },
+                mouse: MouseSettings {
+                    natural_scrolling: Some(false),
+                },
+                keyboard: KeyboardSettings {},
+                other: HashMap::new(),
+            },
+            theme_config: nptk_theme::config::ThemeConfig::new(),
+        };
+        
+        // Reload everything
+        self.load().await
     }
 }
 

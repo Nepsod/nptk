@@ -387,9 +387,10 @@ impl ThemeConfig {
     ///
     /// let config = ThemeConfig::from_file("theme.toml").unwrap();
     /// ```
+    /// Load theme configuration from a file.
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, ThemeError> {
         let path = path.as_ref();
-        let content = fs::read_to_string(path)
+        let content = std::fs::read_to_string(path)
             .map_err(|_e| ThemeError::file_not_found(path.to_path_buf()))?;
 
         if path.extension().and_then(|s| s.to_str()) == Some("toml") {

@@ -27,6 +27,52 @@ pub struct MayConfig {
     pub settings: std::sync::Arc<SettingsRegistry>,
 }
 
+impl MayConfig {
+    /// Create a new MayConfig asynchronously.
+    /// This allows for proper async initialization of the settings registry.
+    pub async fn new_async() -> Self {
+        // Create settings registry asynchronously
+        let settings = std::sync::Arc::new(
+            SettingsRegistry::new().await.unwrap_or_else(|e| {
+                log::error!("Failed to initialize settings registry: {}", e);
+                panic!("Failed to initialize settings registry: {}", e);
+            })
+        );
+        
+        // Create theme manager from the loaded theme configuration
+        let theme_manager = create_shared_theme_manager_from_config(&settings.theme_config);
+        
+        // Enable hot reload if configured
+        if settings.theme_config.hot_reload.enabled {
+            use std::path::PathBuf;
+            let theme_file_path: Option<PathBuf> = if let Ok(xdg_dirs) = xdg::BaseDirectories::with_prefix("nptk-0") {
+                xdg_dirs.find_config_file("theme.toml")
+            } else {
+                None
+            };
+            
+            if let Some(config_path) = theme_file_path {
+                let referenced_paths = vec![config_path.clone()];
+                
+                // Enable hot reload on the theme manager
+                if let Ok(mut manager) = theme_manager.write() {
+                    if let Err(e) = manager.enable_hot_reload(&config_path, referenced_paths) {
+                        log::warn!("Failed to enable hot reload: {}", e);
+                    }
+                }
+            }
+        }
+
+        Self {
+            window: WindowConfig::default(),
+            render: RenderConfig::default(),
+            tasks: None,
+            theme_manager,
+            settings,
+        }
+    }
+}
+
 impl Default for MayConfig {
     fn default() -> Self {
         // Create settings registry first to load theme configuration

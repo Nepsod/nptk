@@ -140,7 +140,7 @@ impl GpuContext {
         self.instance.enumerate_adapters(backends)
     }
 
-    /// Create a device and queue from an adapter.
+    /// Create a device and queue from an adapter asynchronously.
     ///
     /// This creates a DeviceHandle that can be used for rendering.
     /// The device handle is NOT stored internally - use `add_device()` to store it
@@ -152,11 +152,11 @@ impl GpuContext {
     /// # Returns
     /// * `Ok(DeviceHandle)` if device creation succeeded
     /// * `Err(String)` if device creation failed
-    pub fn create_device_from_adapter(
+    pub async fn create_device_from_adapter(
         &mut self,
         adapter: &wgpu::Adapter,
     ) -> Result<DeviceHandle, String> {
-        log::debug!("Creating device from adapter...");
+        log::debug!("Creating device from adapter (async)...");
 
         let adapter_info = adapter.get_info();
         log::info!(
@@ -167,13 +167,13 @@ impl GpuContext {
             adapter_info.vendor
         );
 
-        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("nptk-gpu-device"),
             required_features: wgpu::Features::default(),
             required_limits: wgpu::Limits::default(),
             memory_hints: Default::default(),
             trace: wgpu::Trace::default(),
-        }))
+        }).await
         .map_err(|e| format!("Failed to create device: {:?}", e))?;
 
         let device_handle = DeviceHandle {
@@ -183,7 +183,7 @@ impl GpuContext {
             adapter_info,
         };
 
-        log::debug!("Device created successfully");
+        log::debug!("Device created successfully (async)");
         Ok(device_handle)
     }
 
@@ -205,7 +205,7 @@ impl GpuContext {
         &self.devices
     }
 
-    /// Create a device from the first available adapter.
+    /// Create a device from the first available adapter asynchronously.
     ///
     /// This is a convenience method that enumerates adapters and creates
     /// a device from the first one found. On Wayland, prefer using
@@ -213,7 +213,7 @@ impl GpuContext {
     ///
     /// Note: The device is NOT automatically added to the internal list.
     /// Call `add_device()` if you want to store it.
-    pub fn create_device_from_first_adapter(
+    pub async fn create_device_from_first_adapter(
         &mut self,
         backends: wgpu::Backends,
     ) -> Result<DeviceHandle, String> {
@@ -224,6 +224,6 @@ impl GpuContext {
         }
 
         let adapter = adapters.first().unwrap();
-        self.create_device_from_adapter(adapter)
+        self.create_device_from_adapter(adapter).await
     }
 }
