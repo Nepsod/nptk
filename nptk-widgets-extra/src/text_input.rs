@@ -6,7 +6,7 @@ use nptk_core::app::focus::{FocusBounds, FocusId, FocusProperties, FocusState, F
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
-use nptk_core::signal::MaybeSignal;
+use nptk_core::signal::{MaybeSignal, Signal, state::StateSignal};
 use nptk_core::text_input::TextBuffer;
 use nptk_core::text_render::TextRenderContext;
 use nptk_core::vg::kurbo::{Affine, Line, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
@@ -31,7 +31,10 @@ use std::time::{Duration, Instant};
 /// - `color_selection` - The selection highlight color.
 pub struct TextInput {
     layout_style: MaybeSignal<LayoutStyle>,
+    text: MaybeSignal<String>,
+    text_signal: Option<StateSignal<String>>,
     buffer: TextBuffer,
+    previous_text: String,
     placeholder: MaybeSignal<String>,
     on_change: MaybeSignal<Update>,
     focus_id: FocusId,
@@ -61,7 +64,10 @@ impl TextInput {
                 ..Default::default()
             }
             .into(),
+            text: MaybeSignal::value(String::new()),
+            text_signal: None,
             buffer: TextBuffer::new(),
+            previous_text: String::new(),
             placeholder: MaybeSignal::value("".to_string()),
             on_change: MaybeSignal::value(Update::empty()),
             focus_id: FocusId::new(),
@@ -84,8 +90,19 @@ impl TextInput {
     }
 
     /// Set the initial text value.
-    pub fn with_text(mut self, text: String) -> Self {
-        self.buffer.set_text(text);
+    pub fn with_text(mut self, text: impl Into<MaybeSignal<String>>) -> Self {
+        self.text = text.into();
+        self.text_signal = None; // Clear signal reference for static items
+        self.sync_buffer_from_signal();
+        self
+    }
+
+    /// Set the text value using a reactive signal
+    /// This allows external code to update the text reactively
+    pub fn with_text_signal(mut self, text_signal: StateSignal<String>) -> Self {
+        self.text = MaybeSignal::signal(Box::new(text_signal.clone()));
+        self.text_signal = Some(text_signal);
+        self.sync_buffer_from_signal();
         self
     }
 
@@ -96,8 +113,41 @@ impl TextInput {
     }
 
     /// Get the current text value.
-    pub fn text(&self) -> &str {
-        self.buffer.text()
+    pub fn text(&self) -> String {
+        (*self.text.get()).clone()
+    }
+
+    /// Get the text signal for observability (returns None if text is static)
+    pub fn get_text_signal(&self) -> Option<StateSignal<String>> {
+        self.text_signal.clone()
+    }
+
+    /// Sync buffer from signal (when signal changes externally)
+    fn sync_buffer_from_signal(&mut self) {
+        let signal_text = (*self.text.get()).clone();
+        let current_buffer_text = self.buffer.text().to_string();
+        
+        // Only update if text actually changed
+        if signal_text != current_buffer_text {
+            let old_cursor_pos = self.buffer.cursor.position;
+            self.buffer.set_text(signal_text.clone());
+            // set_text already clamps cursor, but we want to preserve it if possible
+            let new_text_len = self.buffer.text().chars().count();
+            if old_cursor_pos <= new_text_len {
+                // Preserve cursor position if valid
+                self.buffer.cursor.position = old_cursor_pos;
+                // set_text's move_to already cleared selection, no need to clear again
+            }
+            // Note: previous_text is updated by the caller (update method) to avoid redundant updates
+        }
+    }
+
+    /// Sync signal from buffer (when user types)
+    fn sync_signal_from_buffer(&mut self) {
+        let buffer_text = self.buffer.text().to_string();
+        if let Some(ref signal) = self.text_signal {
+            signal.set(buffer_text);
+        }
     }
 
     /// Calculate the actual width of text using Parley's font metrics
@@ -156,6 +206,42 @@ impl TextInput {
         // Clamp to text length
         let text_len = text.chars().count();
         char_pos.min(text_len)
+    }
+
+    /// Calculate cursor position from mouse coordinates.
+    fn cursor_position_from_mouse(
+        &self,
+        mouse_x: f32,
+        layout_node: &LayoutNode,
+        info: &mut AppInfo,
+    ) -> usize {
+        let font_size = 16.0;
+        let text_start_x = layout_node.layout.location.x + 8.0; // Padding
+        let relative_x = mouse_x - text_start_x;
+
+        if relative_x <= 0.0 {
+            return 0;
+        }
+
+        let text = self.buffer.text();
+
+        // Find the character position by calculating cumulative text widths
+        let mut current_width = 0.0;
+        let mut char_position = 0;
+
+        for (i, c) in text.chars().enumerate() {
+            let char_text = c.to_string();
+            let char_width = self.calculate_text_width(&char_text, font_size, info);
+
+            if relative_x <= current_width + char_width / 2.0 {
+                return i;
+            }
+
+            current_width += char_width;
+            char_position = i + 1;
+        }
+
+        char_position
     }
 
     /// Find word boundaries around a given position.
@@ -453,6 +539,15 @@ impl Widget for TextInput {
         let mut update = Update::empty();
         let old_focus_state = self.focus_state;
 
+        // Check if signal text changed externally
+        let current_signal_text = (*self.text.get()).clone();
+        if current_signal_text != self.previous_text {
+            // Signal changed externally, sync buffer from signal
+            self.sync_buffer_from_signal();
+            self.previous_text = current_signal_text;
+            update |= Update::DRAW;
+        }
+
         // Register with focus manager
         if let Ok(mut manager) = info.focus_manager.lock() {
             let focusable_widget = FocusableWidget {
@@ -628,6 +723,10 @@ impl Widget for TextInput {
             }
 
             if text_changed {
+                // Sync signal from buffer (when user types)
+                self.sync_signal_from_buffer();
+                // Update previous_text to track signal text (which now matches buffer after sync)
+                self.previous_text = (*self.text.get()).clone();
                 update |= *self.on_change.get();
                 update |= Update::DRAW;
             }
@@ -636,7 +735,6 @@ impl Widget for TextInput {
         // Handle mouse selection
         let cursor_pos = info.cursor_pos;
         let button_events: Vec<_> = info.buttons.iter().collect();
-        let all_button_events: Vec<_> = info.buttons.iter().collect();
 
         // Process mouse events in a separate scope to avoid borrowing conflicts
         {
@@ -645,6 +743,10 @@ impl Widget for TextInput {
                     && cursor_pos.x as f32 <= layout.layout.location.x + layout.layout.size.width
                     && cursor_pos.y as f32 >= layout.layout.location.y
                     && cursor_pos.y as f32 <= layout.layout.location.y + layout.layout.size.height;
+
+                // Track if we need to handle a click after the button events loop
+                let mut need_click_handling = false;
+                let mut click_mouse_x = 0.0f32;
 
                 // Handle mouse button events
                 for (_, button, state) in button_events {
@@ -655,30 +757,10 @@ impl Widget for TextInput {
                                     // Set focus first
                                     context.set_focus(Some(self.focus_id));
 
-                                    // Handle mouse click in bounds
-                                    let click_pos = self.cursor_position_from_mouse_simple(
-                                        cursor_pos.x as f32,
-                                        layout,
-                                    );
-
-                                    // Check for double-click first
-                                    if self.handle_double_click(click_pos, layout) {
-                                        // Double-click handled - selection already set, don't modify cursor position or drag
-                                        self.mouse_down = true;
-                                        // Don't set drag_start_pos for double-click to avoid interfering with selection
-                                        update |= Update::DRAW;
-                                    } else {
-                                        // Single click - clear selection and set cursor position
-                                        self.buffer.cursor.selection_start = None;
-                                        self.buffer.cursor.position = click_pos;
-                                        self.mouse_down = true;
-                                        self.drag_start_pos = Some(click_pos);
-
-                                        // Reset cursor blink
-                                        self.cursor_blink_timer = Instant::now();
-                                        self.cursor_visible = true;
-                                        update |= Update::DRAW;
-                                    }
+                                    // Store mouse position for accurate calculation after loop
+                                    need_click_handling = true;
+                                    click_mouse_x = cursor_pos.x as f32;
+                                    self.mouse_down = true;
                                 }
                             },
                             nptk_core::window::ElementState::Released => {
@@ -690,11 +772,34 @@ impl Widget for TextInput {
                     }
                 }
 
+                // Handle click positioning after button events loop (to avoid borrow conflicts)
+                if need_click_handling {
+                    // Use accurate measurement for better positioning
+                    let click_pos = self.cursor_position_from_mouse(click_mouse_x, layout, info);
+
+                    // Check for double-click first
+                    if self.handle_double_click(click_pos, layout) {
+                        // Double-click handled - selection already set, don't modify cursor position or drag
+                        // Don't set drag_start_pos for double-click to avoid interfering with selection
+                        update |= Update::DRAW;
+                    } else {
+                        // Single click - clear selection and set cursor position
+                        self.buffer.cursor.selection_start = None;
+                        self.buffer.cursor.position = click_pos;
+                        self.drag_start_pos = Some(click_pos);
+
+                        // Reset cursor blink
+                        self.cursor_blink_timer = Instant::now();
+                        self.cursor_visible = true;
+                        update |= Update::DRAW;
+                    }
+                }
+
                 // Handle mouse drag for selection (works both in and out of bounds)
                 if self.mouse_down {
                     if let Some(start_pos) = self.drag_start_pos {
                         let current_pos = if in_bounds {
-                            self.cursor_position_from_mouse_simple(cursor_pos.x as f32, layout)
+                            self.cursor_position_from_mouse(cursor_pos.x as f32, layout, info)
                         } else {
                             // Mouse is outside bounds - extend selection to beginning or end
                             let text_len = self.buffer.text().chars().count();
@@ -707,7 +812,7 @@ impl Widget for TextInput {
                                 text_len
                             } else {
                                 // This shouldn't happen if in_bounds is false, but just in case
-                                self.cursor_position_from_mouse_simple(cursor_pos.x as f32, layout)
+                                self.cursor_position_from_mouse(cursor_pos.x as f32, layout, info)
                             }
                         };
 
@@ -733,17 +838,16 @@ impl Widget for TextInput {
                     }
                 }
             }
-        } // End of mouse handling scope
-
-        // Also handle global mouse release events (in case mouse was released outside widget)
-        for (_, button, state) in all_button_events {
-            if *button == nptk_core::window::MouseButton::Left
-                && *state == nptk_core::window::ElementState::Released
-            {
-                self.mouse_down = false;
-                self.drag_start_pos = None;
+            // Handle global mouse release events (in case mouse was released outside widget)
+            for (_, button, state) in &info.buttons {
+                if *button == nptk_core::window::MouseButton::Left
+                    && *state == nptk_core::window::ElementState::Released
+                {
+                    self.mouse_down = false;
+                    self.drag_start_pos = None;
+                }
             }
-        }
+        } // End of mouse handling scope
 
         // Update on focus state change
         if old_focus_state != self.focus_state {

@@ -31,6 +31,12 @@ use std::ops::Deref;
 pub struct ValueInput {
     /// Current numeric value
     value: StateSignal<f64>,
+    /// Reactive text representation of value
+    text: MaybeSignal<String>,
+    /// Text signal for observability
+    text_signal: Option<StateSignal<String>>,
+    /// Previous text value for change detection
+    previous_text: String,
     /// Minimum allowed value
     min_value: Option<f64>,
     /// Maximum allowed value
@@ -68,8 +74,13 @@ pub struct ValueInput {
 impl ValueInput {
     /// Create a new ValueInput widget with default settings.
     pub fn new() -> Self {
-        Self {
-            value: StateSignal::new(0.0),
+        let initial_value = 0.0;
+        let initial_text = format!("{:.0}", initial_value);
+        let mut widget = Self {
+            value: StateSignal::new(initial_value),
+            text: MaybeSignal::value(initial_text.clone()),
+            text_signal: None,
+            previous_text: initial_text,
             min_value: None,
             max_value: None,
             step: 1.0,
@@ -89,7 +100,9 @@ impl ValueInput {
             last_click_pos: None,
             is_valid: true,
             allow_negative: false,
-        }
+        };
+        widget.sync_text_from_value();
+        widget
     }
 
     /// Set the current value.
@@ -98,6 +111,10 @@ impl ValueInput {
         let initial_value = signal.get();
         self.value.set(*initial_value);
         self.sync_text_from_value();
+        // sync_text_from_value() updated text signal, update previous_text
+        if let Some(_) = self.text_signal {
+            self.previous_text = (*self.text.get()).clone();
+        }
         self
     }
 
@@ -143,19 +160,90 @@ impl ValueInput {
         &self.value
     }
 
+    /// Format value to text string.
+    fn format_value_text(&self, value: f64) -> String {
+        if self.decimal_places == 0 {
+            format!("{:.0}", value)
+        } else {
+            format!("{:.prec$}", value, prec = self.decimal_places)
+        }
+    }
+
+    /// Set the text value using a reactive signal
+    /// This allows external code to update the text reactively
+    pub fn with_text_signal(mut self, text_signal: StateSignal<String>) -> Self {
+        self.text = MaybeSignal::signal(Box::new(text_signal.clone()));
+        self.text_signal = Some(text_signal);
+        self.sync_value_from_text();
+        self
+    }
+
+    /// Get the text signal for observability (returns None if text is static)
+    pub fn get_text_signal(&self) -> Option<StateSignal<String>> {
+        self.text_signal.clone()
+    }
+
     /// Sync text buffer from current value.
     fn sync_text_from_value(&mut self) {
-        let value = self.value.get();
-        let text = if self.decimal_places == 0 {
-            format!("{:.0}", *value)
-        } else {
-            format!("{:.prec$}", *value, prec = self.decimal_places)
-        };
-        self.buffer.set_text(text);
+        let value = *self.value.get();
+        let text = self.format_value_text(value);
+        self.buffer.set_text(text.clone());
         // Position cursor at the end of the text
         let text_len = self.buffer.text().len();
         self.buffer.cursor.position = text_len;
         self.buffer.cursor.selection_start = None;
+        // Update text signal if present
+        if let Some(ref signal) = self.text_signal {
+            signal.set(text);
+        }
+    }
+
+    /// Sync value from text signal (when text signal changes externally)
+    fn sync_value_from_text(&mut self) {
+        let text = (*self.text.get()).clone();
+        match text.trim().parse::<f64>() {
+            Ok(mut parsed_value) => {
+                // Apply constraints
+                if !self.allow_negative && parsed_value < 0.0 {
+                    parsed_value = 0.0;
+                }
+                if let Some(min) = self.min_value {
+                    if parsed_value < min {
+                        parsed_value = min;
+                    }
+                }
+                if let Some(max) = self.max_value {
+                    if parsed_value > max {
+                        parsed_value = max;
+                    }
+                }
+                self.value.set(parsed_value);
+                self.sync_text_from_value();
+            },
+            Err(_) => {
+                // Invalid text, sync buffer from current value instead
+                self.sync_text_from_value();
+            },
+        }
+    }
+
+    /// Sync buffer from text signal
+    fn sync_buffer_from_text(&mut self) {
+        let text = (*self.text.get()).clone();
+        let current_buffer_text = self.buffer.text().to_string();
+        
+        // Only update if text actually changed
+        if text != current_buffer_text {
+            let old_cursor_pos = self.buffer.cursor.position;
+            self.buffer.set_text(text.clone());
+            // set_text already clamps cursor, but we want to preserve it if possible
+            let new_text_len = self.buffer.text().chars().count();
+            if old_cursor_pos <= new_text_len {
+                // Preserve cursor position if valid
+                self.buffer.cursor.position = old_cursor_pos;
+                // set_text's move_to already cleared selection, no need to clear again
+            }
+        }
     }
 
     /// Parse and validate text input, update value if valid.
@@ -599,6 +687,15 @@ impl Widget for ValueInput {
     fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
+        // Check if text signal changed externally
+        let current_signal_text = (*self.text.get()).clone();
+        if current_signal_text != self.previous_text {
+            // Text signal changed externally, parse text → update value signal → sync buffer
+            self.sync_value_from_text();
+            self.previous_text = (*self.text.get()).clone();
+            update |= Update::DRAW;
+        }
+
         // Register with focus manager
         if let Ok(mut manager) = info.focus_manager.lock() {
             let focusable_widget = FocusableWidget {
@@ -691,14 +788,20 @@ impl Widget for ValueInput {
                         PhysicalKey::Code(KeyCode::ArrowUp) => {
                             if !shift_pressed {
                                 self.increment();
-                                text_changed = true;
+                                // sync_text_from_value() already updated text signal, update previous_text
+                                if let Some(_) = self.text_signal {
+                                    self.previous_text = (*self.text.get()).clone();
+                                }
                                 update |= Update::DRAW;
                             }
                         },
                         PhysicalKey::Code(KeyCode::ArrowDown) => {
                             if !shift_pressed {
                                 self.decrement();
-                                text_changed = true;
+                                // sync_text_from_value() already updated text signal, update previous_text
+                                if let Some(_) = self.text_signal {
+                                    self.previous_text = (*self.text.get()).clone();
+                                }
                                 update |= Update::DRAW;
                             }
                         },
@@ -748,6 +851,10 @@ impl Widget for ValueInput {
                             // Validate and finalize input
                             self.validate_and_update();
                             self.sync_text_from_value();
+                            // sync_text_from_value() updated text signal, update previous_text
+                            if let Some(_) = self.text_signal {
+                                self.previous_text = (*self.text.get()).clone();
+                            }
                             update |= Update::DRAW;
                         },
                         _ => {
@@ -775,7 +882,18 @@ impl Widget for ValueInput {
             }
 
             if text_changed {
+                let value_before = *self.value.get();
                 self.validate_and_update();
+                let value_after = *self.value.get();
+                
+                // If value changed, format value → update text signal
+                if value_before != value_after {
+                    let formatted_text = self.format_value_text(value_after);
+                    if let Some(ref signal) = self.text_signal {
+                        signal.set(formatted_text.clone());
+                    }
+                    self.previous_text = (*self.text.get()).clone();
+                }
                 update |= Update::DRAW;
             }
         }

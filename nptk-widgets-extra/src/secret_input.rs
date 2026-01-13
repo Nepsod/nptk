@@ -810,6 +810,10 @@ impl Widget for SecretInput {
                     update |= Update::DRAW;
                 }
 
+                // Track if we need to handle a click after the button events loop
+                let mut need_click_handling = false;
+                let mut click_mouse_x = 0.0f32;
+
                 // Handle mouse button events
                 for (_, button, state) in button_events {
                     if *button == nptk_core::window::MouseButton::Left {
@@ -824,28 +828,10 @@ impl Widget for SecretInput {
                                         // Set focus first
                                         context.set_focus(Some(self.focus_id));
 
-                                        // Handle text area click
-                                        let click_pos = self.cursor_position_from_mouse_simple(
-                                            cursor_pos.x as f32,
-                                            layout,
-                                        );
-
-                                        // Check for double-click first
-                                        if self.handle_double_click(click_pos, layout) {
-                                            // Double-click handled - selection already set, don't modify cursor position or drag
-                                            self.mouse_down = true;
-                                            // Don't set drag_start_pos for double-click to avoid interfering with selection
-                                            update |= Update::DRAW;
-                                        } else {
-                                            // Single click - clear selection and set cursor position
-                                            self.buffer.cursor.selection_start = None;
-                                            self.buffer.cursor.position = click_pos;
-                                            self.mouse_down = true;
-                                            self.drag_start_pos = Some(click_pos);
-                                            self.cursor_blink_timer = Instant::now();
-                                            self.cursor_visible = true;
-                                            update |= Update::DRAW;
-                                        }
+                                        // Store mouse position for accurate calculation after loop
+                                        need_click_handling = true;
+                                        click_mouse_x = cursor_pos.x as f32;
+                                        self.mouse_down = true;
                                     }
                                 }
                             },
@@ -860,6 +846,27 @@ impl Widget for SecretInput {
                                 self.drag_start_pos = None;
                             },
                         }
+                    }
+                }
+
+                // Handle click positioning after button events loop (to avoid borrow conflicts)
+                if need_click_handling {
+                    // Use accurate measurement for consistency with drag
+                    let click_pos = self.cursor_position_from_mouse(click_mouse_x, layout, info);
+
+                    // Check for double-click first
+                    if self.handle_double_click(click_pos, layout) {
+                        // Double-click handled - selection already set, don't modify cursor position or drag
+                        // Don't set drag_start_pos for double-click to avoid interfering with selection
+                        update |= Update::DRAW;
+                    } else {
+                        // Single click - clear selection and set cursor position
+                        self.buffer.cursor.selection_start = None;
+                        self.buffer.cursor.position = click_pos;
+                        self.drag_start_pos = Some(click_pos);
+                        self.cursor_blink_timer = Instant::now();
+                        self.cursor_visible = true;
+                        update |= Update::DRAW;
                     }
                 }
 
