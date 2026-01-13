@@ -1,5 +1,6 @@
 use crate::app::context::AppContext;
 use crate::reference::Ref;
+use crate::signal::derived::DerivedSignal;
 use crate::signal::fixed::FixedSignal;
 use crate::signal::map::MapSignal;
 use std::rc::Rc;
@@ -18,6 +19,15 @@ pub mod map;
 
 /// Contains the [eval::EvalSignal] signal.
 pub mod eval;
+
+/// Contains the [DerivedSignal] signal.
+pub mod derived;
+
+/// Contains the [ZipSignal] signal.
+pub mod zip;
+
+/// Contains signal combinator functions.
+pub mod combinators;
 
 /// Contains the [AsyncState] enum.
 pub mod async_state;
@@ -55,7 +65,7 @@ pub trait Signal<T: 'static>: 'static {
     fn set_value(&self, value: T);
 
     /// Add a listener to the signal, which will be called when the inner value changes.
-    fn listen(&mut self, listener: Listener<T>);
+    fn listen(&self, listener: Listener<T>);
 
     /// Notify listeners that the inner value has changed.
     /// May also be called manually to update listeners.
@@ -83,6 +93,30 @@ pub trait Signal<T: 'static>: 'static {
         Self: Sized,
     {
         MapSignal::new(self.dyn_clone(), map)
+    }
+
+    /// Creates a [DerivedSignal] that computes a value from this signal.
+    ///
+    /// The computation function is only re-evaluated when this signal's value changes,
+    /// making it more efficient than [EvalSignal](crate::signal::eval::EvalSignal) for
+    /// computed values that depend on signal state.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use nptk_core::signal::{Signal, state::StateSignal};
+    ///
+    /// let counter = StateSignal::new(5);
+    /// let doubled = counter.derived(|val| *val * 2);
+    /// ```
+    fn derived<U: 'static + Clone>(
+        &self,
+        compute: impl Fn(Ref<T>) -> U + 'static,
+    ) -> DerivedSignal<T, U>
+    where
+        Self: Sized,
+    {
+        DerivedSignal::new(self.dyn_clone(), compute)
     }
 
     /// Hooks the signal into the given [AppContext].

@@ -45,7 +45,7 @@ where
 
     fn set_value(&self, _: T) {}
 
-    fn listen(&mut self, _: Listener<T>) {}
+    fn listen(&self, _: Listener<T>) {}
 
     fn notify(&self) {
         self.invalidate();

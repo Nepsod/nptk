@@ -3,7 +3,6 @@ use nptk::core::app::update::Update;
 use nptk::core::component::{Component, Composed};
 use nptk::core::layout::LayoutStyle;
 use nptk::core::reference::Ref;
-use nptk::core::signal::eval::EvalSignal;
 use nptk::core::signal::state::StateSignal;
 use nptk::core::signal::{MaybeSignal, Signal};
 use nptk::core::widget::{Widget, WidgetLayoutExt};
@@ -37,12 +36,10 @@ impl Component for Counter {
 
                 Box::new(
                     Button::new(Text::new("Increase".to_string())).with_on_pressed(
-                        EvalSignal::new(move || {
+                        context.callback(move || {
                             counter.mutate(|i| *i += 1);
                             Update::DRAW
-                        })
-                        .hook(&context)
-                        .maybe(),
+                        }),
                     ),
                 )
             },
@@ -51,12 +48,10 @@ impl Component for Counter {
 
                 Box::new(
                     Button::new(Text::new("Decrease".to_string())).with_on_pressed(
-                        EvalSignal::new(move || {
+                        context.callback(move || {
                             counter.mutate(|i| *i -= 1);
                             Update::DRAW
-                        })
-                        .hook(&context)
-                        .maybe(),
+                        }),
                     ),
                 )
             },

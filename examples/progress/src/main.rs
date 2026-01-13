@@ -18,14 +18,12 @@ impl Application for ProgressApp {
                     ..Default::default()
                 })
                 .with_on_pressed(
-                    EvalSignal::new(move || {
+                    context.callback(move || {
                         let current = *progress_value.get();
                         let new_value = (current + 0.1).min(1.0);
                         progress_value.set(new_value);
                         Update::DRAW
-                    })
-                    .hook(&context)
-                    .maybe(),
+                    }),
                 )
         };
 
@@ -56,13 +54,11 @@ impl Application for ProgressApp {
                     ..Default::default()
                 })
                 .with_on_pressed(
-                    EvalSignal::new(move || {
+                    context.callback(move || {
                         let current = *indeterminate.get();
                         indeterminate.set(!current);
                         Update::DRAW
-                    })
-                    .hook(&context)
-                    .maybe(),
+                    }),
                 )
         };
 
@@ -75,13 +71,11 @@ impl Application for ProgressApp {
                     ..Default::default()
                 })
                 .with_on_pressed(
-                    EvalSignal::new(move || {
+                    context.callback(move || {
                         progress_value.set(0.0);
                         indeterminate.set(false);
                         Update::DRAW
-                    })
-                    .hook(&context)
-                    .maybe(),
+                    }),
                 )
         };
 

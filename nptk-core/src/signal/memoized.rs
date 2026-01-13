@@ -30,7 +30,7 @@ impl<T: 'static> Signal<T> for MemoizedSignal<T> {
 
     fn set_value(&self, _: T) {}
 
-    fn listen(&mut self, _: Listener<T>) {}
+    fn listen(&self, _: Listener<T>) {}
 
     fn notify(&self) {}
 

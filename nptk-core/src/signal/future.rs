@@ -5,21 +5,21 @@ use crate::tasks;
 use std::sync::{Arc, RwLock};
 
 /// A signal that wraps a Future and updates its value when the future completes.
-pub struct FutureSignal<T: Send + Sync + 'static> {
+pub struct FutureSignal<T: Send + Sync + Clone + 'static> {
     state: Arc<RwLock<AsyncState<T>>>,
     listeners: Arc<RwLock<Vec<Listener<AsyncState<T>>>>>,
     /// Callback to notify when the future completes (using Weak to avoid cycles).
     notify_callback: Arc<RwLock<Option<Box<dyn Fn() + Send + Sync>>>>,
 }
 
-impl<T: Send + Sync + 'static> FutureSignal<T> {
+impl<T: Send + Sync + Clone + 'static> FutureSignal<T> {
     /// Creates a new future signal.
     pub fn new<F>(future: F) -> Self
     where
         F: std::future::Future<Output = T> + Send + 'static,
     {
         let state = Arc::new(RwLock::new(AsyncState::Loading));
-        let listeners = Arc::new(RwLock::new(Vec::new()));
+        let listeners: Arc<RwLock<Vec<Listener<AsyncState<T>>>>> = Arc::new(RwLock::new(Vec::new()));
         let notify_callback: Arc<RwLock<Option<Box<dyn Fn() + Send + Sync>>>> =
             Arc::new(RwLock::new(None));
 
@@ -29,10 +29,15 @@ impl<T: Send + Sync + 'static> FutureSignal<T> {
         tasks::spawn(async move {
             let result = future.await;
 
+            // Update state
             if let Ok(mut write) = state_clone.write() {
                 *write = AsyncState::Ready(result);
             }
 
+            // Call on_complete callback (which can trigger AppContext updates)
+            // Note: We can't notify listeners directly from async context because
+            // Listener<T> is not Send. Listeners will be notified when notify() is
+            // called synchronously (e.g., from AppContext update cycle).
             if let Ok(callback_guard) = callback_clone.read() {
                 if let Some(callback) = callback_guard.as_ref() {
                     callback();
@@ -57,7 +62,7 @@ impl<T: Send + Sync + 'static> FutureSignal<T> {
     }
 }
 
-impl<T: Send + Sync + 'static> Signal<AsyncState<T>> for FutureSignal<T> {
+impl<T: Send + Sync + Clone + 'static> Signal<AsyncState<T>> for FutureSignal<T> {
     fn get(&self) -> Ref<'_, AsyncState<T>> {
         let lock = self.state.read().unwrap();
         Ref::ReadGuard(lock)
@@ -67,7 +72,7 @@ impl<T: Send + Sync + 'static> Signal<AsyncState<T>> for FutureSignal<T> {
         // FutureSignal is read-only from the outside perspective
     }
 
-    fn listen(&mut self, listener: Listener<AsyncState<T>>) {
+    fn listen(&self, listener: Listener<AsyncState<T>>) {
         self.listeners.write().unwrap().push(listener);
     }
 
@@ -83,7 +88,7 @@ impl<T: Send + Sync + 'static> Signal<AsyncState<T>> for FutureSignal<T> {
     }
 }
 
-impl<T: Send + Sync + 'static> Clone for FutureSignal<T> {
+impl<T: Send + Sync + Clone + 'static> Clone for FutureSignal<T> {
     fn clone(&self) -> Self {
         Self {
             state: self.state.clone(),

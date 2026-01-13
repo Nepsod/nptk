@@ -7,7 +7,7 @@ use std::rc::Rc;
 /// You can also mutate the inner value, but only in a set scope via [StateSignal::mutate].
 pub struct StateSignal<T: 'static> {
     value: Rc<RefCell<T>>,
-    listeners: Vec<Rc<Listener<T>>>,
+    listeners: Rc<RefCell<Vec<Rc<Listener<T>>>>>,
 }
 
 impl<T: 'static> StateSignal<T> {
@@ -15,7 +15,7 @@ impl<T: 'static> StateSignal<T> {
     pub fn new(value: T) -> Self {
         Self {
             value: Rc::new(RefCell::new(value)),
-            listeners: Vec::with_capacity(1),
+            listeners: Rc::new(RefCell::new(Vec::with_capacity(1))),
         }
     }
 
@@ -35,15 +35,15 @@ impl<T: 'static> Signal<T> for StateSignal<T> {
         self.mutate(move |old| *old = value);
     }
 
-    fn listen(&mut self, listener: Listener<T>) {
+    fn listen(&self, listener: Listener<T>) {
         // Use a more robust deduplication approach based on function content hash
         // Since we can't easily compare function pointers, we'll use a simpler approach
         // and just add the listener (the performance impact is minimal for typical use cases)
-        self.listeners.push(Rc::new(listener));
+        self.listeners.borrow_mut().push(Rc::new(listener));
     }
 
     fn notify(&self) {
-        for listener in &self.listeners {
+        for listener in self.listeners.borrow().iter() {
             listener(self.get());
         }
     }

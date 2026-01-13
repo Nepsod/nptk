@@ -128,14 +128,14 @@ async fn test_get_user_special_file() {
     
     // At least Desktop should be available (has fallback)
     let desktop_file = get_user_special_file(UserDirectory::Desktop);
-    assert!(desktop_file.is_ok());
+    assert!(desktop_file.await.is_ok());
     
     // Other directories may or may not exist, but should not error
     let docs_file = get_user_special_file(UserDirectory::Documents);
-    assert!(docs_file.is_ok());
+    assert!(docs_file.await.is_ok());
     
     let download_file = get_user_special_file(UserDirectory::Download);
-    assert!(download_file.is_ok());
+    assert!(download_file.await.is_ok());
 }
 
 #[tokio::test]

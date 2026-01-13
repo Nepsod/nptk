@@ -9,7 +9,7 @@ use crate::signal::fixed::FixedSignal;
 use crate::signal::future::FutureSignal;
 use crate::signal::memoized::MemoizedSignal;
 use crate::signal::state::StateSignal;
-use crate::signal::Signal;
+use crate::signal::{MaybeSignal, Signal};
 use crate::vgi::GpuContext;
 use nptk_theme::id::WidgetId;
 use std::sync::Arc;
@@ -87,7 +87,7 @@ impl AppContext {
     /// Hook the given [Signal] to the [UpdateManager] of this application.
     ///
     /// This makes the signal reactive, so it will notify the renderer when the inner value changes.
-    pub fn hook_signal<T: 'static, S: Signal<T>>(&self, signal: &mut S) {
+    pub fn hook_signal<T: 'static, S: Signal<T>>(&self, signal: &S) {
         let update = self.update();
 
         signal.listen(Box::new(move |_| {
@@ -98,8 +98,8 @@ impl AppContext {
     /// Hook the given [Signal] to the [UpdateManager] of this application and return it.
     ///
     /// See [AppContext::hook_signal] for more.
-    pub fn use_signal<T: 'static, S: Signal<T>>(&self, mut signal: S) -> S {
-        self.hook_signal(&mut signal);
+    pub fn use_signal<T: 'static, S: Signal<T>>(&self, signal: S) -> S {
+        self.hook_signal(&signal);
 
         signal
     }
@@ -124,10 +124,36 @@ impl AppContext {
         self.use_signal(EvalSignal::new(eval))
     }
 
+    /// Creates a callback signal that returns [Update] and is already hooked into the app lifecycle.
+    ///
+    /// This is a convenience method for creating button callbacks and other event handlers
+    /// that need to return `MaybeSignal<Update>`. It eliminates the need for `.hook(&context).maybe()`.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use nptk_core::app::context::AppContext;
+    /// use nptk_core::app::update::Update;
+    /// use nptk_core::signal::state::StateSignal;
+    ///
+    /// // Before:
+    /// // EvalSignal::new(move || { ... }).hook(&context).maybe()
+    ///
+    /// // After:
+    /// context.callback(move || {
+    ///     // callback logic
+    ///     Update::DRAW
+    /// })
+    /// ```
+    pub fn callback(&self, f: impl Fn() -> Update + 'static) -> MaybeSignal<Update> {
+        let signal = EvalSignal::new(f);
+        MaybeSignal::signal(Box::new(self.use_signal(signal)))
+    }
+
     /// Shortcut for creating and hooking a [FutureSignal] into the application lifecycle.
     pub fn use_future<T, F>(&self, future: F) -> FutureSignal<T>
     where
-        T: Send + Sync + 'static,
+        T: Send + Sync + Clone + 'static,
         F: std::future::Future<Output = T> + Send + 'static,
     {
         let signal = FutureSignal::new(future);

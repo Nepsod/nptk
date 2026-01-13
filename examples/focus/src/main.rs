@@ -15,34 +15,28 @@ impl Application for FocusApp {
             Box::new({
                 let clicked_message = clicked_message.clone();
                 Button::new(Text::new("Button 1".to_string())).with_on_pressed(
-                    EvalSignal::new(move || {
+                    context.callback(move || {
                         clicked_message.set("Button 1 clicked!".to_string());
                         Update::DRAW
-                    })
-                    .hook(&context)
-                    .maybe(),
+                    }),
                 )
             }),
             Box::new({
                 let clicked_message = clicked_message.clone();
                 Button::new(Text::new("Button 2".to_string())).with_on_pressed(
-                    EvalSignal::new(move || {
+                    context.callback(move || {
                         clicked_message.set("Button 2 clicked!".to_string());
                         Update::DRAW
-                    })
-                    .hook(&context)
-                    .maybe(),
+                    }),
                 )
             }),
             Box::new({
                 let clicked_message = clicked_message.clone();
                 Button::new(Text::new("Button 3".to_string())).with_on_pressed(
-                    EvalSignal::new(move || {
+                    context.callback(move || {
                         clicked_message.set("Button 3 clicked!".to_string());
                         Update::DRAW
-                    })
-                    .hook(&context)
-                    .maybe(),
+                    }),
                 )
             }),
             Box::new(Text::new(

@@ -76,7 +76,7 @@ where
 
     fn set_value(&self, _: U) {}
 
-    fn listen(&mut self, _: Listener<U>) {}
+    fn listen(&self, _: Listener<U>) {}
 
     fn notify(&self) {
         self.invalidate_cache();

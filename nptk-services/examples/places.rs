@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\nSpecial User Directories:");
     for dir in &directories {
-        match get_user_special_file(*dir) {
+        match get_user_special_file(*dir).await {
             Ok(Some(file)) => {
                 println!("  {:?}: {}", dir, file.uri());
             }

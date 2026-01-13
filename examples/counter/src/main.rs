@@ -14,13 +14,10 @@ impl Application for MyApp {
 
                 Box::new(
                     Button::new(Text::new("Increase".to_string())).with_on_pressed(
-                        EvalSignal::new(move || {
+                        context.callback(move || {
                             counter.set(*counter.get() + 1);
-
                             Update::DRAW
-                        })
-                        .hook(&context)
-                        .maybe(),
+                        }),
                     ),
                 )
             },
@@ -29,13 +26,10 @@ impl Application for MyApp {
 
                 Box::new(
                     Button::new(Text::new("Decrease".to_string())).with_on_pressed(
-                        EvalSignal::new(move || {
+                        context.callback(move || {
                             counter.set(*counter.get() - 1);
-
                             Update::DRAW
-                        })
-                        .hook(&context)
-                        .maybe(),
+                        }),
                     ),
                 )
             },
