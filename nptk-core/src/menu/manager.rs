@@ -14,6 +14,8 @@ use std::sync::Arc;
 pub struct MenuManager {
     /// Map from MenuCommand to action callbacks
     command_actions: HashMap<u32, Arc<dyn Fn() -> Update + Send + Sync>>,
+    /// Map from MenuCommand to status tip text
+    status_tips: HashMap<u32, String>,
 }
 
 impl MenuManager {
@@ -21,6 +23,7 @@ impl MenuManager {
     pub fn new() -> Self {
         Self {
             command_actions: HashMap::new(),
+            status_tips: HashMap::new(),
         }
     }
 
@@ -71,6 +74,27 @@ impl MenuManager {
             .keys()
             .map(|&id| MenuCommand::from_u32(id))
             .collect()
+    }
+
+    /// Register a status tip for a menu command
+    pub fn register_status_tip(&mut self, command: MenuCommand, status_tip: impl Into<String>) {
+        let id = command.to_u32();
+        self.status_tips.insert(id, status_tip.into());
+    }
+
+    /// Get the status tip for a command
+    pub fn get_status_tip(&self, command: MenuCommand) -> Option<&String> {
+        let id = command.to_u32();
+        self.status_tips.get(&id)
+    }
+
+    /// Register status tips from menu items in a template
+    pub fn register_status_tips_from_template(&mut self, template: &MenuTemplate) {
+        for item in &template.items {
+            if let Some(ref status_tip) = item.status_tip {
+                self.register_status_tip(item.id, status_tip.clone());
+            }
+        }
     }
 }
 

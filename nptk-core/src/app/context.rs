@@ -1,3 +1,4 @@
+use crate::app::action::ActionCallbackManager;
 use crate::app::diagnostics::Diagnostics;
 use crate::app::focus::{FocusId, SharedFocusManager};
 use crate::app::popup::PopupManager;
@@ -30,6 +31,7 @@ pub struct AppContext {
     focus_manager: SharedFocusManager,
     pub menu_manager: ContextMenuState,
     pub shortcut_registry: ShortcutRegistry,
+    pub action_callbacks: ActionCallbackManager,
     pub popup_manager: PopupManager,
     pub tooltip_manager: TooltipRequestManager,
     pub settings: Arc<SettingsRegistry>,
@@ -44,6 +46,7 @@ impl AppContext {
         focus_manager: SharedFocusManager,
         menu_manager: ContextMenuState,
         shortcut_registry: ShortcutRegistry,
+        action_callbacks: ActionCallbackManager,
         popup_manager: PopupManager,
         tooltip_manager: TooltipRequestManager,
         settings: Arc<SettingsRegistry>,
@@ -55,6 +58,7 @@ impl AppContext {
             focus_manager,
             menu_manager,
             shortcut_registry,
+            action_callbacks,
             popup_manager,
             tooltip_manager,
             settings,

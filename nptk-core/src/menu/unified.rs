@@ -16,6 +16,8 @@ pub struct MenuItem {
     pub label: String,
     /// Optional keyboard shortcut text (e.g., "Ctrl+N")
     pub shortcut: Option<String>,
+    /// Optional status tip text shown in status bar when hovering over the item
+    pub status_tip: Option<String>,
     /// Whether the menu item is enabled/clickable
     pub enabled: bool,
     /// Whether the menu item is checked (for toggle items)
@@ -33,6 +35,7 @@ impl MenuItem {
             id,
             label: label.into(),
             shortcut: None,
+            status_tip: None,
             enabled: true,
             checked: false,
             submenu: None,
@@ -46,6 +49,7 @@ impl MenuItem {
             id: MenuCommand::Custom(0xFFFF),
             label: "---".to_string(),
             shortcut: None,
+            status_tip: None,
             enabled: false,
             checked: false,
             submenu: None,
@@ -61,6 +65,12 @@ impl MenuItem {
     /// Set the keyboard shortcut
     pub fn with_shortcut(mut self, shortcut: impl Into<String>) -> Self {
         self.shortcut = Some(shortcut.into());
+        self
+    }
+
+    /// Set the status tip text (shown in status bar when hovering)
+    pub fn with_status_tip(mut self, status_tip: impl Into<String>) -> Self {
+        self.status_tip = Some(status_tip.into());
         self
     }
 
