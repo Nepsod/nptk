@@ -326,6 +326,44 @@ pub trait Widget {
     fn set_tooltip(&mut self, _tooltip: Option<String>) {
         // Default: do nothing
     }
+
+    /// Check if this widget is currently visible.
+    ///
+    /// The default implementation returns `true`. Widgets can override this method
+    /// to provide dynamic visibility control. When a widget returns `false`, it should
+    /// set `Display::None` in its `layout_style()` method to exclude it from layout calculations.
+    ///
+    /// This method is used by the layout system to determine if a widget should be
+    /// included in layout calculations and rendered.
+    ///
+    /// # Implementation Pattern
+    ///
+    /// Widgets should use `MaybeSignal<bool>` for reactive visibility:
+    ///
+    /// ```rust,no_run
+    /// struct MyWidget {
+    ///     visible: MaybeSignal<bool>,
+    ///     // ...
+    /// }
+    ///
+    /// impl Widget for MyWidget {
+    ///     fn is_visible(&self) -> bool {
+    ///         *self.visible.get()
+    ///     }
+    ///
+    ///     fn layout_style(&self) -> StyleNode {
+    ///         let mut style = LayoutStyle::default();
+    ///         if !self.is_visible() {
+    ///             style.display = Display::None;
+    ///         }
+    ///         StyleNode { style, children: vec![] }
+    ///     }
+    ///     // ...
+    /// }
+    /// ```
+    fn is_visible(&self) -> bool {
+        true
+    }
 }
 
 /// An extension trait for widgets with a single child widget.
