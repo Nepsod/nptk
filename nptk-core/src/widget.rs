@@ -333,16 +333,21 @@ pub trait Widget {
     /// to provide dynamic visibility control. When a widget returns `false`, it should
     /// set `Display::None` in its `layout_style()` method to exclude it from layout calculations.
     ///
-    /// This method is used by the layout system to determine if a widget should be
-    /// included in layout calculations and rendered.
+    /// **Note:** The layout system does not call this method directly. It determines visibility
+    /// by checking `Display::None` in the `layout_style()` result. Widgets should call
+    /// `is_visible()` from within their `layout_style()` implementation to conditionally set
+    /// `Display::None`.
     ///
     /// # Implementation Pattern
     ///
-    /// Widgets should use `MaybeSignal<bool>` for reactive visibility:
+    /// Widgets should use `StateSignal<bool>` for reactive visibility:
     ///
     /// ```rust,no_run
+    /// use nptk_core::layout::{Display, LayoutStyle, StyleNode};
+    /// use nptk_core::signal::state::StateSignal;
+    ///
     /// struct MyWidget {
-    ///     visible: MaybeSignal<bool>,
+    ///     visible: StateSignal<bool>,
     ///     // ...
     /// }
     ///
