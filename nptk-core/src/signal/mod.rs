@@ -3,7 +3,7 @@ use crate::reference::Ref;
 use crate::signal::derived::DerivedSignal;
 use crate::signal::fixed::FixedSignal;
 use crate::signal::map::MapSignal;
-use std::rc::Rc;
+use std::sync::Arc;
 
 /// Contains the [FixedSignal] signal.
 pub mod fixed;
@@ -36,7 +36,7 @@ pub mod async_state;
 pub mod future;
 
 /// Listener function for [Signal].
-pub type Listener<T> = Box<dyn Fn(Ref<T>)>;
+pub type Listener<T> = Box<dyn Fn(Ref<T>) + Send + Sync>;
 
 /// Boxed trait object for [Signal].
 pub type BoxedSignal<T> = Box<dyn Signal<T>>;
@@ -55,7 +55,7 @@ pub type BoxedSignal<T> = Box<dyn Signal<T>>;
 ///
 /// [use_signal]: AppContext::use_signal
 /// [RefCell]: std::cell::RefCell
-pub trait Signal<T: 'static>: 'static {
+pub trait Signal<T: Send + Sync + 'static>: Send + Sync + 'static {
     /// Get a reference to the current value of the signal.
     fn get(&self) -> Ref<'_, T>;
 
@@ -88,7 +88,7 @@ pub trait Signal<T: 'static>: 'static {
     /// Converts this signal into a [MapSignal] and applies the given mapping function.
     ///
     /// See [MaybeSignal::map] for more.
-    fn map<U: 'static>(&self, map: impl Fn(Ref<T>) -> Ref<U> + 'static) -> MapSignal<T, U>
+    fn map<U: Send + Sync + 'static>(&self, map: impl Fn(Ref<T>) -> Ref<U> + Send + Sync + 'static) -> MapSignal<T, U>
     where
         Self: Sized,
     {
@@ -109,9 +109,9 @@ pub trait Signal<T: 'static>: 'static {
     /// let counter = StateSignal::new(5);
     /// let doubled = counter.derived(|val| *val * 2);
     /// ```
-    fn derived<U: 'static + Clone>(
+    fn derived<U: Send + Sync + 'static + Clone>(
         &self,
-        compute: impl Fn(Ref<T>) -> U + 'static,
+        compute: impl Fn(Ref<T>) -> U + Send + Sync + 'static,
     ) -> DerivedSignal<T, U>
     where
         Self: Sized,
@@ -134,14 +134,14 @@ pub trait Signal<T: 'static>: 'static {
 }
 
 /// A value which may be a signal or a fixed value.
-pub enum MaybeSignal<T: 'static> {
+pub enum MaybeSignal<T: Send + Sync + 'static> {
     /// A signal.
     Signal(BoxedSignal<T>),
-    /// A fixed value wrapped inside an [Rc].
-    Value(Rc<T>),
+    /// A fixed value wrapped inside an [Arc].
+    Value(Arc<T>),
 }
 
-impl<T: 'static> MaybeSignal<T> {
+impl<T: Send + Sync + 'static> MaybeSignal<T> {
     /// Wrap a [Signal] inside a [MaybeSignal].
     pub fn signal(signal: BoxedSignal<T>) -> Self {
         Self::Signal(signal)
@@ -149,7 +149,7 @@ impl<T: 'static> MaybeSignal<T> {
 
     /// Wrap a value inside a [MaybeSignal].
     pub fn value(value: T) -> Self {
-        Self::Value(Rc::new(value))
+        Self::Value(Arc::new(value))
     }
 
     /// Get a reference to the current value.
@@ -159,7 +159,7 @@ impl<T: 'static> MaybeSignal<T> {
     pub fn get(&self) -> Ref<'_, T> {
         match self {
             MaybeSignal::Signal(signal) => signal.get(),
-            MaybeSignal::Value(value) => Ref::Rc(value.clone()),
+            MaybeSignal::Value(value) => Ref::Arc(value.clone()),
         }
     }
 
@@ -184,44 +184,44 @@ impl<T: 'static> MaybeSignal<T> {
     /// Applies the given mapping function to the signal.
     ///
     /// Returns a [MaybeSignal] containing a [MapSignal] which maps the inner value of the signal.
-    pub fn map<U: 'static + Clone>(self, map: impl Fn(Ref<T>) -> Ref<U> + 'static) -> MaybeSignal<U> {
+    pub fn map<U: Send + Sync + 'static + Clone>(self, map: impl Fn(Ref<T>) -> Ref<U> + Send + Sync + 'static) -> MaybeSignal<U> {
         let signal = self.into_signal();
 
         MaybeSignal::signal(Box::new(MapSignal::new(signal, map)))
     }
 }
 
-impl<T: Default + 'static> Default for MaybeSignal<T> {
+impl<T: Default + Send + Sync + 'static> Default for MaybeSignal<T> {
     fn default() -> Self {
         Self::value(T::default())
     }
 }
 
-impl<T: 'static> From<T> for MaybeSignal<T> {
+impl<T: Send + Sync + 'static> From<T> for MaybeSignal<T> {
     fn from(value: T) -> Self {
         Self::value(value)
     }
 }
 
-impl<T: 'static> From<BoxedSignal<T>> for MaybeSignal<T> {
+impl<T: Send + Sync + 'static> From<BoxedSignal<T>> for MaybeSignal<T> {
     fn from(signal: BoxedSignal<T>) -> Self {
         Self::signal(signal)
     }
 }
 
-impl<'a, T: 'static> From<&'a BoxedSignal<T>> for MaybeSignal<T> {
+impl<'a, T: Send + Sync + 'static> From<&'a BoxedSignal<T>> for MaybeSignal<T> {
     fn from(value: &'a BoxedSignal<T>) -> Self {
         Self::signal(value.dyn_clone())
     }
 }
 
-impl<T: 'static, U: 'static + Clone> From<MapSignal<T, U>> for MaybeSignal<U> {
+impl<T: Send + Sync + 'static, U: Send + Sync + 'static + Clone> From<MapSignal<T, U>> for MaybeSignal<U> {
     fn from(value: MapSignal<T, U>) -> Self {
         Self::signal(Box::new(value))
     }
 }
 
-impl<T: 'static> Clone for MaybeSignal<T> {
+impl<T: Send + Sync + 'static> Clone for MaybeSignal<T> {
     fn clone(&self) -> Self {
         match self {
             MaybeSignal::Signal(signal) => MaybeSignal::signal(signal.dyn_clone()),

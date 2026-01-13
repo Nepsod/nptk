@@ -23,6 +23,7 @@ use nptk_theme::properties::ThemeProperty;
 use nptk_theme::theme::Theme;
 use crate::menu_popup::MenuPopup;
 use std::sync::Arc;
+use async_trait::async_trait;
 
 /// Represents a single breadcrumb item in the navigation path
 #[derive(Clone, Debug)]
@@ -678,6 +679,7 @@ impl WidgetLayoutExt for Breadcrumbs {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for Breadcrumbs {
     fn render(
         &mut self,
@@ -868,7 +870,7 @@ impl Widget for Breadcrumbs {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
         let items = self.get_items_vec();
         let items_len = items.len();
@@ -924,7 +926,7 @@ impl Widget for Breadcrumbs {
                         popup_layout.layout.size.width = popup_width as f32;
                         popup_layout.layout.size.height = popup_height as f32;
 
-                        let popup_update = popup.update(&popup_layout, _context.clone(), info);
+                        let popup_update = popup.update(&popup_layout, _context.clone(), info).await;
                         update |= popup_update;
 
                         // If popup returns FORCE, it means an item was selected - close the popup

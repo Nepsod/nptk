@@ -10,6 +10,7 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use async_trait::async_trait;
 
 /// An image widget that renders a brush-backed bitmap inside the layout rect.
 ///
@@ -75,6 +76,7 @@ impl WidgetLayoutExt for Image {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for Image {
     fn render(
         &mut self,
@@ -107,7 +109,7 @@ impl Widget for Image {
         }
     }
 
-    fn update(&mut self, _: &LayoutNode, _: AppContext, _: &mut AppInfo) -> Update {
+    async fn update(&mut self, _layout: &LayoutNode, _context: AppContext, _info: &mut AppInfo) -> Update {
         Update::empty()
     }
 

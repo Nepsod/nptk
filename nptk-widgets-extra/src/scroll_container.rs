@@ -14,8 +14,9 @@ use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton, MouseScrollDelta};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use async_trait::async_trait;
 
-/// Vertical scrollbar position
+/// Determines when scrollbars should be shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VerticalScrollbarPosition {
     /// Position scrollbar on the left side
@@ -646,6 +647,7 @@ impl Default for ScrollContainer {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for ScrollContainer {
     fn widget_id(&self) -> WidgetId {
         self.widget_id()
@@ -832,7 +834,7 @@ impl Widget for ScrollContainer {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         // Update child
@@ -844,7 +846,7 @@ impl Widget for ScrollContainer {
                 layout
             };
 
-            update |= child.update(child_layout, context.clone(), info);
+            update |= child.update(child_layout, context.clone(), info).await;
 
             // Update content size based on child's layout
             self.content_size = Vector2::new(

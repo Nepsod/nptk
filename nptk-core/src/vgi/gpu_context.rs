@@ -12,6 +12,7 @@ use vello::wgpu;
 ///
 /// This is similar to `vello::util::DeviceHandle` but uses our own structure
 /// to ensure compatibility with our GpuContext.
+#[derive(Clone, Debug)]
 pub struct DeviceHandle {
     /// Adapter used to create the logical device.
     pub adapter: wgpu::Adapter,
@@ -153,7 +154,7 @@ impl GpuContext {
     /// * `Ok(DeviceHandle)` if device creation succeeded
     /// * `Err(String)` if device creation failed
     pub async fn create_device_from_adapter(
-        &mut self,
+        &self,
         adapter: &wgpu::Adapter,
     ) -> Result<DeviceHandle, String> {
         log::debug!("Creating device from adapter (async)...");
@@ -214,7 +215,7 @@ impl GpuContext {
     /// Note: The device is NOT automatically added to the internal list.
     /// Call `add_device()` if you want to store it.
     pub async fn create_device_from_first_adapter(
-        &mut self,
+        &self,
         backends: wgpu::Backends,
     ) -> Result<DeviceHandle, String> {
         let adapters = self.enumerate_adapters(backends);

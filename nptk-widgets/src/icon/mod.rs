@@ -9,6 +9,7 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use vello_svg::usvg;
@@ -142,6 +143,7 @@ impl Icon {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for Icon {
     fn render(
         &mut self,
@@ -233,7 +235,7 @@ impl Widget for Icon {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, _: &mut AppInfo) -> Update {
+    async fn update(&mut self, _layout: &LayoutNode, context: AppContext, _info: &mut AppInfo) -> Update {
         // Handle reactive icon_name and size changes for XDG icons
         if let (Some(ref icon_name_signal), Some(ref registry)) = (&self.icon_name, &self.icon_registry) {
             let icon_name = icon_name_signal.get().clone();

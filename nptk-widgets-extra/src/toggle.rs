@@ -14,6 +14,7 @@ use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
 use nptk_theme::properties::ThemeProperty;
 use nptk_theme::theme::Theme;
+use async_trait::async_trait;
 
 /// A toggle/switch button widget with Win8 Metro style.
 ///
@@ -97,6 +98,7 @@ impl WidgetLayoutExt for Toggle {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for Toggle {
     fn render(
         &mut self,
@@ -233,7 +235,7 @@ impl Widget for Toggle {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, _: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         if self.disabled {

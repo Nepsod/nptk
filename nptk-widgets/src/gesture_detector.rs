@@ -8,6 +8,7 @@ use nptk_core::widget::{BoxedWidget, Widget};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use async_trait::async_trait;
 
 /// A widget to detect gestures like pressing or releasing the left mouse button.
 /// It can also contain a child widget.
@@ -168,6 +169,7 @@ impl GestureDetector {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for GestureDetector {
     fn render(
         &mut self,
@@ -185,7 +187,7 @@ impl Widget for GestureDetector {
         self.child.layout_style()
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         if let Some(cursor) = info.cursor_pos {
@@ -195,7 +197,7 @@ impl Widget for GestureDetector {
             }
         }
 
-        update |= self.child.update(layout, context, info);
+        update |= self.child.update(layout, context, info).await;
 
         update
     }

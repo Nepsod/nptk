@@ -26,6 +26,7 @@ use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use nptk_core::vgi::Graphics;
 use std::sync::Arc;
+use async_trait::async_trait;
 
 /// A popup menu widget that displays a menu template
 pub struct MenuPopup {
@@ -129,6 +130,7 @@ impl WidgetLayoutExt for MenuPopup {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for MenuPopup {
     fn widget_id(&self) -> WidgetId {
         WidgetId::new("nptk-widgets", "MenuPopup")
@@ -212,7 +214,7 @@ impl Widget for MenuPopup {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         let popup_position = Point::new(
@@ -306,7 +308,7 @@ impl Widget for MenuPopup {
                     layout: child_layout_struct,
                     children: Vec::new(),
                 };
-                update |= child.update(&child_layout, context.clone(), info);
+                update |= child.update(&child_layout, context.clone(), info).await;
             }
         }
 

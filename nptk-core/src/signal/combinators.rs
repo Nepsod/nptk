@@ -14,7 +14,7 @@ use crate::signal::{BoxedSignal, Signal};
 /// let b = StateSignal::new(2);
 /// let combined = zip(a.dyn_clone(), b.dyn_clone()); // Signal<(i32, i32)>
 /// ```
-pub fn zip<A: 'static + Clone, B: 'static + Clone>(
+pub fn zip<A: Send + Sync + 'static + Clone, B: Send + Sync + 'static + Clone>(
     signal_a: BoxedSignal<A>,
     signal_b: BoxedSignal<B>,
 ) -> ZipSignal<A, B> {

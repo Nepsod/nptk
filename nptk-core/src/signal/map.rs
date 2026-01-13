@@ -1,29 +1,29 @@
 use crate::signal::{BoxedSignal, Listener, Ref, Signal};
-use std::cell::{Cell, RefCell};
-use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
 
 /// A signal wrapping another signal and applying a mapping function, when the inner value is requested.
 /// The mapping function will be cached and only re-evaluated when the inner signal changes.
 /// This signal cannot be directly mutated. Use [MapSignal::signal] to get the inner signal.
 ///
 /// Calling [Signal::set], [Signal::set_value], [Signal::listen] or [Signal::notify] has no effect.
-pub struct MapSignal<T: 'static, U: 'static> {
+pub struct MapSignal<T: Send + Sync + 'static, U: Send + Sync + 'static> {
     signal: BoxedSignal<T>,
-    map: Rc<dyn Fn(Ref<T>) -> Ref<U>>,
-    cached_value: RefCell<Option<U>>,
-    cache_generation: Cell<u64>,
-    signal_generation: Cell<u64>,
+    map: Arc<dyn Fn(Ref<T>) -> Ref<U> + Send + Sync>,
+    cached_value: RwLock<Option<U>>,
+    cache_generation: AtomicU64,
+    signal_generation: AtomicU64,
 }
 
-impl<T: 'static, U: 'static> MapSignal<T, U> {
+impl<T: Send + Sync + 'static, U: Send + Sync + 'static> MapSignal<T, U> {
     /// Create a new map signal using the given inner signal and mapping function.
-    pub fn new(signal: BoxedSignal<T>, map: impl Fn(Ref<T>) -> Ref<U> + 'static) -> Self {
+    pub fn new(signal: BoxedSignal<T>, map: impl Fn(Ref<T>) -> Ref<U> + Send + Sync + 'static) -> Self {
         Self {
             signal,
-            map: Rc::new(map),
-            cached_value: RefCell::new(None),
-            cache_generation: Cell::new(0),
-            signal_generation: Cell::new(0),
+            map: Arc::new(map),
+            cached_value: RwLock::new(None),
+            cache_generation: AtomicU64::new(0),
+            signal_generation: AtomicU64::new(0),
         }
     }
 
@@ -41,22 +41,25 @@ impl<T: 'static, U: 'static> MapSignal<T, U> {
 
     /// Invalidate the cache when the inner signal changes.
     fn invalidate_cache(&self) {
-        self.cache_generation.set(self.cache_generation.get().wrapping_add(1));
+        self.cache_generation.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Check if the cache is valid by comparing generations.
     fn is_cache_valid(&self) -> bool {
-        self.cache_generation.get() == self.signal_generation.get()
+        self.cache_generation.load(Ordering::Relaxed) == self.signal_generation.load(Ordering::Relaxed)
     }
 }
 
-impl<T: 'static, U: 'static> Signal<U> for MapSignal<T, U>
+impl<T: Send + Sync + 'static, U: Send + Sync + 'static> Signal<U> for MapSignal<T, U>
 where
     U: Clone,
 {
     fn get(&self) -> Ref<'_, U> {
         // Check if we need to update the cache
-        if !self.is_cache_valid() || self.cached_value.borrow().is_none() {
+        // Note: checking is_none() requires read lock, so we do it carefully
+        let needs_update = !self.is_cache_valid() || self.cached_value.read().unwrap().is_none();
+        
+        if needs_update {
             let mapped_value = (self.map)(self.get_unmapped());
             let owned_value = match mapped_value {
                 Ref::Owned(val) => val,
@@ -66,12 +69,12 @@ where
                 Ref::Rc(rc) => (*rc).clone(),
                 Ref::Arc(arc) => (*arc).clone(),
             };
-            *self.cached_value.borrow_mut() = Some(owned_value);
-            self.signal_generation.set(self.cache_generation.get());
+            *self.cached_value.write().unwrap() = Some(owned_value);
+            self.signal_generation.store(self.cache_generation.load(Ordering::Relaxed), Ordering::Relaxed);
         }
 
         // Return cached value
-        Ref::Owned(self.cached_value.borrow().as_ref().unwrap().clone())
+        Ref::Owned(self.cached_value.read().unwrap().as_ref().unwrap().clone())
     }
 
     fn set_value(&self, _: U) {}
@@ -88,14 +91,14 @@ where
     }
 }
 
-impl<T: 'static, U: 'static> Clone for MapSignal<T, U> {
+impl<T: Send + Sync + 'static, U: Send + Sync + 'static> Clone for MapSignal<T, U> {
     fn clone(&self) -> Self {
         Self {
             signal: self.signal.dyn_clone(),
             map: self.map.clone(),
-            cached_value: RefCell::new(None),
-            cache_generation: Cell::new(0),
-            signal_generation: Cell::new(0),
+            cached_value: RwLock::new(None),
+            cache_generation: AtomicU64::new(0),
+            signal_generation: AtomicU64::new(0),
         }
     }
 }

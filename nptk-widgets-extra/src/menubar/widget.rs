@@ -39,6 +39,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 #[cfg(feature = "global-menu")]
 use std::sync::Arc;
+use async_trait::async_trait;
 
 // MenuBarItem is re-exported from the parent module
 
@@ -374,6 +375,7 @@ impl Default for MenuBar {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for MenuBar {
     fn widget_id(&self) -> WidgetId {
         WidgetId::new("nptk-widgets", "MenuBar")
@@ -614,7 +616,7 @@ impl Widget for MenuBar {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         // Detect visibility changes and trigger layout update

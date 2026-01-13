@@ -9,12 +9,13 @@ use nptk_core::widget::Widget;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use std::future::Future;
+use async_trait::async_trait;
 
 /// Widget builder to fetch data from an asynchronous task.
 ///
 /// ### Async + UI
 /// The [WidgetFetcher] uses the application context to spawn asynchronous tasks on a global runner and construct a widget based on the result of the task.
-pub struct WidgetFetcher<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Option<T>) -> W> {
+pub struct WidgetFetcher<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Option<T>) -> W + Send + Sync> {
     result: FutureSignal<T>,
     render: F,
     widget: Option<W>,
@@ -23,7 +24,7 @@ pub struct WidgetFetcher<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Opti
     callback_registered: bool,
 }
 
-impl<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Option<T>) -> W> WidgetFetcher<T, W, F> {
+impl<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Option<T>) -> W + Send + Sync> WidgetFetcher<T, W, F> {
     /// Creates a new [WidgetFetcher] with parameters:
     /// - `future`: The future to execute.
     /// - `update`: The update to trigger when the data is updated (from loading to done).
@@ -45,7 +46,8 @@ impl<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Option<T>) -> W> WidgetF
     }
 }
 
-impl<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Option<T>) -> W> Widget for WidgetFetcher<T, W, F> {
+#[async_trait(?Send)]
+impl<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Option<T>) -> W + Send + Sync> Widget for WidgetFetcher<T, W, F> {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
@@ -70,7 +72,7 @@ impl<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Option<T>) -> W> Widget 
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         // Register notify callback only once to avoid duplicate callbacks
         if !self.callback_registered {
             let update_type = self.update;
@@ -97,7 +99,7 @@ impl<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Option<T>) -> W> Widget 
              update = self.update;
         }
 
-        self.widget.as_mut().unwrap().update(layout, context, info) | update
+        self.widget.as_mut().unwrap().update(layout, context, info).await | update
     }
 
     fn widget_id(&self) -> WidgetId {

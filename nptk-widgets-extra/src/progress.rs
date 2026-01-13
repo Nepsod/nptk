@@ -11,6 +11,7 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use async_trait::async_trait;
 
 /// A progress bar widget to display progress from `0.0` to `1.0`.
 ///
@@ -75,6 +76,7 @@ impl WidgetLayoutExt for Progress {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for Progress {
     fn render(
         &mut self,
@@ -96,7 +98,7 @@ impl Widget for Progress {
         );
     }
 
-    fn update(
+    async fn update(
         &mut self,
         _layout: &LayoutNode,
         _context: AppContext,

@@ -7,6 +7,7 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::Widget;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use async_trait::async_trait;
 
 /// A canvas widget to directly draw to the screen.
 ///
@@ -15,39 +16,41 @@ use nptk_theme::theme::Theme;
 /// ### Theming
 /// The canvas cannot be themed, since it does not draw something on itself.
 pub struct Canvas {
-    painter: Box<dyn FnMut(&mut dyn Graphics, &AppInfo)>,
+    painter: Box<dyn FnMut(&mut dyn Graphics, &mut dyn Theme, &LayoutNode, &mut AppInfo, AppContext) + Send + Sync>,
 }
 
 impl Canvas {
     /// Create a new Canvas widget from a painter function.
-    pub fn new(painter: impl FnMut(&mut dyn Graphics, &AppInfo) + 'static) -> Self {
+    pub fn new(painter: impl FnMut(&mut dyn Graphics, &mut dyn Theme, &LayoutNode, &mut AppInfo, AppContext) + Send + Sync + 'static) -> Self {
         Self {
             painter: Box::new(painter),
         }
     }
 
-    /// Set a painter function and return itself.
+    /// Set the painter function.
     pub fn with_painter(
         mut self,
-        painter: impl FnMut(&mut dyn Graphics, &AppInfo) + 'static,
+        painter: impl FnMut(&mut dyn Graphics, &mut dyn Theme, &LayoutNode, &mut AppInfo, AppContext) + Send + Sync + 'static,
     ) -> Self {
         self.painter = Box::new(painter);
         self
     }
 }
 
-impl Widget for Canvas {
+#[async_trait(?Send)]
+impl Widget for Canvas
+{
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        _: &mut dyn Theme,
-        _: &LayoutNode,
+        theme: &mut dyn Theme,
+        layout_node: &LayoutNode,
         info: &mut AppInfo,
-        _: AppContext,
+        context: AppContext,
     ) {
         let mut canvas = nptk_core::vg::Scene::new();
         let mut child_graphics = VelloGraphics::new(&mut canvas);
-        (self.painter)(&mut child_graphics, info);
+        (self.painter)(&mut child_graphics, theme, layout_node, info, context);
 
         graphics.append(&canvas, None);
     }
@@ -59,7 +62,7 @@ impl Widget for Canvas {
         }
     }
 
-    fn update(&mut self, _: &LayoutNode, _: AppContext, _: &mut AppInfo) -> Update {
+    async fn update(&mut self, _layout: &LayoutNode, _context: AppContext, _info: &mut AppInfo) -> Update {
         Update::DRAW | Update::LAYOUT
     }
 

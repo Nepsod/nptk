@@ -21,6 +21,7 @@ use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use std::sync::Arc;
+use async_trait::async_trait;
 
 // Constants
 const HEADER_HEIGHT: f32 = 32.0;
@@ -718,6 +719,7 @@ impl Default for Sidebar {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for Sidebar {
     fn widget_id(&self) -> WidgetId {
         WidgetId::new("nptk-widgets", "Sidebar")
@@ -730,7 +732,7 @@ impl Widget for Sidebar {
         }
     }
 
-    fn update(
+    async fn update(
         &mut self,
         layout: &LayoutNode,
         context: AppContext,

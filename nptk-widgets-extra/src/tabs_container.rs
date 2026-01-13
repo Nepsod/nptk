@@ -17,6 +17,8 @@ use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use async_trait::async_trait;
 
 const TAB_CORNER_RADIUS: f64 = 3.0;
 const ACCENT_INSET: f64 = 6.0;
@@ -1075,6 +1077,7 @@ impl TabsContainer {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for TabsContainer {
     fn render(
         &mut self,
@@ -1465,7 +1468,7 @@ impl Widget for TabsContainer {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         // If dynamic mode, sync signal changes from Arc<Mutex> to signal
@@ -1698,7 +1701,7 @@ impl Widget for TabsContainer {
             // Use the parent layout for content rendering (simplified approach)
             let content_layout = layout;
 
-            update |= active_tab.content.update(&content_layout, context, info);
+            update |= active_tab.content.update(&content_layout, context, info).await;
         }
 
         update

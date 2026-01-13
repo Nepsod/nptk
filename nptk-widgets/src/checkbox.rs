@@ -15,6 +15,7 @@ use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::helpers::ThemeHelper;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use async_trait::async_trait;
 
 /// The state of a checkbox widget.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -300,6 +301,7 @@ impl WidgetLayoutExt for Checkbox {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for Checkbox {
     fn render(
         &mut self,
@@ -469,7 +471,7 @@ impl Widget for Checkbox {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, _: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
         let on_change = *self.on_change.get();
 

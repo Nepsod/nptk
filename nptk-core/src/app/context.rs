@@ -99,7 +99,7 @@ impl AppContext {
     /// Hook the given [Signal] to the [UpdateManager] of this application.
     ///
     /// This makes the signal reactive, so it will notify the renderer when the inner value changes.
-    pub fn hook_signal<T: 'static, S: Signal<T>>(&self, signal: &S) {
+    pub fn hook_signal<T: Send + Sync + 'static, S: Signal<T>>(&self, signal: &S) {
         let update = self.update();
 
         signal.listen(Box::new(move |_| {
@@ -110,29 +110,29 @@ impl AppContext {
     /// Hook the given [Signal] to the [UpdateManager] of this application and return it.
     ///
     /// See [AppContext::hook_signal] for more.
-    pub fn use_signal<T: 'static, S: Signal<T>>(&self, signal: S) -> S {
+    pub fn use_signal<T: Send + Sync + 'static, S: Signal<T>>(&self, signal: S) -> S {
         self.hook_signal(&signal);
 
         signal
     }
 
     /// Shortcut for creating and hooking a [StateSignal] into the application lifecycle.
-    pub fn use_state<T: 'static>(&self, value: T) -> StateSignal<T> {
+    pub fn use_state<T: Send + Sync + 'static>(&self, value: T) -> StateSignal<T> {
         self.use_signal(StateSignal::new(value))
     }
 
     /// Shortcut for creating and hooking a [MemoizedSignal] into the application lifecycle.
-    pub fn use_memoized<T: 'static>(&self, value: impl Fn() -> T + 'static) -> MemoizedSignal<T> {
+    pub fn use_memoized<T: Send + Sync + 'static>(&self, value: impl Fn() -> T + Send + Sync + 'static) -> MemoizedSignal<T> {
         self.use_signal(MemoizedSignal::new(value))
     }
 
     /// Shortcut for creating and hooking a [FixedSignal] into the application lifecycle.
-    pub fn use_fixed<T: 'static>(&self, value: T) -> FixedSignal<T> {
+    pub fn use_fixed<T: Send + Sync + 'static>(&self, value: T) -> FixedSignal<T> {
         self.use_signal(FixedSignal::new(value))
     }
 
     /// Shortcut for creating and hooking an [EvalSignal] into the application lifecycle.
-    pub fn use_eval<T: 'static + Clone>(&self, eval: impl Fn() -> T + 'static) -> EvalSignal<T> {
+    pub fn use_eval<T: Send + Sync + 'static + Clone>(&self, eval: impl Fn() -> T + Send + Sync + 'static) -> EvalSignal<T> {
         self.use_signal(EvalSignal::new(eval))
     }
 
@@ -157,7 +157,7 @@ impl AppContext {
     ///     Update::DRAW
     /// })
     /// ```
-    pub fn callback(&self, f: impl Fn() -> Update + 'static) -> MaybeSignal<Update> {
+    pub fn callback(&self, f: impl Fn() -> Update + Send + Sync + 'static) -> MaybeSignal<Update> {
         let signal = EvalSignal::new(f);
         MaybeSignal::signal(Box::new(self.use_signal(signal)))
     }

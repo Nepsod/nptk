@@ -6,17 +6,18 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::Widget;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use async_trait::async_trait;
 use std::time::{Duration, Instant};
 
 /// A widget that animates another widget using an animation function.
-pub struct Animator<W: Widget, A: Fn(&mut W, f32) -> Update> {
+pub struct Animator<W: Widget, A: Fn(&mut W, f32) -> Update + Send + Sync> {
     start: Instant,
     duration: Duration,
     widget: W,
     animation: A,
 }
 
-impl<W: Widget, A: Fn(&mut W, f32) -> Update> Animator<W, A> {
+impl<W: Widget, A: Fn(&mut W, f32) -> Update + Send + Sync> Animator<W, A> {
     /// Creates a new animator widget with the given duration, child widget and animation function.
     ///
     /// The animation function is called with a value between `0.0` and `1.0` based on the elapsed time since the start of the animation
@@ -31,7 +32,8 @@ impl<W: Widget, A: Fn(&mut W, f32) -> Update> Animator<W, A> {
     }
 }
 
-impl<W: Widget, A: Fn(&mut W, f32) -> Update> Widget for Animator<W, A> {
+#[async_trait(?Send)]
+impl<W: Widget, A: Fn(&mut W, f32) -> Update + Send + Sync> Widget for Animator<W, A> {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
@@ -48,10 +50,10 @@ impl<W: Widget, A: Fn(&mut W, f32) -> Update> Widget for Animator<W, A> {
         self.widget.layout_style()
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let elapsed = self.start.elapsed();
 
-        let mut update = self.widget.update(layout, context, info);
+        let mut update = self.widget.update(layout, context, info).await;
 
         if elapsed < self.duration {
             let f = elapsed.as_secs_f32() / self.duration.as_secs_f32();

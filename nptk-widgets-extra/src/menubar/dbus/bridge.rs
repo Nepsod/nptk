@@ -54,7 +54,7 @@ pub(crate) enum Command {
 /// The global menu bridge.
 pub struct Bridge {
     tx: Sender<Command>,
-    rx: Receiver<BridgeEvent>,
+    rx: Mutex<Receiver<BridgeEvent>>,
 }
 
 impl Bridge {
@@ -72,7 +72,7 @@ impl Bridge {
             })
             .ok()?;
 
-        Some(Self { tx, rx: evt_rx })
+        Some(Self { tx, rx: Mutex::new(evt_rx) })
     }
 
     pub fn update_menu(&self, snapshot: MenuSnapshot) {
@@ -85,8 +85,10 @@ impl Bridge {
 
     pub fn poll_events(&self) -> Vec<BridgeEvent> {
         let mut events = Vec::new();
-        while let Ok(event) = self.rx.try_recv() {
-            events.push(event);
+        if let Ok(rx) = self.rx.lock() {
+            while let Ok(event) = rx.try_recv() {
+                events.push(event);
+            }
         }
         events
     }

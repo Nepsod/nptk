@@ -14,6 +14,7 @@ use nptk_core::widget::{BoxedWidget, Widget, WidgetChildrenExt, WidgetLayoutExt}
 use nptk_theme::id::WidgetId;
 use nptk_theme::properties::ThemeProperty;
 use nptk_theme::theme::Theme;
+use async_trait::async_trait;
 
 /// Configuration for toolbar border lines.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,6 +116,7 @@ impl WidgetLayoutExt for Toolbar {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for Toolbar {
     fn widget_id(&self) -> WidgetId {
         WidgetId::new("nptk-widgets", "Toolbar")
@@ -230,11 +232,11 @@ impl Widget for Toolbar {
         StyleNode { style, children }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
         for (i, child) in self.children.iter_mut().enumerate() {
             if i < layout.children.len() {
-                update |= child.update(&layout.children[i], context.clone(), info);
+                update |= child.update(&layout.children[i], context.clone(), info).await;
             }
         }
         update
@@ -280,6 +282,7 @@ impl WidgetLayoutExt for ToolbarSeparator {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for ToolbarSeparator {
     fn widget_id(&self) -> WidgetId {
         WidgetId::new("nptk-widgets", "ToolbarSeparator")
@@ -329,7 +332,7 @@ impl Widget for ToolbarSeparator {
         }
     }
 
-    fn update(&mut self, _layout: &LayoutNode, _context: AppContext, _info: &mut AppInfo) -> Update {
+    async fn update(&mut self, _layout: &LayoutNode, _context: AppContext, _info: &mut AppInfo) -> Update {
         Update::empty()
     }
 }
@@ -363,6 +366,7 @@ impl WidgetLayoutExt for ToolbarSpacer {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for ToolbarSpacer {
     fn widget_id(&self) -> WidgetId {
         WidgetId::new("nptk-widgets", "ToolbarSpacer")
@@ -386,7 +390,7 @@ impl Widget for ToolbarSpacer {
         }
     }
 
-    fn update(&mut self, _layout: &LayoutNode, _context: AppContext, _info: &mut AppInfo) -> Update {
+    async fn update(&mut self, _layout: &LayoutNode, _context: AppContext, _info: &mut AppInfo) -> Update {
         Update::empty()
     }
 }

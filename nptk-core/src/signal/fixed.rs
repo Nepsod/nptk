@@ -1,29 +1,29 @@
 use crate::signal::{BoxedSignal, Listener, Ref, Signal};
-use std::rc::Rc;
+use std::sync::Arc;
 
 /// A signal with a fixed value. The inner value cannot be mutated and listeners do not exist.
-pub struct FixedSignal<T: 'static> {
-    value: Rc<T>,
+pub struct FixedSignal<T: Send + Sync + 'static> {
+    value: Arc<T>,
 }
 
-impl<T: 'static> FixedSignal<T> {
+impl<T: Send + Sync + 'static> FixedSignal<T> {
     /// Creates a new fixed signal.
     pub fn new(value: T) -> Self {
         Self {
-            value: Rc::new(value),
+            value: Arc::new(value),
         }
     }
 }
 
-impl<T: 'static> From<Rc<T>> for FixedSignal<T> {
-    fn from(value: Rc<T>) -> Self {
+impl<T: Send + Sync + 'static> From<Arc<T>> for FixedSignal<T> {
+    fn from(value: Arc<T>) -> Self {
         Self { value }
     }
 }
 
-impl<T: 'static> Signal<T> for FixedSignal<T> {
+impl<T: Send + Sync + 'static> Signal<T> for FixedSignal<T> {
     fn get(&self) -> Ref<'_, T> {
-        Ref::Rc(self.value.clone())
+        Ref::Arc(self.value.clone())
     }
 
     fn set_value(&self, _: T) {}
@@ -37,7 +37,7 @@ impl<T: 'static> Signal<T> for FixedSignal<T> {
     }
 }
 
-impl<T: 'static> Clone for FixedSignal<T> {
+impl<T: Send + Sync + 'static> Clone for FixedSignal<T> {
     fn clone(&self) -> Self {
         Self {
             value: self.value.clone(),

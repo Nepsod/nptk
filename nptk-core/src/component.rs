@@ -9,6 +9,7 @@ use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
+use async_trait::async_trait;
 
 /// A trait for creating a [Widget] from simple functions.
 ///
@@ -48,7 +49,8 @@ impl<C: Component> Composed<C> {
     }
 }
 
-impl<C: Component> Widget for Composed<C> {
+#[async_trait(?Send)]
+impl<C: Component + Send + Sync> Widget for Composed<C> {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
@@ -93,9 +95,9 @@ impl<C: Component> Widget for Composed<C> {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         if let Some(widget) = &mut self.widget {
-            widget.update(layout, context, info)
+            widget.update(layout, context, info).await
         } else {
             self.widget = Some(Box::new(self.component.build(context.clone())));
             Update::FORCE

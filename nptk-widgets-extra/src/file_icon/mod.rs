@@ -26,6 +26,7 @@ use npio::service::icon::{CachedIcon, IconRegistry};
 use nptk_services::filesystem::entry::FileEntry;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use async_trait::async_trait;
 
 use crate::file_icon::loader::request_icon_loading;
 use crate::file_icon::renderer::{render_cached_icon, render_fallback_icon};
@@ -109,6 +110,7 @@ impl FileIcon {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for FileIcon {
     fn widget_id(&self) -> WidgetId {
         WidgetId::new("nptk-widgets", "FileIcon")
@@ -121,7 +123,7 @@ impl Widget for FileIcon {
         }
     }
 
-    fn update(&mut self, _: &LayoutNode, _: AppContext, _: &mut AppInfo) -> Update {
+    async fn update(&mut self, _: &LayoutNode, _: AppContext, _: &mut AppInfo) -> Update {
         Update::empty()
     }
 

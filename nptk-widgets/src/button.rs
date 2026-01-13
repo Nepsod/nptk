@@ -14,6 +14,7 @@ use nptk_core::widget::{BoxedWidget, Widget, WidgetChildExt, WidgetLayoutExt};
 use nptk_core::window::{ElementState, KeyCode, MouseButton, PhysicalKey};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use async_trait::async_trait;
 use std::time::{Duration, Instant};
 
 /// An interactive area with a child widget that runs a closure when pressed.
@@ -318,6 +319,7 @@ impl WidgetLayoutExt for Button {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for Button {
     fn render(
         &mut self,
@@ -396,7 +398,7 @@ impl Widget for Button {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
         let old_state = self.state;
         let old_focus_state = self.focus_state;
@@ -470,7 +472,7 @@ impl Widget for Button {
         self.handle_repeat(&mut update);
 
         if !layout.children.is_empty() {
-            update |= self.child.update(&layout.children[0], context, info);
+            update |= self.child.update(&layout.children[0], context, info).await;
         }
 
         update

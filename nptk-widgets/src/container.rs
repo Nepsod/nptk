@@ -7,8 +7,9 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetChildrenExt, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use async_trait::async_trait;
 
-/// A container widget that can display and layout multiple child widgets.
+/// A simple container widget that can display and layout multiple child widgets.
 ///
 /// The layout of the children (row, column, etc.) depends on the [LayoutStyle] of the container.
 ///
@@ -114,6 +115,7 @@ impl WidgetLayoutExt for Container {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for Container {
     fn render(
         &mut self,
@@ -155,19 +157,19 @@ impl Widget for Container {
         StyleNode { style, children }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         let mut layout_index = 0;
         for child in &mut self.children {
             let child_style = child.layout_style();
             if child_style.style.display == Display::None {
-                update.insert(child.update(&Self::dummy_layout_node(), context.clone(), info));
+                update.insert(child.update(&Self::dummy_layout_node(), context.clone(), info).await);
                 continue;
             }
 
             if layout_index < layout.children.len() {
-                update.insert(child.update(&layout.children[layout_index], context.clone(), info));
+                update.insert(child.update(&layout.children[layout_index], context.clone(), info).await);
                 layout_index += 1;
             } else {
                 log::warn!(

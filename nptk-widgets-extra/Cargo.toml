@@ -21,6 +21,7 @@ log = { workspace = true }
 vello_svg = { version = "0.8.0", default-features = false }
 smol = { workspace = true }
 npio = { workspace = true }
+async-trait = { workspace = true }
 tokio = { version = "1.35", features = ["sync", "rt"] }
 
 # Dependencies moved from nptk-widgets for global-menu

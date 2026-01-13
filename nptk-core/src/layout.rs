@@ -99,6 +99,11 @@ pub struct LayoutStyle {
     pub grid_column: Line<GridPlacement>,
 }
 
+// SAFETY: LayoutStyle contains only primitive types and types from taffy which are Send + Sync.
+// The raw pointers in taffy types are used for internal optimization and don't escape the type.
+unsafe impl Send for LayoutStyle {}
+unsafe impl Sync for LayoutStyle {}
+
 impl Default for LayoutStyle {
     fn default() -> Self {
         LayoutStyle {

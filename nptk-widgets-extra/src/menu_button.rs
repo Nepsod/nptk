@@ -12,6 +12,7 @@ use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use std::sync::Arc;
+use async_trait::async_trait;
 
 use nptk_widgets::button::Button;
 pub use crate::menu_popup::MenuPopup;
@@ -278,6 +279,7 @@ impl WidgetLayoutExt for MenuButton {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for MenuButton {
     fn render(
         &mut self,
@@ -342,7 +344,7 @@ impl Widget for MenuButton {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
         let mut was_button_clicked = false;
         let cursor_pos = info.cursor_pos;
@@ -368,7 +370,7 @@ impl Widget for MenuButton {
         // Then propagate update to child
         update |= self
             .child
-            .update(&layout.children[0], context.clone(), info);
+            .update(&layout.children[0], context.clone(), info).await;
 
         if *self.is_menu_open.get() {
             if let Some(ref mut popup) = self.popup_data {
@@ -386,7 +388,7 @@ impl Widget for MenuButton {
                 popup_layout.layout.size.width = popup_width as f32;
                 popup_layout.layout.size.height = popup_height as f32;
 
-                let popup_update = popup.update(&popup_layout, context.clone(), info);
+                let popup_update = popup.update(&popup_layout, context.clone(), info).await;
                 update |= popup_update;
 
                 // If the popup returned FORCE, it means an item was selected - close the menu

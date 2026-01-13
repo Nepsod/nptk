@@ -20,6 +20,7 @@ nalgebra = { workspace = true }
 log = { workspace = true }
 smol = { workspace = true }
 npio = { workspace = true }
+async-trait = { workspace = true }
 
 [features]
 default = []

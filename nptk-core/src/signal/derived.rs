@@ -1,7 +1,7 @@
 use crate::reference::Ref;
 use crate::signal::{BoxedSignal, Listener, Signal};
-use std::cell::{Cell, RefCell};
-use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
 
 /// A signal that derives its value from another signal using a computation function.
 ///
@@ -19,23 +19,23 @@ use std::rc::Rc;
 /// let counter = StateSignal::new(5);
 /// let doubled = counter.derived(|val| *val * 2); // Automatically tracks counter changes
 /// ```
-pub struct DerivedSignal<T: 'static, U: 'static> {
+pub struct DerivedSignal<T: Send + Sync + 'static, U: Send + Sync + 'static> {
     source: BoxedSignal<T>,
-    compute: Rc<dyn Fn(Ref<T>) -> U>,
-    cached_value: RefCell<Option<U>>,
-    cache_generation: Cell<u64>,
-    source_generation: Cell<u64>,
+    compute: Arc<dyn Fn(Ref<T>) -> U + Send + Sync>,
+    cached_value: RwLock<Option<U>>,
+    cache_generation: AtomicU64,
+    source_generation: AtomicU64,
 }
 
-impl<T: 'static, U: 'static> DerivedSignal<T, U> {
+impl<T: Send + Sync + 'static, U: Send + Sync + 'static> DerivedSignal<T, U> {
     /// Create a new derived signal using the given source signal and computation function.
-    pub fn new(signal: BoxedSignal<T>, compute: impl Fn(Ref<T>) -> U + 'static) -> Self {
+    pub fn new(signal: BoxedSignal<T>, compute: impl Fn(Ref<T>) -> U + Send + Sync + 'static) -> Self {
         Self {
             source: signal,
-            compute: Rc::new(compute),
-            cached_value: RefCell::new(None),
-            cache_generation: Cell::new(0),
-            source_generation: Cell::new(0),
+            compute: Arc::new(compute),
+            cached_value: RwLock::new(None),
+            cache_generation: AtomicU64::new(0),
+            source_generation: AtomicU64::new(0),
         }
     }
 
@@ -53,29 +53,31 @@ impl<T: 'static, U: 'static> DerivedSignal<T, U> {
 
     /// Invalidate the cache when the source signal changes.
     fn invalidate_cache(&self) {
-        self.cache_generation.set(self.cache_generation.get().wrapping_add(1));
+        self.cache_generation.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Check if the cache is valid by comparing generations.
     fn is_cache_valid(&self) -> bool {
-        self.cache_generation.get() == self.source_generation.get()
+        self.cache_generation.load(Ordering::Relaxed) == self.source_generation.load(Ordering::Relaxed)
     }
 }
 
-impl<T: 'static, U: 'static> Signal<U> for DerivedSignal<T, U>
+impl<T: Send + Sync + 'static, U: Send + Sync + 'static> Signal<U> for DerivedSignal<T, U>
 where
     U: Clone,
 {
     fn get(&self) -> Ref<'_, U> {
         // Check if we need to update the cache
-        if !self.is_cache_valid() || self.cached_value.borrow().is_none() {
+        let needs_update = !self.is_cache_valid() || self.cached_value.read().unwrap().is_none();
+        
+        if needs_update {
             let computed_value = (self.compute)(self.get_source());
-            *self.cached_value.borrow_mut() = Some(computed_value);
-            self.source_generation.set(self.cache_generation.get());
+            *self.cached_value.write().unwrap() = Some(computed_value);
+            self.source_generation.store(self.cache_generation.load(Ordering::Relaxed), Ordering::Relaxed);
         }
 
         // Return cached value as owned
-        Ref::Owned(self.cached_value.borrow().as_ref().unwrap().clone())
+        Ref::Owned(self.cached_value.read().unwrap().as_ref().unwrap().clone())
     }
 
     fn set_value(&self, _: U) {
@@ -97,14 +99,14 @@ where
     }
 }
 
-impl<T: 'static, U: 'static> Clone for DerivedSignal<T, U> {
+impl<T: Send + Sync + 'static, U: Send + Sync + 'static> Clone for DerivedSignal<T, U> {
     fn clone(&self) -> Self {
         Self {
             source: self.source.dyn_clone(),
             compute: self.compute.clone(),
-            cached_value: RefCell::new(None),
-            cache_generation: Cell::new(0),
-            source_generation: Cell::new(0),
+            cached_value: RwLock::new(None),
+            cache_generation: AtomicU64::new(0),
+            source_generation: AtomicU64::new(0),
         }
     }
 }

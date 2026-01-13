@@ -28,6 +28,9 @@ pub mod context;
 /// Contains the [MayRunner] structure to create and run an application using `winit`.
 pub mod runner;
 
+/// Contains the [AsyncApplication] trait.
+pub mod async_app;
+
 /// Contains the focus management system.
 pub mod focus;
 

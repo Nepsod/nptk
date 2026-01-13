@@ -13,6 +13,7 @@ use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, KeyCode, MouseButton, PhysicalKey};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use async_trait::async_trait;
 
 /// Represents the state of a radio button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,6 +126,7 @@ impl WidgetLayoutExt for RadioButton {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for RadioButton {
     fn render(
         &mut self,
@@ -300,7 +302,7 @@ impl Widget for RadioButton {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         // Register with focus manager

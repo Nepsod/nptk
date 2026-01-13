@@ -6,9 +6,10 @@ use crate::signal::MaybeSignal;
 use crate::vgi::Graphics;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use async_trait::async_trait;
 
 /// A boxed widget.
-pub type BoxedWidget = Box<dyn Widget>;
+pub type BoxedWidget = Box<dyn Widget + Send + Sync>;
 
 /// The base trait for all widgets.
 ///
@@ -233,7 +234,8 @@ pub type BoxedWidget = Box<dyn Widget>;
 /// - ✅ **Simple**: No separate overlay management system needed
 /// - ✅ **Natural**: Z-ordering follows render order automatically
 /// - ✅ **Integrated**: Full access to AppInfo, fonts, events, etc.
-pub trait Widget {
+#[async_trait(?Send)]
+pub trait Widget: Send + Sync {
     /// Render the widget to the canvas.
     fn render(
         &mut self,
@@ -301,7 +303,7 @@ pub trait Widget {
     fn layout_style(&self) -> StyleNode;
 
     /// Update the widget state with given info and layout. Returns if the app should be updated.
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update;
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update;
 
     /// Return the widget id.
     fn widget_id(&self) -> WidgetId;
@@ -374,10 +376,10 @@ pub trait Widget {
 /// An extension trait for widgets with a single child widget.
 pub trait WidgetChildExt {
     /// Sets the child widget of the widget.
-    fn set_child(&mut self, child: impl Widget + 'static);
+    fn set_child(&mut self, child: impl Widget + Send + Sync + 'static);
 
     /// Sets the child widget of the widget and returns self.
-    fn with_child(mut self, child: impl Widget + 'static) -> Self
+    fn with_child(mut self, child: impl Widget + Send + Sync + 'static) -> Self
     where
         Self: Sized,
     {
@@ -408,10 +410,10 @@ pub trait WidgetChildrenExt {
     }
 
     /// Adds a child widget to the widget.
-    fn add_child(&mut self, child: impl Widget + 'static);
+    fn add_child(&mut self, child: impl Widget + Send + Sync + 'static);
 
     /// Adds a child widget to the widget and returns self.
-    fn with_child(mut self, child: impl Widget + 'static) -> Self
+    fn with_child(mut self, child: impl Widget + Send + Sync + 'static) -> Self
     where
         Self: Sized,
     {

@@ -10,6 +10,7 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use async_trait::async_trait;
 use std::ops::Deref;
 
 /// Displays the given text with optional font, size and hinting.
@@ -82,6 +83,7 @@ impl WidgetLayoutExt for Text {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for Text {
     fn render(
         &mut self,
@@ -187,7 +189,7 @@ impl Widget for Text {
         }
     }
 
-    fn update(&mut self, _: &LayoutNode, _: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, _layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let text = self.text.get();
         let font_size = *self.font_size.get();
         let line_gap = *self.line_gap.get();

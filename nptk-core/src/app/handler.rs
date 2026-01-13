@@ -104,6 +104,8 @@ where
     layout_cache: Option<(u64, LayoutNode)>, // (hash, cached_layout)
     /// Counter for cache management
     layout_cache_hits: usize,
+    /// Channel for receiving the GPU context after async initialization
+    gpu_init_rx: Option<std::sync::mpsc::Receiver<Result<(Arc<GpuContext>, DeviceHandle), Box<dyn std::error::Error + Send + Sync>>>>,
 }
 
 struct PopupWindow {
@@ -210,6 +212,7 @@ where
             dirty_region_tracker: DirtyRegionTracker::new(),
             layout_cache: None,
             layout_cache_hits: 0,
+            gpu_init_rx: None,
         }
     }
 
@@ -571,6 +574,40 @@ where
         
         // Check for theme changes and trigger redraw if needed
         self.check_theme_changes();
+
+        // Check for async GPU initialization completion
+        if let Some(ref rx) = self.gpu_init_rx {
+            if let Ok(result) = rx.try_recv() {
+                // Clear receiver
+                self.gpu_init_rx = None;
+
+                match result {
+                    Ok((gpu_ctx, device_handle)) => {
+                        log::debug!("Async GPU initialization finished successfully");
+                        log::debug!("Creating renderer...");
+                        self.create_renderer(&device_handle);
+                        self.gpu_context = Some(gpu_ctx);
+                        self.async_init_complete.store(true, Ordering::Relaxed);
+
+                        let platform = Platform::detect();
+                         if platform != Platform::Wayland {
+                            self.update.insert(Update::FORCE);
+                            if let Some(window) = &self.window {
+                                log::debug!("Requesting initial redraw for winit window");
+                                window.request_redraw();
+                            }
+                        } else {
+                            log::debug!("Wayland: Update flags should be handled by configure");
+                            // Force a draw anyway to be safe
+                            self.update.insert(Update::FORCE | Update::DRAW);
+                        }
+                    },
+                    Err(e) => {
+                        log::error!("Async GPU initialization failed: {}", e);
+                    }
+                }
+            }
+        }
         
         self.update_plugins(event_loop);
 
@@ -905,11 +942,11 @@ where
             // GPU context not available (e.g., during shutdown) - skip widget update
             return;
         };
-        self.update.insert(self.widget.as_mut().unwrap().update(
+        self.update.insert(crate::tasks::block_on(self.widget.as_mut().unwrap().update(
             layout_node,
             context,
             &mut self.info,
-        ));
+        )));
     }
 
     /// Create the rendering surface.
@@ -1417,30 +1454,37 @@ where
             }
         };
 
-        // For now, keep it synchronous but structured for future async work
-        // The heavy operations (device creation, shader compilation) happen here
-        log::debug!("Creating device (heavy operation)...");
+        // Create channel for async device creation
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.gpu_init_rx = Some(rx);
+
+        // Move items needed for device creation to async block
+        let mut gpu_ctx_for_task = gpu_context;
         
-        let device_handle = match adapter {
-            Some(adapter) => crate::tasks::block_on(gpu_context
-                .create_device_from_adapter(&adapter))
-                .expect("Failed to create device from adapter"),
-            None => crate::tasks::block_on(gpu_context
-                .create_device_from_first_adapter(vello::wgpu::Backends::PRIMARY))
-                .expect("Failed to create device from default adapter"),
-        };
+        // Spawn async task
+        crate::tasks::spawn(async move {
+            log::debug!("Creating device (heavy operation, background)...");
+            
+            let result = async {
+                let device_handle = match adapter {
+                    Some(adapter) => gpu_ctx_for_task
+                        .create_device_from_adapter(&adapter)
+                        .await
+                        .map_err(|e| Box::new(std::io::Error::new(std::io::ErrorKind::Other, e)) as Box<dyn std::error::Error + Send + Sync>)?,
+                    None => gpu_ctx_for_task
+                        .create_device_from_first_adapter(vello::wgpu::Backends::PRIMARY)
+                        .await
+                        .map_err(|e| Box::new(std::io::Error::new(std::io::ErrorKind::Other, e)) as Box<dyn std::error::Error + Send + Sync>)?,
+                };
+                
+                gpu_ctx_for_task.add_device(device_handle.clone());
+                Ok((Arc::new(gpu_ctx_for_task), device_handle))
+            }.await;
 
-        gpu_context.add_device(device_handle);
-        let devices = gpu_context.enumerate_devices();
-        let device_handle_ref = devices.last().expect("Device should have been added");
+            let _ = tx.send(result);
+        });
 
-        log::debug!("Creating renderer (heavy operation)...");
-        self.create_renderer(device_handle_ref);
-
-        self.gpu_context = Some(Arc::new(gpu_context));
-        self.async_init_complete.store(true, Ordering::Relaxed);
-
-        log::debug!("Initialization complete");
+        log::debug!("Async initialization started");
 
         if platform != Platform::Wayland {
             self.update.insert(Update::FORCE);

@@ -21,6 +21,7 @@ use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use std::sync::Arc;
+use async_trait::async_trait;
 
 /// An expandable section widget with a clickable header and collapsible content.
 ///
@@ -323,6 +324,7 @@ impl WidgetLayoutExt for ExpandableSection {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for ExpandableSection {
     fn widget_id(&self) -> WidgetId {
         WidgetId::new("nptk-widgets", "ExpandableSection")
@@ -378,7 +380,7 @@ impl Widget for ExpandableSection {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         // Update content first
@@ -386,7 +388,7 @@ impl Widget for ExpandableSection {
         if expanded_state && layout.children.len() > 1 {
             update.insert(
                 self.content
-                    .update(&layout.children[1], context.clone(), info),
+                    .update(&layout.children[1], context.clone(), info).await,
             );
         }
 

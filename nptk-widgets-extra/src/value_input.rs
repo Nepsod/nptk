@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
-use std::time::Instant;
+use std::time::{Duration, Instant};
+use async_trait::async_trait;
 
 use crate::input_helpers;
 use nptk_core::app::context::AppContext;
@@ -393,6 +394,7 @@ impl WidgetLayoutExt for ValueInput {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for ValueInput {
     fn render(
         &mut self,
@@ -612,7 +614,7 @@ impl Widget for ValueInput {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         // Check if text signal changed externally

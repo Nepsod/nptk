@@ -19,6 +19,7 @@ use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
 use std::ops::Deref;
 use std::time::{Duration, Instant};
+use async_trait::async_trait;
 
 /// A password input widget that masks the entered text.
 ///
@@ -324,6 +325,7 @@ impl WidgetLayoutExt for SecretInput {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for SecretInput {
     fn render(
         &mut self,
@@ -596,7 +598,7 @@ impl Widget for SecretInput {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
         let old_focus_state = self.focus_state;
 

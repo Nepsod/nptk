@@ -12,6 +12,7 @@ use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::MouseButton;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use async_trait::async_trait;
 
 /// A slider widget to control a floating point value between `0.0` and `1.0`.
 ///
@@ -66,6 +67,7 @@ impl WidgetLayoutExt for Slider {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for Slider {
     fn render(
         &mut self,
@@ -177,7 +179,7 @@ impl Widget for Slider {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, _: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         if let Some(cursor) = info.cursor_pos {
