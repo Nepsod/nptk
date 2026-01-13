@@ -817,14 +817,19 @@ impl Widget for MenuBar {
                     // Handle submenu opening/closing on hover
                     if new_hovered != self.hovered_submenu_index {
                         // Trigger action callbacks for hover state changes
+                        // Only trigger for enabled, non-separator items
                         if let Some(old_idx) = self.hovered_submenu_index {
                             if let Some(old_item) = template.items.get(old_idx) {
-                                context.action_callbacks.trigger_leave(old_item.id);
+                                if old_item.enabled && !old_item.is_separator() {
+                                    context.action_callbacks.trigger_leave(old_item.id);
+                                }
                             }
                         }
                         if let Some(new_idx) = new_hovered {
                             if let Some(new_item) = template.items.get(new_idx) {
-                                context.action_callbacks.trigger_enter(new_item.id);
+                                if new_item.enabled && !new_item.is_separator() {
+                                    context.action_callbacks.trigger_enter(new_item.id);
+                                }
                             }
                         }
 

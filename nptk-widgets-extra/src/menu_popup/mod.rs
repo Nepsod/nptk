@@ -236,14 +236,19 @@ impl Widget for MenuPopup {
             update |= Update::DRAW;
 
             // Trigger action callbacks for hover state changes
+            // Only trigger for enabled, non-separator items
             if let Some(old_idx) = old_hovered {
                 if let Some(old_item) = self.template.items.get(old_idx) {
-                    context.action_callbacks.trigger_leave(old_item.id);
+                    if old_item.enabled && !old_item.is_separator() {
+                        context.action_callbacks.trigger_leave(old_item.id);
+                    }
                 }
             }
             if let Some(new_idx) = self.hovered_index {
                 if let Some(new_item) = self.template.items.get(new_idx) {
-                    context.action_callbacks.trigger_enter(new_item.id);
+                    if new_item.enabled && !new_item.is_separator() {
+                        context.action_callbacks.trigger_enter(new_item.id);
+                    }
                 }
             }
 
