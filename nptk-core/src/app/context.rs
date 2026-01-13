@@ -4,6 +4,7 @@ use crate::app::popup::PopupManager;
 use crate::app::tooltip::TooltipRequestManager;
 use crate::app::update::{Update, UpdateManager};
 use crate::menu::ContextMenuState;
+use crate::shortcut::ShortcutRegistry;
 use crate::signal::eval::EvalSignal;
 use crate::signal::fixed::FixedSignal;
 use crate::signal::future::FutureSignal;
@@ -28,6 +29,7 @@ pub struct AppContext {
     gpu_context: Arc<GpuContext>,
     focus_manager: SharedFocusManager,
     pub menu_manager: ContextMenuState,
+    pub shortcut_registry: ShortcutRegistry,
     pub popup_manager: PopupManager,
     pub tooltip_manager: TooltipRequestManager,
     pub settings: Arc<SettingsRegistry>,
@@ -41,6 +43,7 @@ impl AppContext {
         gpu_context: Arc<GpuContext>,
         focus_manager: SharedFocusManager,
         menu_manager: ContextMenuState,
+        shortcut_registry: ShortcutRegistry,
         popup_manager: PopupManager,
         tooltip_manager: TooltipRequestManager,
         settings: Arc<SettingsRegistry>,
@@ -51,6 +54,7 @@ impl AppContext {
             gpu_context,
             focus_manager,
             menu_manager,
+            shortcut_registry,
             popup_manager,
             tooltip_manager,
             settings,

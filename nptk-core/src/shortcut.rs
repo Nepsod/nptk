@@ -195,42 +195,62 @@ fn key_code_to_string(key: KeyCode) -> String {
     })
 }
 
-/// Registry for keyboard shortcuts and their associated actions
-pub struct ShortcutRegistry {
+/// Internal shortcut registry state
+struct ShortcutRegistryState {
     /// Map from shortcuts to action callbacks
     shortcuts: HashMap<Shortcut, Arc<dyn Fn() -> Update + Send + Sync>>,
+}
+
+/// Registry for keyboard shortcuts and their associated actions
+///
+/// This is a thread-safe, cloneable wrapper around the internal registry state.
+#[derive(Clone)]
+pub struct ShortcutRegistry {
+    state: Arc<std::sync::Mutex<ShortcutRegistryState>>,
+}
+
+impl Default for ShortcutRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ShortcutRegistry {
     /// Create a new shortcut registry
     pub fn new() -> Self {
         Self {
-            shortcuts: HashMap::new(),
+            state: Arc::new(std::sync::Mutex::new(ShortcutRegistryState {
+                shortcuts: HashMap::new(),
+            })),
         }
     }
 
     /// Register a shortcut with an action callback
-    pub fn register<F>(&mut self, shortcut: Shortcut, action: F)
+    pub fn register<F>(&self, shortcut: Shortcut, action: F)
     where
         F: Fn() -> Update + Send + Sync + 'static,
     {
-        self.shortcuts.insert(shortcut, Arc::new(action));
+        let mut state = self.state.lock().unwrap();
+        state.shortcuts.insert(shortcut, Arc::new(action));
     }
 
     /// Unregister a shortcut
-    pub fn unregister(&mut self, shortcut: &Shortcut) {
-        self.shortcuts.remove(shortcut);
+    pub fn unregister(&self, shortcut: &Shortcut) {
+        let mut state = self.state.lock().unwrap();
+        state.shortcuts.remove(shortcut);
     }
 
     /// Check if a shortcut is registered
     pub fn is_registered(&self, shortcut: &Shortcut) -> bool {
-        self.shortcuts.contains_key(shortcut)
+        let state = self.state.lock().unwrap();
+        state.shortcuts.contains_key(shortcut)
     }
 
     /// Try to dispatch a shortcut based on a physical key and modifier state
     /// Returns the Update result if a matching shortcut was found and executed
     pub fn try_dispatch(&self, physical_key: &PhysicalKey, modifiers: ModifiersState) -> Option<Update> {
-        for (shortcut, action) in &self.shortcuts {
+        let state = self.state.lock().unwrap();
+        for (shortcut, action) in &state.shortcuts {
             if shortcut.matches(physical_key, modifiers) {
                 return Some(action());
             }
@@ -238,14 +258,9 @@ impl ShortcutRegistry {
         None
     }
 
-    /// Get all registered shortcuts
-    pub fn shortcuts(&self) -> impl Iterator<Item = &Shortcut> {
-        self.shortcuts.keys()
-    }
-}
-
-impl Default for ShortcutRegistry {
-    fn default() -> Self {
-        Self::new()
+    /// Get all registered shortcuts (returns a clone of the shortcut list)
+    pub fn shortcuts(&self) -> Vec<Shortcut> {
+        let state = self.state.lock().unwrap();
+        state.shortcuts.keys().cloned().collect()
     }
 }

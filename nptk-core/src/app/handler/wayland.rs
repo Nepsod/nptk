@@ -795,6 +795,7 @@ where
                                 gpu_context.clone(),
                                 self.info.focus_manager.clone(),
                                 self.menu_manager.clone(),
+                                self.shortcut_registry.clone(),
                                 self.popup_manager.clone(),
                                 self.tooltip_request_manager.clone(),
                                 self.settings.clone(),

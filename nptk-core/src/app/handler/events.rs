@@ -3,6 +3,7 @@ use crate::app::context::AppContext;
 use crate::app::info::AppKeyEvent;
 use crate::app::update::Update;
 use crate::menu::render::MenuGeometry;
+use crate::shortcut::ShortcutRegistry;
 use nalgebra::Vector2;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
@@ -187,6 +188,14 @@ where
 
         if event.state == ElementState::Pressed {
             use winit::keyboard::{KeyCode, PhysicalKey};
+            
+            // Try to dispatch shortcuts first (before special key handling)
+            if let Some(update_flags) = self.shortcut_registry.try_dispatch(&event.physical_key, self.info.modifiers) {
+                self.update.insert(update_flags);
+                self.request_redraw();
+                return;
+            }
+            
             match event.physical_key {
                 PhysicalKey::Code(KeyCode::Tab) => {
                     self.handle_tab_navigation();
