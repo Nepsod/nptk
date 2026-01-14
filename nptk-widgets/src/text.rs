@@ -98,7 +98,26 @@ impl Widget for Text {
         let text = self.text.get();
         let font_name = self.font.get().clone();
 
-        let color = if theme.globals().invert_text_color {
+        // First, try to get ColorText from common parent widget IDs
+        // This allows parent widgets (like ToolbarButton) to override text color
+        let parent_ids = [
+            WidgetId::new("nptk-widgets", "ToolbarButton"),
+            WidgetId::new("nptk-widgets", "Button"),
+            WidgetId::new("nptk-widgets", "MenuButton"),
+        ];
+        let parent_color = parent_ids.iter()
+            .find_map(|parent_id| {
+                theme.get_property(
+                    parent_id.clone(),
+                    &nptk_theme::properties::ThemeProperty::ColorText,
+                )
+            });
+
+        let color = if let Some(parent_color) = parent_color {
+            // Use parent widget's ColorText if available
+            parent_color
+        } else if theme.globals().invert_text_color {
+            // Fall back to Text widget's ColorInvert
             theme
                 .get_property(
                     Self::widget_id(self),
@@ -106,6 +125,7 @@ impl Widget for Text {
                 )
                 .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
         } else {
+            // Fall back to Text widget's Color
             theme
                 .get_property(
                     Self::widget_id(self),

@@ -449,6 +449,11 @@ impl Theme for SweetTheme {
                             .get_color("primary")
                             .unwrap_or(Color::from_rgb8(197, 14, 210)),
                     ),
+                    crate::properties::ThemeProperty::ColorText => Some(
+                        self.variables
+                            .get_color("text-primary")
+                            .unwrap_or(Color::from_rgb8(211, 218, 227)),
+                    ),
                     _ => None,
                 },
                 "Breadcrumbs" => match property {

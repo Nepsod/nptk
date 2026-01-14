@@ -175,6 +175,7 @@ impl Theme for CelesteTheme {
                     crate::properties::ThemeProperty::ColorPressed => Some(palette.primary_dark),
                     crate::properties::ThemeProperty::ColorHovered => Some(palette.primary_light),
                     crate::properties::ThemeProperty::ColorFocused => Some(palette.primary_dark),
+                    crate::properties::ThemeProperty::ColorText => Some(palette.text),
                     _ => None,
                 },
                 "FileList" | "FileListContent" => match property {

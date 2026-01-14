@@ -358,6 +358,11 @@ impl Theme for DarkTheme {
                             .get_color("primary")
                             .unwrap_or(Color::from_rgb8(100, 150, 255)),
                     ),
+                    crate::properties::ThemeProperty::ColorText => Some(
+                        self.variables
+                            .get_color("text-primary")
+                            .unwrap_or(self.palette.text),
+                    ),
                     _ => None,
                 },
                 "FileList" => match property {

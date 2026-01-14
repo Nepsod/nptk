@@ -44,7 +44,11 @@ impl Toolbar {
             layout_style: LayoutStyle {
                 size: nalgebra::Vector2::new(
                     Dimension::percent(1.0), // Full width
-                    Dimension::length(32.0), // Desktop toolbar height
+                    Dimension::auto(), // Auto height to fit content
+                ),
+                min_size: nalgebra::Vector2::new(
+                    Dimension::auto(), // No minimum width constraint
+                    Dimension::length(32.0), // Minimum toolbar height
                 ),
                 padding: nptk_core::layout::Rect::<LengthPercentage> {
                     left: LengthPercentage::length(4.0),
@@ -417,6 +421,7 @@ impl ToolbarButton {
         
         nptk_widgets::button::Button::new(child)
             .with_style_id("ToolbarButton")
+            .with_invert_text(false) // ToolbarButton has transparent background, use normal text color
             .with_layout_style(LayoutStyle {
                 padding: nptk_core::layout::Rect::<LengthPercentage> {
                     left: LengthPercentage::length(2.0),
@@ -425,8 +430,12 @@ impl ToolbarButton {
                     bottom: LengthPercentage::length(4.0),
                 },
                 flex_grow: 0.0, // Don't grow beyond content size
-                flex_shrink: 1.0, // Allow toolbar buttons to shrink to fit content
+                flex_shrink: 0.0, // Don't shrink below content size - let toolbar grow instead
                 flex_basis: Dimension::auto(), // Size based on content
+                min_size: nalgebra::Vector2::new(
+                    Dimension::auto(), // No minimum width
+                    Dimension::auto(), // No minimum height - use content size
+                ),
                 ..Default::default()
             })
     }
@@ -449,29 +458,34 @@ impl ToolbarButton {
                     Dimension::length(0.0), // No minimum width
                     Dimension::length(0.0), // No minimum height
                 ),
-                flex_direction: FlexDirection::Row,
+                flex_direction: FlexDirection::Column,
                 align_items: Some(AlignItems::Center),
                 gap: nalgebra::Vector2::new(
                     LengthPercentage::length(2.0),
                     LengthPercentage::length(0.0),
                 ),
-                flex_grow: 0.0, // Don't grow beyond content size
+                flex_grow: 1.0, // Allow to grow beyond content size
                 flex_shrink: 1.0, // Allow to shrink
                 ..Default::default()
             });
         
         nptk_widgets::button::Button::new(container)
             .with_style_id("ToolbarButton")
+            .with_invert_text(false) // ToolbarButton has transparent background, use normal text color
             .with_layout_style(LayoutStyle {
                 padding: nptk_core::layout::Rect::<LengthPercentage> {
-                    left: LengthPercentage::length(2.0),
-                    right: LengthPercentage::length(2.0),
-                    top: LengthPercentage::length(4.0),
-                    bottom: LengthPercentage::length(4.0),
+                    left: LengthPercentage::length(4.0),
+                    right: LengthPercentage::length(4.0),
+                    top: LengthPercentage::length(2.0),
+                    bottom: LengthPercentage::length(2.0),
                 },
-                flex_grow: 0.0, // Don't grow beyond content size
-                flex_shrink: 1.0, // Allow toolbar buttons to shrink to fit content
+                flex_grow: 0.0, // Allow to grow beyond content size
+                flex_shrink: 1.0, // Allow to shrink
                 flex_basis: Dimension::auto(), // Size based on content
+                min_size: nalgebra::Vector2::new(
+                    Dimension::auto(), // No minimum width
+                    Dimension::auto(), // No minimum height - use content size
+                ),
                 ..Default::default()
             })
     }
