@@ -375,6 +375,8 @@ impl Widget for Button {
                 (layout_node.layout.location.y + layout_node.layout.size.height) as f64,
             );
 
+            // Note: Mix::Clip is deprecated, but push_clip_layer doesn't exist in Graphics trait yet
+            #[allow(deprecated)]
             graphics.push_layer(
                 Mix::Clip,
                 1.0,

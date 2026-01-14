@@ -101,7 +101,7 @@ fn main() {
     MyApp.run(())
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct Quote {
     quote: String,
     author: String,

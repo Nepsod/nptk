@@ -11,8 +11,8 @@ impl Application for MyApp {
     type State = ();
 
     fn build(_: AppContext, _: Self::State) -> impl Widget {
-        Canvas::new(|scene, _| {
-            scene.stroke(
+        Canvas::new(|graphics, _theme, _layout, _info, _context| {
+            graphics.stroke(
                 &Stroke::new(10.0),
                 Affine::default(),
                 &Brush::Solid(palette::css::GREEN),

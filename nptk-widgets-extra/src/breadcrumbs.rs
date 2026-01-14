@@ -931,7 +931,7 @@ impl Widget for Breadcrumbs {
 
                         // If popup returns FORCE, it means an item was selected - close the popup
                         if popup_update.contains(Update::FORCE) {
-                            drop(popup); // Release mutable borrow
+                            // Mutable borrow is automatically released when popup goes out of scope
                             self.close_neighbor_popup();
                             update |= Update::DRAW;
                         } else {
@@ -948,7 +948,7 @@ impl Widget for Breadcrumbs {
                                 for (_, button, state) in &info.buttons {
                                     if *button == MouseButton::Left && *state == ElementState::Released {
                                         if !popup_rect.contains((cursor_pos.x, cursor_pos.y)) {
-                                            drop(popup); // Release mutable borrow before calling methods
+                                            // Mutable borrow is automatically released when popup goes out of scope
                                             // Check if click is on a different breadcrumb item
                                             if let Some(clicked_index) = self.find_item_at_position(
                                                 layout,
@@ -972,7 +972,7 @@ impl Widget for Breadcrumbs {
                         }
                     } else {
                         // Item is not visible (e.g., due to max_items) - close popup
-                        drop(popup);
+                        // Mutable borrow is automatically released when popup goes out of scope
                         self.close_neighbor_popup();
                         update |= Update::DRAW;
                     }

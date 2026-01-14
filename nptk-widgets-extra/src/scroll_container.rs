@@ -745,6 +745,8 @@ impl Widget for ScrollContainer {
             };
 
             // Apply clipping to content area
+            // Note: Mix::Clip is deprecated, but push_clip_layer doesn't exist in Graphics trait yet
+            #[allow(deprecated)]
             graphics.push_layer(Mix::Clip, 1.0, Affine::IDENTITY, &content_rect.to_path(0.1));
 
             // Create a temporary, scrolled layout node to pass to the child.
