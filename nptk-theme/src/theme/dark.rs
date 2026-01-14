@@ -365,6 +365,24 @@ impl Theme for DarkTheme {
                     ),
                     _ => None,
                 },
+                "Sidebar" => match property {
+                    crate::properties::ThemeProperty::ColorBackground => Some(
+                        self.variables
+                            .get_color("bg-primary")
+                            .unwrap_or(self.palette.background),
+                    ),
+                    crate::properties::ThemeProperty::ColorMenuHovered => Some(
+                        self.variables
+                            .get_color("bg-tertiary")
+                            .unwrap_or(self.palette.background_elevated),
+                    ),
+                    crate::properties::ThemeProperty::ColorBackgroundSelected => Some(
+                        self.variables
+                            .get_color("selection-bg")
+                            .unwrap_or(self.palette.selection),
+                    ),
+                    _ => None,
+                },
                 "FileList" => match property {
                     crate::properties::ThemeProperty::ColorBackground => Some(
                         self.variables
@@ -618,6 +636,21 @@ impl Theme for DarkTheme {
                     (
                         ThemeProperty::ColorFocused,
                         self.variables.get_color("primary").unwrap(),
+                    ),
+                ])),
+
+                "Sidebar" => Some(self.create_widget_style(&[
+                    (
+                        ThemeProperty::ColorBackground,
+                        self.variables.get_color("bg-primary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorMenuHovered,
+                        self.variables.get_color("bg-tertiary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorBackgroundSelected,
+                        self.variables.get_color("selection-bg").unwrap(),
                     ),
                 ])),
 

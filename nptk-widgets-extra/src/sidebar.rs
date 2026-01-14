@@ -11,7 +11,7 @@ use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
+use nptk_core::layout::{Dimension, Layout, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::vg::kurbo::{Affine, Rect, Shape, Vec2};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
@@ -24,8 +24,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 // Constants
-const HEADER_HEIGHT: f32 = 32.0;
+const HEADER_HEIGHT: f32 = 26.0;
 const DEFAULT_FONT_SIZE: f32 = 14.0;
+const ICON_SIZE: u32 = 24;
 const PATH_ROUNDING: f64 = 0.1;
 
 /// Rendering context for sidebar items and sections.
@@ -181,7 +182,7 @@ impl Sidebar {
             selected_id: StateSignal::new(None),
             on_item_selected: None,
             item_height: HEADER_HEIGHT,
-            icon_size: 16,
+            icon_size: ICON_SIZE,
             padding: 4.0,
             hovered_id: None,
             section_expanded: Vec::new(),
@@ -311,7 +312,7 @@ impl Sidebar {
         Self::get_theme_color(
             theme,
             widget_id,
-            &nptk_theme::properties::ThemeProperty::ColorHovered,
+            &nptk_theme::properties::ThemeProperty::ColorMenuHovered,
             Color::from_rgb8(240, 240, 240),
         )
     }
@@ -330,8 +331,15 @@ impl Sidebar {
         if let Some(scene) = graphics.as_scene_mut() {
             let mut icon_scene = nptk_core::vg::Scene::new();
             let mut icon_gfx = nptk_core::vgi::vello_vg::VelloGraphics::new(&mut icon_scene);
+            let icon_size_f = icon_size as f32;
+            let mut icon_layout_struct = Layout::default();
+            // Set location and size for the icon
+            icon_layout_struct.location.x = 0.0;
+            icon_layout_struct.location.y = 0.0;
+            icon_layout_struct.size.width = icon_size_f;
+            icon_layout_struct.size.height = icon_size_f;
             let icon_layout = LayoutNode {
-                layout: nptk_core::layout::Layout::default(),
+                layout: icon_layout_struct,
                 children: vec![],
             };
             let mut icon_widget = Icon::new(icon_name.to_string(), icon_size, None);
@@ -428,23 +436,27 @@ impl Sidebar {
 
         // Calculate positions
         let mut x = layout.layout.location.x + ctx.padding;
-        let y = layout.layout.location.y + y_offset + ctx.item_height / 2.0;
+        let y = layout.layout.location.y + y_offset + ctx.item_height / 3.5;
 
         // Render icon if provided
         if let Some(ref icon_name) = item.icon {
-            let icon_size_f = ctx.icon_size as f32;
-            let icon_y = y - icon_size_f / 2.0;
-            Self::render_icon(
-                graphics,
-                theme,
-                info,
-                context.clone(),
-                icon_name,
-                ctx.icon_size,
-                x as f32,
-                icon_y,
-            );
-            x += icon_size_f + ctx.padding;
+            if !icon_name.is_empty() {
+                let icon_size_f = ctx.icon_size as f32;
+                let icon_y = y - icon_size_f / 2.0;
+                Self::render_icon(
+                    graphics,
+                    theme,
+                    info,
+                    context.clone(),
+                    icon_name,
+                    ctx.icon_size,
+                    x as f32,
+                    icon_y,
+                );
+                x += icon_size_f + ctx.padding;
+            } else {
+                log::warn!("Sidebar item '{}' has empty icon name", item.id);
+            }
         }
 
         // Render label

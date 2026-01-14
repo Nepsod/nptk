@@ -178,6 +178,12 @@ impl Theme for CelesteTheme {
                     crate::properties::ThemeProperty::ColorText => Some(palette.text),
                     _ => None,
                 },
+                "Sidebar" => match property {
+                    crate::properties::ThemeProperty::ColorBackground => Some(palette.background),
+                    crate::properties::ThemeProperty::ColorMenuHovered => Some(palette.background_elevated),
+                    crate::properties::ThemeProperty::ColorBackgroundSelected => Some(palette.selection),
+                    _ => None,
+                },
                 "FileList" | "FileListContent" => match property {
                     crate::properties::ThemeProperty::ColorBackground => Some(palette.background),
                     crate::properties::ThemeProperty::ColorText => Some(palette.text),

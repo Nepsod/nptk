@@ -326,6 +326,34 @@ pub fn get_home_file() -> NpioResult<Box<dyn File>> {
     get_file_for_uri(&uri)
 }
 
+/// Gets the path for a special user directory.
+///
+/// This is a lightweight version that returns the path directly without
+/// requiring the npio backend to be registered. Useful for widget construction
+/// where the backend might not be available yet.
+///
+/// # Arguments
+/// * `directory` - The type of special directory to get
+///
+/// # Returns
+/// - `Some(PathBuf)` - Path to the directory if it exists
+/// - `None` - If the directory doesn't exist or cannot be determined
+///
+/// # Example
+/// ```no_run
+/// use nptk_services::places::{get_user_special_dir_path, UserDirectory};
+///
+/// # async fn example() {
+/// if let Some(docs_path) = get_user_special_dir_path(UserDirectory::Documents).await {
+///     println!("Documents directory: {:?}", docs_path);
+/// }
+/// # }
+/// ```
+pub async fn get_user_special_dir_path(directory: UserDirectory) -> Option<PathBuf> {
+    let dirs = load_user_special_dirs().await;
+    dirs.get(&directory).cloned()
+}
+
 /// Gets a `File` object for a special user directory.
 ///
 /// This matches GLib's `g_get_user_special_dir()` function. Returns a `File`

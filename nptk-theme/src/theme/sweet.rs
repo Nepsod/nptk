@@ -456,6 +456,24 @@ impl Theme for SweetTheme {
                     ),
                     _ => None,
                 },
+                "Sidebar" => match property {
+                    crate::properties::ThemeProperty::ColorBackground => Some(
+                        self.variables
+                            .get_color("bg-primary")
+                            .unwrap_or(Color::from_rgb8(22, 25, 37)),
+                    ),
+                    crate::properties::ThemeProperty::ColorMenuHovered => Some(
+                        self.variables
+                            .get_color("bg-tertiary")
+                            .unwrap_or(Color::from_rgb8(24, 27, 40)),
+                    ),
+                    crate::properties::ThemeProperty::ColorBackgroundSelected => Some(
+                        self.variables
+                            .get_color("selection-bg")
+                            .unwrap_or(Color::from_rgb8(197, 14, 210)),
+                    ),
+                    _ => None,
+                },
                 "Breadcrumbs" => match property {
                     crate::properties::ThemeProperty::ColorText => Some(
                         self.variables
@@ -989,6 +1007,21 @@ impl Theme for SweetTheme {
                     (
                         ThemeProperty::ColorMenuHovered,
                         self.variables.get_color("bg-tertiary").unwrap(),
+                    ),
+                ])),
+
+                "Sidebar" => Some(self.create_widget_style(&[
+                    (
+                        ThemeProperty::ColorBackground,
+                        self.variables.get_color("bg-primary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorMenuHovered,
+                        self.variables.get_color("bg-tertiary").unwrap(),
+                    ),
+                    (
+                        ThemeProperty::ColorBackgroundSelected,
+                        self.variables.get_color("selection-bg").unwrap(),
                     ),
                 ])),
 
