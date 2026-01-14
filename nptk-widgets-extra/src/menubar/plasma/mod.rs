@@ -174,8 +174,12 @@ pub fn initialize() -> Result<(), String> {
         .map_err(|_| "Plasma client already initialized".to_string())?;
 
     // Update menu info if available
-    if let Some(ref client) = *PLASMA_CLIENT.get().unwrap().lock().unwrap() {
-        client.update_menu_info();
+    if let Some(client_guard) = PLASMA_CLIENT.get() {
+        if let Ok(client_lock) = client_guard.lock() {
+            if let Some(ref client) = *client_lock {
+                client.update_menu_info();
+            }
+        }
     }
 
     Ok(())
@@ -227,14 +231,20 @@ pub fn set_appmenu_properties(service_name: &str) -> Result<(), String> {
 ///
 /// This should be called whenever the menu service name or object path changes.
 pub fn update_menu_info() {
-    if let Some(ref client) = *PLASMA_CLIENT.get().unwrap().lock().unwrap() {
-        // Update the stored menu info
-        if let Some((service, path)) = MenuInfoStorage::get() {
-            let state_guard = client.state.lock().unwrap();
-            let mut menu_info_guard = state_guard.menu_info.lock().unwrap();
-            *menu_info_guard = Some((service, path));
+    if let Some(client_guard) = PLASMA_CLIENT.get() {
+        if let Ok(client_lock) = client_guard.lock() {
+            if let Some(ref client) = *client_lock {
+                // Update the stored menu info
+                if let Some((service, path)) = MenuInfoStorage::get() {
+                    if let Ok(state_guard) = client.state.lock() {
+                        if let Ok(mut menu_info_guard) = state_guard.menu_info.lock() {
+                            *menu_info_guard = Some((service, path));
+                        }
+                    }
+                }
+                client.update_menu_info();
+            }
         }
-        client.update_menu_info();
     }
 }
 
@@ -243,15 +253,24 @@ pub fn update_menu_info() {
 /// This should be called periodically (e.g., in the main event loop) to process
 /// window creation events and other protocol messages from the compositor.
 pub fn dispatch_events() -> Result<(), String> {
-    if let Some(ref client) = *PLASMA_CLIENT.get().unwrap().lock().unwrap() {
-        client.dispatch_events()?;
+    if let Some(client_guard) = PLASMA_CLIENT.get() {
+        if let Ok(client_lock) = client_guard.lock() {
+            if let Some(ref client) = *client_lock {
+                client.dispatch_events()?;
+            }
+        }
     }
     Ok(())
 }
 
 /// Check if the Plasma client is initialized.
 pub fn is_initialized() -> bool {
-    PLASMA_CLIENT.get().is_some() && PLASMA_CLIENT.get().unwrap().lock().unwrap().is_some()
+    if let Some(client_guard) = PLASMA_CLIENT.get() {
+        if let Ok(client_lock) = client_guard.lock() {
+            return client_lock.is_some();
+        }
+    }
+    false
 }
 
 impl

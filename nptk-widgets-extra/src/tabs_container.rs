@@ -467,7 +467,8 @@ impl TabsContainer {
             self.active_tab.set(0);
         } else if current_active >= tabs_len {
             // Active tab was removed, switch to nearest valid tab
-            self.active_tab.set((tabs_len - 1).max(0));
+            // tabs_len > 0 here, so tabs_len - 1 is always valid
+            self.active_tab.set(tabs_len - 1);
         }
 
         // Validate hovered/pressed tab indices

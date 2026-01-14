@@ -73,8 +73,26 @@ where
             self.signal_generation.store(self.cache_generation.load(Ordering::Relaxed), Ordering::Relaxed);
         }
 
-        // Return cached value
-        Ref::Owned(self.cached_value.read().unwrap().as_ref().unwrap().clone())
+        // Return cached value - should always be Some at this point since we just updated it if needed
+        let cached_guard = self.cached_value.read().unwrap();
+        match cached_guard.as_ref() {
+            Some(val) => Ref::Owned(val.clone()),
+            None => {
+                // This should never happen, but handle it gracefully by recalculating
+                drop(cached_guard);
+                let mapped_value = (self.map)(self.get_unmapped());
+                let owned_value = match mapped_value {
+                    Ref::Owned(val) => val,
+                    Ref::Ref(val) => val.clone(),
+                    Ref::Borrow(val) => val.clone(),
+                    Ref::ReadGuard(guard) => guard.clone(),
+                    Ref::Rc(rc) => (*rc).clone(),
+                    Ref::Arc(arc) => (*arc).clone(),
+                };
+                *self.cached_value.write().unwrap() = Some(owned_value.clone());
+                Ref::Owned(owned_value)
+            }
+        }
     }
 
     fn set_value(&self, _: U) {}
