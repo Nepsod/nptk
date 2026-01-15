@@ -128,6 +128,10 @@ pub struct ScrollContainer {
     virtual_scrolling: bool,
     item_height: f32,
     visible_range: (usize, usize),
+
+    // Previous scrollbar state for layout_style() when content_size is unknown
+    prev_needs_vertical_scrollbar: bool,
+    prev_needs_horizontal_scrollbar: bool,
 }
 
 impl ScrollContainer {
@@ -176,6 +180,8 @@ impl ScrollContainer {
             virtual_scrolling: false,
             item_height: 30.0,
             visible_range: (0, 0),
+            prev_needs_vertical_scrollbar: false,
+            prev_needs_horizontal_scrollbar: false,
         }
     }
 
@@ -255,7 +261,23 @@ impl ScrollContainer {
     /// Scroll by a delta amount
     pub fn scroll_by(&self, dx: f32, dy: f32) {
         let current = self.scroll_offset();
-        self.set_scroll_offset(Vector2::new(current.x + dx, current.y + dy));
+        let mut new_x = current.x + dx;
+        let mut new_y = current.y + dy;
+        
+        // Respect scroll direction settings
+        match self.scroll_direction {
+            ScrollDirection::Vertical => new_x = current.x, // Don't scroll horizontally
+            ScrollDirection::Horizontal => new_y = current.y, // Don't scroll vertically
+            ScrollDirection::None => {
+                new_x = current.x;
+                new_y = current.y;
+            },
+            ScrollDirection::Both => {
+                // Allow both directions
+            },
+        }
+        
+        self.set_scroll_offset(Vector2::new(new_x, new_y));
     }
 
     /// Scroll to ensure a rectangle is visible
@@ -263,18 +285,22 @@ impl ScrollContainer {
         let current_offset = self.scroll_offset();
         let mut new_offset = current_offset;
 
-        // Horizontal scrolling
-        if rect.x0 < current_offset.x as f64 {
-            new_offset.x = rect.x0 as f32;
-        } else if rect.x1 > (current_offset.x + self.viewport_size.x) as f64 {
-            new_offset.x = (rect.x1 - self.viewport_size.x as f64) as f32;
+        // Horizontal scrolling (only if direction allows it)
+        if self.scroll_direction == ScrollDirection::Horizontal || self.scroll_direction == ScrollDirection::Both {
+            if rect.x0 < current_offset.x as f64 {
+                new_offset.x = rect.x0 as f32;
+            } else if rect.x1 > (current_offset.x + self.viewport_size.x) as f64 {
+                new_offset.x = (rect.x1 - self.viewport_size.x as f64) as f32;
+            }
         }
 
-        // Vertical scrolling
-        if rect.y0 < current_offset.y as f64 {
-            new_offset.y = rect.y0 as f32;
-        } else if rect.y1 > (current_offset.y + self.viewport_size.y) as f64 {
-            new_offset.y = (rect.y1 - self.viewport_size.y as f64) as f32;
+        // Vertical scrolling (only if direction allows it)
+        if self.scroll_direction == ScrollDirection::Vertical || self.scroll_direction == ScrollDirection::Both {
+            if rect.y0 < current_offset.y as f64 {
+                new_offset.y = rect.y0 as f32;
+            } else if rect.y1 > (current_offset.y + self.viewport_size.y) as f64 {
+                new_offset.y = (rect.y1 - self.viewport_size.y as f64) as f32;
+            }
         }
 
         self.set_scroll_offset(new_offset);
@@ -402,9 +428,9 @@ impl ScrollContainer {
 
     fn get_horizontal_right_button_bounds(&self, scrollbar_bounds: Rect) -> Rect {
         Rect::new(
-            scrollbar_bounds.x0 + self.button_size as f64,
+            scrollbar_bounds.x1 - self.button_size as f64,
             scrollbar_bounds.y0,
-            scrollbar_bounds.x0 + (self.button_size * 2.0) as f64,
+            scrollbar_bounds.x1,
             scrollbar_bounds.y1,
         )
     }
@@ -427,7 +453,13 @@ impl ScrollContainer {
 
         let thumb_height =
             (self.viewport_size.y / self.content_size.y * track_height as f32).max(20.0);
-        let scroll_ratio = self.scroll_offset().y / (self.content_size.y - self.viewport_size.y);
+        let content_scrollable = self.content_size.y - self.viewport_size.y;
+        // Guard against division by zero (shouldn't happen due to early return, but be safe)
+        let scroll_ratio = if content_scrollable > 0.0 {
+            self.scroll_offset().y / content_scrollable
+        } else {
+            0.0
+        };
         let thumb_y =
             scrollbar_bounds.y0 + scroll_ratio as f64 * (track_height - thumb_height as f64);
 
@@ -457,9 +489,21 @@ impl ScrollContainer {
 
         let thumb_width =
             (self.viewport_size.x / self.content_size.x * track_width as f32).max(20.0);
-        let scroll_ratio = self.scroll_offset().x / (self.content_size.x - self.viewport_size.x);
+        let content_scrollable = self.content_size.x - self.viewport_size.x;
+        // Guard against division by zero (shouldn't happen due to early return, but be safe)
+        let scroll_ratio = if content_scrollable > 0.0 {
+            self.scroll_offset().x / content_scrollable
+        } else {
+            0.0
+        };
+        // Track starts after left button, so add left button size to thumb position
+        let left_button_size = if self.scrollbar_buttons == ScrollbarButtons::Always {
+            self.button_size as f64
+        } else {
+            0.0
+        };
         let thumb_x = scrollbar_bounds.x0
-            + button_space
+            + left_button_size
             + scroll_ratio as f64 * (track_width - thumb_width as f64);
 
         Rect::new(
@@ -661,16 +705,41 @@ impl Widget for ScrollContainer {
         _info: &mut AppInfo,
         context: AppContext,
     ) -> () {
-        // Update viewport size
+        // Update viewport size - use current content_size to determine scrollbar visibility
+        // This avoids circular dependency by using already-calculated content_size
+        let temp_viewport = Vector2::new(
+            layout.layout.size.width,
+            layout.layout.size.height,
+        );
+        
+        let needs_vert = match self.scrollbar_visibility {
+            ScrollbarVisibility::Always => true,
+            ScrollbarVisibility::Never => false,
+            ScrollbarVisibility::Auto => {
+                self.content_size.y > temp_viewport.y
+                    && (self.scroll_direction == ScrollDirection::Vertical
+                        || self.scroll_direction == ScrollDirection::Both)
+            },
+        };
+        let needs_horz = match self.scrollbar_visibility {
+            ScrollbarVisibility::Always => true,
+            ScrollbarVisibility::Never => false,
+            ScrollbarVisibility::Auto => {
+                self.content_size.x > temp_viewport.x
+                    && (self.scroll_direction == ScrollDirection::Horizontal
+                        || self.scroll_direction == ScrollDirection::Both)
+            },
+        };
+        
         self.viewport_size = Vector2::new(
             layout.layout.size.width
-                - if self.needs_vertical_scrollbar() {
+                - if needs_vert {
                     self.scrollbar_width
                 } else {
                     0.0
                 },
             layout.layout.size.height
-                - if self.needs_horizontal_scrollbar() {
+                - if needs_horz {
                     self.scrollbar_width
                 } else {
                     0.0
@@ -839,7 +908,7 @@ impl Widget for ScrollContainer {
     async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
-        // Update child
+        // Update child first to get accurate content_size
         if let Some(child) = &mut self.child {
             // Use the first child's layout if available, otherwise use the container's layout
             let child_layout = if !layout.children.is_empty() {
@@ -848,7 +917,13 @@ impl Widget for ScrollContainer {
                 layout
             };
 
-            update |= child.update(child_layout, context.clone(), info).await;
+            // Create a scrolled layout to match the visual position (same as in render())
+            // This ensures cursor hit testing uses coordinates that match the visual layout
+            let mut scrolled_layout = child_layout.clone();
+            scrolled_layout.layout.location.x -= self.scroll_offset.get().x;
+            scrolled_layout.layout.location.y -= self.scroll_offset.get().y;
+
+            update |= child.update(&scrolled_layout, context.clone(), info).await;
 
             // Update content size based on child's layout
             self.content_size = Vector2::new(
@@ -857,7 +932,63 @@ impl Widget for ScrollContainer {
             );
         }
 
-        // Update mouse position
+        // Update viewport size AFTER content_size is updated (needed for accurate scrollbar visibility)
+        // Use a temporary viewport_size without scrollbars to break circular dependency
+        let temp_viewport = Vector2::new(
+            layout.layout.size.width,
+            layout.layout.size.height,
+        );
+        
+        // Check if scrollbars would be needed with current content_size
+        let needs_vert = match self.scrollbar_visibility {
+            ScrollbarVisibility::Always => true,
+            ScrollbarVisibility::Never => false,
+            ScrollbarVisibility::Auto => {
+                self.content_size.y > temp_viewport.y
+                    && (self.scroll_direction == ScrollDirection::Vertical
+                        || self.scroll_direction == ScrollDirection::Both)
+            },
+        };
+        let needs_horz = match self.scrollbar_visibility {
+            ScrollbarVisibility::Always => true,
+            ScrollbarVisibility::Never => false,
+            ScrollbarVisibility::Auto => {
+                self.content_size.x > temp_viewport.x
+                    && (self.scroll_direction == ScrollDirection::Horizontal
+                        || self.scroll_direction == ScrollDirection::Both)
+            },
+        };
+        
+        // Now calculate actual viewport size accounting for scrollbars
+        self.viewport_size = Vector2::new(
+            layout.layout.size.width
+                - if needs_vert {
+                    self.scrollbar_width
+                } else {
+                    0.0
+                },
+            layout.layout.size.height
+                - if needs_horz {
+                    self.scrollbar_width
+                } else {
+                    0.0
+                },
+        );
+
+        // Check if scrollbar state changed - if so, trigger layout update
+        let scrollbar_state_changed = self.prev_needs_vertical_scrollbar != needs_vert
+            || self.prev_needs_horizontal_scrollbar != needs_horz;
+
+        // Store scrollbar visibility state for use in layout_style() when content_size is unknown
+        self.prev_needs_vertical_scrollbar = needs_vert;
+        self.prev_needs_horizontal_scrollbar = needs_horz;
+
+        // If scrollbar state changed, trigger layout update so padding is recalculated
+        if scrollbar_state_changed {
+            update |= Update::LAYOUT;
+        }
+
+        // Update mouse position (absolute coordinates for hit testing against scrollbar bounds)
         if let Some(cursor_pos) = info.cursor_pos {
             self.mouse_pos = Vector2::new(cursor_pos.x as f32, cursor_pos.y as f32);
         }
@@ -913,12 +1044,21 @@ impl Widget for ScrollContainer {
             let (dx, dy) = match scroll_delta {
                 MouseScrollDelta::LineDelta(x, y) => {
                     // Line-based scrolling: scale based on content size for natural feel
-                    let vertical_scale = (self.content_size.y / self.viewport_size.y)
-                        .min(5.0)
-                        .max(1.0);
-                    let horizontal_scale = (self.content_size.x / self.viewport_size.x)
-                        .min(5.0)
-                        .max(1.0);
+                    // Guard against division by zero
+                    let vertical_scale = if self.viewport_size.y > 0.0 {
+                        (self.content_size.y / self.viewport_size.y)
+                            .min(5.0)
+                            .max(1.0)
+                    } else {
+                        1.0
+                    };
+                    let horizontal_scale = if self.viewport_size.x > 0.0 {
+                        (self.content_size.x / self.viewport_size.x)
+                            .min(5.0)
+                            .max(1.0)
+                    } else {
+                        1.0
+                    };
 
                     // Calculate raw delta
                     // Note: We invert x/y by default to match standard "Windows-like" scrolling
@@ -1167,7 +1307,88 @@ impl Widget for ScrollContainer {
         let mut style = self.layout_style.get().clone();
 
         // Reserve space for scrollbars using padding
-        if self.needs_vertical_scrollbar() {
+        // Strategy: 
+        // 1. If previous state was true, always keep reserving space (maintains reservation)
+        // 2. If content_size is unknown (0.0), use previous state or visibility setting
+        // 3. If content_size is known, be aggressive: if content is substantial, assume scrollbar needed
+        //    This prevents overlap on initial load when viewport_size might be 0.0
+        let needs_vert = if self.prev_needs_vertical_scrollbar {
+            // Previous state says scrollbar was needed - keep reserving space
+            true
+        } else if self.content_size.y == 0.0 && self.content_size.x == 0.0 {
+            // Initial state - check visibility setting
+            matches!(self.scrollbar_visibility, ScrollbarVisibility::Always)
+        } else {
+            // Content size is known - check if scrollbar is needed
+            match self.scrollbar_visibility {
+                ScrollbarVisibility::Always => true,
+                ScrollbarVisibility::Never => false,
+                ScrollbarVisibility::Auto => {
+                    // Reconstruct container size from viewport_size
+                    let container_height = if self.prev_needs_vertical_scrollbar {
+                        // Scrollbar was present last frame
+                        self.viewport_size.y + self.scrollbar_width
+                    } else if self.viewport_size.y > 0.0 {
+                        // Scrollbar wasn't present, so viewport_size = container_size
+                        self.viewport_size.y
+                    } else {
+                        // viewport_size is 0.0 (initial state or not yet calculated)
+                        // Be aggressive: if content is substantial (> 50px), assume scrollbar needed
+                        // This prevents overlap on initial load
+                        if self.content_size.y > 50.0 {
+                            // Content is substantial, assume scrollbar needed to be safe
+                            // Use a small value that will make the comparison true
+                            self.content_size.y - 1.0
+                        } else {
+                            // Content is very small, probably doesn't need scrollbar
+                            self.content_size.y + 1.0
+                        }
+                    };
+                    self.content_size.y > container_height
+                        && (self.scroll_direction == ScrollDirection::Vertical
+                            || self.scroll_direction == ScrollDirection::Both)
+                },
+            }
+        };
+        
+        let needs_horz = if self.prev_needs_horizontal_scrollbar {
+            // Previous state says scrollbar was needed - keep reserving space
+            true
+        } else if self.content_size.y == 0.0 && self.content_size.x == 0.0 {
+            // Initial state - check visibility setting
+            matches!(self.scrollbar_visibility, ScrollbarVisibility::Always)
+        } else {
+            // Content size is known - check if scrollbar is needed
+            match self.scrollbar_visibility {
+                ScrollbarVisibility::Always => true,
+                ScrollbarVisibility::Never => false,
+                ScrollbarVisibility::Auto => {
+                    // Reconstruct container size from viewport_size
+                    let container_width = if self.prev_needs_horizontal_scrollbar {
+                        // Scrollbar was present last frame
+                        self.viewport_size.x + self.scrollbar_width
+                    } else if self.viewport_size.x > 0.0 {
+                        // Scrollbar wasn't present, so viewport_size = container_size
+                        self.viewport_size.x
+                    } else {
+                        // viewport_size is 0.0 (initial state or not yet calculated)
+                        // Be aggressive: if content is substantial, assume scrollbar needed
+                        if self.content_size.x > 50.0 {
+                            // Content is substantial, assume scrollbar needed to be safe
+                            self.content_size.x - 1.0
+                        } else {
+                            // Content is very small, probably doesn't need scrollbar
+                            self.content_size.x + 1.0
+                        }
+                    };
+                    self.content_size.x > container_width
+                        && (self.scroll_direction == ScrollDirection::Horizontal
+                            || self.scroll_direction == ScrollDirection::Both)
+                },
+            }
+        };
+
+        if needs_vert {
             match self.vertical_scrollbar_position {
                 VerticalScrollbarPosition::Left => {
                     style.padding.left = LengthPercentage::length(self.scrollbar_width)
@@ -1177,7 +1398,7 @@ impl Widget for ScrollContainer {
                 },
             }
         }
-        if self.needs_horizontal_scrollbar() {
+        if needs_horz {
             style.padding.bottom = LengthPercentage::length(self.scrollbar_width);
         }
 
