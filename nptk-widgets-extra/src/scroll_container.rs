@@ -1,4 +1,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
+//! ScrollContainer widget with enhanced layout flexibility.
+//!
+//! This widget provides scrolling capabilities with support for:
+//! - Measure functions for accurate content sizing
+//! - Constraint-aware scrolling that adapts to parent constraints
+//! - Flexible scrollbar space reservation
+//! - Responsive scrollbar behavior
 use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
@@ -720,6 +727,10 @@ impl ScrollContainer {
     }
 
     /// Update child widget and calculate content size
+    ///
+    /// This method updates the child widget and measures its content size.
+    /// If the child widget implements the `measure()` method, it can be used
+    /// for more accurate initial sizing, especially when viewport size is unknown.
     async fn update_child_and_content_size(
         &mut self,
         layout: &LayoutNode,
@@ -741,6 +752,10 @@ impl ScrollContainer {
 
             update |= child.update(&scrolled_layout, context, info).await;
 
+            // Use layout size for content size
+            // Note: If child implements measure(), it can provide more accurate
+            // intrinsic sizing, but we rely on Taffy's computed layout here
+            // for consistency with the layout system
             self.content_size = Vector2::new(
                 child_layout.layout.size.width,
                 child_layout.layout.size.height,

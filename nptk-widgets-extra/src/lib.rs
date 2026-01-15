@@ -52,6 +52,18 @@ pub use flex::{HStack, VStack, Expanded, Flexible};
 pub mod grid;
 pub use grid::{Grid, GridItem};
 
+/// Contains the [layout_builder::LayoutBuilder] widget.
+pub mod layout_builder;
+pub use layout_builder::LayoutBuilder;
+
+/// Contains the [adaptive::Adaptive] widget for responsive layouts.
+pub mod adaptive;
+pub use adaptive::Adaptive;
+
+/// Contains the [wrap::Wrap] widget for wrapping layouts.
+pub mod wrap;
+pub use wrap::Wrap;
+
 /// Contains the [tabs_container::TabsContainer] widget.
 pub mod tabs_container;
 
