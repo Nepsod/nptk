@@ -70,6 +70,79 @@ pub enum ScrollbarVisibility {
     Never,
 }
 
+/// State for scrollbar interaction (dragging and hover)
+struct ScrollbarState {
+    dragging_vertical: bool,
+    dragging_horizontal: bool,
+    drag_start_pos: Vector2<f32>,
+    drag_start_offset: Vector2<f32>,
+    vertical_scrollbar_hovered: bool,
+    horizontal_scrollbar_hovered: bool,
+    prev_dragging_vertical: bool,
+    prev_dragging_horizontal: bool,
+}
+
+impl Default for ScrollbarState {
+    fn default() -> Self {
+        Self {
+            dragging_vertical: false,
+            dragging_horizontal: false,
+            drag_start_pos: Vector2::new(0.0, 0.0),
+            drag_start_offset: Vector2::new(0.0, 0.0),
+            vertical_scrollbar_hovered: false,
+            horizontal_scrollbar_hovered: false,
+            prev_dragging_vertical: false,
+            prev_dragging_horizontal: false,
+        }
+    }
+}
+
+/// State for scrollbar button interaction
+struct ScrollbarButtonState {
+    up_button_hovered: bool,
+    down_button_hovered: bool,
+    left_button_hovered: bool,
+    right_button_hovered: bool,
+    button_held: Option<ArrowDirection>,
+    prev_button_held: Option<ArrowDirection>,
+    prev_up_button_hovered: bool,
+    prev_down_button_hovered: bool,
+    prev_left_button_hovered: bool,
+    prev_right_button_hovered: bool,
+}
+
+impl Default for ScrollbarButtonState {
+    fn default() -> Self {
+        Self {
+            up_button_hovered: false,
+            down_button_hovered: false,
+            left_button_hovered: false,
+            right_button_hovered: false,
+            button_held: None,
+            prev_button_held: None,
+            prev_up_button_hovered: false,
+            prev_down_button_hovered: false,
+            prev_left_button_hovered: false,
+            prev_right_button_hovered: false,
+        }
+    }
+}
+
+/// State for scrollbar visibility calculations in layout
+struct ScrollbarVisibilityState {
+    prev_needs_vertical_scrollbar: bool,
+    prev_needs_horizontal_scrollbar: bool,
+}
+
+impl Default for ScrollbarVisibilityState {
+    fn default() -> Self {
+        Self {
+            prev_needs_vertical_scrollbar: false,
+            prev_needs_horizontal_scrollbar: false,
+        }
+    }
+}
+
 /// A container widget that provides scrolling functionality for its content
 ///
 /// ### Theming
@@ -99,39 +172,18 @@ pub struct ScrollContainer {
     content_size: Vector2<f32>,
     viewport_size: Vector2<f32>,
 
-    // Scrollbar interaction state
-    dragging_vertical: bool,
-    dragging_horizontal: bool,
-    drag_start_pos: Vector2<f32>,
-    drag_start_offset: Vector2<f32>,
-
     // Mouse state
     mouse_pos: Vector2<f32>,
-    vertical_scrollbar_hovered: bool,
-    horizontal_scrollbar_hovered: bool,
-    up_button_hovered: bool,
-    down_button_hovered: bool,
-    left_button_hovered: bool,
-    right_button_hovered: bool,
-    button_held: Option<ArrowDirection>,
 
-    // Previous states for change detection
-    prev_dragging_vertical: bool,
-    prev_dragging_horizontal: bool,
-    prev_button_held: Option<ArrowDirection>,
-    prev_up_button_hovered: bool,
-    prev_down_button_hovered: bool,
-    prev_left_button_hovered: bool,
-    prev_right_button_hovered: bool,
+    // Scrollbar interaction state
+    scrollbar_state: ScrollbarState,
+    button_state: ScrollbarButtonState,
+    visibility_state: ScrollbarVisibilityState,
 
     // Virtual scrolling (for performance with large lists)
     virtual_scrolling: bool,
     item_height: f32,
     visible_range: (usize, usize),
-
-    // Previous scrollbar state for layout_style() when content_size is unknown
-    prev_needs_vertical_scrollbar: bool,
-    prev_needs_horizontal_scrollbar: bool,
 }
 
 impl ScrollContainer {
@@ -158,30 +210,13 @@ impl ScrollContainer {
             _last_scroll_offset: Vector2::new(0.0, 0.0),
             content_size: Vector2::new(0.0, 0.0),
             viewport_size: Vector2::new(0.0, 0.0),
-            dragging_vertical: false,
-            dragging_horizontal: false,
-            drag_start_pos: Vector2::new(0.0, 0.0),
-            drag_start_offset: Vector2::new(0.0, 0.0),
             mouse_pos: Vector2::new(0.0, 0.0),
-            vertical_scrollbar_hovered: false,
-            horizontal_scrollbar_hovered: false,
-            up_button_hovered: false,
-            down_button_hovered: false,
-            left_button_hovered: false,
-            right_button_hovered: false,
-            button_held: None,
-            prev_dragging_vertical: false,
-            prev_dragging_horizontal: false,
-            prev_button_held: None,
-            prev_up_button_hovered: false,
-            prev_down_button_hovered: false,
-            prev_left_button_hovered: false,
-            prev_right_button_hovered: false,
+            scrollbar_state: ScrollbarState::default(),
+            button_state: ScrollbarButtonState::default(),
+            visibility_state: ScrollbarVisibilityState::default(),
             virtual_scrolling: false,
             item_height: 30.0,
             visible_range: (0, 0),
-            prev_needs_vertical_scrollbar: false,
-            prev_needs_horizontal_scrollbar: false,
         }
     }
 
@@ -683,6 +718,588 @@ impl ScrollContainer {
 
         self.visible_range = (start_index, end_index);
     }
+
+    /// Update child widget and calculate content size
+    async fn update_child_and_content_size(
+        &mut self,
+        layout: &LayoutNode,
+        context: AppContext,
+        info: &mut AppInfo,
+    ) -> Update {
+        let mut update = Update::empty();
+
+        if let Some(child) = &mut self.child {
+            let child_layout = if !layout.children.is_empty() {
+                &layout.children[0]
+            } else {
+                layout
+            };
+
+            let mut scrolled_layout = child_layout.clone();
+            scrolled_layout.layout.location.x -= self.scroll_offset.get().x;
+            scrolled_layout.layout.location.y -= self.scroll_offset.get().y;
+
+            update |= child.update(&scrolled_layout, context, info).await;
+
+            self.content_size = Vector2::new(
+                child_layout.layout.size.width,
+                child_layout.layout.size.height,
+            );
+        }
+
+        update
+    }
+
+    /// Calculate viewport size and update scrollbar visibility state
+    fn update_viewport_and_scrollbar_state(&mut self, layout: &LayoutNode) -> Update {
+        let temp_viewport = Vector2::new(
+            layout.layout.size.width,
+            layout.layout.size.height,
+        );
+        
+        let needs_vert = match self.scrollbar_visibility {
+            ScrollbarVisibility::Always => true,
+            ScrollbarVisibility::Never => false,
+            ScrollbarVisibility::Auto => {
+                self.content_size.y > temp_viewport.y
+                    && (self.scroll_direction == ScrollDirection::Vertical
+                        || self.scroll_direction == ScrollDirection::Both)
+            },
+        };
+        let needs_horz = match self.scrollbar_visibility {
+            ScrollbarVisibility::Always => true,
+            ScrollbarVisibility::Never => false,
+            ScrollbarVisibility::Auto => {
+                self.content_size.x > temp_viewport.x
+                    && (self.scroll_direction == ScrollDirection::Horizontal
+                        || self.scroll_direction == ScrollDirection::Both)
+            },
+        };
+        
+        self.viewport_size = Vector2::new(
+            layout.layout.size.width
+                - if needs_vert {
+                    self.scrollbar_width
+                } else {
+                    0.0
+                },
+            layout.layout.size.height
+                - if needs_horz {
+                    self.scrollbar_width
+                } else {
+                    0.0
+                },
+        );
+
+        let scrollbar_state_changed = self.visibility_state.prev_needs_vertical_scrollbar != needs_vert
+            || self.visibility_state.prev_needs_horizontal_scrollbar != needs_horz;
+
+        self.visibility_state.prev_needs_vertical_scrollbar = needs_vert;
+        self.visibility_state.prev_needs_horizontal_scrollbar = needs_horz;
+
+        if scrollbar_state_changed {
+            Update::LAYOUT
+        } else {
+            Update::empty()
+        }
+    }
+
+    /// Update mouse hover states for scrollbars and buttons
+    fn update_mouse_interactions(&mut self, layout: &LayoutNode) {
+        if self.needs_vertical_scrollbar() {
+            let scrollbar_bounds = self.get_vertical_scrollbar_bounds(layout);
+            let thumb_bounds = self.get_vertical_thumb_bounds(scrollbar_bounds);
+
+            self.scrollbar_state.vertical_scrollbar_hovered =
+                thumb_bounds.contains(Point::new(self.mouse_pos.x as f64, self.mouse_pos.y as f64));
+        }
+
+        if self.needs_horizontal_scrollbar() {
+            let scrollbar_bounds = self.get_horizontal_scrollbar_bounds(layout);
+            let thumb_bounds = self.get_horizontal_thumb_bounds(scrollbar_bounds);
+
+            self.scrollbar_state.horizontal_scrollbar_hovered =
+                thumb_bounds.contains(Point::new(self.mouse_pos.x as f64, self.mouse_pos.y as f64));
+        }
+
+        if self.scrollbar_buttons == ScrollbarButtons::Always {
+            let mouse_point = Point::new(self.mouse_pos.x as f64, self.mouse_pos.y as f64);
+            if self.needs_vertical_scrollbar() {
+                let scrollbar_bounds = self.get_vertical_scrollbar_bounds(layout);
+                self.button_state.up_button_hovered = self
+                    .get_vertical_up_button_bounds(scrollbar_bounds)
+                    .contains(mouse_point);
+                self.button_state.down_button_hovered = self
+                    .get_vertical_down_button_bounds(scrollbar_bounds)
+                    .contains(mouse_point);
+            }
+            if self.needs_horizontal_scrollbar() {
+                let scrollbar_bounds = self.get_horizontal_scrollbar_bounds(layout);
+                self.button_state.left_button_hovered = self
+                    .get_horizontal_left_button_bounds(scrollbar_bounds)
+                    .contains(mouse_point);
+                self.button_state.right_button_hovered = self
+                    .get_horizontal_right_button_bounds(scrollbar_bounds)
+                    .contains(mouse_point);
+            }
+        }
+    }
+
+    /// Handle mouse wheel scrolling with natural scrolling support
+    fn handle_mouse_wheel_scrolling(&mut self, scroll_delta: MouseScrollDelta, context: &AppContext) -> Update {
+        let base_scroll_speed = 40.0;
+        let natural_scrolling = context.settings.get().mouse.natural_scrolling.unwrap_or(false);
+        let direction_multiplier = if natural_scrolling { -1.0 } else { 1.0 };
+
+        let (dx, dy) = match scroll_delta {
+            MouseScrollDelta::LineDelta(x, y) => {
+                let vertical_scale = if self.viewport_size.y > 0.0 {
+                    (self.content_size.y / self.viewport_size.y)
+                        .min(5.0)
+                        .max(1.0)
+                } else {
+                    1.0
+                };
+                let horizontal_scale = if self.viewport_size.x > 0.0 {
+                    (self.content_size.x / self.viewport_size.x)
+                        .min(5.0)
+                        .max(1.0)
+                } else {
+                    1.0
+                };
+
+                let raw_dx = x * base_scroll_speed * horizontal_scale * direction_multiplier;
+                let raw_dy = y * base_scroll_speed * vertical_scale * direction_multiplier;
+
+                let max_step_y = (self.viewport_size.y / 3.0).min(200.0).max(50.0);
+                let max_step_x = (self.viewport_size.x / 3.0).min(200.0).max(50.0);
+
+                (
+                    raw_dx.clamp(-max_step_x, max_step_x),
+                    raw_dy.clamp(-max_step_y, max_step_y),
+                )
+            },
+            MouseScrollDelta::PixelDelta(pos) => {
+                (
+                    pos.x as f32 * direction_multiplier,
+                    pos.y as f32 * direction_multiplier,
+                )
+            },
+        };
+
+        let old_offset = self.scroll_offset();
+        self.scroll_by(dx, dy);
+        let new_offset = self.scroll_offset();
+
+        if old_offset != new_offset {
+            Update::DRAW
+        } else {
+            Update::empty()
+        }
+    }
+
+    /// Handle mouse button press/release events for scrollbar interaction
+    fn handle_mouse_button_events(&mut self, layout: &LayoutNode, button: MouseButton, state: ElementState) {
+        if button != MouseButton::Left {
+            return;
+        }
+
+        match state {
+            ElementState::Pressed => {
+                if self.button_state.up_button_hovered {
+                    self.button_state.button_held = Some(ArrowDirection::Up);
+                } else if self.button_state.down_button_hovered {
+                    self.button_state.button_held = Some(ArrowDirection::Down);
+                } else if self.button_state.left_button_hovered {
+                    self.button_state.button_held = Some(ArrowDirection::Left);
+                } else if self.button_state.right_button_hovered {
+                    self.button_state.button_held = Some(ArrowDirection::Right);
+                }
+
+                if self.needs_vertical_scrollbar() {
+                    let thumb_bounds = self.get_vertical_thumb_bounds(
+                        self.get_vertical_scrollbar_bounds(layout),
+                    );
+                    if thumb_bounds.contains(Point::new(
+                        self.mouse_pos.x as f64,
+                        self.mouse_pos.y as f64,
+                    )) {
+                        self.scrollbar_state.dragging_vertical = true;
+                        self.scrollbar_state.drag_start_pos = self.mouse_pos;
+                        self.scrollbar_state.drag_start_offset = self.scroll_offset();
+                    }
+                }
+
+                if self.needs_horizontal_scrollbar() {
+                    let thumb_bounds = self.get_horizontal_thumb_bounds(
+                        self.get_horizontal_scrollbar_bounds(layout),
+                    );
+                    if thumb_bounds.contains(Point::new(
+                        self.mouse_pos.x as f64,
+                        self.mouse_pos.y as f64,
+                    )) {
+                        self.scrollbar_state.dragging_horizontal = true;
+                        self.scrollbar_state.drag_start_pos = self.mouse_pos;
+                        self.scrollbar_state.drag_start_offset = self.scroll_offset();
+                    }
+                }
+            },
+            ElementState::Released => {
+                self.button_state.button_held = None;
+                self.scrollbar_state.dragging_vertical = false;
+                self.scrollbar_state.dragging_horizontal = false;
+            },
+        }
+    }
+
+    /// Handle scrollbar thumb dragging
+    fn handle_scrollbar_dragging(&mut self, layout: &LayoutNode) -> Update {
+        if !self.scrollbar_state.dragging_vertical && !self.scrollbar_state.dragging_horizontal {
+            return Update::empty();
+        }
+
+        let mouse_delta = self.mouse_pos - self.scrollbar_state.drag_start_pos;
+        let mut new_offset = self.scrollbar_state.drag_start_offset;
+
+        if self.scrollbar_state.dragging_vertical && self.content_size.y > self.viewport_size.y {
+            let scrollbar_bounds = self.get_vertical_scrollbar_bounds(layout);
+            let thumb_bounds = self.get_vertical_thumb_bounds(scrollbar_bounds);
+
+            let available_scrollbar_space =
+                scrollbar_bounds.height() as f32 - thumb_bounds.height() as f32;
+            let available_content_space = self.content_size.y - self.viewport_size.y;
+
+            if available_scrollbar_space > 0.0 {
+                let scroll_ratio = mouse_delta.y / available_scrollbar_space;
+                new_offset.y =
+                    self.scrollbar_state.drag_start_offset.y + (scroll_ratio * available_content_space);
+                new_offset.y = new_offset.y.max(0.0).min(available_content_space);
+            }
+        }
+
+        if self.scrollbar_state.dragging_horizontal && self.content_size.x > self.viewport_size.x {
+            let scrollbar_bounds = self.get_horizontal_scrollbar_bounds(layout);
+            let thumb_bounds = self.get_horizontal_thumb_bounds(scrollbar_bounds);
+
+            let available_scrollbar_space =
+                scrollbar_bounds.width() as f32 - thumb_bounds.width() as f32;
+            let available_content_space = self.content_size.x - self.viewport_size.x;
+
+            if available_scrollbar_space > 0.0 {
+                let scroll_ratio = mouse_delta.x / available_scrollbar_space;
+                new_offset.x =
+                    self.scrollbar_state.drag_start_offset.x + (scroll_ratio * available_content_space);
+                new_offset.x = new_offset.x.max(0.0).min(available_content_space);
+            }
+        }
+
+        let old_offset = self.scroll_offset();
+        self.set_scroll_offset(new_offset);
+
+        if old_offset != self.scroll_offset() {
+            Update::DRAW
+        } else {
+            Update::empty()
+        }
+    }
+
+    /// Update previous state fields for change detection
+    fn update_previous_states(&mut self) {
+        self.scrollbar_state.prev_dragging_vertical = self.scrollbar_state.dragging_vertical;
+        self.scrollbar_state.prev_dragging_horizontal = self.scrollbar_state.dragging_horizontal;
+        self.button_state.prev_button_held = self.button_state.button_held;
+        self.button_state.prev_up_button_hovered = self.button_state.up_button_hovered;
+        self.button_state.prev_down_button_hovered = self.button_state.down_button_hovered;
+        self.button_state.prev_left_button_hovered = self.button_state.left_button_hovered;
+        self.button_state.prev_right_button_hovered = self.button_state.right_button_hovered;
+    }
+
+    /// Calculate viewport size for rendering (accounts for scrollbars)
+    fn calculate_viewport_size_for_render(&mut self, layout: &LayoutNode) {
+        let temp_viewport = Vector2::new(
+            layout.layout.size.width,
+            layout.layout.size.height,
+        );
+        
+        let needs_vert = match self.scrollbar_visibility {
+            ScrollbarVisibility::Always => true,
+            ScrollbarVisibility::Never => false,
+            ScrollbarVisibility::Auto => {
+                self.content_size.y > temp_viewport.y
+                    && (self.scroll_direction == ScrollDirection::Vertical
+                        || self.scroll_direction == ScrollDirection::Both)
+            },
+        };
+        let needs_horz = match self.scrollbar_visibility {
+            ScrollbarVisibility::Always => true,
+            ScrollbarVisibility::Never => false,
+            ScrollbarVisibility::Auto => {
+                self.content_size.x > temp_viewport.x
+                    && (self.scroll_direction == ScrollDirection::Horizontal
+                        || self.scroll_direction == ScrollDirection::Both)
+            },
+        };
+        
+        self.viewport_size = Vector2::new(
+            layout.layout.size.width
+                - if needs_vert {
+                    self.scrollbar_width
+                } else {
+                    0.0
+                },
+            layout.layout.size.height
+                - if needs_horz {
+                    self.scrollbar_width
+                } else {
+                    0.0
+                },
+        );
+    }
+
+    /// Render container border
+    fn render_container_border(
+        &self,
+        graphics: &mut dyn Graphics,
+        theme: &mut dyn Theme,
+        container_bounds: Rect,
+    ) {
+        let border_color = theme
+            .get_property(
+                self.widget_id(),
+                &nptk_theme::properties::ThemeProperty::ColorBorder,
+            )
+            .unwrap_or_else(|| Color::from_rgb8(200, 200, 200));
+        let stroke = Stroke::new(1.0);
+        graphics.stroke(
+            &stroke,
+            Affine::IDENTITY,
+            &Brush::Solid(border_color),
+            None,
+            &container_bounds.to_path(0.1),
+        );
+    }
+
+    /// Render child content with clipping and scrolling
+    fn render_child_content(
+        &mut self,
+        graphics: &mut dyn Graphics,
+        theme: &mut dyn Theme,
+        layout: &LayoutNode,
+        info: &mut AppInfo,
+        context: AppContext,
+    ) {
+        if let Some(child) = &mut self.child {
+            let base_layout = if !layout.children.is_empty() {
+                &layout.children[0]
+            } else {
+                layout
+            };
+
+            let content_rect = Rect::new(
+                (layout.layout.location.x + layout.layout.padding.left) as f64,
+                (layout.layout.location.y + layout.layout.padding.top) as f64,
+                (layout.layout.location.x + layout.layout.size.width - layout.layout.padding.right)
+                    as f64,
+                (layout.layout.location.y + layout.layout.size.height - layout.layout.padding.bottom)
+                    as f64,
+            );
+
+            #[allow(deprecated)]
+            graphics.push_layer(Mix::Clip, 1.0, Affine::IDENTITY, &content_rect.to_path(0.1));
+
+            let mut scrolled_layout = base_layout.clone();
+            scrolled_layout.layout.location.x -= self.scroll_offset.get().x;
+            scrolled_layout.layout.location.y -= self.scroll_offset.get().y;
+
+            child.render(graphics, theme, &scrolled_layout, info, context);
+
+            graphics.pop_layer();
+        }
+    }
+
+    /// Render vertical scrollbar with buttons if enabled
+    fn render_vertical_scrollbar_with_buttons(
+        &self,
+        graphics: &mut dyn Graphics,
+        theme: &mut dyn Theme,
+        layout: &LayoutNode,
+    ) {
+        if !self.needs_vertical_scrollbar() {
+            return;
+        }
+
+        let scrollbar_bounds = self.get_vertical_scrollbar_bounds(layout);
+        let thumb_bounds = self.get_vertical_thumb_bounds(scrollbar_bounds);
+        self.render_scrollbar(
+            graphics,
+            theme,
+            scrollbar_bounds,
+            thumb_bounds,
+            true,
+            self.scrollbar_state.vertical_scrollbar_hovered,
+            self.scrollbar_state.dragging_vertical,
+        );
+
+        if self.scrollbar_buttons == ScrollbarButtons::Always {
+            let up_button_bounds = self.get_vertical_up_button_bounds(scrollbar_bounds);
+            let down_button_bounds = self.get_vertical_down_button_bounds(scrollbar_bounds);
+            self.render_scroll_button(
+                graphics,
+                theme,
+                up_button_bounds,
+                ArrowDirection::Up,
+                self.button_state.up_button_hovered,
+                self.button_state.button_held == Some(ArrowDirection::Up),
+            );
+            self.render_scroll_button(
+                graphics,
+                theme,
+                down_button_bounds,
+                ArrowDirection::Down,
+                self.button_state.down_button_hovered,
+                self.button_state.button_held == Some(ArrowDirection::Down),
+            );
+        }
+    }
+
+    /// Render horizontal scrollbar with buttons if enabled
+    fn render_horizontal_scrollbar_with_buttons(
+        &self,
+        graphics: &mut dyn Graphics,
+        theme: &mut dyn Theme,
+        layout: &LayoutNode,
+    ) {
+        if !self.needs_horizontal_scrollbar() {
+            return;
+        }
+
+        let scrollbar_bounds = self.get_horizontal_scrollbar_bounds(layout);
+        let thumb_bounds = self.get_horizontal_thumb_bounds(scrollbar_bounds);
+        self.render_scrollbar(
+            graphics,
+            theme,
+            scrollbar_bounds,
+            thumb_bounds,
+            false,
+            self.scrollbar_state.horizontal_scrollbar_hovered,
+            self.scrollbar_state.dragging_horizontal,
+        );
+
+        if self.scrollbar_buttons == ScrollbarButtons::Always {
+            let left_button_bounds = self.get_horizontal_left_button_bounds(scrollbar_bounds);
+            let right_button_bounds = self.get_horizontal_right_button_bounds(scrollbar_bounds);
+            self.render_scroll_button(
+                graphics,
+                theme,
+                left_button_bounds,
+                ArrowDirection::Left,
+                self.button_state.left_button_hovered,
+                self.button_state.button_held == Some(ArrowDirection::Left),
+            );
+            self.render_scroll_button(
+                graphics,
+                theme,
+                right_button_bounds,
+                ArrowDirection::Right,
+                self.button_state.right_button_hovered,
+                self.button_state.button_held == Some(ArrowDirection::Right),
+            );
+        }
+    }
+
+    /// Calculate container size for a given direction, accounting for previous scrollbar state
+    fn calculate_container_size_for_direction(&self, is_vertical: bool) -> f32 {
+        if is_vertical {
+            if self.visibility_state.prev_needs_vertical_scrollbar {
+                self.viewport_size.y + self.scrollbar_width
+            } else if self.viewport_size.y > 0.0 {
+                self.viewport_size.y
+            } else {
+                // viewport_size is 0.0 (initial state) - use heuristic
+                if self.content_size.y > 50.0 {
+                    self.content_size.y - 1.0
+                } else {
+                    self.content_size.y + 1.0
+                }
+            }
+        } else {
+            if self.visibility_state.prev_needs_horizontal_scrollbar {
+                self.viewport_size.x + self.scrollbar_width
+            } else if self.viewport_size.x > 0.0 {
+                self.viewport_size.x
+            } else {
+                // viewport_size is 0.0 (initial state) - use heuristic
+                if self.content_size.x > 50.0 {
+                    self.content_size.x - 1.0
+                } else {
+                    self.content_size.x + 1.0
+                }
+            }
+        }
+    }
+
+    /// Determine if scrollbar should be shown for a given direction
+    fn should_show_scrollbar(&self, is_vertical: bool, container_size: f32) -> bool {
+        match self.scrollbar_visibility {
+            ScrollbarVisibility::Always => true,
+            ScrollbarVisibility::Never => false,
+            ScrollbarVisibility::Auto => {
+                let content_size = if is_vertical {
+                    self.content_size.y
+                } else {
+                    self.content_size.x
+                };
+                let direction_allows = if is_vertical {
+                    self.scroll_direction == ScrollDirection::Vertical
+                        || self.scroll_direction == ScrollDirection::Both
+                } else {
+                    self.scroll_direction == ScrollDirection::Horizontal
+                        || self.scroll_direction == ScrollDirection::Both
+                };
+                content_size > container_size && direction_allows
+            },
+        }
+    }
+
+    /// Calculate scrollbar needs for layout style calculation
+    fn calculate_scrollbar_needs_for_layout(&self) -> (bool, bool) {
+        let needs_vert = if self.visibility_state.prev_needs_vertical_scrollbar {
+            true
+        } else if self.content_size.y == 0.0 && self.content_size.x == 0.0 {
+            matches!(self.scrollbar_visibility, ScrollbarVisibility::Always)
+        } else {
+            let container_height = self.calculate_container_size_for_direction(true);
+            self.should_show_scrollbar(true, container_height)
+        };
+
+        let needs_horz = if self.visibility_state.prev_needs_horizontal_scrollbar {
+            true
+        } else if self.content_size.y == 0.0 && self.content_size.x == 0.0 {
+            matches!(self.scrollbar_visibility, ScrollbarVisibility::Always)
+        } else {
+            let container_width = self.calculate_container_size_for_direction(false);
+            self.should_show_scrollbar(false, container_width)
+        };
+
+        (needs_vert, needs_horz)
+    }
+
+    /// Apply scrollbar padding to layout style
+    fn apply_scrollbar_padding(&self, style: &mut LayoutStyle, needs_vert: bool, needs_horz: bool) {
+        if needs_vert {
+            match self.vertical_scrollbar_position {
+                VerticalScrollbarPosition::Left => {
+                    style.padding.left = LengthPercentage::length(self.scrollbar_width)
+                },
+                VerticalScrollbarPosition::Right => {
+                    style.padding.right = LengthPercentage::length(self.scrollbar_width)
+                },
+            }
+        }
+        if needs_horz {
+            style.padding.bottom = LengthPercentage::length(self.scrollbar_width);
+        }
+    }
 }
 
 impl Default for ScrollContainer {
@@ -702,522 +1319,63 @@ impl Widget for ScrollContainer {
         graphics: &mut dyn Graphics,
         theme: &mut dyn Theme,
         layout: &LayoutNode,
-        _info: &mut AppInfo,
+        info: &mut AppInfo,
         context: AppContext,
     ) -> () {
-        // Update viewport size - use current content_size to determine scrollbar visibility
-        // This avoids circular dependency by using already-calculated content_size
-        let temp_viewport = Vector2::new(
-            layout.layout.size.width,
-            layout.layout.size.height,
-        );
-        
-        let needs_vert = match self.scrollbar_visibility {
-            ScrollbarVisibility::Always => true,
-            ScrollbarVisibility::Never => false,
-            ScrollbarVisibility::Auto => {
-                self.content_size.y > temp_viewport.y
-                    && (self.scroll_direction == ScrollDirection::Vertical
-                        || self.scroll_direction == ScrollDirection::Both)
-            },
-        };
-        let needs_horz = match self.scrollbar_visibility {
-            ScrollbarVisibility::Always => true,
-            ScrollbarVisibility::Never => false,
-            ScrollbarVisibility::Auto => {
-                self.content_size.x > temp_viewport.x
-                    && (self.scroll_direction == ScrollDirection::Horizontal
-                        || self.scroll_direction == ScrollDirection::Both)
-            },
-        };
-        
-        self.viewport_size = Vector2::new(
-            layout.layout.size.width
-                - if needs_vert {
-                    self.scrollbar_width
-                } else {
-                    0.0
-                },
-            layout.layout.size.height
-                - if needs_horz {
-                    self.scrollbar_width
-                } else {
-                    0.0
-                },
-        );
+        // Calculate viewport size accounting for scrollbars
+        self.calculate_viewport_size_for_render(layout);
 
-        // Draw container background
+        // Draw container border
         let container_bounds = Rect::new(
             layout.layout.location.x as f64,
             layout.layout.location.y as f64,
             (layout.layout.location.x + layout.layout.size.width) as f64,
             (layout.layout.location.y + layout.layout.size.height) as f64,
         );
+        self.render_container_border(graphics, theme, container_bounds);
 
-        let _bg_color = theme
-            .get_property(
-                self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::ColorBackground,
-            )
-            .unwrap_or_else(|| Color::WHITE);
-
-        // Calculate content area (excluding scrollbars)
-        let _content_width = layout.layout.size.width
-            - if self.needs_vertical_scrollbar() {
-                self.scrollbar_width
-            } else {
-                0.0
-            };
-        let _content_height = layout.layout.size.height
-            - if self.needs_horizontal_scrollbar() {
-                self.scrollbar_width
-            } else {
-                0.0
-            };
-
-        // Define content clipping rectangle
-        let content_rect = Rect::new(
-            (layout.layout.location.x + layout.layout.padding.left) as f64,
-            (layout.layout.location.y + layout.layout.padding.top) as f64,
-            (layout.layout.location.x + layout.layout.size.width - layout.layout.padding.right)
-                as f64,
-            (layout.layout.location.y + layout.layout.size.height - layout.layout.padding.bottom)
-                as f64,
-        );
-
-        // Don't fill content area background to avoid overlapping scrolled content
-        // scene.fill(Fill::NonZero, Affine::IDENTITY, bg_color, None, &content_rect);
-
-        // Draw border
-        let border_color = theme
-            .get_property(
-                self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::ColorBorder,
-            )
-            .unwrap_or_else(|| Color::from_rgb8(200, 200, 200));
-        let stroke = Stroke::new(1.0);
-        graphics.stroke(
-            &stroke,
-            Affine::IDENTITY,
-            &Brush::Solid(border_color),
-            None,
-            &container_bounds.to_path(0.1),
-        );
-
-        // Render child content using layout-based scrolling
-        if let Some(child) = &mut self.child {
-            // Use child layout if available
-            let base_layout = if !layout.children.is_empty() {
-                &layout.children[0]
-            } else {
-                layout
-            };
-
-            // Apply clipping to content area
-            // Note: Mix::Clip is deprecated, but push_clip_layer doesn't exist in Graphics trait yet
-            #[allow(deprecated)]
-            graphics.push_layer(Mix::Clip, 1.0, Affine::IDENTITY, &content_rect.to_path(0.1));
-
-            // Create a temporary, scrolled layout node to pass to the child.
-            // This is much more performant than a full re-layout.
-            let mut scrolled_layout = base_layout.clone();
-            scrolled_layout.layout.location.x -= self.scroll_offset.get().x;
-            scrolled_layout.layout.location.y -= self.scroll_offset.get().y;
-
-            child.render(graphics, theme, &scrolled_layout, _info, context);
-
-            // Pop the clipping layer
-            graphics.pop_layer();
-        }
+        // Render child content with clipping and scrolling
+        self.render_child_content(graphics, theme, layout, info, context);
 
         // Update visible range for virtual scrolling
         self.update_visible_range();
 
-        // Draw scrollbars
-        if self.needs_vertical_scrollbar() {
-            let scrollbar_bounds = self.get_vertical_scrollbar_bounds(layout);
-            let thumb_bounds = self.get_vertical_thumb_bounds(scrollbar_bounds);
-            self.render_scrollbar(
-                graphics,
-                theme,
-                scrollbar_bounds,
-                thumb_bounds,
-                true,
-                self.vertical_scrollbar_hovered,
-                self.dragging_vertical,
-            );
-
-            if self.scrollbar_buttons == ScrollbarButtons::Always {
-                let up_button_bounds = self.get_vertical_up_button_bounds(scrollbar_bounds);
-                let down_button_bounds = self.get_vertical_down_button_bounds(scrollbar_bounds);
-                self.render_scroll_button(
-                    graphics,
-                    theme,
-                    up_button_bounds,
-                    ArrowDirection::Up,
-                    self.up_button_hovered,
-                    self.button_held == Some(ArrowDirection::Up),
-                );
-                self.render_scroll_button(
-                    graphics,
-                    theme,
-                    down_button_bounds,
-                    ArrowDirection::Down,
-                    self.down_button_hovered,
-                    self.button_held == Some(ArrowDirection::Down),
-                );
-            }
-        }
-
-        if self.needs_horizontal_scrollbar() {
-            let scrollbar_bounds = self.get_horizontal_scrollbar_bounds(layout);
-            let thumb_bounds = self.get_horizontal_thumb_bounds(scrollbar_bounds);
-            self.render_scrollbar(
-                graphics,
-                theme,
-                scrollbar_bounds,
-                thumb_bounds,
-                false,
-                self.horizontal_scrollbar_hovered,
-                self.dragging_horizontal,
-            );
-
-            if self.scrollbar_buttons == ScrollbarButtons::Always {
-                let left_button_bounds = self.get_horizontal_left_button_bounds(scrollbar_bounds);
-                let right_button_bounds = self.get_horizontal_right_button_bounds(scrollbar_bounds);
-                self.render_scroll_button(
-                    graphics,
-                    theme,
-                    left_button_bounds,
-                    ArrowDirection::Left,
-                    self.left_button_hovered,
-                    self.button_held == Some(ArrowDirection::Left),
-                );
-                self.render_scroll_button(
-                    graphics,
-                    theme,
-                    right_button_bounds,
-                    ArrowDirection::Right,
-                    self.right_button_hovered,
-                    self.button_held == Some(ArrowDirection::Right),
-                );
-            }
-        }
+        // Render scrollbars
+        self.render_vertical_scrollbar_with_buttons(graphics, theme, layout);
+        self.render_horizontal_scrollbar_with_buttons(graphics, theme, layout);
     }
 
     async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
-        // Update child first to get accurate content_size
-        if let Some(child) = &mut self.child {
-            // Use the first child's layout if available, otherwise use the container's layout
-            let child_layout = if !layout.children.is_empty() {
-                &layout.children[0]
-            } else {
-                layout
-            };
+        // Update child and content size
+        update |= self.update_child_and_content_size(layout, context.clone(), info).await;
 
-            // Create a scrolled layout to match the visual position (same as in render())
-            // This ensures cursor hit testing uses coordinates that match the visual layout
-            let mut scrolled_layout = child_layout.clone();
-            scrolled_layout.layout.location.x -= self.scroll_offset.get().x;
-            scrolled_layout.layout.location.y -= self.scroll_offset.get().y;
+        // Update viewport size and scrollbar visibility state
+        update |= self.update_viewport_and_scrollbar_state(layout);
 
-            update |= child.update(&scrolled_layout, context.clone(), info).await;
-
-            // Update content size based on child's layout
-            self.content_size = Vector2::new(
-                child_layout.layout.size.width,
-                child_layout.layout.size.height,
-            );
-        }
-
-        // Update viewport size AFTER content_size is updated (needed for accurate scrollbar visibility)
-        // Use a temporary viewport_size without scrollbars to break circular dependency
-        let temp_viewport = Vector2::new(
-            layout.layout.size.width,
-            layout.layout.size.height,
-        );
-        
-        // Check if scrollbars would be needed with current content_size
-        let needs_vert = match self.scrollbar_visibility {
-            ScrollbarVisibility::Always => true,
-            ScrollbarVisibility::Never => false,
-            ScrollbarVisibility::Auto => {
-                self.content_size.y > temp_viewport.y
-                    && (self.scroll_direction == ScrollDirection::Vertical
-                        || self.scroll_direction == ScrollDirection::Both)
-            },
-        };
-        let needs_horz = match self.scrollbar_visibility {
-            ScrollbarVisibility::Always => true,
-            ScrollbarVisibility::Never => false,
-            ScrollbarVisibility::Auto => {
-                self.content_size.x > temp_viewport.x
-                    && (self.scroll_direction == ScrollDirection::Horizontal
-                        || self.scroll_direction == ScrollDirection::Both)
-            },
-        };
-        
-        // Now calculate actual viewport size accounting for scrollbars
-        self.viewport_size = Vector2::new(
-            layout.layout.size.width
-                - if needs_vert {
-                    self.scrollbar_width
-                } else {
-                    0.0
-                },
-            layout.layout.size.height
-                - if needs_horz {
-                    self.scrollbar_width
-                } else {
-                    0.0
-                },
-        );
-
-        // Check if scrollbar state changed - if so, trigger layout update
-        let scrollbar_state_changed = self.prev_needs_vertical_scrollbar != needs_vert
-            || self.prev_needs_horizontal_scrollbar != needs_horz;
-
-        // Store scrollbar visibility state for use in layout_style() when content_size is unknown
-        self.prev_needs_vertical_scrollbar = needs_vert;
-        self.prev_needs_horizontal_scrollbar = needs_horz;
-
-        // If scrollbar state changed, trigger layout update so padding is recalculated
-        if scrollbar_state_changed {
-            update |= Update::LAYOUT;
-        }
-
-        // Update mouse position (absolute coordinates for hit testing against scrollbar bounds)
+        // Update mouse position
         if let Some(cursor_pos) = info.cursor_pos {
             self.mouse_pos = Vector2::new(cursor_pos.x as f32, cursor_pos.y as f32);
         }
 
-        // Check scrollbar hover states
-        if self.needs_vertical_scrollbar() {
-            let scrollbar_bounds = self.get_vertical_scrollbar_bounds(layout);
-            let thumb_bounds = self.get_vertical_thumb_bounds(scrollbar_bounds);
+        // Update mouse interactions (hover states)
+        self.update_mouse_interactions(layout);
 
-            self.vertical_scrollbar_hovered =
-                thumb_bounds.contains(Point::new(self.mouse_pos.x as f64, self.mouse_pos.y as f64));
-        }
-
-        if self.needs_horizontal_scrollbar() {
-            let scrollbar_bounds = self.get_horizontal_scrollbar_bounds(layout);
-            let thumb_bounds = self.get_horizontal_thumb_bounds(scrollbar_bounds);
-
-            self.horizontal_scrollbar_hovered =
-                thumb_bounds.contains(Point::new(self.mouse_pos.x as f64, self.mouse_pos.y as f64));
-        }
-
-        if self.scrollbar_buttons == ScrollbarButtons::Always {
-            let mouse_point = Point::new(self.mouse_pos.x as f64, self.mouse_pos.y as f64);
-            if self.needs_vertical_scrollbar() {
-                let scrollbar_bounds = self.get_vertical_scrollbar_bounds(layout);
-                self.up_button_hovered = self
-                    .get_vertical_up_button_bounds(scrollbar_bounds)
-                    .contains(mouse_point);
-                self.down_button_hovered = self
-                    .get_vertical_down_button_bounds(scrollbar_bounds)
-                    .contains(mouse_point);
-            }
-            if self.needs_horizontal_scrollbar() {
-                let scrollbar_bounds = self.get_horizontal_scrollbar_bounds(layout);
-                self.left_button_hovered = self
-                    .get_horizontal_left_button_bounds(scrollbar_bounds)
-                    .contains(mouse_point);
-                self.right_button_hovered = self
-                    .get_horizontal_right_button_bounds(scrollbar_bounds)
-                    .contains(mouse_point);
-            }
-        }
-
-        // Handle mouse wheel scrolling (GTK3-style responsiveness)
+        // Handle mouse wheel scrolling
         if let Some(scroll_delta) = info.mouse_scroll_delta {
-            let base_scroll_speed = 40.0; // Base scroll speed
-
-            // Check for natural scrolling setting
-            let natural_scrolling = context.settings.get().mouse.natural_scrolling.unwrap_or(false);
-
-            let direction_multiplier = if natural_scrolling { -1.0 } else { 1.0 };
-
-            let (dx, dy) = match scroll_delta {
-                MouseScrollDelta::LineDelta(x, y) => {
-                    // Line-based scrolling: scale based on content size for natural feel
-                    // Guard against division by zero
-                    let vertical_scale = if self.viewport_size.y > 0.0 {
-                        (self.content_size.y / self.viewport_size.y)
-                            .min(5.0)
-                            .max(1.0)
-                    } else {
-                        1.0
-                    };
-                    let horizontal_scale = if self.viewport_size.x > 0.0 {
-                        (self.content_size.x / self.viewport_size.x)
-                            .min(5.0)
-                            .max(1.0)
-                    } else {
-                        1.0
-                    };
-
-                    // Calculate raw delta
-                    // Note: We invert x/y by default to match standard "Windows-like" scrolling
-                    // (wheel down = content moves up = view moves down)
-                    // If natural scrolling is on, we invert again (so -1.0 * -1.0 = 1.0)
-                    let raw_dx = x * base_scroll_speed * horizontal_scale * direction_multiplier;
-                    let raw_dy = y * base_scroll_speed * vertical_scale * direction_multiplier;
-
-                    // Clamp delta to prevent massive jumps (e.g. if input delta is large like 16.0)
-                    // Limit to 1/3 of viewport size or 200px max
-                    let max_step_y = (self.viewport_size.y / 3.0).min(200.0).max(50.0);
-                    let max_step_x = (self.viewport_size.x / 3.0).min(200.0).max(50.0);
-
-                    (
-                        raw_dx.clamp(-max_step_x, max_step_x),
-                        raw_dy.clamp(-max_step_y, max_step_y),
-                    )
-                },
-                MouseScrollDelta::PixelDelta(pos) => {
-                    // Pixel-based scrolling: direct mapping
-                    // Usually pixel delta already has correct direction, but apply multiplier just in case
-                    (
-                        pos.x as f32 * direction_multiplier,
-                        pos.y as f32 * direction_multiplier,
-                    )
-                },
-            };
-            let old_offset = self.scroll_offset();
-            // scroll_by adds to offset, so positive dy moves content up (scrolling down)
-            // Wait, scroll_offset is (x, y) translation.
-            // If we want to scroll DOWN (view moves down), we need to INCREASE offset.y?
-            // Let's check render:
-            // scrolled_layout.layout.location.y -= self.scroll_offset.get().y;
-            // So positive offset.y shifts content UP (visual scroll down).
-            // Standard wheel down gives negative y in some systems, positive in others?
-            // Usually wheel down is negative y in LineDelta? No, usually -1.0 is up, 1.0 is down?
-            // Winit: LineDelta(x, y) - "Amount of lines... positive values correspond to ... up?"
-            // Let's check winit docs or assume standard.
-            // If user said "teleports to bottom" with positive delta, it means positive delta was adding to offset.
-            // And "scrolling down doesn't work" means negative delta was doing nothing (at top).
-            // So previously: positive delta -> positive offset -> scroll down.
-            // User said: "scrolling down doesn't work" (maybe delta was negative?)
-            // User logs: `delta=LineDelta(0.0, 16.0)` -> offset 0.0 -> 0.0 (clamped?)
-            // Wait, user logs showed:
-            // `delta=LineDelta(0.0, -16.0)` -> `offset=[[0.0, 1380.0]]` (scrolled to bottom!)
-            // So negative delta (-16.0) caused positive offset change (scroll down).
-            // This means `scroll_by(-dx, -dy)` was used.
-            // If dy was -16.0, -dy is +16.0. So offset increased.
-            // So negative LineDelta = Scroll Down.
-            // Standard (Windows): Wheel Down -> Negative Delta?
-            // Actually winit says: "Positive values correspond to scrolling up".
-            // So Wheel Down = Negative Y.
-            // So Negative Y should increase Offset Y (scroll down).
-            // My previous code: `self.scroll_by(-dx, -dy)`.
-            // If y is negative (-1), dy is negative. -dy is positive. Offset increases. Correct.
-            // So `scroll_by(-dx, -dy)` implements "Natural" scrolling if we consider "Wheel Up (Positive)" -> "Scroll Up (Decrease Offset)".
-            // Wait, if Wheel Up (Positive), dy is positive. -dy is negative. Offset decreases. Scroll Up.
-            // So `scroll_by(-dx, -dy)` IS standard scrolling (Wheel Up = Scroll Up).
-            // Why did user say "implemented macOS-like"?
-            // Maybe they want Wheel Down to Scroll UP? (That's weird).
-            // macOS "Natural": Wheel Up (push away) -> Content moves UP (Scroll Down).
-            // Windows "Standard": Wheel Up -> Scroll Up.
-            // User said: "scrolling down doesn't work, but scrolling up teleports to bottom".
-            // Logs: `delta=LineDelta(0.0, 16.0)` (Positive) -> Offset 0.0 (No change, at top).
-            // So Positive Delta = Scroll Up.
-            // Logs: `delta=LineDelta(0.0, -16.0)` (Negative) -> Offset 1380.0 (Bottom).
-            // So Negative Delta = Scroll Down.
-            // This IS standard behavior!
-            // Why did user say "implemented macOS-like"?
-            // Maybe on THEIR system (Linux), the deltas are inverted?
-            // Or maybe they consider "Natural" to be the standard?
-            // "Can you change the default to the reverted (Windows-like) scrolling direction"
-            // This implies currently it is NOT Windows-like.
-            // Currently: Wheel Down (-16) -> Scroll Down.
-            // If they want "Reverted (Windows-like)", maybe they mean they want Wheel Down -> Scroll Up?
-            // No, that makes no sense.
-            // Maybe on their system Wheel Down is POSITIVE?
-            // If Wheel Down is Positive (16.0):
-            // Current: Positive -> Scroll Up.
-            // So Wheel Down -> Scroll Up.
-            // That would be "Natural" (Content tracks finger).
-            // If they want Windows-like, they want Wheel Down -> Scroll Down.
-            // So if their Wheel Down is Positive, they need to INVERT it.
-            // So I should invert the default behavior relative to what I had.
-            // Previously: `scroll_by(-dx, -dy)`.
-            // I will change to `scroll_by(dx, dy)` as default?
-            // If I use `scroll_by(dx, dy)`:
-            // Wheel Down (Positive 16) -> Positive dy -> Increase Offset -> Scroll Down.
-            // This matches Windows-like IF their Wheel Down is Positive.
-
-            // Let's assume `scroll_by(dx, dy)` is what they want for default.
-            // And `scroll_by(-dx, -dy)` for "Natural" (if "Natural" means inverted).
-
-            self.scroll_by(dx, dy);
-            let new_offset = self.scroll_offset();
-
-            // If scroll offset changed, trigger draw update only
-            if old_offset != new_offset {
-                update |= Update::DRAW;
-            }
+            update |= self.handle_mouse_wheel_scrolling(scroll_delta, &context);
         }
 
-        // Handle mouse drag scrolling
+        // Handle mouse button events
         for (_, button, state) in &info.buttons {
-            if *button == MouseButton::Left {
-                match *state {
-                    ElementState::Pressed => {
-                        if self.up_button_hovered {
-                            self.button_held = Some(ArrowDirection::Up);
-                        } else if self.down_button_hovered {
-                            self.button_held = Some(ArrowDirection::Down);
-                        } else if self.left_button_hovered {
-                            self.button_held = Some(ArrowDirection::Left);
-                        } else if self.right_button_hovered {
-                            self.button_held = Some(ArrowDirection::Right);
-                        }
-
-                        // Check if clicking on scrollbar thumbs
-                        if self.needs_vertical_scrollbar() {
-                            let thumb_bounds = self.get_vertical_thumb_bounds(
-                                self.get_vertical_scrollbar_bounds(layout),
-                            );
-                            if thumb_bounds.contains(Point::new(
-                                self.mouse_pos.x as f64,
-                                self.mouse_pos.y as f64,
-                            )) {
-                                self.dragging_vertical = true;
-                                self.drag_start_pos = self.mouse_pos;
-                                self.drag_start_offset = self.scroll_offset();
-                            }
-                        }
-
-                        if self.needs_horizontal_scrollbar() {
-                            let thumb_bounds = self.get_horizontal_thumb_bounds(
-                                self.get_horizontal_scrollbar_bounds(layout),
-                            );
-                            if thumb_bounds.contains(Point::new(
-                                self.mouse_pos.x as f64,
-                                self.mouse_pos.y as f64,
-                            )) {
-                                self.dragging_horizontal = true;
-                                self.drag_start_pos = self.mouse_pos;
-                                self.drag_start_offset = self.scroll_offset();
-                            }
-                        }
-                    },
-                    ElementState::Released => {
-                        self.button_held = None;
-                        self.dragging_vertical = false;
-                        self.dragging_horizontal = false;
-                    },
-                }
-            }
+            self.handle_mouse_button_events(layout, *button, *state);
         }
 
         // Handle continuous scrolling when a button is held
-        if let Some(direction) = self.button_held {
+        if let Some(direction) = self.button_state.button_held {
             let old_offset = self.scroll_offset();
-            let scroll_step = 5.0; // Smaller step for smooth continuous scroll
+            let scroll_step = 5.0;
             match direction {
                 ArrowDirection::Up => self.scroll_by(0.0, -scroll_step),
                 ArrowDirection::Down => self.scroll_by(0.0, scroll_step),
@@ -1229,76 +1387,23 @@ impl Widget for ScrollContainer {
             }
         }
 
-        // Handle scrollbar dragging (GTK3 approach)
-        if self.dragging_vertical || self.dragging_horizontal {
-            let mouse_delta = self.mouse_pos - self.drag_start_pos;
-            let mut new_offset = self.drag_start_offset;
-
-            if self.dragging_vertical && self.content_size.y > self.viewport_size.y {
-                let scrollbar_bounds = self.get_vertical_scrollbar_bounds(layout);
-                let thumb_bounds = self.get_vertical_thumb_bounds(scrollbar_bounds);
-
-                // Calculate available space for thumb movement
-                let available_scrollbar_space =
-                    scrollbar_bounds.height() as f32 - thumb_bounds.height() as f32;
-                let available_content_space = self.content_size.y - self.viewport_size.y;
-
-                // Direct proportional mapping (more responsive)
-                if available_scrollbar_space > 0.0 {
-                    let scroll_ratio = mouse_delta.y / available_scrollbar_space;
-                    new_offset.y =
-                        self.drag_start_offset.y + (scroll_ratio * available_content_space);
-                    new_offset.y = new_offset.y.max(0.0).min(available_content_space);
-                }
-            }
-
-            if self.dragging_horizontal && self.content_size.x > self.viewport_size.x {
-                let scrollbar_bounds = self.get_horizontal_scrollbar_bounds(layout);
-                let thumb_bounds = self.get_horizontal_thumb_bounds(scrollbar_bounds);
-
-                // Calculate available space for thumb movement
-                let available_scrollbar_space =
-                    scrollbar_bounds.width() as f32 - thumb_bounds.width() as f32;
-                let available_content_space = self.content_size.x - self.viewport_size.x;
-
-                // Direct proportional mapping (more responsive)
-                if available_scrollbar_space > 0.0 {
-                    let scroll_ratio = mouse_delta.x / available_scrollbar_space;
-                    new_offset.x =
-                        self.drag_start_offset.x + (scroll_ratio * available_content_space);
-                    new_offset.x = new_offset.x.max(0.0).min(available_content_space);
-                }
-            }
-
-            let old_offset = self.scroll_offset();
-            self.set_scroll_offset(new_offset);
-
-            // If scroll offset or mouse position changed, trigger draw update only
-            if old_offset != self.scroll_offset() {
-                update |= Update::DRAW;
-            }
-        }
+        // Handle scrollbar dragging
+        update |= self.handle_scrollbar_dragging(layout);
 
         // Force redraw if hover or pressed states change
-        if self.dragging_vertical != self.prev_dragging_vertical
-            || self.dragging_horizontal != self.prev_dragging_horizontal
-            || self.button_held != self.prev_button_held
-            || self.up_button_hovered != self.prev_up_button_hovered
-            || self.down_button_hovered != self.prev_down_button_hovered
-            || self.left_button_hovered != self.prev_left_button_hovered
-            || self.right_button_hovered != self.prev_right_button_hovered
+        if self.scrollbar_state.dragging_vertical != self.scrollbar_state.prev_dragging_vertical
+            || self.scrollbar_state.dragging_horizontal != self.scrollbar_state.prev_dragging_horizontal
+            || self.button_state.button_held != self.button_state.prev_button_held
+            || self.button_state.up_button_hovered != self.button_state.prev_up_button_hovered
+            || self.button_state.down_button_hovered != self.button_state.prev_down_button_hovered
+            || self.button_state.left_button_hovered != self.button_state.prev_left_button_hovered
+            || self.button_state.right_button_hovered != self.button_state.prev_right_button_hovered
         {
             update |= Update::DRAW;
         }
 
         // Update previous states
-        self.prev_dragging_vertical = self.dragging_vertical;
-        self.prev_dragging_horizontal = self.dragging_horizontal;
-        self.prev_button_held = self.button_held;
-        self.prev_up_button_hovered = self.up_button_hovered;
-        self.prev_down_button_hovered = self.down_button_hovered;
-        self.prev_left_button_hovered = self.left_button_hovered;
-        self.prev_right_button_hovered = self.right_button_hovered;
+        self.update_previous_states();
 
         update
     }
@@ -1306,101 +1411,9 @@ impl Widget for ScrollContainer {
     fn layout_style(&self) -> StyleNode {
         let mut style = self.layout_style.get().clone();
 
-        // Reserve space for scrollbars using padding
-        // Strategy: 
-        // 1. If previous state was true, always keep reserving space (maintains reservation)
-        // 2. If content_size is unknown (0.0), use previous state or visibility setting
-        // 3. If content_size is known, be aggressive: if content is substantial, assume scrollbar needed
-        //    This prevents overlap on initial load when viewport_size might be 0.0
-        let needs_vert = if self.prev_needs_vertical_scrollbar {
-            // Previous state says scrollbar was needed - keep reserving space
-            true
-        } else if self.content_size.y == 0.0 && self.content_size.x == 0.0 {
-            // Initial state - check visibility setting
-            matches!(self.scrollbar_visibility, ScrollbarVisibility::Always)
-        } else {
-            // Content size is known - check if scrollbar is needed
-            match self.scrollbar_visibility {
-                ScrollbarVisibility::Always => true,
-                ScrollbarVisibility::Never => false,
-                ScrollbarVisibility::Auto => {
-                    // Reconstruct container size from viewport_size
-                    let container_height = if self.prev_needs_vertical_scrollbar {
-                        // Scrollbar was present last frame
-                        self.viewport_size.y + self.scrollbar_width
-                    } else if self.viewport_size.y > 0.0 {
-                        // Scrollbar wasn't present, so viewport_size = container_size
-                        self.viewport_size.y
-                    } else {
-                        // viewport_size is 0.0 (initial state or not yet calculated)
-                        // Be aggressive: if content is substantial (> 50px), assume scrollbar needed
-                        // This prevents overlap on initial load
-                        if self.content_size.y > 50.0 {
-                            // Content is substantial, assume scrollbar needed to be safe
-                            // Use a small value that will make the comparison true
-                            self.content_size.y - 1.0
-                        } else {
-                            // Content is very small, probably doesn't need scrollbar
-                            self.content_size.y + 1.0
-                        }
-                    };
-                    self.content_size.y > container_height
-                        && (self.scroll_direction == ScrollDirection::Vertical
-                            || self.scroll_direction == ScrollDirection::Both)
-                },
-            }
-        };
-        
-        let needs_horz = if self.prev_needs_horizontal_scrollbar {
-            // Previous state says scrollbar was needed - keep reserving space
-            true
-        } else if self.content_size.y == 0.0 && self.content_size.x == 0.0 {
-            // Initial state - check visibility setting
-            matches!(self.scrollbar_visibility, ScrollbarVisibility::Always)
-        } else {
-            // Content size is known - check if scrollbar is needed
-            match self.scrollbar_visibility {
-                ScrollbarVisibility::Always => true,
-                ScrollbarVisibility::Never => false,
-                ScrollbarVisibility::Auto => {
-                    // Reconstruct container size from viewport_size
-                    let container_width = if self.prev_needs_horizontal_scrollbar {
-                        // Scrollbar was present last frame
-                        self.viewport_size.x + self.scrollbar_width
-                    } else if self.viewport_size.x > 0.0 {
-                        // Scrollbar wasn't present, so viewport_size = container_size
-                        self.viewport_size.x
-                    } else {
-                        // viewport_size is 0.0 (initial state or not yet calculated)
-                        // Be aggressive: if content is substantial, assume scrollbar needed
-                        if self.content_size.x > 50.0 {
-                            // Content is substantial, assume scrollbar needed to be safe
-                            self.content_size.x - 1.0
-                        } else {
-                            // Content is very small, probably doesn't need scrollbar
-                            self.content_size.x + 1.0
-                        }
-                    };
-                    self.content_size.x > container_width
-                        && (self.scroll_direction == ScrollDirection::Horizontal
-                            || self.scroll_direction == ScrollDirection::Both)
-                },
-            }
-        };
-
-        if needs_vert {
-            match self.vertical_scrollbar_position {
-                VerticalScrollbarPosition::Left => {
-                    style.padding.left = LengthPercentage::length(self.scrollbar_width)
-                },
-                VerticalScrollbarPosition::Right => {
-                    style.padding.right = LengthPercentage::length(self.scrollbar_width)
-                },
-            }
-        }
-        if needs_horz {
-            style.padding.bottom = LengthPercentage::length(self.scrollbar_width);
-        }
+        // Calculate scrollbar needs and apply padding
+        let (needs_vert, needs_horz) = self.calculate_scrollbar_needs_for_layout();
+        self.apply_scrollbar_padding(&mut style, needs_vert, needs_horz);
 
         StyleNode {
             style,
