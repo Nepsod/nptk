@@ -40,6 +40,18 @@ pub mod secret_input;
 pub mod sidebar;
 pub use sidebar::{Sidebar, SidebarItem, SidebarSection};
 
+/// Contains the [spacer::Spacer] widget.
+pub mod spacer;
+pub use spacer::Spacer;
+
+/// Contains flex layout helpers: [flex::HStack], [flex::VStack], [flex::Expanded], [flex::Flexible].
+pub mod flex;
+pub use flex::{HStack, VStack, Expanded, Flexible};
+
+/// Contains the [grid::Grid] widget and [grid::GridItem] types.
+pub mod grid;
+pub use grid::{Grid, GridItem};
+
 /// Contains the [tabs_container::TabsContainer] widget.
 pub mod tabs_container;
 

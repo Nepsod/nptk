@@ -1,10 +1,13 @@
 use nalgebra::Vector2;
 pub use taffy::{
-    AlignContent, AlignItems, AlignSelf, Dimension, Display, FlexDirection, FlexWrap, GridAutoFlow,
+    AlignContent, AlignItems, AlignSelf, AvailableSpace, Dimension, Display, FlexDirection, FlexWrap, GridAutoFlow,
     GridPlacement, JustifyContent, JustifyItems, JustifySelf, Layout, LengthPercentage,
-    LengthPercentageAuto, Line, NodeId, Overflow, Position, Rect, TaffyError, TaffyResult,
+    LengthPercentageAuto, Line, NodeId, Overflow, Position, Rect, Size, TaffyError, TaffyResult,
     TaffyTree,
 };
+
+pub mod measure;
+pub use measure::{MeasureFunction, measured_size_to_vector2, unbounded_constraints, definite_constraints};
 
 /// Defines different aspects and properties of a widget layout.
 #[derive(Clone, PartialEq, Debug)]
@@ -97,6 +100,16 @@ pub struct LayoutStyle {
 
     /// Defines which column in the grid the item should start and end at.
     pub grid_column: Line<GridPlacement>,
+
+    /// Layout priority for this widget.
+    ///
+    /// Higher priority widgets get space first when distributing available space.
+    /// This is similar to SwiftUI's `layoutPriority`. Default is 0.0.
+    ///
+    /// Priority affects how flex_grow and flex_shrink are applied:
+    /// - Widgets with higher priority have their flex_grow applied first
+    /// - Widgets with lower priority shrink first when space is constrained
+    pub layout_priority: f32,
 }
 
 // SAFETY: LayoutStyle contains only primitive types and types from taffy which are Send + Sync.
@@ -140,6 +153,7 @@ impl Default for LayoutStyle {
                 start: GridPlacement::Auto,
                 end: GridPlacement::Auto,
             },
+            layout_priority: 0.0,
         }
     }
 }

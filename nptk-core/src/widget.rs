@@ -6,6 +6,7 @@ use crate::signal::MaybeSignal;
 use crate::vgi::Graphics;
 use nptk_theme::id::WidgetId;
 use nptk_theme::theme::Theme;
+use taffy::{AvailableSpace, Size};
 use async_trait::async_trait;
 
 /// A boxed widget.
@@ -301,6 +302,42 @@ pub trait Widget: Send + Sync {
 
     /// Return the layout style node for layout computation.
     fn layout_style(&self) -> StyleNode;
+
+    /// Measure the intrinsic size of this widget given available constraints.
+    ///
+    /// This method allows widgets to report their natural content size, which
+    /// helps the layout system make better decisions about sizing, especially
+    /// for widgets with dynamic content like text or images.
+    ///
+    /// The default implementation returns `None`, indicating that this widget
+    /// does not provide intrinsic sizing information. Widgets that can measure
+    /// their content should override this method.
+    ///
+    /// # Parameters
+    ///
+    /// - `constraints`: The available space constraints from the parent layout
+    ///
+    /// # Returns
+    ///
+    /// - `Some(size)`: The measured intrinsic size of the widget's content
+    /// - `None`: This widget does not provide measurement (default)
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use nptk_core::widget::Widget;
+    /// use taffy::{AvailableSpace, Size};
+    ///
+    /// impl Widget for MyTextWidget {
+    ///     fn measure(&self, constraints: Size<AvailableSpace>) -> Option<Size<f32>> {
+    ///         // Measure text and return size
+    ///         Some(Size { width: 100.0, height: 20.0 })
+    ///     }
+    /// }
+    /// ```
+    fn measure(&self, _constraints: Size<AvailableSpace>) -> Option<Size<f32>> {
+        None
+    }
 
     /// Update the widget state with given info and layout. Returns if the app should be updated.
     async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update;

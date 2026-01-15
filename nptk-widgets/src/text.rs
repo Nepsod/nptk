@@ -2,7 +2,7 @@ use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
+use nptk_core::layout::{AvailableSpace, Dimension, LayoutNode, LayoutStyle, Size, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::text_render::TextRenderContext;
 use nptk_core::vg::peniko::{Brush, Color};
@@ -168,6 +168,57 @@ impl Widget for Text {
         );
     }
 
+    fn measure(&self, constraints: Size<AvailableSpace>) -> Option<Size<f32>> {
+        let text = self.text.get();
+        let font_size = *self.font_size.get();
+        let line_gap = *self.line_gap.get();
+        let font_name = self.font.get().clone();
+
+        // Get max width from constraints
+        let max_width = match constraints.width {
+            AvailableSpace::Definite(w) if w > 0.0 => Some(w),
+            AvailableSpace::Definite(_) => None, // Zero or negative width
+            AvailableSpace::MinContent => None,
+            AvailableSpace::MaxContent => None,
+        };
+
+        // Use measured size if available and constraints allow
+        if let Some(measured) = self.measured_size {
+            if let Some(max_w) = max_width {
+                if measured.x <= max_w {
+                    return Some(Size {
+                        width: measured.x,
+                        height: measured.y,
+                    });
+                }
+            } else {
+                return Some(Size {
+                    width: measured.x,
+                    height: measured.y,
+                });
+            }
+        }
+
+        // Fallback: estimate based on text content
+        let line_height = font_size + line_gap;
+        let line_count = text.lines().count().max(1) as f32;
+        let height = line_height * line_count;
+
+        // Estimate width
+        let width = if let Some(max_w) = max_width {
+            // If we have a max width, estimate based on average char width
+            let char_count = text.chars().count();
+            let avg_char_width = font_size * 0.6;
+            (char_count as f32 * avg_char_width).min(max_w)
+        } else {
+            // No constraint, estimate full width
+            let char_count = text.chars().count();
+            char_count as f32 * font_size * 0.8
+        };
+
+        Some(Size { width, height })
+    }
+
     fn layout_style(&self) -> StyleNode {
         let text = self.text.get();
         let font_size = *self.font_size.get();
@@ -180,16 +231,23 @@ impl Widget for Text {
 
         let style = self.style.get().deref().clone();
 
-        // Default to estimated content width if not explicitly set
+        // Use measure function if available for better sizing
         let width = if style.size.x == Dimension::auto() {
-            if let Some(size) = self.measured_size {
-                Dimension::length(size.x)
+            if let Some(measured) = self.measured_size {
+                Dimension::length(measured.x)
             } else {
-                // Heuristic: estimate width based on char count
-                // Average character width is roughly 0.6 * font_size, but we use 0.8 to be safe
-                let char_count = text.chars().count();
-                let estimated_width = char_count as f32 * font_size * 0.8;
-                Dimension::length(estimated_width)
+                // Try to use measure function with unbounded constraints
+                if let Some(size) = self.measure(Size {
+                    width: AvailableSpace::MaxContent,
+                    height: AvailableSpace::MaxContent,
+                }) {
+                    Dimension::length(size.width)
+                } else {
+                    // Heuristic: estimate width based on char count
+                    let char_count = text.chars().count();
+                    let estimated_width = char_count as f32 * font_size * 0.8;
+                    Dimension::length(estimated_width)
+                }
             }
         } else {
             style.size.x // Keep user-defined width
