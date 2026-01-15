@@ -1,7 +1,7 @@
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Display, LayoutNode, LayoutStyle, StyleNode};
+use nptk_core::layout::{Display, LayoutContext, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetChildrenExt, WidgetLayoutExt};
@@ -56,13 +56,13 @@ impl Container {
         self
     }
 
-    fn for_each_visible_child<F>(&mut self, layout_node: &LayoutNode, mut f: F)
+    fn for_each_visible_child<F>(&mut self, layout_node: &LayoutNode, context: &LayoutContext, mut f: F)
     where
         F: FnMut(&mut BoxedWidget, &LayoutNode, usize),
     {
         let mut layout_index = 0;
         for child in &mut self.children {
-            let child_style = child.layout_style();
+            let child_style = child.layout_style(context);
             if child_style.style.display == Display::None {
                 continue;
             }
@@ -125,7 +125,8 @@ impl Widget for Container {
         info: &mut AppInfo,
         context: AppContext,
     ) {
-        self.for_each_visible_child(layout_node, |child, child_layout, _idx| {
+        let layout_context = LayoutContext::unbounded();
+        self.for_each_visible_child(layout_node, &layout_context, |child, child_layout, _idx| {
             child.render(graphics, theme, child_layout, info, context.clone());
         });
     }
@@ -138,12 +139,13 @@ impl Widget for Container {
         info: &mut AppInfo,
         context: AppContext,
     ) {
-        self.for_each_visible_child(layout_node, |child, child_layout, _idx| {
+        let layout_context = LayoutContext::unbounded();
+        self.for_each_visible_child(layout_node, &layout_context, |child, child_layout, _idx| {
             child.render_postfix(graphics, theme, child_layout, info, context.clone());
         });
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         let style = self.style.get().clone();
 
         // Include ALL children in the style (don't filter Display::None here)
@@ -151,18 +153,19 @@ impl Widget for Container {
         // the style always matches the widget structure
         let mut children = Vec::with_capacity(self.children.len());
         for child in &self.children {
-            children.push(child.layout_style());
+            children.push(child.layout_style(context));
         }
 
-        StyleNode { style, children }
+        StyleNode { style, children, measure_func: None }
     }
 
     async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
+        let layout_context = LayoutContext::unbounded();
         let mut layout_index = 0;
         for child in &mut self.children {
-            let child_style = child.layout_style();
+            let child_style = child.layout_style(&layout_context);
             if child_style.style.display == Display::None {
                 update.insert(child.update(&Self::dummy_layout_node(), context.clone(), info).await);
                 continue;

@@ -12,10 +12,28 @@ pub use measure::{MeasureFunction, measured_size_to_vector2, unbounded_constrain
 pub mod constraint;
 pub use constraint::Constraints;
 
+pub mod context;
+pub use context::LayoutContext;
+
 pub mod breakpoint;
 pub use breakpoint::{Breakpoint, Breakpoints};
 
+pub mod phase;
+pub use phase::LayoutPhase;
+
+pub mod priority;
+pub use priority::{adjust_flex_grow_for_priority, adjust_flex_shrink_for_priority, normalize_priorities};
+
 pub mod helpers;
+
+pub mod invalidation;
+pub use invalidation::{InvalidationTracker, InvalidationMetrics};
+
+pub mod direction;
+pub use direction::LayoutDirection;
+
+pub mod overflow;
+pub use overflow::{OverflowDetector, OverflowRegions};
 
 /// Defines different aspects and properties of a widget layout.
 #[derive(Clone, PartialEq, Debug)]
@@ -205,8 +223,10 @@ impl From<LayoutStyle> for taffy::Style {
             justify_content: value.justify_content,
             flex_direction: value.flex_direction,
             flex_wrap: value.flex_wrap,
-            flex_grow: value.flex_grow,
-            flex_shrink: value.flex_shrink,
+            // Adjust flex_grow and flex_shrink based on layout_priority
+            // Higher priority widgets get more space (higher flex_grow) and shrink less (lower flex_shrink)
+            flex_grow: adjust_flex_grow_for_priority(value.flex_grow, value.layout_priority),
+            flex_shrink: adjust_flex_shrink_for_priority(value.flex_shrink, value.layout_priority),
             flex_basis: value.flex_basis,
             grid_auto_flow: value.grid_auto_flow,
             grid_row: value.grid_row,
@@ -231,4 +251,34 @@ pub struct StyleNode {
     pub style: LayoutStyle,
     /// The children of this node.
     pub children: Vec<StyleNode>,
+    /// Optional measure function for this node.
+    ///
+    /// If provided, this measure function will be used to determine
+    /// the intrinsic size of this widget. The measure function can
+    /// be called during style building to set better initial sizes.
+    pub measure_func: Option<Box<dyn Fn(Size<AvailableSpace>) -> Size<f32> + Send + Sync>>,
+}
+
+impl StyleNode {
+    /// Create a new StyleNode with the given style and children.
+    pub fn new(style: LayoutStyle, children: Vec<StyleNode>) -> Self {
+        Self {
+            style,
+            children,
+            measure_func: None,
+        }
+    }
+
+    /// Create a new StyleNode with a measure function.
+    pub fn with_measure(
+        style: LayoutStyle,
+        children: Vec<StyleNode>,
+        measure_func: Box<dyn Fn(Size<AvailableSpace>) -> Size<f32> + Send + Sync>,
+    ) -> Self {
+        Self {
+            style,
+            children,
+            measure_func: Some(measure_func),
+        }
+    }
 }

@@ -1,7 +1,7 @@
 use crate::app::context::AppContext;
 use crate::app::info::AppInfo;
 use crate::app::update::Update;
-use crate::layout::{LayoutNode, LayoutStyle, StyleNode};
+use crate::layout::{LayoutContext, LayoutNode, LayoutStyle, StyleNode};
 use crate::signal::MaybeSignal;
 use crate::vgi::Graphics;
 use crate::widget::{BoxedWidget, Widget, WidgetChildExt, WidgetChildrenExt, WidgetLayoutExt};
@@ -84,13 +84,14 @@ impl<C: Component + Send + Sync> Widget for Composed<C> {
         }
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         if let Some(widget) = &self.widget {
-            widget.layout_style()
+            widget.layout_style(context)
         } else {
             StyleNode {
                 style: LayoutStyle::default(),
                 children: Vec::new(),
+                measure_func: None,
             }
         }
     }

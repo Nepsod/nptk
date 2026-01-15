@@ -10,7 +10,7 @@ use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
+use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentage, StyleNode, LayoutContext, OverflowDetector, OverflowRegions};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::vg::kurbo::{
     Affine, BezPath, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke,
@@ -1278,13 +1278,24 @@ impl ScrollContainer {
 
     /// Calculate scrollbar needs for layout style calculation
     fn calculate_scrollbar_needs_for_layout(&self) -> (bool, bool) {
+        // Use overflow detection if content size is available
+        let use_overflow_detection = self.content_size.x > 0.0 || self.content_size.y > 0.0;
+        
         let needs_vert = if self.visibility_state.prev_needs_vertical_scrollbar {
             true
         } else if self.content_size.y == 0.0 && self.content_size.x == 0.0 {
             matches!(self.scrollbar_visibility, ScrollbarVisibility::Always)
         } else {
             let container_height = self.calculate_container_size_for_direction(true);
-            self.should_show_scrollbar(true, container_height)
+            
+            // Use overflow detection for more accurate scrollbar visibility
+            if use_overflow_detection {
+                let container_size = Vector2::new(self.viewport_size.x, container_height);
+                let overflow = OverflowDetector::exceeds_bounds(container_size, self.content_size);
+                overflow || self.should_show_scrollbar(true, container_height)
+            } else {
+                self.should_show_scrollbar(true, container_height)
+            }
         };
 
         let needs_horz = if self.visibility_state.prev_needs_horizontal_scrollbar {
@@ -1293,7 +1304,15 @@ impl ScrollContainer {
             matches!(self.scrollbar_visibility, ScrollbarVisibility::Always)
         } else {
             let container_width = self.calculate_container_size_for_direction(false);
-            self.should_show_scrollbar(false, container_width)
+            
+            // Use overflow detection for more accurate scrollbar visibility
+            if use_overflow_detection {
+                let container_size = Vector2::new(container_width, self.viewport_size.y);
+                let overflow = OverflowDetector::exceeds_bounds(container_size, self.content_size);
+                overflow || self.should_show_scrollbar(false, container_width)
+            } else {
+                self.should_show_scrollbar(false, container_width)
+            }
         };
 
         (needs_vert, needs_horz)
@@ -1423,20 +1442,28 @@ impl Widget for ScrollContainer {
         update
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         let mut style = self.layout_style.get().clone();
 
-        // Calculate scrollbar needs and apply padding
-        let (needs_vert, needs_horz) = self.calculate_scrollbar_needs_for_layout();
-        self.apply_scrollbar_padding(&mut style, needs_vert, needs_horz);
+        // In measure phase, use loose constraints to get intrinsic sizes
+        // In layout phase, calculate scrollbar needs and apply padding
+        if context.phase.is_measure() {
+            // During measure phase, don't apply scrollbar padding yet
+            // This allows content to be measured at its natural size
+        } else {
+            // During layout phase, calculate scrollbar needs and apply padding
+            let (needs_vert, needs_horz) = self.calculate_scrollbar_needs_for_layout();
+            self.apply_scrollbar_padding(&mut style, needs_vert, needs_horz);
+        }
 
         StyleNode {
             style,
             children: if let Some(child) = &self.child {
-                vec![child.layout_style()]
+                vec![child.layout_style(context)]
             } else {
                 vec![]
             },
+            measure_func: None,
         }
     }
 }

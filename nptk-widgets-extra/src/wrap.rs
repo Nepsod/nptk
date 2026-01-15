@@ -3,7 +3,7 @@ use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{FlexWrap, LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
+use nptk_core::layout::{FlexWrap, LayoutNode, LayoutStyle, LengthPercentage, StyleNode, LayoutContext};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, BoxedWidget};
 use nptk_theme::id::WidgetId;
@@ -93,7 +93,7 @@ impl Widget for Wrap {
         }
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: LayoutStyle {
                 flex_wrap: FlexWrap::Wrap,
@@ -103,7 +103,8 @@ impl Widget for Wrap {
                 ),
                 ..Default::default()
             },
-            children: self.children.iter().map(|c| c.layout_style()).collect(),
+            children: self.children.iter().map(|c| c.layout_style(context)).collect(),
+            measure_func: None,
         }
     }
 

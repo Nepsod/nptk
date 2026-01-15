@@ -7,9 +7,7 @@ use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{
-    Dimension, GridAutoFlow, GridPlacement, LayoutNode, LayoutStyle, LengthPercentage, StyleNode,
-};
+use nptk_core::layout::{GridAutoFlow, GridPlacement, LayoutNode, LayoutStyle, LengthPercentage, StyleNode, LayoutContext};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, BoxedWidget};
 use nptk_theme::id::WidgetId;
@@ -131,7 +129,7 @@ impl Widget for Grid {
         }
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         // Build grid template from columns and rows
         // For now, we'll use a simplified approach where each child gets placed
         // at its specified grid position using grid_row and grid_column
@@ -140,7 +138,7 @@ impl Widget for Grid {
             .children
             .iter()
             .map(|(col, row, child)| {
-                let mut child_style = child.layout_style();
+                let mut child_style = child.layout_style(context);
                 
                 // Set grid position for this child
                 // Note: CSS Grid uses 1-based indexing, and GridPlacement::Line takes i16
@@ -170,6 +168,7 @@ impl Widget for Grid {
                 ..Default::default()
             },
             children: children_styles,
+            measure_func: None,
         }
     }
 

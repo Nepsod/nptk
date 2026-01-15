@@ -2,7 +2,7 @@ use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{AvailableSpace, Dimension, LayoutNode, LayoutStyle, Size, StyleNode};
+use nptk_core::layout::{AvailableSpace, Dimension, LayoutContext, LayoutNode, LayoutStyle, Size, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::text_render::TextRenderContext;
 use nptk_core::vg::peniko::{Brush, Color};
@@ -172,7 +172,6 @@ impl Widget for Text {
         let text = self.text.get();
         let font_size = *self.font_size.get();
         let line_gap = *self.line_gap.get();
-        let font_name = self.font.get().clone();
 
         // Get max width from constraints
         let max_width = match constraints.width {
@@ -191,6 +190,7 @@ impl Widget for Text {
                         height: measured.y,
                     });
                 }
+                // If measured width exceeds max, we need to recalculate with wrapping
             } else {
                 return Some(Size {
                     width: measured.x,
@@ -199,27 +199,38 @@ impl Widget for Text {
             }
         }
 
-        // Fallback: estimate based on text content
+        // Calculate line height (font size + line gap)
         let line_height = font_size + line_gap;
-        let line_count = text.lines().count().max(1) as f32;
-        let height = line_height * line_count;
 
-        // Estimate width
-        let width = if let Some(max_w) = max_width {
-            // If we have a max width, estimate based on average char width
-            let char_count = text.chars().count();
-            let avg_char_width = font_size * 0.6;
-            (char_count as f32 * avg_char_width).min(max_w)
+        // Estimate text width and height
+        // For better accuracy, we estimate based on character count and average character width
+        // Average character width is typically 0.6-0.7 of font size for most fonts
+        let avg_char_width = font_size * 0.65;
+        let char_count = text.chars().count();
+
+        let (width, line_count) = if let Some(max_w) = max_width {
+            // With width constraint, estimate wrapping
+            // Estimate characters per line based on max width
+            let chars_per_line = (max_w / avg_char_width).max(1.0) as usize;
+            let estimated_lines = ((char_count + chars_per_line - 1) / chars_per_line).max(1);
+            
+            // Width is the minimum of: full text width or max width
+            let full_width = char_count as f32 * avg_char_width;
+            (full_width.min(max_w), estimated_lines)
         } else {
-            // No constraint, estimate full width
-            let char_count = text.chars().count();
-            char_count as f32 * font_size * 0.8
+            // No width constraint, estimate single line (or natural wrapping)
+            // For MaxContent, we want the full width
+            let full_width = char_count as f32 * avg_char_width;
+            let natural_lines = text.lines().count().max(1);
+            (full_width, natural_lines)
         };
+
+        let height = line_height * line_count as f32;
 
         Some(Size { width, height })
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, _context: &LayoutContext) -> StyleNode {
         let text = self.text.get();
         let font_size = *self.font_size.get();
         let line_gap = *self.line_gap.get();
@@ -264,6 +275,7 @@ impl Widget for Text {
                 ..style
             },
             children: Vec::new(),
+            measure_func: None, // Text widget uses measure() in layout_style() instead
         }
     }
 

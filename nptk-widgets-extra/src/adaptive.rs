@@ -3,7 +3,7 @@ use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Breakpoint, Breakpoints, Constraints, LayoutNode, StyleNode};
+use nptk_core::layout::{Breakpoint, Breakpoints, Constraints, LayoutNode, StyleNode, LayoutContext};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, BoxedWidget};
 use nptk_theme::id::WidgetId;
@@ -105,14 +105,15 @@ impl Widget for Adaptive {
         }
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: Default::default(),
             children: if let Some(ref widget) = self.current_widget {
-                vec![widget.layout_style()]
+                vec![widget.layout_style(context)]
             } else {
                 vec![]
             },
+            measure_func: None,
         }
     }
 

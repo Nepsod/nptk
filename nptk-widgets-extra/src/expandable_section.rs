@@ -10,7 +10,7 @@ use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Dimension, Display, LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
+use nptk_core::layout::{Dimension, Display, LayoutNode, LayoutStyle, LengthPercentage, StyleNode, LayoutContext};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::text_render::TextRenderContext;
 use nptk_core::vg::kurbo::{Affine, Rect, Shape, Vec2};
@@ -330,7 +330,7 @@ impl Widget for ExpandableSection {
         WidgetId::new("nptk-widgets", "ExpandableSection")
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         let mut style = self.layout_style.get().clone();
         style.flex_direction = nptk_core::layout::FlexDirection::Column;
 
@@ -371,12 +371,15 @@ impl Widget for ExpandableSection {
                 StyleNode {
                     style: header_style,
                     children: vec![],
+                    measure_func: None,
                 },
                 StyleNode {
                     style: content_style,
-                    children: vec![self.content.layout_style()],
+                    children: vec![self.content.layout_style(context)],
+                    measure_func: None,
                 },
             ],
+            measure_func: None,
         }
     }
 

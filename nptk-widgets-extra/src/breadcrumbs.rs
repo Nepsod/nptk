@@ -8,7 +8,7 @@
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode, Dimension, FlexDirection, Layout};
+use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode, Dimension, FlexDirection, Layout, LayoutContext};
 use nptk_core::menu::unified::{MenuTemplate, MenuItem as UnifiedMenuItem};
 use nptk_core::menu::commands::MenuCommand;
 use nptk_core::signal::{MaybeSignal, Signal, state::StateSignal};
@@ -852,7 +852,7 @@ impl Widget for Breadcrumbs {
         }
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: {
                 let mut style = self.layout_style.get().clone();
@@ -867,6 +867,7 @@ impl Widget for Breadcrumbs {
                 style
             },
             children: vec![],
+            measure_func: None,
         }
     }
 

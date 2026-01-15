@@ -24,6 +24,9 @@ pub struct TextRenderContext {
     /// LRU cache for text layouts to prevent memory leaks
     /// Key: (text, font_family, max_width_u32, font_size_u32, max_lines, center_align)
     layout_cache: LruCache<(String, String, u32, u32, Option<usize>, bool), Layout<[u8; 4]>>,
+    /// Text direction for RTL support (placeholder for future implementation)
+    /// TODO: Integrate with system locale detection and Parley's RTL support
+    _text_direction: Option<crate::layout::LayoutDirection>,
 }
 
 impl TextRenderContext {
@@ -32,7 +35,17 @@ impl TextRenderContext {
         Self {
             layout_cx: LayoutContext::new(),
             layout_cache: LruCache::new(NonZeroUsize::new(LAYOUT_CACHE_CAPACITY).unwrap()),
+            _text_direction: None, // TODO: Detect from system locale
         }
+    }
+
+    /// Set text direction for RTL support (placeholder)
+    ///
+    /// This is a placeholder for future RTL text rendering support.
+    /// Full implementation requires integration with Parley's RTL text layout.
+    pub fn set_text_direction(&mut self, _direction: crate::layout::LayoutDirection) {
+        // TODO: Implement RTL text rendering with Parley
+        // For now, this is a no-op placeholder
     }
 
     /// Render text using Parley for proper layout and glyph mapping

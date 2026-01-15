@@ -17,7 +17,7 @@ use log::error;
 use nptk_core::app::update::Update;
 use nptk_core::layout;
 use nptk_core::layout::{
-    Dimension, Display, Layout, LayoutNode, LayoutStyle, LengthPercentage, LengthPercentageAuto,
+    Dimension, Display, Layout, LayoutContext, LayoutNode, LayoutStyle, LengthPercentage, LengthPercentageAuto,
     StyleNode,
 };
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
@@ -890,7 +890,7 @@ impl Widget for MenuBar {
         update
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         // Hide the widget by setting display to None when not visible
         // This completely removes it from the layout flow, allowing content below to move up
         // Note: If importer is detected and user presses F10, importer_detected is cleared,
@@ -913,6 +913,7 @@ impl Widget for MenuBar {
         StyleNode {
             style,
             children: vec![],
+            measure_func: None,
         }
     }
 }

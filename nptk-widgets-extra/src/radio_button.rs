@@ -4,7 +4,7 @@ use nptk_core::app::context::AppContext;
 use nptk_core::app::focus::{FocusBounds, FocusId, FocusProperties, FocusState, FocusableWidget};
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
+use nptk_core::layout::{Dimension, LayoutContext, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::vg::kurbo::{Affine, Circle, Shape, Stroke};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
@@ -466,10 +466,11 @@ impl Widget for RadioButton {
         update
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, _context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: self.layout_style.get().clone(),
             children: Vec::new(),
+            measure_func: None,
         }
     }
 

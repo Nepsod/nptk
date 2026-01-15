@@ -1,7 +1,7 @@
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{LayoutNode, StyleNode};
+use nptk_core::layout::{LayoutContext, LayoutNode, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget};
@@ -183,8 +183,8 @@ impl Widget for GestureDetector {
             .render(graphics, theme, layout_node, info, context)
     }
 
-    fn layout_style(&self) -> StyleNode {
-        self.child.layout_style()
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
+        self.child.layout_style(context)
     }
 
     async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {

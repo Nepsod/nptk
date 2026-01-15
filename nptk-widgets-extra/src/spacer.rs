@@ -3,7 +3,7 @@ use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Dimension, FlexDirection, LayoutNode, LayoutStyle, StyleNode};
+use nptk_core::layout::{Dimension, FlexDirection, LayoutNode, LayoutStyle, StyleNode, LayoutContext};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::Widget;
 use nptk_theme::id::WidgetId;
@@ -67,7 +67,7 @@ impl Widget for Spacer {
         // Spacer is invisible - it just takes up space
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, _context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: LayoutStyle {
                 size: Vector2::new(Dimension::auto(), Dimension::auto()),
@@ -80,6 +80,7 @@ impl Widget for Spacer {
                 ..Default::default()
             },
             children: Vec::new(),
+            measure_func: None,
         }
     }
 

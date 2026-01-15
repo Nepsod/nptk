@@ -2,7 +2,7 @@ use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
+use nptk_core::layout::{Dimension, LayoutContext, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vg::kurbo::Rect;
 use nptk_core::vgi::Graphics;
@@ -228,10 +228,11 @@ impl Widget for Icon {
         }
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, _context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: self.layout_style.get().clone(),
             children: Vec::new(),
+            measure_func: None,
         }
     }
 

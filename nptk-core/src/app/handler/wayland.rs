@@ -1,6 +1,7 @@
 #![cfg(all(target_os = "linux", feature = "wayland"))]
 
 use super::{collect_layout_tree, layout_widget_tree, AppHandler};
+use crate::layout::LayoutContext;
 use crate::app::context::AppContext;
 use crate::app::info::AppKeyEvent;
 use crate::platform::wayland::events::{InputEvent, KeyboardEvent, PointerEvent};
@@ -746,7 +747,8 @@ where
             let physical_width = (popup.info.size.x * popup.scale_factor as f64) as u32;
             let physical_height = (popup.info.size.y * popup.scale_factor as f64) as u32;
 
-            let style = popup.widget.layout_style();
+            let context = LayoutContext::unbounded();
+            let style = popup.widget.layout_style(&context);
             let _ = popup.taffy.set_children(popup.root_node, &[]);
 
             if let Err(e) = layout_widget_tree(&mut popup.taffy, popup.root_node, &style) {

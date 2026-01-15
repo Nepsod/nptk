@@ -13,7 +13,7 @@ pub use theme::*;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
+use nptk_core::layout::{Dimension, LayoutContext, LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
 use nptk_core::menu::unified::MenuTemplate;
 use nptk_core::menu::render::{render_menu, calculate_menu_size, MenuGeometry};
 use nptk_core::menu::manager::MenuManager;
@@ -136,7 +136,7 @@ impl Widget for MenuPopup {
         WidgetId::new("nptk-widgets", "MenuPopup")
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         // Calculate size using temporary contexts (layout_style is called before we have font context)
         // Actual rendering will use the app's font context for more accurate sizing
         let (width, height) = self.calculate_size();
@@ -150,6 +150,7 @@ impl Widget for MenuPopup {
         StyleNode {
             style,
             children: Vec::new(),
+            measure_func: None,
         }
     }
 

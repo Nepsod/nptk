@@ -4,7 +4,7 @@ use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
+use nptk_core::layout::{LayoutContext, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::text_render::TextRenderContext;
 use nptk_core::vg::kurbo::{
@@ -1712,12 +1712,12 @@ impl Widget for TabsContainer {
         update
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: self.layout_style.get().clone(),
             children: if let Some(active_tab) = self.tabs.get(self.active_tab()) {
                 // Include the active tab's content as a child with adjusted position
-                let mut child_style = active_tab.content.layout_style();
+                let mut child_style = active_tab.content.layout_style(context);
 
                 // Adjust the child's position based on tab position
                 use nptk_core::layout::LengthPercentageAuto;
@@ -1743,6 +1743,7 @@ impl Widget for TabsContainer {
             } else {
                 vec![]
             },
+            measure_func: None,
         }
     }
 

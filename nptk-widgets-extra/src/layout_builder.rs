@@ -3,7 +3,7 @@ use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Constraints, LayoutNode, StyleNode};
+use nptk_core::layout::{Constraints, LayoutNode, StyleNode, LayoutContext};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, BoxedWidget};
 use nptk_theme::id::WidgetId;
@@ -76,17 +76,18 @@ impl Widget for LayoutBuilder {
         }
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         // We need constraints to build the child widget, but we don't have them here.
         // The actual widget building happens in update() when we have layout information.
         // For now, return an empty style node - the real child will be built in update().
         StyleNode {
             style: Default::default(),
             children: if let Some(ref widget) = self.current_widget {
-                vec![widget.layout_style()]
+                vec![widget.layout_style(context)]
             } else {
                 vec![]
             },
+            measure_func: None,
         }
     }
 

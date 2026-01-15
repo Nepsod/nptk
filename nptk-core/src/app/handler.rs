@@ -10,12 +10,13 @@ use std::collections::hash_map::DefaultHasher;
 const MAX_LAYOUT_CACHE_SIZE: usize = 10;
 
 mod events;
+mod measure_bridge;
 mod render;
 #[cfg(all(target_os = "linux", feature = "wayland"))]
 mod wayland;
 
 use crate::app::context::AppContext;
-use crate::layout::LayoutNode;
+use crate::layout::{InvalidationTracker, LayoutContext, LayoutDirection, LayoutNode};
 use crate::vgi::graphics_from_scene;
 use crate::vgi::{DeviceHandle, GpuContext};
 use crate::vgi::{Renderer, RendererOptions, Scene, Surface, SurfaceTrait};
@@ -106,6 +107,8 @@ where
     layout_cache_hits: usize,
     /// Channel for receiving the GPU context after async initialization
     gpu_init_rx: Option<std::sync::mpsc::Receiver<Result<(Arc<GpuContext>, DeviceHandle), Box<dyn std::error::Error + Send + Sync>>>>,
+    /// Tracks which widgets need layout updates (invalidation)
+    invalidation_tracker: InvalidationTracker,
 }
 
 struct PopupWindow {
@@ -213,6 +216,7 @@ where
             layout_cache: None,
             layout_cache_hits: 0,
             gpu_init_rx: None,
+            invalidation_tracker: InvalidationTracker::new(),
         }
     }
 
@@ -245,6 +249,10 @@ where
             return Ok(());
         }
 
+        // Note: Taffy 0.8 doesn't have new_leaf_with_measure API.
+        // Measure functions are used during StyleNode building to set better initial sizes.
+        // For now, we create regular leaf nodes. Future Taffy versions may support
+        // measure functions directly in the layout pass.
         let node = self.taffy.new_leaf(style.style.clone().into())?;
         self.taffy.add_child(parent, node)?;
 
@@ -283,7 +291,8 @@ where
             widget.widget_id().hash(&mut hasher);
             
             // Hash layout style to detect style changes
-            let style = widget.layout_style();
+            let context = LayoutContext::unbounded();
+            let style = widget.layout_style(&context);
             self.hash_style_node(&style, &mut hasher);
         }
         
@@ -334,7 +343,8 @@ where
         self.compute_layout()?;
         
         if let Some(widget) = &self.widget {
-            let style = widget.layout_style();
+            let context = LayoutContext::unbounded();
+            let style = widget.layout_style(&context);
             let layout_node = self.collect_layout(self.window_node, &style)?;
             
             // Cache the result
@@ -379,7 +389,10 @@ where
     /// This method converts Taffy's relative positions (relative to parent's content area) to absolute positions
     /// by accumulating parent positions and paddings as we traverse the tree.
     fn collect_layout(&mut self, node: NodeId, style: &StyleNode) -> TaffyResult<LayoutNode> {
-        self.collect_layout_impl(node, style, 0.0, 0.0)
+        // Get layout direction from context (default to LTR)
+        let context = LayoutContext::unbounded();
+        let direction = context.direction;
+        self.collect_layout_impl(node, style, 0.0, 0.0, direction)
     }
 
     /// Internal implementation that accumulates parent positions.
@@ -390,6 +403,7 @@ where
         style: &StyleNode,
         parent_x: f32,
         parent_y: f32,
+        direction: crate::layout::LayoutDirection,
     ) -> TaffyResult<LayoutNode> {
         let mut children = Vec::new();
         let taffy_child_count = self.taffy.child_count(node);
@@ -442,6 +456,7 @@ where
                     child_style,
                     child_content_x,
                     child_content_y,
+                    direction,
                 )?);
                 taffy_index += 1;
             } else {
@@ -767,7 +782,8 @@ where
             self.setup_initial_layout();
         }
 
-        let style = self.widget.as_ref().unwrap().layout_style();
+        let context = LayoutContext::unbounded();
+        let style = self.widget.as_ref().unwrap().layout_style(&context);
         let child_count = self.taffy.child_count(self.window_node);
         if child_count == 0 {
             // Root widget has no children (all filtered out) - return empty layout
@@ -787,7 +803,8 @@ where
     /// Set up the initial layout tree.
     fn setup_initial_layout(&mut self) {
         log::debug!("Setting up layout...");
-        let style = self.widget.as_ref().unwrap().layout_style();
+        let context = LayoutContext::unbounded();
+        let style = self.widget.as_ref().unwrap().layout_style(&context);
         self.layout_widget(self.window_node, &style)
             .expect("Failed to layout window");
         self.compute_layout().expect("Failed to compute layout");
@@ -800,11 +817,22 @@ where
             return layout_node;
         }
 
+        // Reset metrics for this layout pass
+        self.invalidation_tracker.reset_metrics();
+        let start_time = std::time::Instant::now();
+
+        // Mark window node as dirty if layout update is needed
+        if self.update.get().intersects(Update::LAYOUT | Update::FORCE) {
+            self.invalidation_tracker.mark_dirty(self.window_node);
+            self.invalidation_tracker.metrics_mut().record_invalidation();
+        }
+
         log::info!("Layout update detected! Rebuilding layout...");
         self.rebuild_layout();
 
         // Get the style AFTER rebuilding to ensure it matches what was built
-        let style = self.widget.as_ref().unwrap().layout_style();
+        let context = LayoutContext::unbounded();
+        let style = self.widget.as_ref().unwrap().layout_style(&context);
         let child_count = self.taffy.child_count(self.window_node);
         if child_count == 0 {
             // Root widget has no children (all filtered out) - return empty layout
@@ -822,6 +850,28 @@ where
                 &style,
             )
             .expect("Failed to collect layout");
+
+        // Record performance metrics
+        let layout_time = start_time.elapsed();
+        self.invalidation_tracker
+            .metrics_mut()
+            .record_layout_time(layout_time.as_secs_f64() * 1000.0);
+        self.invalidation_tracker
+            .metrics_mut()
+            .record_recomputation();
+        
+        // Mark all nodes as clean after recomputation
+        self.invalidation_tracker.clear_all();
+
+        // Log performance metrics
+        let metrics = self.invalidation_tracker.metrics();
+        log::debug!(
+            "Layout computation: {}ms, invalidated: {}, recomputed: {}, efficiency: {:.2}",
+            metrics.layout_time_ms,
+            metrics.nodes_invalidated,
+            metrics.nodes_recomputed,
+            metrics.efficiency_ratio()
+        );
 
         // Log the difference in positions to verify layout is updating
         if !new_layout.children.is_empty() && !layout_node.children.is_empty() {
@@ -850,7 +900,8 @@ where
             .expect("Failed to set children");
 
         // Get the current style (which may have Display::None widgets)
-        let style = self.widget.as_ref().unwrap().layout_style();
+        let context = LayoutContext::unbounded();
+        let style = self.widget.as_ref().unwrap().layout_style(&context);
 
         // Count visible children for debugging
         let visible_children: Vec<_> = style
@@ -1667,7 +1718,8 @@ where
                     let height = popup.config.window.size.y as u32;
 
                     // 1. Layout
-                    let style = popup.widget.layout_style();
+                    let context = LayoutContext::unbounded();
+                    let style = popup.widget.layout_style(&context);
                     let _ = popup.taffy.set_children(popup.root_node, &[]);
 
                     if let Err(e) = layout_widget_tree(&mut popup.taffy, popup.root_node, &style) {

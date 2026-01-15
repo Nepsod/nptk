@@ -1,7 +1,7 @@
 use crate::app::context::AppContext;
 use crate::app::info::AppInfo;
 use crate::app::update::Update;
-use crate::layout::{LayoutNode, LayoutStyle, StyleNode};
+use crate::layout::{LayoutContext, LayoutNode, LayoutStyle, StyleNode};
 use crate::signal::MaybeSignal;
 use crate::vgi::Graphics;
 use nptk_theme::id::WidgetId;
@@ -301,7 +301,29 @@ pub trait Widget: Send + Sync {
     }
 
     /// Return the layout style node for layout computation.
-    fn layout_style(&self) -> StyleNode;
+    ///
+    /// This method is called during layout tree building to determine the
+    /// layout properties of this widget. Widgets can use the `context` parameter
+    /// to adapt their layout based on available constraints for responsive layouts.
+    ///
+    /// # Parameters
+    ///
+    /// - `context`: Layout context containing constraints and parent size information.
+    ///   Use this to create responsive layouts that adapt to available space.
+    ///   Widgets that don't need constraint-aware layout can ignore this parameter.
+    ///
+    /// # Returns
+    ///
+    /// A `StyleNode` containing the layout style and children for this widget.
+    fn layout_style(&self, _context: &LayoutContext) -> StyleNode {
+        // Default implementation: return empty style node
+        // Widgets must override this method
+        StyleNode {
+            style: LayoutStyle::default(),
+            children: vec![],
+            measure_func: None,
+        }
+    }
 
     /// Measure the intrinsic size of this widget given available constraints.
     ///

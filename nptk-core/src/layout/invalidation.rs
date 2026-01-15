@@ -1,0 +1,138 @@
+// SPDX-License-Identifier: LGPL-3.0-only
+
+use std::collections::{HashMap, HashSet};
+use taffy::NodeId;
+
+/// Tracks which widgets need layout updates (invalidation).
+///
+/// This allows the layout system to only recompute layout for widgets
+/// that have actually changed, rather than rebuilding the entire tree.
+#[derive(Debug, Clone, Default)]
+pub struct InvalidationTracker {
+    /// Set of Taffy node IDs that are marked as dirty and need layout recomputation.
+    dirty_nodes: HashSet<NodeId>,
+    /// Map from widget path to Taffy node ID for quick lookup.
+    widget_to_node: HashMap<String, NodeId>,
+    /// Performance metrics for layout computation.
+    metrics: InvalidationMetrics,
+}
+
+/// Performance metrics for layout invalidation.
+#[derive(Debug, Clone, Default)]
+pub struct InvalidationMetrics {
+    /// Number of nodes that were invalidated in the last layout pass.
+    pub nodes_invalidated: usize,
+    /// Number of nodes that were actually recomputed.
+    pub nodes_recomputed: usize,
+    /// Time spent in layout computation (in milliseconds).
+    pub layout_time_ms: f64,
+}
+
+impl InvalidationTracker {
+    /// Create a new invalidation tracker.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Mark a node as dirty (needs layout recomputation).
+    pub fn mark_dirty(&mut self, node_id: NodeId) {
+        self.dirty_nodes.insert(node_id);
+    }
+
+    /// Mark a node as clean (no longer needs recomputation).
+    pub fn mark_clean(&mut self, node_id: NodeId) {
+        self.dirty_nodes.remove(&node_id);
+    }
+
+    /// Check if a node is dirty.
+    pub fn is_dirty(&self, node_id: NodeId) -> bool {
+        self.dirty_nodes.contains(&node_id)
+    }
+
+    /// Mark all nodes as clean (after layout recomputation).
+    pub fn clear_all(&mut self) {
+        self.dirty_nodes.clear();
+    }
+
+    /// Get all dirty nodes.
+    pub fn dirty_nodes(&self) -> &HashSet<NodeId> {
+        &self.dirty_nodes
+    }
+
+    /// Register a widget path to node ID mapping.
+    pub fn register_widget(&mut self, widget_path: String, node_id: NodeId) {
+        self.widget_to_node.insert(widget_path, node_id);
+    }
+
+    /// Get node ID for a widget path.
+    pub fn get_node_id(&self, widget_path: &str) -> Option<NodeId> {
+        self.widget_to_node.get(widget_path).copied()
+    }
+
+    /// Mark a widget as dirty by its path.
+    pub fn mark_widget_dirty(&mut self, widget_path: &str) {
+        if let Some(node_id) = self.get_node_id(widget_path) {
+            self.mark_dirty(node_id);
+        }
+    }
+
+    /// Propagate dirty state up the tree.
+    ///
+    /// When a child is marked dirty, all its ancestors should also be marked dirty
+    /// since their layout may depend on the child's size.
+    pub fn propagate_dirty_up(&mut self, node_id: NodeId, parent_map: &HashMap<NodeId, NodeId>) {
+        let mut current = Some(node_id);
+        while let Some(node) = current {
+            self.mark_dirty(node);
+            current = parent_map.get(&node).copied();
+        }
+    }
+
+    /// Get performance metrics.
+    pub fn metrics(&self) -> &InvalidationMetrics {
+        &self.metrics
+    }
+
+    /// Get mutable reference to metrics.
+    pub fn metrics_mut(&mut self) -> &mut InvalidationMetrics {
+        &mut self.metrics
+    }
+
+    /// Reset metrics for a new measurement period.
+    pub fn reset_metrics(&mut self) {
+        self.metrics = InvalidationMetrics::default();
+    }
+}
+
+impl InvalidationMetrics {
+    /// Create new metrics.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record that a node was invalidated.
+    pub fn record_invalidation(&mut self) {
+        self.nodes_invalidated += 1;
+    }
+
+    /// Record that a node was recomputed.
+    pub fn record_recomputation(&mut self) {
+        self.nodes_recomputed += 1;
+    }
+
+    /// Record layout computation time.
+    pub fn record_layout_time(&mut self, time_ms: f64) {
+        self.layout_time_ms = time_ms;
+    }
+
+    /// Get the efficiency ratio (recomputed / invalidated).
+    ///
+    /// A ratio close to 1.0 means we're efficiently recomputing only what's needed.
+    /// A ratio much less than 1.0 means we're invalidating more than we recompute.
+    pub fn efficiency_ratio(&self) -> f64 {
+        if self.nodes_invalidated == 0 {
+            return 1.0;
+        }
+        self.nodes_recomputed as f64 / self.nodes_invalidated as f64
+    }
+}

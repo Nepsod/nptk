@@ -17,7 +17,7 @@ use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode};
+use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode, LayoutContext};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vg::kurbo::Rect;
 use nptk_core::vgi::Graphics;
@@ -116,10 +116,11 @@ impl Widget for FileIcon {
         WidgetId::new("nptk-widgets", "FileIcon")
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, _context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: self.layout_style.get().clone(),
             children: vec![],
+            measure_func: None,
         }
     }
 

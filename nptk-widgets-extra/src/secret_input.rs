@@ -4,7 +4,7 @@ use nptk_core::app::context::AppContext;
 use nptk_core::app::focus::{FocusBounds, FocusId, FocusProperties, FocusState, FocusableWidget};
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
+use nptk_core::layout::{Dimension, LayoutContext, LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::text_input::TextBuffer;
 use nptk_core::text_render::TextRenderContext;
@@ -591,10 +591,11 @@ impl Widget for SecretInput {
         }
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, _context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: self.layout_style.get().clone(),
             children: Vec::new(),
+            measure_func: None,
         }
     }
 

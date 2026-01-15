@@ -2,7 +2,7 @@
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Layout, LayoutNode, LayoutStyle, StyleNode};
+use nptk_core::layout::{Layout, LayoutNode, LayoutStyle, StyleNode, LayoutContext};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::vg::kurbo::{Affine, Rect, Vec2};
 use nptk_core::vgi::vello_vg::VelloGraphics;
@@ -104,7 +104,7 @@ impl std::fmt::Debug for MenuButton {
 impl MenuButton {
     /// Create a new menu button with the given label
     pub fn new(label: impl Into<String>) -> Self {
-        use nptk_core::layout::{Dimension, LengthPercentage};
+        use nptk_core::layout::{Dimension, LengthPercentage, LayoutContext};
 
         let label_string = label.into();
 
@@ -337,10 +337,11 @@ impl Widget for MenuButton {
         }
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: self.layout_style.get().clone(),
-            children: vec![self.child.layout_style()],
+            children: vec![self.child.layout_style(context)],
+            measure_func: None,
         }
     }
 

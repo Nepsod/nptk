@@ -4,8 +4,7 @@ use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{
     AlignItems, Dimension, FlexDirection, LayoutNode, LayoutStyle, LengthPercentage,
-    LengthPercentageAuto, StyleNode,
-};
+    LengthPercentageAuto, StyleNode, LayoutContext};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vg::kurbo::{Affine, Line, Point, Rect, Shape, Stroke};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
@@ -230,10 +229,10 @@ impl Widget for Toolbar {
         }
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         let style = self.layout_style.get().clone();
-        let children = self.children.iter().map(|c| c.layout_style()).collect();
-        StyleNode { style, children }
+        let children = self.children.iter().map(|c| c.layout_style(context)).collect();
+        StyleNode { style, children, measure_func: None }
     }
 
     async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
@@ -329,10 +328,11 @@ impl Widget for ToolbarSeparator {
         );
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: self.layout_style.get().clone(),
             children: Vec::new(),
+            measure_func: None,
         }
     }
 
@@ -387,10 +387,11 @@ impl Widget for ToolbarSpacer {
         // Spacer is invisible
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: self.layout_style.get().clone(),
             children: Vec::new(),
+            measure_func: None,
         }
     }
 
@@ -417,7 +418,7 @@ impl ToolbarButton {
     ///
     /// The returned button supports all `Button` methods including `with_tooltip()`.
     pub fn new(child: impl Widget + 'static) -> nptk_widgets::button::Button {
-        use nptk_core::layout::{Dimension, LengthPercentage, LayoutStyle};
+        use nptk_core::layout::{Dimension, LengthPercentage, LayoutStyle, LayoutContext};
         
         nptk_widgets::button::Button::new(child)
             .with_style_id("ToolbarButton")
@@ -445,7 +446,7 @@ impl ToolbarButton {
     /// The children will be arranged horizontally in a row with a small gap between them.
     /// This is useful for toolbar buttons that contain both an icon and text, or multiple elements.
     pub fn with_children(children: Vec<BoxedWidget>) -> nptk_widgets::button::Button {
-        use nptk_core::layout::{AlignItems, FlexDirection, LengthPercentage, LayoutStyle};
+        use nptk_core::layout::{AlignItems, FlexDirection, LengthPercentage, LayoutStyle, LayoutContext};
         use nptk_widgets::container::Container;
         
         let container = Container::new(children)

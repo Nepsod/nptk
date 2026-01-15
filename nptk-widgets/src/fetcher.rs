@@ -1,7 +1,7 @@
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
+use nptk_core::layout::{LayoutContext, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::future::FutureSignal;
 use nptk_core::signal::Signal;
 use nptk_core::vgi::Graphics;
@@ -61,13 +61,14 @@ impl<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Option<T>) -> W + Send +
         }
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         if let Some(widget) = &self.widget {
-            widget.layout_style()
+            widget.layout_style(context)
         } else {
             StyleNode {
                 style: LayoutStyle::default(),
                 children: Vec::new(),
+                measure_func: None,
             }
         }
     }

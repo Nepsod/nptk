@@ -5,7 +5,7 @@ use nptk_core::app::focus::{FocusBounds, FocusId, FocusProperties, FocusState, F
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout;
-use nptk_core::layout::{LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
+use nptk_core::layout::{LayoutContext, LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vg::kurbo::{Affine, Rect, Shape};
 use nptk_core::vg::peniko::Mix;
@@ -393,10 +393,11 @@ impl Widget for Button {
         }
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: self.layout_style.get().clone(),
-            children: vec![self.child.layout_style()],
+            children: vec![self.child.layout_style(context)],
+            measure_func: None,
         }
     }
 

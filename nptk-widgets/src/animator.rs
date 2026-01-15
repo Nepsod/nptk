@@ -1,7 +1,7 @@
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{LayoutNode, StyleNode};
+use nptk_core::layout::{LayoutContext, LayoutNode, StyleNode};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::Widget;
 use nptk_theme::id::WidgetId;
@@ -46,8 +46,8 @@ impl<W: Widget, A: Fn(&mut W, f32) -> Update + Send + Sync> Widget for Animator<
             .render(graphics, theme, layout_node, info, context);
     }
 
-    fn layout_style(&self) -> StyleNode {
-        self.widget.layout_style()
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
+        self.widget.layout_style(context)
     }
 
     async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {

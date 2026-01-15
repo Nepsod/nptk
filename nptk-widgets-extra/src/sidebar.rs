@@ -11,7 +11,7 @@ use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Dimension, Layout, LayoutNode, LayoutStyle, StyleNode};
+use nptk_core::layout::{Dimension, Layout, LayoutContext, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::vg::kurbo::{Affine, Rect, Shape, Vec2};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
@@ -737,10 +737,11 @@ impl Widget for Sidebar {
         WidgetId::new("nptk-widgets", "Sidebar")
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: self.layout_style.get().clone(),
             children: vec![],
+            measure_func: None,
         }
     }
 

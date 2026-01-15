@@ -1,7 +1,7 @@
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{LayoutNode, LayoutStyle, StyleNode};
+use nptk_core::layout::{LayoutContext, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vg::kurbo::{Affine, Vec2};
 use nptk_core::vg::peniko::{Blob, ImageAlphaType, ImageBrush, ImageFormat};
@@ -102,10 +102,11 @@ impl Widget for Image {
         );
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: self.state.layout_style(),
             children: Vec::new(),
+            measure_func: None,
         }
     }
 

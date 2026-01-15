@@ -3,7 +3,7 @@ use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Dimension, FlexDirection, LayoutNode, LayoutStyle, StyleNode};
+use nptk_core::layout::{Dimension, FlexDirection, LayoutNode, LayoutStyle, StyleNode, LayoutContext};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, BoxedWidget};
 use nptk_theme::id::WidgetId;
@@ -75,7 +75,7 @@ impl Widget for HStack {
         }
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: LayoutStyle {
                 flex_direction: FlexDirection::Row,
@@ -85,7 +85,8 @@ impl Widget for HStack {
                 ),
                 ..Default::default()
             },
-            children: self.children.iter().map(|c| c.layout_style()).collect(),
+            children: self.children.iter().map(|c| c.layout_style(context)).collect(),
+            measure_func: None,
         }
     }
 
@@ -174,7 +175,7 @@ impl Widget for VStack {
         }
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: LayoutStyle {
                 flex_direction: FlexDirection::Column,
@@ -184,7 +185,8 @@ impl Widget for VStack {
                 ),
                 ..Default::default()
             },
-            children: self.children.iter().map(|c| c.layout_style()).collect(),
+            children: self.children.iter().map(|c| c.layout_style(context)).collect(),
+            measure_func: None,
         }
     }
 
@@ -226,6 +228,7 @@ impl Widget for VStack {
 pub struct Expanded {
     child: BoxedWidget,
     flex: f32,
+    priority: f32,
 }
 
 impl Expanded {
@@ -234,6 +237,7 @@ impl Expanded {
         Self {
             child: Box::new(child),
             flex: 1.0,
+            priority: 0.0,
         }
     }
 
@@ -243,6 +247,16 @@ impl Expanded {
     /// to other expanded widgets. Default is 1.0.
     pub fn with_flex(mut self, flex: f32) -> Self {
         self.flex = flex;
+        self
+    }
+
+    /// Set the layout priority for this expanded widget.
+    ///
+    /// Higher priority widgets get space first and shrink less.
+    /// Priority affects flex_grow and flex_shrink calculations.
+    /// Default is 0.0 (no priority adjustment).
+    pub fn with_priority(mut self, priority: f32) -> Self {
+        self.priority = priority;
         self
     }
 }
@@ -262,8 +276,8 @@ impl Widget for Expanded {
         }
     }
 
-    fn layout_style(&self) -> StyleNode {
-        let mut child_style = self.child.layout_style();
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
+        let mut child_style = self.child.layout_style(context);
         child_style.style.flex_grow = self.flex;
         child_style.style.flex_shrink = 1.0;
         child_style
@@ -306,6 +320,7 @@ impl Widget for Expanded {
 pub struct Flexible {
     child: BoxedWidget,
     flex: f32,
+    priority: f32,
 }
 
 impl Flexible {
@@ -314,12 +329,23 @@ impl Flexible {
         Self {
             child: Box::new(child),
             flex: 1.0,
+            priority: 0.0,
         }
     }
 
     /// Set the flex factor for this flexible widget.
     pub fn with_flex(mut self, flex: f32) -> Self {
         self.flex = flex;
+        self
+    }
+
+    /// Set the layout priority for this flexible widget.
+    ///
+    /// Higher priority widgets get space first and shrink less.
+    /// Priority affects flex_grow and flex_shrink calculations.
+    /// Default is 0.0 (no priority adjustment).
+    pub fn with_priority(mut self, priority: f32) -> Self {
+        self.priority = priority;
         self
     }
 }
@@ -339,10 +365,11 @@ impl Widget for Flexible {
         }
     }
 
-    fn layout_style(&self) -> StyleNode {
-        let mut child_style = self.child.layout_style();
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
+        let mut child_style = self.child.layout_style(context);
         child_style.style.flex_grow = self.flex;
         child_style.style.flex_shrink = 1.0;
+        child_style.style.layout_priority = self.priority;
         child_style
     }
 
