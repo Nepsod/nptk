@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 use nalgebra::Vector2;
-use crate::layout::{Dimension, FlexDirection, LayoutStyle, LengthPercentage};
+use crate::layout::{Anchor, AnchorPosition, Dimension, FlexDirection, LayoutStyle, LengthPercentage, LengthPercentageAuto};
 
 /// Helper methods for building LayoutStyle with a fluent API.
 impl LayoutStyle {

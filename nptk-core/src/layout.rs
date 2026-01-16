@@ -35,6 +35,9 @@ pub use direction::LayoutDirection;
 pub mod overflow;
 pub use overflow::{OverflowDetector, OverflowRegions};
 
+pub mod anchor;
+pub use anchor::{Anchor, AnchorPosition};
+
 /// Defines different aspects and properties of a widget layout.
 #[derive(Clone, PartialEq, Debug)]
 pub struct LayoutStyle {
@@ -144,6 +147,13 @@ unsafe impl Send for LayoutStyle {}
 unsafe impl Sync for LayoutStyle {}
 
 impl Default for LayoutStyle {
+    /// Creates a default LayoutStyle with responsive-friendly defaults.
+    ///
+    /// Defaults:
+    /// - `size`: `Dimension::auto()` for both width and height (content-based sizing)
+    /// - `flex_grow`: `0.0` (don't grow by default, widgets must opt-in)
+    /// - `flex_shrink`: `1.0` (allow shrinking when space is constrained)
+    /// - `position`: `Position::Relative` (normal flow)
     fn default() -> Self {
         LayoutStyle {
             display: Display::default(),

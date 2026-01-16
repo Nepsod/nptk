@@ -187,8 +187,16 @@ impl Sidebar {
             hovered_id: None,
             section_expanded: Vec::new(),
             layout_style: LayoutStyle {
-                size: Vector2::new(Dimension::percent(1.0), Dimension::percent(1.0)),
+                size: Vector2::new(
+                    Dimension::length(200.0), // Fixed width - typical sidebar width
+                    Dimension::percent(1.0), // Full height - responsive vertically
+                ),
+                min_size: Vector2::new(
+                    Dimension::length(150.0), // Minimum width to prevent too narrow sidebar
+                    Dimension::auto(), // No minimum height constraint
+                ),
                 flex_direction: nptk_core::layout::FlexDirection::Column,
+                flex_shrink: 0.0, // Prevent sidebar from shrinking below minimum width
                 ..Default::default()
             }
             .into(),

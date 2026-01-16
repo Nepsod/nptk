@@ -125,6 +125,14 @@ where
         self.info.size = Vector2::new(logical_size.width, logical_size.height);
         self.request_redraw();
         self.update.insert(Update::DRAW | Update::LAYOUT);
+        
+        // Ensure layout is recomputed after window resize
+        // The Update::LAYOUT flag will trigger layout recomputation in the next frame
+        log::debug!(
+            "Window resized to {}x{}, layout recomputation scheduled",
+            logical_size.width,
+            logical_size.height
+        );
     }
 
     /// Handle window close request.

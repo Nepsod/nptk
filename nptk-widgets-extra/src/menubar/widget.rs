@@ -131,8 +131,12 @@ impl MenuBar {
             menu_context: MenuContext::new(),
             layout_style: LayoutStyle {
                 size: nalgebra::Vector2::new(
-                    Dimension::percent(1.0), // Full width
-                    Dimension::length(28.0), // Compact height
+                    Dimension::percent(1.0), // Full width - responsive horizontally
+                    Dimension::auto(), // Auto height - adapts to content
+                ),
+                min_size: nalgebra::Vector2::new(
+                    Dimension::auto(), // No minimum width constraint
+                    Dimension::length(28.0), // Minimum height for compact appearance
                 ),
                 padding: layout::Rect::<LengthPercentage> {
                     left: LengthPercentage::length(4.0),
