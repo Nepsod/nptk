@@ -124,8 +124,8 @@ where
 
         // Throttle layout updates: only schedule layout recomputation if:
         // 1. Size changed significantly (more than 2px to reduce jitter), OR
-        // 2. Enough time has passed since last resize (16ms = ~60fps)
-        const RESIZE_THROTTLE_MS: u64 = 16; // ~60fps
+        // 2. Enough time has passed since last resize (8ms = ~120fps)
+        const RESIZE_THROTTLE_MS: u64 = 8; // ~120fps
         const MIN_RESIZE_DELTA: i32 = 2; // Minimum pixel change to trigger layout update
         let now = std::time::Instant::now();
         let time_since_last_resize = now.duration_since(self.last_resize_time).as_millis() as u64;
@@ -143,7 +143,7 @@ where
             self.last_resize_time = now;
             self.pending_resize = None;
             self.request_redraw();
-            self.update.insert(Update::DRAW | Update::LAYOUT);
+            self.update.insert(Update::DRAW | Update::RESIZE);
         } else {
             // Store pending resize for later processing
             self.pending_resize = Some(new_logical_size);

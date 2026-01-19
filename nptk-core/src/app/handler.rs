@@ -121,6 +121,8 @@ where
     cached_widget_structure_hash: Option<u64>,
     /// Flag indicating that Taffy layout was recomputed but layout collection is deferred
     layout_collection_deferred: bool,
+    /// Cached StyleNode tree to avoid redundant tree walks
+    cached_style_node: Option<StyleNode>,
 }
 
 struct PopupWindow {
@@ -235,6 +237,7 @@ where
             cached_root_child: None,
             cached_widget_structure_hash: None,
             layout_collection_deferred: false,
+            cached_style_node: None,
         }
     }
 
@@ -286,7 +289,7 @@ where
 
     /// Compute a hash of just the widget structure (without size) for detecting structure changes.
     /// This avoids expensive layout_style() calls during resize when only size changes.
-    fn compute_widget_structure_hash(&mut self) -> u64 {
+    fn compute_widget_structure_hash(&mut self, style: &crate::layout::StyleNode) -> u64 {
         use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
         
@@ -299,9 +302,7 @@ where
             
             // Hash layout style to detect style changes
             // This is expensive but necessary to detect structure changes
-            let context = LayoutContext::unbounded();
-            let style = widget.layout_style(&context);
-            self.hash_style_node(&style, &mut hasher);
+            self.hash_style_node(style, &mut hasher);
         }
         
         hasher.finish()
@@ -331,10 +332,14 @@ where
         // Use cached widget structure hash if available, otherwise compute it
         let widget_hash = if let Some(cached_hash) = self.cached_widget_structure_hash {
             cached_hash
-        } else {
-            let hash = self.compute_widget_structure_hash();
+        } else if let Some(widget) = &self.widget {
+            let context = crate::layout::LayoutContext::unbounded();
+            let style = widget.layout_style(&context);
+            let hash = self.compute_widget_structure_hash(&style);
             self.cached_widget_structure_hash = Some(hash);
             hash
+        } else {
+            0
         };
         
         widget_hash.hash(&mut hasher);
@@ -574,7 +579,7 @@ where
         // CRITICAL: Detect resize BEFORE layout computation so layout uses new size
         let platform = Platform::detect();
         // Process pending resize if enough time has passed (throttling)
-        const RESIZE_THROTTLE_MS: u64 = 16; // ~60fps
+        const RESIZE_THROTTLE_MS: u64 = 8; // ~120fps
         if let Some(pending_size) = self.pending_resize {
             let time_since_last_resize = self.last_update.duration_since(self.last_resize_time).as_millis() as u64;
             if time_since_last_resize >= RESIZE_THROTTLE_MS {
@@ -583,7 +588,7 @@ where
                 self.last_window_size = pending_size;
                 self.last_resize_time = self.last_update;
                 self.pending_resize = None;
-                self.update.insert(Update::DRAW | Update::LAYOUT);
+                self.update.insert(Update::DRAW | Update::RESIZE);
             }
         }
 
@@ -608,7 +613,7 @@ where
                                     self.last_window_size = (size_after.0, size_after.1);
                                     self.last_resize_time = now;
                                     self.pending_resize = None;
-                                    self.update.insert(Update::DRAW | Update::LAYOUT);
+                                    self.update.insert(Update::DRAW | Update::RESIZE);
                                 } else {
                                     self.pending_resize = Some((size_after.0, size_after.1));
                                     self.update.insert(Update::DRAW);
@@ -737,26 +742,29 @@ where
                 update_flags.intersects(Update::DRAW)
             );
             
-            // If layout collection was deferred (fast resize path), collect it now
+            // Re-collect layout if deferred (using cached style)
             let final_layout_node = if self.layout_collection_deferred && self.taffy.child_count(self.window_node) > 0 {
                 if let Some(root_child) = self.cached_root_child {
-                    let context = LayoutContext::unbounded();
-                    if let Some(widget) = &self.widget {
-                        let style = widget.layout_style(&context);
-                        if let Ok(fresh_layout) = self.collect_layout(root_child, &style) {
-                            self.layout_collection_deferred = false;
-                            fresh_layout
-                        } else {
-                            layout_node
-                        }
+                    let style = if let Some(sn) = &self.cached_style_node {
+                        sn.clone()
                     } else {
-                        layout_node
+                        let context = LayoutContext::unbounded();
+                        let style = self.widget.as_ref().unwrap().layout_style(&context);
+                        self.cached_style_node = Some(style.clone());
+                        style
+                    };
+                    
+                    if let Ok(fresh_layout) = self.collect_layout(root_child, &style) {
+                        self.layout_collection_deferred = false;
+                        fresh_layout
+                    } else {
+                        layout_node.clone()
                     }
                 } else {
-                    layout_node
+                    layout_node.clone()
                 }
             } else {
-                layout_node
+                layout_node.clone()
             };
             
             // Always use the latest layout_node
@@ -912,18 +920,11 @@ where
     /// Set up the initial layout tree.
     fn setup_initial_layout(&mut self) {
         log::debug!("Setting up layout...");
-        let context = LayoutContext::unbounded();
+        let context = crate::layout::LayoutContext::unbounded();
         let style = self.widget.as_ref().unwrap().layout_style(&context);
-        self.layout_widget(self.window_node, &style)
-            .expect("Failed to layout window");
-        self.compute_layout().expect("Failed to compute layout");
         
-        // Cache root child node ID
-        if self.taffy.child_count(self.window_node) > 0 {
-            if let Ok(root_child) = self.taffy.child_at_index(self.window_node, 0) {
-                self.cached_root_child = Some(root_child);
-            }
-        }
+        self.rebuild_layout(&style);
+        self.compute_layout().expect("Failed to compute layout");
         
         self.update.insert(Update::FORCE);
     }
@@ -931,7 +932,8 @@ where
     /// Update layout if needed, returning the updated layout node.
     /// Optimized to avoid full rebuilds when only window size changes.
     fn update_layout_if_needed(&mut self, layout_node: LayoutNode) -> LayoutNode {
-        if !self.update.get().intersects(Update::LAYOUT | Update::FORCE) {
+        let update_flags = self.update.get();
+        if !update_flags.intersects(Update::LAYOUT | Update::FORCE | Update::RESIZE) {
             return layout_node;
         }
 
@@ -957,32 +959,42 @@ where
         
         // Check if widget structure changed by comparing hash
         // This avoids expensive layout_style() call if structure hasn't changed
-        let structure_changed = if let Some(cached_hash) = self.cached_widget_structure_hash {
-            let current_hash = self.compute_widget_structure_hash();
-            if current_hash != cached_hash {
-                self.cached_widget_structure_hash = Some(current_hash);
-                true
+        // ONLY compute hash if Update::LAYOUT or Update::FORCE is set, or if we don't have a cached hash yet
+        let mut structure_changed = false;
+
+        if update_flags.intersects(Update::LAYOUT | Update::FORCE) || self.cached_widget_structure_hash.is_none() || self.cached_style_node.is_none() {
+            // Compute style once and reuse it
+            let context = crate::layout::LayoutContext::unbounded();
+            let style = self.widget.as_ref().unwrap().layout_style(&context);
+            
+            let current_hash = self.compute_widget_structure_hash(&style);
+            if let Some(cached_hash) = self.cached_widget_structure_hash {
+                if current_hash != cached_hash {
+                    self.cached_widget_structure_hash = Some(current_hash);
+                    structure_changed = true;
+                }
             } else {
-                false
+                // First time, compute and cache
+                self.cached_widget_structure_hash = Some(current_hash);
             }
-        } else {
-            // First time, compute and cache
-            let hash = self.compute_widget_structure_hash();
-            self.cached_widget_structure_hash = Some(hash);
-            false // Not a change, just initial computation
-        };
+            // Cache the style node for potential use in rebuild or final collection
+            self.cached_style_node = Some(style);
+        }
+        
+        // If size changed and structure didn't change (as far as we can tell without hash), we might skip full pass
+        let only_resize = self.update.get().intersects(Update::RESIZE) && !self.update.get().intersects(Update::LAYOUT | Update::FORCE);
         
         // If FORCE flag is set, always rebuild (structure might have changed)
-        // If size didn't change and FORCE is not set, we might be able to skip
-        let needs_full_rebuild = self.update.get().intersects(Update::FORCE) || structure_changed || !size_changed;
+        // If size didn't change and FORCE/LAYOUT/RESIZE is not set, we might be able to skip
+        let needs_full_rebuild = self.update.get().intersects(Update::FORCE | Update::LAYOUT) || structure_changed || (!size_changed && !only_resize);
         
-        if size_changed && !structure_changed {
+        if only_resize && !structure_changed {
             // Update window node size immediately
             self.update_window_node_size(current_width, current_height);
             self.info.size = nalgebra::Vector2::new(current_width as f64, current_height as f64);
             self.last_window_size = (current_width, current_height);
             
-            // Fast path: only size changed, structure intact - just recompute Taffy layout
+            // Fast path: only size changed, structure presumed intact - just recompute Taffy layout
             // DEFER layout collection until render time to avoid expensive operations during resize
             if self.taffy.child_count(self.window_node) > 0 {
                 // Only recompute Taffy layout without rebuilding tree or collecting layout
@@ -995,10 +1007,8 @@ where
                     // This avoids expensive layout_style() and collect_layout() calls during resize
                     self.layout_collection_deferred = true;
                     
-                    // Clear the LAYOUT flag since we've recomputed Taffy layout
-                    if self.update.get().intersects(Update::LAYOUT) {
-                        self.update.remove(Update::LAYOUT);
-                    }
+                    // Clear the RESIZE/LAYOUT flags since we've recomputed Taffy layout
+                    self.update.remove(Update::RESIZE | Update::LAYOUT);
                     
                     let layout_time = start_time.elapsed();
                     self.invalidation_tracker
@@ -1027,23 +1037,21 @@ where
         self.invalidation_tracker.mark_dirty(self.window_node);
         self.invalidation_tracker.metrics_mut().record_invalidation();
         
-        if size_changed {
-            // Ensure size is updated before rebuild
-            self.update_window_node_size(current_width, current_height);
-            self.info.size = nalgebra::Vector2::new(current_width as f64, current_height as f64);
-        }
+        // Rebuild layout using cached style node if available, otherwise build it
+        let style = if let Some(ref sn) = self.cached_style_node {
+            sn.clone()
+        } else {
+            let context = crate::layout::LayoutContext::unbounded();
+            let style = self.widget.as_ref().unwrap().layout_style(&context);
+            self.cached_style_node = Some(style.clone());
+            style
+        };
         
-        self.rebuild_layout();
+        self.rebuild_layout(&style);
         
         // Clear the LAYOUT flag after rebuilding
-        if self.update.get().intersects(Update::LAYOUT) {
-            self.update.remove(Update::LAYOUT);
-        }
+        self.update.remove(Update::LAYOUT);
 
-        // Get the style AFTER rebuilding
-        let context = LayoutContext::unbounded();
-        let style = self.widget.as_ref().unwrap().layout_style(&context);
-        
         let child_count = self.taffy.child_count(self.window_node);
         if child_count == 0 {
             return LayoutNode {
@@ -1053,13 +1061,22 @@ where
         }
         
         // Cache root child node ID
-        let root_child = self.taffy.child_at_index(self.window_node, 0).unwrap();
-        self.cached_root_child = Some(root_child);
+        let root_child = if let Some(cached_child) = self.cached_root_child {
+            cached_child
+        } else {
+            let child = self.taffy.child_at_index(self.window_node, 0).unwrap();
+            self.cached_root_child = Some(child);
+            child
+        };
         
+        // Use the style node we already have
         let new_layout = self
             .collect_layout(root_child, &style)
-            .expect("Failed to collect layout");
-
+            .expect("Failed to collect layout-");
+        
+        // Clear deferred flag since we just collected
+        self.layout_collection_deferred = false;
+        
         // Record performance metrics
         let layout_time = start_time.elapsed();
         self.invalidation_tracker
@@ -1075,7 +1092,7 @@ where
     }
 
     /// Rebuild the layout tree from scratch.
-    fn rebuild_layout(&mut self) {
+    fn rebuild_layout(&mut self, style: &StyleNode) {
         log::debug!("Rebuilding layout tree from scratch");
 
         // Ensure window node size is up to date before rebuilding
@@ -1108,12 +1125,8 @@ where
             .set_children(self.window_node, &[])
             .expect("Failed to set children");
 
-        // Get the current style (which may have Display::None widgets)
-        let context = LayoutContext::unbounded();
-        let style = self.widget.as_ref().unwrap().layout_style(&context);
-
         // Build the layout tree (Display::None widgets will be skipped)
-        self.layout_widget(self.window_node, &style)
+        self.layout_widget(self.window_node, style)
             .expect("Failed to layout window");
 
         // Cache root child node ID after building tree

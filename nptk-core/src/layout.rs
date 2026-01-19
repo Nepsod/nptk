@@ -256,6 +256,7 @@ pub struct LayoutNode {
 }
 
 /// The raw layout styles with children nodes.
+#[derive(Clone)]
 pub struct StyleNode {
     /// The layout style of this node.
     pub style: LayoutStyle,
@@ -266,7 +267,7 @@ pub struct StyleNode {
     /// If provided, this measure function will be used to determine
     /// the intrinsic size of this widget. The measure function can
     /// be called during style building to set better initial sizes.
-    pub measure_func: Option<Box<dyn Fn(Size<AvailableSpace>) -> Size<f32> + Send + Sync>>,
+    pub measure_func: Option<std::sync::Arc<dyn Fn(Size<AvailableSpace>) -> Size<f32> + Send + Sync>>,
 }
 
 impl StyleNode {
@@ -283,7 +284,7 @@ impl StyleNode {
     pub fn with_measure(
         style: LayoutStyle,
         children: Vec<StyleNode>,
-        measure_func: Box<dyn Fn(Size<AvailableSpace>) -> Size<f32> + Send + Sync>,
+        measure_func: std::sync::Arc<dyn Fn(Size<AvailableSpace>) -> Size<f32> + Send + Sync>,
     ) -> Self {
         Self {
             style,

@@ -35,9 +35,18 @@ where
                         resize_detected_before_render = Some(size_after);
                         self.update_window_node_size(size_after.0, size_after.1);
                         self.info.size = nalgebra::Vector2::new(size_after.0 as f64, size_after.1 as f64);
+                        self.last_window_size = (size_after.0, size_after.1);
+                        
+                        // Immediately recompute Taffy layout instead of skipping frame
+                        if let Err(e) = self.compute_layout() {
+                            log::warn!("Immediate layout recompute failed in render_frame: {}", e);
+                        } else {
+                            // Successfully recomputed Taffy layout, mark collection as deferred
+                            // because we'll need to re-collect before rendering below
+                            self.layout_collection_deferred = true;
+                        }
+                        
                         self.update.insert(Update::DRAW | Update::LAYOUT);
-                        // Skip rendering this frame - return early
-                        return;
                     }
                 }
             }
@@ -57,8 +66,34 @@ where
         let original_cursor_state = self.info.cursor_pos;
         self.info.cursor_pos = effective_cursor_pos;
         
-        let widget_render_time = self.render_widget(layout_node);
-        let postfix_render_time = self.render_postfix(layout_node);
+        // Ensure layout is up-to-date before rendering
+        // If layout collection was deferred (fast resize path), collect it now
+        let local_layout_node = if self.layout_collection_deferred && self.taffy.child_count(self.window_node) > 0 {
+            if let Some(root_child) = self.cached_root_child {
+                let style = if let Some(sn) = &self.cached_style_node {
+                    sn.clone()
+                } else {
+                    let context = crate::layout::LayoutContext::unbounded();
+                    let style = self.widget.as_ref().unwrap().layout_style(&context);
+                    self.cached_style_node = Some(style.clone());
+                    style
+                };
+                
+                if let Ok(fresh_layout) = self.collect_layout(root_child, &style) {
+                    self.layout_collection_deferred = false;
+                    fresh_layout
+                } else {
+                    layout_node.clone()
+                }
+            } else {
+                layout_node.clone()
+            }
+        } else {
+            layout_node.clone()
+        };
+
+        let widget_render_time = self.render_widget(&local_layout_node);
+        let postfix_render_time = self.render_postfix(&local_layout_node);
         
         // Restore original cursor state for menu rendering
         self.info.cursor_pos = original_cursor_state;
