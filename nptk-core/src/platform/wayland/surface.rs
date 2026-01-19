@@ -24,6 +24,7 @@ struct SurfaceState {
     fallback_committed: bool,
     input_events: Vec<InputEvent>,
     first_configure_acked: bool,
+    frame_ready: bool,
 }
 
 /// Internal Wayland surface state.
@@ -199,6 +200,7 @@ impl WaylandSurfaceInner {
         let mut state = self.state.lock().unwrap();
         state.frame_callback = None;
         state.first_frame_seen = true;
+        state.frame_ready = true;
     }
 
     /// Prepare a frame callback for the next frame.
@@ -358,9 +360,11 @@ impl WaylandSurfaceInner {
             needs_redraw: state.needs_redraw,
             configured: state.configured,
             should_close: state.should_close,
+            frame_ready: state.frame_ready,
         };
         state.needs_redraw = false;
         state.configured = false;
+        state.frame_ready = false;
         status
     }
 
@@ -401,6 +405,8 @@ pub(crate) struct SurfaceStatus {
     pub configured: bool,
     /// Whether the surface should be closed.
     pub should_close: bool,
+    /// Whether a frame has been presented since the last check.
+    pub frame_ready: bool,
 }
 
 // WaylandSurface implementation (merged from vgi/wayland_surface.rs)
@@ -430,6 +436,7 @@ pub struct WaylandSurface {
     pending_input_events: Vec<InputEvent>,
     offscreen: Option<OffscreenSurface>,
     blitter: Option<TextureBlitter>,
+    frame_ready: bool,
 }
 
 impl WaylandSurface {
@@ -559,6 +566,7 @@ impl WaylandSurface {
             pending_input_events: Vec::new(),
             offscreen: None,
             blitter: None,
+            frame_ready: false,
         })
     }
 
@@ -673,6 +681,9 @@ impl SurfaceTrait for WaylandSurface {
             self.needs_redraw = true;
             log::trace!("Wayland dispatch: needs_redraw=true");
         }
+        if status.frame_ready {
+            self.frame_ready = true;
+        }
 
         // If we just got configured and require reconfiguration, request a redraw immediately
         // so the higher layers render once and present a buffer to get mapped.
@@ -702,8 +713,14 @@ impl SurfaceTrait for WaylandSurface {
             }
             self.pending_input_events.append(&mut new_events);
         }
-
+ 
         Ok(self.needs_redraw)
+    }
+
+    fn take_frame_ready(&mut self) -> bool {
+        let ready = self.frame_ready;
+        self.frame_ready = false;
+        ready
     }
 }
 

@@ -4,7 +4,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
 
 /// Maximum number of layout computations to cache
 const MAX_LAYOUT_CACHE_SIZE: usize = 10;
@@ -16,7 +15,7 @@ mod render;
 mod wayland;
 
 use crate::app::context::AppContext;
-use crate::layout::{InvalidationTracker, LayoutContext, LayoutDirection, LayoutNode};
+use crate::layout::{InvalidationTracker, LayoutContext, LayoutNode};
 use crate::vgi::graphics_from_scene;
 use crate::vgi::{DeviceHandle, GpuContext};
 use crate::vgi::{Renderer, RendererOptions, Scene, Surface, SurfaceTrait};
@@ -123,6 +122,8 @@ where
     layout_collection_deferred: bool,
     /// Cached StyleNode tree to avoid redundant tree walks
     cached_style_node: Option<StyleNode>,
+    /// Cache for absolute layout bounds of all nodes
+    absolute_bounds_cache: std::collections::HashMap<NodeId, taffy::prelude::Layout>,
 }
 
 struct PopupWindow {
@@ -156,6 +157,7 @@ where
         settings: Arc<SettingsRegistry>,
     ) -> Self {
         let mut taffy = TaffyTree::with_capacity(16);
+        taffy.enable_rounding();
 
         // gets configured on resume
         let window_node = taffy
@@ -238,6 +240,7 @@ where
             cached_widget_structure_hash: None,
             layout_collection_deferred: false,
             cached_style_node: None,
+            absolute_bounds_cache: std::collections::HashMap::new(),
         }
     }
 
@@ -493,6 +496,9 @@ where
         absolute_layout.location.x = absolute_x;
         absolute_layout.location.y = absolute_y;
 
+        // Cache absolute layout for fast lookup
+        self.absolute_bounds_cache.insert(node, absolute_layout);
+
         // Calculate this node's content area position (absolute position)
         // This will be the parent position for children
         // Extract padding values from LengthPercentage
@@ -598,6 +604,10 @@ where
                     let size_before = surface.size();
                     match surface.dispatch_events() {
                         Ok(needs_redraw) => {
+                            if surface.take_frame_ready() {
+                                // Reset resize throttle on frame completion to allow the next resize step
+                                self.last_resize_time = Instant::now().checked_sub(Duration::from_millis(RESIZE_THROTTLE_MS)).unwrap_or(self.last_resize_time);
+                            }
                             let size_after = surface.size();
                             if size_before != size_after {
                                 // Throttle Wayland resize events too
@@ -1094,6 +1104,7 @@ where
     /// Rebuild the layout tree from scratch.
     fn rebuild_layout(&mut self, style: &StyleNode) {
         log::debug!("Rebuilding layout tree from scratch");
+        self.absolute_bounds_cache.clear();
 
         // Ensure window node size is up to date before rebuilding
         // This is important for resize events where the window size may have changed
@@ -1610,6 +1621,7 @@ where
                 (req.size.0, req.size.1, 1.0f32);
 
             let mut taffy = TaffyTree::new();
+            taffy.enable_rounding();
             let root_node = taffy
                 .new_leaf(Style {
                     size: Size {

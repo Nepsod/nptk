@@ -76,6 +76,13 @@ pub trait SurfaceTrait {
     /// * `Ok(false)` if no redraw is needed
     /// * `Err(String)` if event dispatching failed
     fn dispatch_events(&mut self) -> Result<bool, String>;
+
+    /// Check if a frame has been presented since the last check.
+    /// Returns the frame ready status and resets it to false.
+    ///
+    /// # Returns
+    /// `true` if a frame was presented, `false` otherwise
+    fn take_frame_ready(&mut self) -> bool;
 }
 
 /// A unified surface that can be either Winit or Wayland.
@@ -217,6 +224,15 @@ impl SurfaceTrait for Surface {
             Surface::Winit(_) => Ok(false),
             #[cfg(all(target_os = "linux", feature = "wayland"))]
             Surface::Wayland(wayland_surface) => wayland_surface.dispatch_events(),
+        }
+    }
+
+    fn take_frame_ready(&mut self) -> bool {
+        match self {
+            #[cfg(target_os = "linux")]
+            Surface::Winit(_) => false,
+            #[cfg(all(target_os = "linux", feature = "wayland"))]
+            Surface::Wayland(wayland_surface) => wayland_surface.take_frame_ready(),
         }
     }
 }
