@@ -372,11 +372,6 @@ where
             (s.x as u32, s.y as u32)
         };
 
-        // #region agent log - HYP H: Verify compute_layout uses correct window size
-        let window_node_size = self.taffy.get_final_layout(self.window_node);
-        log::debug!("[HYP-H] compute_layout: AvailableSpace={}x{}, window node size={}x{}", width, height, window_node_size.size.width, window_node_size.size.height);
-        // #endregion
-
         log::debug!(
             "compute_layout: computing layout for window node with AvailableSpace {}x{}",
             width,
@@ -390,19 +385,6 @@ where
                 height: AvailableSpace::Definite(height as f32),
             },
         )?;
-        
-        // #region agent log - HYP H: Verify final layout after compute
-        let final_layout = self.taffy.get_final_layout(self.window_node);
-        log::info!("[HYP-H] compute_layout: Window node final layout: {}x{} at ({}, {})", final_layout.size.width, final_layout.size.height, final_layout.location.x, final_layout.location.y);
-        
-        // #region agent log - HYP I: Check if root widget children got new sizes
-        if self.taffy.child_count(self.window_node) > 0 {
-            if let Ok(first_child) = self.taffy.child_at_index(self.window_node, 0) {
-                let child_layout = self.taffy.get_final_layout(first_child);
-                log::debug!("[HYP-I] compute_layout: First child layout: {}x{} at ({}, {})", child_layout.size.width, child_layout.size.height, child_layout.location.x, child_layout.location.y);
-            }
-        }
-        // #endregion
         
         Ok(())
     }
@@ -560,19 +542,11 @@ where
         if platform == Platform::Wayland {
             if let Some(ref mut surface) = self.surface {
                 if surface.needs_event_dispatch() {
-                    // #region agent log - HYP B: Track size before/after dispatch_events
                     let size_before = surface.size();
-                    log::debug!("[HYP-B] Wayland dispatch in update(): size before = {:?}", size_before);
-                    // #endregion
-                    
                     match surface.dispatch_events() {
                         Ok(needs_redraw) => {
-                            // #region agent log - HYP B: Check if size changed during dispatch
                             let size_after = surface.size();
-                            log::debug!("[HYP-B] Wayland dispatch in update(): size after = {:?}, needs_redraw = {}", size_after, needs_redraw);
-                            
                             if size_before != size_after {
-                                log::info!("=== [HYP-B CONFIRMED] WAYLAND RESIZE DETECTED IN UPDATE() === Size changed from {:?} to {:?}", size_before, size_after);
                                 // Update window node size IMMEDIATELY so layout computation uses new size
                                 self.update_window_node_size(size_after.0, size_after.1);
                                 self.info.size = nalgebra::Vector2::new(size_after.0 as f64, size_after.1 as f64);
@@ -581,7 +555,6 @@ where
                                 log::trace!("Wayland events triggered redraw");
                                 self.update.insert(Update::DRAW);
                             }
-                            // #endregion
                         },
                         Err(err) => {
                             log::info!("Wayland surface dispatch reported close: {}", err);
@@ -889,7 +862,6 @@ where
             let s = self.config.window.size;
             (s.x as u32, s.y as u32)
         };
-        log::info!("Current window size before rebuild: {}x{}", current_width, current_height);
         
         // Update window node size to match current surface/window size
         // This is critical when resize was detected in render_frame
@@ -968,11 +940,6 @@ where
 
     /// Rebuild the layout tree from scratch.
     fn rebuild_layout(&mut self) {
-        // #region agent log - HYP G: Verify rebuild_layout is called
-        let window_node_size = self.taffy.get_final_layout(self.window_node);
-        log::info!("[HYP-G] rebuild_layout called: window node size={}x{}", window_node_size.size.width, window_node_size.size.height);
-        // #endregion
-        
         log::info!("Rebuilding layout tree from scratch");
 
         // Ensure window node size is up to date before rebuilding
@@ -984,20 +951,16 @@ where
             let logical_size = size.to_logical::<f64>(scale_factor);
             let width = logical_size.width as u32;
             let height = logical_size.height as u32;
-            log::info!("Reading window size from winit: {}x{} (logical, scale_factor={})", width, height, scale_factor);
             self.update_window_node_size(width, height);
             (width, height)
         } else if let Some(surface) = &self.surface {
             let (width, height) = surface.size();
-            log::info!("Reading window size from surface: {}x{}", width, height);
             self.update_window_node_size(width, height);
             (width, height)
         } else {
             log::warn!("No window or surface available for size reading");
             (800, 600) // Fallback
         };
-        
-        log::info!("Window node size updated to: {}x{}", new_width, new_height);
 
         // Clear all children from the window node - this removes all existing nodes
         self.taffy
@@ -1242,11 +1205,6 @@ where
     /// The window node is the root of the layout tree and should match the actual window size.
     /// Children with percent(1.0) will fill 100% of this size.
     fn update_window_node_size(&mut self, width: u32, height: u32) {
-        // #region agent log - HYP F: Verify window node size is updated
-        let old_layout = self.taffy.get_final_layout(self.window_node);
-        log::debug!("[HYP-F] update_window_node_size: old size={}x{}, new size={}x{}", old_layout.size.width, old_layout.size.height, width, height);
-        // #endregion
-        
         // Set the window node to the actual window size
         // This is the root node, so it should match the AvailableSpace provided to compute_layout()
         self.taffy
@@ -1261,11 +1219,6 @@ where
                 },
             )
             .expect("Failed to set window node style");
-        
-        // #region agent log - HYP F: Verify window node size was updated
-        let new_layout = self.taffy.get_final_layout(self.window_node);
-        log::debug!("[HYP-F] update_window_node_size: after set_style, size={}x{}", new_layout.size.width, new_layout.size.height);
-        // #endregion
     }
 
     /// Notify plugins that the application is resuming.

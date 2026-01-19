@@ -106,7 +106,6 @@ where
             return;
         }
 
-        log::info!("=== RESIZE EVENT RECEIVED === Window resized to {}x{} (physical)", new_size.width, new_size.height);
 
         if let Some(surface) = &mut self.surface {
             if let Err(e) = surface.resize(new_size.width, new_size.height) {

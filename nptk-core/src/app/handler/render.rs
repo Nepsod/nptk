@@ -32,7 +32,6 @@ where
                 if let Ok(_) = surface.dispatch_events() {
                     let size_after = surface.size();
                     if size_before != size_after {
-                        log::info!("[HYP-J] Resize detected in render_frame BEFORE rendering: skipping frame, layout will be recomputed next update()");
                         resize_detected_before_render = Some(size_after);
                         self.update_window_node_size(size_after.0, size_after.1);
                         self.info.size = nalgebra::Vector2::new(size_after.0 as f64, size_after.1 as f64);
@@ -447,25 +446,16 @@ where
 
         let mut resize_detected_in_render = None;
         if surface.needs_event_dispatch() {
-            // #region agent log - HYP B: Track size before/after dispatch_events in render_frame
             let size_before = surface.size();
-            log::debug!("[HYP-B] render_frame dispatch: size before = {:?}", size_before);
-            // #endregion
-            
             match surface.dispatch_events() {
                 Ok(needs_redraw) => {
-                    // #region agent log - HYP B: Check if size changed during dispatch in render_frame
                     let size_after = surface.size();
-                    log::debug!("[HYP-B] render_frame dispatch: size after = {:?}, needs_redraw = {}", size_after, needs_redraw);
-                    
                     if size_before != size_after {
-                        log::info!("=== [HYP-B CONFIRMED] WAYLAND RESIZE DETECTED IN RENDER_FRAME === Size changed from {:?} to {:?}", size_before, size_after);
                         resize_detected_in_render = Some(size_after);
                         self.update.insert(Update::DRAW | Update::LAYOUT);
                     } else if needs_redraw {
                         self.update.insert(Update::DRAW);
                     }
-                    // #endregion
                 },
                 Err(err) => {
                     log::info!("Surface dispatch reported close: {}", err);
@@ -479,7 +469,6 @@ where
         // Note: We can't update window node size here because surface and renderer are borrowed.
         // The update will happen in the next update() call when Update::LAYOUT flag is processed.
         if resize_detected_in_render.is_some() {
-            log::info!("[HYP-J] Resize detected in render_to_surface: skipping frame, layout will be recomputed next update()");
             return None; // Skip rendering this frame, let the next update() recompute layout
         }
 
@@ -491,10 +480,7 @@ where
             }
             let mut resize_detected_in_reconfigure = None;
             if wayland_surface.requires_reconfigure() {
-                // #region agent log - HYP D: Check size before/after configure_surface
                 let size_before_reconfigure = wayland_surface.size();
-                log::debug!("[HYP-D] render_frame: requires_reconfigure=true, size before configure_surface={:?}", size_before_reconfigure);
-                // #endregion
                 let present_mode = match self.config.render.present_mode {
                     wgpu_types::PresentMode::AutoVsync => vello::wgpu::PresentMode::AutoVsync,
                     wgpu_types::PresentMode::AutoNoVsync => vello::wgpu::PresentMode::AutoNoVsync,
@@ -510,15 +496,12 @@ where
                 ) {
                     log::warn!("Wayland reconfigure failed: {}", e);
                 } else {
-                    // #region agent log - HYP D: Check if configure_surface changed size
                     let size_after_reconfigure = wayland_surface.size();
                     if size_before_reconfigure != size_after_reconfigure {
-                        log::info!("[HYP-D CONFIRMED] configure_surface changed size from {:?} to {:?}", size_before_reconfigure, size_after_reconfigure);
                         resize_detected_in_reconfigure = Some(size_after_reconfigure);
                         // Trigger layout update (update is atomic so safe to call here)
                         self.update.insert(Update::DRAW | Update::LAYOUT);
                     }
-                    // #endregion
                 }
             }
             if !wayland_surface.is_configured() {
@@ -529,7 +512,6 @@ where
             // Note: We can't update window node size here because surface and renderer are borrowed.
             // The update will happen in the next update() call when Update::LAYOUT flag is processed.
             if resize_detected_in_reconfigure.is_some() {
-                log::info!("[HYP-J] Resize detected in render_to_surface (reconfigure): skipping frame, layout will be recomputed next update()");
                 return None; // Skip rendering this frame, let the next update() recompute layout
             }
         }
