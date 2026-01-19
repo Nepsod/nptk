@@ -38,6 +38,7 @@ smol = { workspace = true }
 image = "0.24"
 futures = "0.3"
 anyhow = "1.0.100"
+stacker = "0.1.15"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 smithay-client-toolkit = { version = "0.18", optional = true }

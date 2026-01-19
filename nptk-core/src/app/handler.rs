@@ -1,5 +1,9 @@
 #[cfg(all(target_os = "linux", feature = "wayland"))]
 use std::collections::HashSet;
+#[cfg(all(target_os = "linux", feature = "wayland"))]
+use crate::platform::wayland::events::{InputEvent, KeyboardEvent};
+#[cfg(all(target_os = "linux", feature = "wayland"))]
+use wayland_client::protocol::wl_keyboard;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -124,6 +128,14 @@ where
     cached_style_node: Option<StyleNode>,
     /// Cache for absolute layout bounds of all nodes
     absolute_bounds_cache: std::collections::HashMap<NodeId, taffy::prelude::Layout>,
+    /// Wayland key repeat rate (characters per second)
+    wayland_repeat_rate: i32,
+    /// Wayland key repeat delay (milliseconds)
+    wayland_repeat_delay: i32,
+    /// Wayland key repeat timer for the currently pressed key
+    wayland_repeat_timer: Option<Instant>,
+    /// The currently pressed Wayland key (keycode)
+    wayland_repeat_keycode: Option<u32>,
 }
 
 struct PopupWindow {
@@ -241,6 +253,10 @@ where
             layout_collection_deferred: false,
             cached_style_node: None,
             absolute_bounds_cache: std::collections::HashMap::new(),
+            wayland_repeat_rate: 0,
+            wayland_repeat_delay: 0,
+            wayland_repeat_timer: None,
+            wayland_repeat_keycode: None,
         }
     }
 
@@ -276,14 +292,26 @@ where
         // Measure functions are used during StyleNode building to set better initial sizes.
         // For now, we create regular leaf nodes. Future Taffy versions may support
         // measure functions directly in the layout pass.
-        let node = self.taffy.new_leaf(style.style.clone().into())?;
+        let style_ref = style;
+        let self_ptr = self as *mut Self;
+        let node = unsafe {
+            stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
+                (&mut *self_ptr).taffy.new_leaf(style_ref.style.clone().into())
+            })
+        }?;
         self.taffy.add_child(parent, node)?;
 
         // Only add children that are not Display::None to the Taffy tree
         // This ensures hidden widgets don't take up space
         for child in &style.children {
             if child.style.display != Display::None {
-                self.layout_widget(node, child)?;
+                let self_ptr = self as *mut Self;
+                let child_ref = child;
+                unsafe {
+                    stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
+                        (&mut *self_ptr).layout_widget(node, child_ref)
+                    })
+                }?;
             }
         }
 
@@ -522,14 +550,21 @@ where
             }
 
             // Collect this visible child from Taffy, passing our content area position as the new parent content position
-            let child_node = self.taffy.child_at_index(node, taffy_index)?;
-            children.push(self.collect_layout_impl(
-                child_node,
-                child_style,
-                child_content_x,
-                child_content_y,
-                direction,
-            )?);
+            let child_node_id = self.taffy.child_at_index(node, taffy_index)?;
+            let self_ptr = self as *mut Self;
+            // The child_style from the outer loop is correct for this child_node_id
+            let collected_child_node = unsafe {
+                stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
+                    (&mut *self_ptr).collect_layout_impl(
+                        child_node_id,
+                        child_style, // Use the child_style from the outer loop
+                        child_content_x,
+                        child_content_y,
+                        direction,
+                    )
+                })
+            }?;
+            children.push(collected_child_node);
             taffy_index += 1;
         }
 
@@ -584,6 +619,33 @@ where
         // For Wayland, process events first to trigger frame callbacks
         // CRITICAL: Detect resize BEFORE layout computation so layout uses new size
         let platform = Platform::detect();
+        
+        // Custom key repeat synthesis for Wayland
+        if platform == Platform::Wayland {
+            if let Some(timer) = self.wayland_repeat_timer {
+                if Instant::now() >= timer {
+                    // Repeat interval depends on repeat_rate (chars per second)
+                    let interval = if self.wayland_repeat_rate > 0 {
+                        Duration::from_micros(1_000_000 / self.wayland_repeat_rate as u64)
+                    } else {
+                        Duration::from_millis(100) // Default 10Hz
+                    };
+                    self.wayland_repeat_timer = Some(Instant::now() + interval);
+                    
+                    // Trigger a re-processing of input events which will handle the repeat
+                    if let (Some(keycode), Some(ref surface)) = (self.wayland_repeat_keycode, self.surface.as_ref()) {
+                        surface.push_input_event(InputEvent::Keyboard(KeyboardEvent::Key { 
+                            keycode, 
+                            state: wl_keyboard::KeyState::Pressed 
+                        }));
+                    }
+                    
+                    self.update.insert(Update::INPUT);
+                    log::trace!("Synthesized Wayland key repeat");
+                }
+            }
+        }
+
         // Process pending resize if enough time has passed (throttling)
         const RESIZE_THROTTLE_MS: u64 = 8; // ~120fps
         if let Some(pending_size) = self.pending_resize {
@@ -1056,8 +1118,13 @@ where
             self.cached_style_node = Some(style.clone());
             style
         };
-        
-        self.rebuild_layout(&style);
+        let style_ref = &style;
+        let self_ptr = self as *mut Self;
+        unsafe {
+            stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
+                (&mut *self_ptr).rebuild_layout(style_ref);
+            });
+        }
         
         // Clear the LAYOUT flag after rebuilding
         self.update.remove(Update::LAYOUT);
@@ -1080,9 +1147,13 @@ where
         };
         
         // Use the style node we already have
-        let new_layout = self
-            .collect_layout(root_child, &style)
-            .expect("Failed to collect layout-");
+        let style_ref = &style;
+        let self_ptr = self as *mut Self;
+        let new_layout = unsafe {
+            stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
+                (&mut *self_ptr).collect_layout(root_child, style_ref)
+            })
+        }.expect("Failed to collect layout-");
         
         // Clear deferred flag since we just collected
         self.layout_collection_deferred = false;

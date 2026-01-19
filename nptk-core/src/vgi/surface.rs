@@ -246,6 +246,14 @@ impl Surface {
         Vec::new()
     }
 
+    /// Push an input event to the surface (Wayland only).
+    #[cfg(all(target_os = "linux", feature = "wayland"))]
+    pub(crate) fn push_input_event(&self, event: InputEvent) {
+        if let Surface::Wayland(surface) = self {
+            surface.push_input_event(event);
+        }
+    }
+
     /// Create a render view for the surface.
     ///
     /// Creates or updates the offscreen render target for the given dimensions.

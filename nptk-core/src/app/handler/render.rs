@@ -79,7 +79,15 @@ where
                     style
                 };
                 
-                if let Ok(fresh_layout) = self.collect_layout(root_child, &style) {
+                let style_ref = &style;
+                let self_ptr = self as *mut Self;
+                let fresh_layout_result = unsafe {
+                    stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
+                        (&mut *self_ptr).collect_layout(root_child, style_ref)
+                    })
+                };
+                
+                if let Ok(fresh_layout) = fresh_layout_result {
                     self.layout_collection_deferred = false;
                     fresh_layout
                 } else {

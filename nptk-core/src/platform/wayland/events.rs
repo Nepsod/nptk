@@ -9,6 +9,7 @@ use wayland_client::protocol::{wl_keyboard, wl_pointer};
 pub(crate) enum InputEvent {
     Pointer(PointerEvent),
     Keyboard(KeyboardEvent),
+    Ime(ImeEvent),
     Touch(TouchEvent),
     Tablet(TabletEvent),
 }
@@ -71,6 +72,20 @@ pub(crate) enum KeyboardEvent {
     Keymap {
         keymap_string: String,
     },
+}
+
+/// IME input events.
+#[derive(Debug, Clone)]
+pub(crate) enum ImeEvent {
+    Preedit {
+        text: String,
+        cursor_begin: Option<u32>,
+        cursor_end: Option<u32>,
+    },
+    Commit {
+        text: String,
+    },
+    Done,
 }
 
 /// Touch input events.

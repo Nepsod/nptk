@@ -27,6 +27,8 @@ bitflags! {
         const EXIT   = 0b00100000;
         /// Window is being resized - only recompute layout without full rebuild.
         const RESIZE = 0b01000000;
+        /// Input event synthesis or processing needed.
+        const INPUT  = 0b10000000;
     }
 }
 

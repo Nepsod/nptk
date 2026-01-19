@@ -4,7 +4,7 @@ use super::{collect_layout_tree, layout_widget_tree, AppHandler};
 use crate::layout::LayoutContext;
 use crate::app::context::AppContext;
 use crate::app::info::AppKeyEvent;
-use crate::platform::wayland::events::{InputEvent, KeyboardEvent, PointerEvent};
+use crate::platform::wayland::events::{ImeEvent, InputEvent, KeyboardEvent, PointerEvent};
 use crate::platform::Platform;
 use crate::vgi::surface::SurfaceTrait;
 use crate::vgi::Scene;
@@ -158,9 +158,20 @@ where
                         };
 
                         let repeat = match element_state {
-                            ElementState::Pressed => !self.wayland_pressed_keys.insert(evdev),
+                            ElementState::Pressed => {
+                                let is_repeat = !self.wayland_pressed_keys.insert(evdev);
+                                if !is_repeat {
+                                    self.wayland_repeat_keycode = Some(keycode);
+                                    self.wayland_repeat_timer = Some(std::time::Instant::now() + std::time::Duration::from_millis(self.wayland_repeat_delay as u64));
+                                }
+                                is_repeat
+                            },
                             ElementState::Released => {
                                 self.wayland_pressed_keys.remove(&evdev);
+                                if self.wayland_repeat_keycode == Some(keycode) {
+                                    self.wayland_repeat_keycode = None;
+                                    self.wayland_repeat_timer = None;
+                                }
                                 false
                             },
                         };
@@ -337,7 +348,10 @@ where
                         );
                         self.update_wayland_modifiers_state();
                     },
-                    KeyboardEvent::RepeatInfo { .. } => {},
+                    KeyboardEvent::RepeatInfo { rate, delay } => {
+                        self.wayland_repeat_rate = rate;
+                        self.wayland_repeat_delay = delay;
+                    },
                     KeyboardEvent::Keymap { keymap_string } => {
                         log::info!(
                             "Received keymap ({} bytes), updating XKB keymap manager",
@@ -352,6 +366,22 @@ where
                             );
                         }
                     },
+                },
+                InputEvent::Ime(ime_event) => {
+                    use winit::event::Ime;
+                    match ime_event {
+                        ImeEvent::Preedit { text, cursor_begin, cursor_end } => {
+                            let range = cursor_begin.zip(cursor_end);
+                            self.info.ime_events.push(Ime::Preedit(text, range.map(|(b, e)| (b as usize, e as usize))));
+                        },
+                        ImeEvent::Commit { text } => {
+                            self.info.ime_events.push(Ime::Commit(text));
+                        },
+                        ImeEvent::Done => {
+                            // Winit doesn't have a 'Done' event, usually it's implicit or handled by Preedit/Commit
+                        },
+                    }
+                    self.request_redraw();
                 },
                 InputEvent::Touch(_touch_event) => {},
                 InputEvent::Tablet(_tablet_event) => {},

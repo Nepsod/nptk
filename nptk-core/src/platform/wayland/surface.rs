@@ -730,6 +730,11 @@ impl WaylandSurface {
         self.inner.surface_key()
     }
 
+    /// Push an input event to the surface's event queue.
+    pub fn push_input_event(&self, event: InputEvent) {
+        self.inner.push_input_event(event);
+    }
+
     /// Configure the wgpu surface.
     ///
     /// Sets up the surface configuration with the given format and present mode.
