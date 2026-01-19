@@ -96,6 +96,7 @@ where
     }
 
     /// Handle window resize event.
+    /// Optimized with throttling to avoid excessive layout recomputations during resize.
     pub(super) fn handle_resize(
         &mut self,
         new_size: winit::dpi::PhysicalSize<u32>,
@@ -106,32 +107,50 @@ where
             return;
         }
 
-
-        if let Some(surface) = &mut self.surface {
-            if let Err(e) = surface.resize(new_size.width, new_size.height) {
-                log::error!("Failed to resize surface: {}", e);
-            }
-        }
-
         let scale_factor = self
             .window
             .as_ref()
             .map(|w| w.scale_factor())
             .unwrap_or(1.0);
         let logical_size = new_size.to_logical::<f64>(scale_factor);
+        let new_logical_size = (logical_size.width as u32, logical_size.height as u32);
 
-        self.update_window_node_size(logical_size.width as u32, logical_size.height as u32);
-        self.info.size = Vector2::new(logical_size.width, logical_size.height);
-        self.request_redraw();
-        self.update.insert(Update::DRAW | Update::LAYOUT);
+        // Update surface immediately
+        if let Some(surface) = &mut self.surface {
+            if let Err(e) = surface.resize(new_size.width, new_size.height) {
+                log::error!("Failed to resize surface: {}", e);
+            }
+        }
+
+        // Throttle layout updates: only schedule layout recomputation if:
+        // 1. Size changed significantly (more than 2px to reduce jitter), OR
+        // 2. Enough time has passed since last resize (16ms = ~60fps)
+        const RESIZE_THROTTLE_MS: u64 = 16; // ~60fps
+        const MIN_RESIZE_DELTA: i32 = 2; // Minimum pixel change to trigger layout update
+        let now = std::time::Instant::now();
+        let time_since_last_resize = now.duration_since(self.last_resize_time).as_millis() as u64;
         
-        // Ensure layout is recomputed after window resize
-        // The Update::LAYOUT flag will trigger layout recomputation in the next frame
-        log::debug!(
-            "Window resized to {}x{}, layout recomputation scheduled",
-            logical_size.width,
-            logical_size.height
-        );
+        let width_delta = (new_logical_size.0 as i32 - self.last_window_size.0 as i32).abs();
+        let height_delta = (new_logical_size.1 as i32 - self.last_window_size.1 as i32).abs();
+        let size_changed_significantly = new_logical_size != self.last_window_size &&
+            (width_delta >= MIN_RESIZE_DELTA || height_delta >= MIN_RESIZE_DELTA);
+
+        if size_changed_significantly || time_since_last_resize >= RESIZE_THROTTLE_MS {
+            // Update immediately and schedule layout recomputation
+            self.update_window_node_size(new_logical_size.0, new_logical_size.1);
+            self.info.size = Vector2::new(logical_size.width, logical_size.height);
+            self.last_window_size = new_logical_size;
+            self.last_resize_time = now;
+            self.pending_resize = None;
+            self.request_redraw();
+            self.update.insert(Update::DRAW | Update::LAYOUT);
+        } else {
+            // Store pending resize for later processing
+            self.pending_resize = Some(new_logical_size);
+            // Still request redraw for visual feedback
+            self.request_redraw();
+            self.update.insert(Update::DRAW);
+        }
     }
 
     /// Handle window close request.

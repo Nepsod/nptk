@@ -109,6 +109,14 @@ where
     gpu_init_rx: Option<std::sync::mpsc::Receiver<Result<(Arc<GpuContext>, DeviceHandle), Box<dyn std::error::Error + Send + Sync>>>>,
     /// Tracks which widgets need layout updates (invalidation)
     invalidation_tracker: InvalidationTracker,
+    /// Last known window size to detect actual size changes
+    last_window_size: (u32, u32),
+    /// Timestamp of last resize event for throttling
+    last_resize_time: Instant,
+    /// Pending resize size (accumulated during throttling period)
+    pending_resize: Option<(u32, u32)>,
+    /// Cached root child node ID to avoid repeated lookups
+    cached_root_child: Option<NodeId>,
 }
 
 struct PopupWindow {
@@ -217,6 +225,10 @@ where
             layout_cache_hits: 0,
             gpu_init_rx: None,
             invalidation_tracker: InvalidationTracker::new(),
+            last_window_size: (size.x as u32, size.y as u32),
+            last_resize_time: Instant::now(),
+            pending_resize: None,
+            cached_root_child: None,
         }
     }
 
@@ -245,7 +257,6 @@ where
         // If this widget itself has Display::None, don't add it to the layout tree at all
         // This ensures hidden widgets don't take up any space
         if style.style.display == Display::None {
-            log::info!("Skipping widget with Display::None (parent: {:?})", parent);
             return Ok(());
         }
 
@@ -410,17 +421,26 @@ where
         parent_y: f32,
         direction: crate::layout::LayoutDirection,
     ) -> TaffyResult<LayoutNode> {
-        let mut children = Vec::new();
-        let taffy_child_count = self.taffy.child_count(node);
-        let style_child_count = style.children.len();
-
-        // Count visible children in style
-        let visible_style_children: Vec<_> = style
-            .children
-            .iter()
+        // Pre-allocate children Vec with capacity hint to reduce allocations
+        let visible_count = style.children.iter()
             .filter(|cs| cs.style.display != Display::None)
-            .collect();
-        let visible_count = visible_style_children.len();
+            .count();
+        let mut children = Vec::with_capacity(visible_count);
+        let taffy_child_count = self.taffy.child_count(node);
+        
+        // Early return if no children to process
+        if taffy_child_count == 0 && visible_count == 0 {
+            let relative_layout = *self.taffy.get_final_layout(node);
+            let absolute_x = parent_x + relative_layout.location.x;
+            let absolute_y = parent_y + relative_layout.location.y;
+            let mut absolute_layout = relative_layout;
+            absolute_layout.location.x = absolute_x;
+            absolute_layout.location.y = absolute_y;
+            return Ok(LayoutNode {
+                layout: absolute_layout,
+                children,
+            });
+        }
 
         // Get the relative layout from Taffy
         let relative_layout = *self.taffy.get_final_layout(node);
@@ -453,62 +473,44 @@ where
                 continue;
             }
 
-            // Collect this visible child from Taffy, passing our content area position as the new parent content position
-            if taffy_index < taffy_child_count {
-                let child_node = self.taffy.child_at_index(node, taffy_index)?;
-                children.push(self.collect_layout_impl(
-                    child_node,
-                    child_style,
-                    child_content_x,
-                    child_content_y,
-                    direction,
-                )?);
-                taffy_index += 1;
-            } else {
-                // Taffy has fewer children than expected visible children
-                // This can happen if visibility changed between build and collect
-                log::warn!(
-                    "Taffy has fewer children ({}) than visible style children ({}), stopping collection at taffy_index {}",
-                    taffy_child_count,
-                    visible_count,
-                    taffy_index
-                );
+            // Early exit if we've collected all Taffy children
+            if taffy_index >= taffy_child_count {
                 break;
             }
+
+            // Collect this visible child from Taffy, passing our content area position as the new parent content position
+            let child_node = self.taffy.child_at_index(node, taffy_index)?;
+            children.push(self.collect_layout_impl(
+                child_node,
+                child_style,
+                child_content_x,
+                child_content_y,
+                direction,
+            )?);
+            taffy_index += 1;
         }
 
-        // Warn if we didn't collect all Taffy children
-        if taffy_index < taffy_child_count {
-            log::warn!(
-                "Collected only {} children from Taffy, but Taffy has {} children",
+        // Only warn if significant mismatch (more than 1 child difference) to reduce log spam
+        // This is rare and usually indicates a bug, so we keep the check but make it debug-level
+        if taffy_index < taffy_child_count && (taffy_child_count - taffy_index) > 1 {
+            log::debug!(
+                "Layout mismatch: collected {} children from Taffy, but Taffy has {} children",
                 taffy_index,
                 taffy_child_count
             );
         }
 
-        // Log layout size and position for debugging (only for containers with children to reduce noise)
+        // Skip logging in release builds to reduce overhead
+        #[cfg(debug_assertions)]
         if !children.is_empty() {
-            // Log first child position to see if children are moving correctly
-            let first_child_pos = if !children.is_empty() {
-                format!(
-                    "first_child_pos=({:.1}, {:.1})",
-                    children[0].layout.location.x, children[0].layout.location.y
-                )
-            } else {
-                "no_children".to_string()
-            };
-            log::info!(
-                "Collected layout for node {:?}: pos=({:.1}, {:.1}), size=({:.1}, {:.1}), {} children, {} (style: {} total, {} visible, Taffy: {})",
+            log::debug!(
+                "Collected layout for node {:?}: pos=({:.1}, {:.1}), size=({:.1}, {:.1}), {} children",
                 node,
                 absolute_layout.location.x,
                 absolute_layout.location.y,
                 absolute_layout.size.width,
                 absolute_layout.size.height,
-                children.len(),
-                first_child_pos,
-                style_child_count,
-                visible_count,
-                taffy_child_count
+                children.len()
             );
         }
 
@@ -539,6 +541,20 @@ where
         // For Wayland, process events first to trigger frame callbacks
         // CRITICAL: Detect resize BEFORE layout computation so layout uses new size
         let platform = Platform::detect();
+        // Process pending resize if enough time has passed (throttling)
+        const RESIZE_THROTTLE_MS: u64 = 16; // ~60fps
+        if let Some(pending_size) = self.pending_resize {
+            let time_since_last_resize = self.last_update.duration_since(self.last_resize_time).as_millis() as u64;
+            if time_since_last_resize >= RESIZE_THROTTLE_MS {
+                self.update_window_node_size(pending_size.0, pending_size.1);
+                self.info.size = nalgebra::Vector2::new(pending_size.0 as f64, pending_size.1 as f64);
+                self.last_window_size = pending_size;
+                self.last_resize_time = self.last_update;
+                self.pending_resize = None;
+                self.update.insert(Update::DRAW | Update::LAYOUT);
+            }
+        }
+
         if platform == Platform::Wayland {
             if let Some(ref mut surface) = self.surface {
                 if surface.needs_event_dispatch() {
@@ -547,10 +563,24 @@ where
                         Ok(needs_redraw) => {
                             let size_after = surface.size();
                             if size_before != size_after {
-                                // Update window node size IMMEDIATELY so layout computation uses new size
-                                self.update_window_node_size(size_after.0, size_after.1);
-                                self.info.size = nalgebra::Vector2::new(size_after.0 as f64, size_after.1 as f64);
-                                self.update.insert(Update::DRAW | Update::LAYOUT);
+                                // Throttle Wayland resize events too
+                                let now = Instant::now();
+                                let time_since_last_resize = now.duration_since(self.last_resize_time).as_millis() as u64;
+                                let size_changed_significantly = size_after != self.last_window_size &&
+                                    ((size_after.0 as i32 - self.last_window_size.0 as i32).abs() > 1 ||
+                                     (size_after.1 as i32 - self.last_window_size.1 as i32).abs() > 1);
+
+                                if size_changed_significantly || time_since_last_resize >= RESIZE_THROTTLE_MS {
+                                    self.update_window_node_size(size_after.0, size_after.1);
+                                    self.info.size = nalgebra::Vector2::new(size_after.0 as f64, size_after.1 as f64);
+                                    self.last_window_size = (size_after.0, size_after.1);
+                                    self.last_resize_time = now;
+                                    self.pending_resize = None;
+                                    self.update.insert(Update::DRAW | Update::LAYOUT);
+                                } else {
+                                    self.pending_resize = Some((size_after.0, size_after.1));
+                                    self.update.insert(Update::DRAW);
+                                }
                             } else if needs_redraw {
                                 log::trace!("Wayland events triggered redraw");
                                 self.update.insert(Update::DRAW);
@@ -793,27 +823,36 @@ where
     }
 
     /// Ensure layout is initialized, returning the current layout node.
+    /// Optimized to use cached root child when available.
     fn ensure_layout_initialized(&mut self) -> LayoutNode {
         if self.taffy.child_count(self.window_node) == 0 {
             self.setup_initial_layout();
         }
 
-        let context = LayoutContext::unbounded();
-        let style = self.widget.as_ref().unwrap().layout_style(&context);
         let child_count = self.taffy.child_count(self.window_node);
         if child_count == 0 {
             // Root widget has no children (all filtered out) - return empty layout
-            log::debug!("Root widget has no children in layout tree, returning empty layout");
             return LayoutNode {
                 layout: *self.taffy.get_final_layout(self.window_node),
                 children: vec![],
             };
         }
-        self.collect_layout(
-            self.taffy.child_at_index(self.window_node, 0).unwrap(),
-            &style,
-        )
-        .expect("Failed to collect layout")
+        
+        // Use cached root child if available
+        let root_child = if let Some(cached_child) = self.cached_root_child {
+            cached_child
+        } else {
+            let child = self.taffy.child_at_index(self.window_node, 0).unwrap();
+            self.cached_root_child = Some(child);
+            child
+        };
+        
+        // Compute style (can't cache StyleNode due to function pointer)
+        let context = LayoutContext::unbounded();
+        let style = self.widget.as_ref().unwrap().layout_style(&context);
+        
+        self.collect_layout(root_child, &style)
+            .expect("Failed to collect layout")
     }
 
     /// Set up the initial layout tree.
@@ -824,78 +863,141 @@ where
         self.layout_widget(self.window_node, &style)
             .expect("Failed to layout window");
         self.compute_layout().expect("Failed to compute layout");
+        
+        // Cache root child node ID
+        if self.taffy.child_count(self.window_node) > 0 {
+            if let Ok(root_child) = self.taffy.child_at_index(self.window_node, 0) {
+                self.cached_root_child = Some(root_child);
+            }
+        }
+        
         self.update.insert(Update::FORCE);
     }
 
     /// Update layout if needed, returning the updated layout node.
+    /// Optimized to avoid full rebuilds when only window size changes.
     fn update_layout_if_needed(&mut self, layout_node: LayoutNode) -> LayoutNode {
         if !self.update.get().intersects(Update::LAYOUT | Update::FORCE) {
             return layout_node;
         }
 
-        // Clear layout cache when layout needs to be updated
-        // This ensures stale cached layouts don't prevent updates on resize
-        self.layout_cache = None;
-
         // Reset metrics for this layout pass
         self.invalidation_tracker.reset_metrics();
         let start_time = std::time::Instant::now();
 
-        // Mark window node as dirty if layout update is needed
-        if self.update.get().intersects(Update::LAYOUT | Update::FORCE) {
-            self.invalidation_tracker.mark_dirty(self.window_node);
-            self.invalidation_tracker.metrics_mut().record_invalidation();
-        }
-
-        log::info!("Layout update detected! Rebuilding layout...");
-        
-        // Get current window size and update window node size BEFORE rebuilding layout
-        // This ensures layout computation uses the correct window size, especially
-        // when resize was detected in render_frame and Update::LAYOUT was set
-        let (current_width, current_height): (u32, u32) = if let Some(window) = self.window.as_ref() {
-            let s = window.inner_size();
-            (s.width, s.height)
-        } else if let Some(surface) = &self.surface {
+        // Get current window size (cached check first to avoid repeated lookups)
+        let (current_width, current_height): (u32, u32) = if let Some(surface) = &self.surface {
+            // Prefer surface size (more accurate for Wayland)
             let (w, h) = surface.size();
             (w, h)
+        } else if let Some(window) = self.window.as_ref() {
+            let s = window.inner_size();
+            (s.width, s.height)
         } else {
             let s = self.config.window.size;
             (s.x as u32, s.y as u32)
         };
+
+        // Check if size actually changed (early exit if no change)
+        let size_changed = (current_width, current_height) != self.last_window_size;
         
-        // Update window node size to match current surface/window size
-        // This is critical when resize was detected in render_frame
-        self.update_window_node_size(current_width, current_height);
-        self.info.size = nalgebra::Vector2::new(current_width as f64, current_height as f64);
+        // If FORCE flag is set, always rebuild (structure might have changed)
+        // If size didn't change and FORCE is not set, we might be able to skip
+        let needs_full_rebuild = self.update.get().intersects(Update::FORCE) || !size_changed;
+        
+        if size_changed {
+            // Update window node size immediately
+            self.update_window_node_size(current_width, current_height);
+            self.info.size = nalgebra::Vector2::new(current_width as f64, current_height as f64);
+            self.last_window_size = (current_width, current_height);
+            
+            // If only size changed and tree structure is intact, just recompute layout
+            // This is much faster than rebuilding the entire tree
+            if !needs_full_rebuild && self.taffy.child_count(self.window_node) > 0 {
+                // Fast path: only recompute layout without rebuilding tree
+                if let Err(e) = self.compute_layout() {
+                    log::warn!("Fast layout recompute failed, falling back to rebuild: {}", e);
+                    // Fall through to full rebuild
+                } else {
+                    // Successfully recomputed, collect new layout using cached root child
+                    // Use cached root child if available, otherwise look it up and cache it
+                    let root_child = if let Some(cached_child) = self.cached_root_child {
+                        cached_child
+                    } else {
+                        match self.taffy.child_at_index(self.window_node, 0) {
+                            Ok(child) => {
+                                self.cached_root_child = Some(child);
+                                child
+                            },
+                            Err(_) => {
+                                // Fall through to full rebuild
+                                return layout_node;
+                            }
+                        }
+                    };
+                    
+                    // Compute style only when needed (can't cache StyleNode due to function pointer)
+                    let context = LayoutContext::unbounded();
+                    let style = self.widget.as_ref().unwrap().layout_style(&context);
+                    
+                    if let Ok(new_layout) = self.collect_layout(root_child, &style) {
+                        // Clear the LAYOUT flag
+                        if self.update.get().intersects(Update::LAYOUT) {
+                            self.update.remove(Update::LAYOUT);
+                        }
+                        
+                        let layout_time = start_time.elapsed();
+                        self.invalidation_tracker
+                            .metrics_mut()
+                            .record_layout_time(layout_time.as_secs_f64() * 1000.0);
+                        self.invalidation_tracker.metrics_mut().record_recomputation();
+                        
+                        return new_layout;
+                    }
+                }
+            }
+        }
+
+        // Full rebuild path (structure changed or fast path failed)
+        // Clear layout cache and root child cache when structure changes
+        self.layout_cache = None;
+        self.cached_root_child = None;
+
+        // Mark window node as dirty
+        self.invalidation_tracker.mark_dirty(self.window_node);
+        self.invalidation_tracker.metrics_mut().record_invalidation();
+        
+        if size_changed {
+            // Ensure size is updated before rebuild
+            self.update_window_node_size(current_width, current_height);
+            self.info.size = nalgebra::Vector2::new(current_width as f64, current_height as f64);
+        }
         
         self.rebuild_layout();
         
-        // Clear the LAYOUT flag after rebuilding to prevent infinite loops
-        // But keep FORCE and DRAW flags
-        let current_flags = self.update.get();
-        if current_flags.intersects(Update::LAYOUT) {
+        // Clear the LAYOUT flag after rebuilding
+        if self.update.get().intersects(Update::LAYOUT) {
             self.update.remove(Update::LAYOUT);
         }
 
-        // Get the style AFTER rebuilding to ensure it matches what was built
+        // Get the style AFTER rebuilding
         let context = LayoutContext::unbounded();
         let style = self.widget.as_ref().unwrap().layout_style(&context);
+        
         let child_count = self.taffy.child_count(self.window_node);
         if child_count == 0 {
-            // Root widget has no children (all filtered out) - return empty layout
-            log::info!(
-                "Root widget has no children in layout tree after rebuild, returning empty layout"
-            );
             return LayoutNode {
                 layout: *self.taffy.get_final_layout(self.window_node),
                 children: vec![],
             };
         }
+        
+        // Cache root child node ID
+        let root_child = self.taffy.child_at_index(self.window_node, 0).unwrap();
+        self.cached_root_child = Some(root_child);
+        
         let new_layout = self
-            .collect_layout(
-                self.taffy.child_at_index(self.window_node, 0).unwrap(),
-                &style,
-            )
+            .collect_layout(root_child, &style)
             .expect("Failed to collect layout");
 
         // Record performance metrics
@@ -903,44 +1005,18 @@ where
         self.invalidation_tracker
             .metrics_mut()
             .record_layout_time(layout_time.as_secs_f64() * 1000.0);
-        // Note: record_recomputation() increments a counter, we'll just call it once for now
         self.invalidation_tracker
             .metrics_mut()
             .record_recomputation();
         
-        // Mark all nodes as clean after recomputation
         self.invalidation_tracker.clear_all();
-
-        // Log performance metrics
-        let metrics = self.invalidation_tracker.metrics();
-        log::debug!(
-            "Layout computation: {}ms, invalidated: {}, recomputed: {}, efficiency: {:.2}",
-            metrics.layout_time_ms,
-            metrics.nodes_invalidated,
-            metrics.nodes_recomputed,
-            metrics.efficiency_ratio()
-        );
-
-        // Log the difference in positions to verify layout is updating
-        if !new_layout.children.is_empty() && !layout_node.children.is_empty() {
-            let old_pos = layout_node.children[0].layout.location.y;
-            let new_pos = new_layout.children[0].layout.location.y;
-            if (old_pos - new_pos).abs() > 0.1 {
-                log::info!(
-                    "Content container moved: old_y={:.1}, new_y={:.1}, delta={:.1}",
-                    old_pos,
-                    new_pos,
-                    new_pos - old_pos
-                );
-            }
-        }
 
         new_layout
     }
 
     /// Rebuild the layout tree from scratch.
     fn rebuild_layout(&mut self) {
-        log::info!("Rebuilding layout tree from scratch");
+        log::debug!("Rebuilding layout tree from scratch");
 
         // Ensure window node size is up to date before rebuilding
         // This is important for resize events where the window size may have changed
@@ -952,17 +1028,22 @@ where
             let width = logical_size.width as u32;
             let height = logical_size.height as u32;
             self.update_window_node_size(width, height);
+            self.last_window_size = (width, height);
             (width, height)
         } else if let Some(surface) = &self.surface {
             let (width, height) = surface.size();
             self.update_window_node_size(width, height);
+            self.last_window_size = (width, height);
             (width, height)
         } else {
             log::warn!("No window or surface available for size reading");
             (800, 600) // Fallback
         };
+        let _ = (new_width, new_height); // Suppress unused warning
 
         // Clear all children from the window node - this removes all existing nodes
+        // Also invalidate cached root child since tree is being rebuilt
+        self.cached_root_child = None;
         self.taffy
             .set_children(self.window_node, &[])
             .expect("Failed to set children");
@@ -971,44 +1052,19 @@ where
         let context = LayoutContext::unbounded();
         let style = self.widget.as_ref().unwrap().layout_style(&context);
 
-        // Count visible children for debugging
-        let visible_children: Vec<_> = style
-            .children
-            .iter()
-            .filter(|c| c.style.display != Display::None)
-            .collect();
-        log::info!(
-            "Rebuilding layout: root has {} total children, {} visible",
-            style.children.len(),
-            visible_children.len()
-        );
-
         // Build the layout tree (Display::None widgets will be skipped)
         self.layout_widget(self.window_node, &style)
             .expect("Failed to layout window");
 
-        // Verify the window node has the correct number of children
-        let child_count = self.taffy.child_count(self.window_node);
-        log::info!(
-            "After layout_widget: window node has {} children (expected {})",
-            child_count,
-            visible_children.len()
-        );
+        // Cache root child node ID after building tree
+        if self.taffy.child_count(self.window_node) > 0 {
+            if let Ok(root_child) = self.taffy.child_at_index(self.window_node, 0) {
+                self.cached_root_child = Some(root_child);
+            }
+        }
 
         // Compute the layout
         self.compute_layout().expect("Failed to compute layout");
-        
-        // Log final window node layout to verify size
-        let final_layout = self.taffy.get_final_layout(self.window_node);
-        log::info!(
-            "Window node final layout: {}x{} at ({}, {})",
-            final_layout.size.width,
-            final_layout.size.height,
-            final_layout.location.x,
-            final_layout.location.y
-        );
-
-        log::info!("Layout rebuild complete");
     }
 
     /// Check if the cursor is over any open context menu
