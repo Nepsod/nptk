@@ -27,7 +27,7 @@ pub use priority::{adjust_flex_grow_for_priority, adjust_flex_shrink_for_priorit
 pub mod helpers;
 
 pub mod invalidation;
-pub use invalidation::{InvalidationTracker, InvalidationMetrics};
+pub use invalidation::{DirtyFlags, InvalidationTracker, InvalidationMetrics};
 
 pub mod direction;
 pub use direction::LayoutDirection;

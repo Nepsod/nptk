@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 use crate::layout::{Constraints, LayoutDirection, LayoutPhase};
 use nalgebra::Vector2;
-use taffy::{AvailableSpace, Rect, Size};
+use taffy::{AvailableSpace, Size};
 
 /// Viewport bounds represented as a rectangle (x, y, width, height).
 #[derive(Debug, Clone, Copy)]
@@ -61,6 +61,9 @@ pub struct LayoutContext {
     pub viewport_bounds: Option<ViewportBounds>,
     /// The scroll offset for calculating visible ranges.
     pub scroll_offset: Option<Vector2<f32>>,
+    /// Style version for change detection and memoization.
+    /// This is incremented when style dependencies change, allowing widgets to cache style results.
+    pub style_version: u64,
 }
 
 impl LayoutContext {
@@ -87,6 +90,7 @@ impl LayoutContext {
             direction: LayoutDirection::Ltr, // Default to LTR
             viewport_bounds: None,
             scroll_offset: None,
+            style_version: 0, // Start at 0, will be set by handler
         }
     }
 
@@ -117,6 +121,12 @@ impl LayoutContext {
     /// Create a LayoutContext with scroll offset for calculating visible ranges.
     pub fn with_scroll_offset(mut self, offset: Vector2<f32>) -> Self {
         self.scroll_offset = Some(offset);
+        self
+    }
+
+    /// Create a LayoutContext with a specific style version for memoization.
+    pub fn with_style_version(mut self, version: u64) -> Self {
+        self.style_version = version;
         self
     }
 

@@ -51,6 +51,22 @@ pub enum Scene {
     Hybrid(HybridScene),
 }
 
+/// Element ID for tracking individual scene elements
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ElementId(u64);
+
+impl ElementId {
+    /// Create a new element ID
+    pub fn new(id: u64) -> Self {
+        Self(id)
+    }
+
+    /// Get the numeric ID
+    pub fn value(&self) -> u64 {
+        self.0
+    }
+}
+
 /// Tracks which regions of the scene need to be redrawn
 #[derive(Default)]
 pub struct DirtyRegionTracker {
@@ -60,6 +76,10 @@ pub struct DirtyRegionTracker {
     dirty_regions: Vec<vello::kurbo::Rect>,
     /// Whether any regions are dirty
     has_dirty_regions: bool,
+    /// Map from element ID to scene layer/region for element-level tracking
+    element_regions: std::collections::HashMap<ElementId, vello::kurbo::Rect>,
+    /// Set of dirty element IDs for incremental updates
+    dirty_elements: std::collections::HashSet<ElementId>,
 }
 
 impl DirtyRegionTracker {
@@ -69,6 +89,8 @@ impl DirtyRegionTracker {
             full_reset_needed: true, // Start with full reset needed
             dirty_regions: Vec::new(),
             has_dirty_regions: false,
+            element_regions: std::collections::HashMap::new(),
+            dirty_elements: std::collections::HashSet::new(),
         }
     }
 
@@ -77,6 +99,33 @@ impl DirtyRegionTracker {
         self.full_reset_needed = true;
         self.has_dirty_regions = false;
         self.dirty_regions.clear();
+        self.dirty_elements.clear();
+    }
+
+    /// Register an element with its region for tracking
+    pub fn register_element(&mut self, element_id: ElementId, region: vello::kurbo::Rect) {
+        self.element_regions.insert(element_id, region);
+    }
+
+    /// Mark an element as dirty
+    pub fn mark_element_dirty(&mut self, element_id: ElementId) {
+        if !self.full_reset_needed {
+            self.dirty_elements.insert(element_id);
+            // Add the element's region to dirty regions if known
+            if let Some(region) = self.element_regions.get(&element_id) {
+                self.add_dirty_region(*region);
+            }
+        }
+    }
+
+    /// Get dirty element IDs
+    pub fn dirty_elements(&self) -> &std::collections::HashSet<ElementId> {
+        &self.dirty_elements
+    }
+
+    /// Get element region if registered
+    pub fn get_element_region(&self, element_id: ElementId) -> Option<&vello::kurbo::Rect> {
+        self.element_regions.get(&element_id)
     }
 
     /// Check if a full reset is needed
@@ -107,6 +156,13 @@ impl DirtyRegionTracker {
         self.full_reset_needed = false;
         self.has_dirty_regions = false;
         self.dirty_regions.clear();
+        self.dirty_elements.clear();
+    }
+
+    /// Clear element tracking (call when structure changes significantly)
+    pub fn clear_elements(&mut self) {
+        self.element_regions.clear();
+        self.dirty_elements.clear();
     }
 }
 

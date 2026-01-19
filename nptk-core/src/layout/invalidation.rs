@@ -2,6 +2,24 @@
 
 use std::collections::{HashMap, HashSet};
 use taffy::NodeId;
+use bitflags::bitflags;
+
+bitflags! {
+    /// Granular dirty flags for tracking what changed in a node.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub struct DirtyFlags: u8 {
+        /// Geometry changed (size, position, bounds)
+        const GEOMETRY = 0b0001;
+        /// Style changed (layout properties, display, etc.)
+        const STYLE = 0b0010;
+        /// Children changed (added, removed, reordered)
+        const CHILDREN = 0b0100;
+        /// Content changed (text, images, etc.)
+        const CONTENT = 0b1000;
+        /// Everything changed (full rebuild needed)
+        const ALL = Self::GEOMETRY.bits() | Self::STYLE.bits() | Self::CHILDREN.bits() | Self::CONTENT.bits();
+    }
+}
 
 /// Tracks which widgets need layout updates (invalidation).
 ///
@@ -13,6 +31,8 @@ pub struct InvalidationTracker {
     dirty_nodes: HashSet<NodeId>,
     /// Map from widget path to Taffy node ID for quick lookup.
     widget_to_node: HashMap<String, NodeId>,
+    /// Granular dirty flags per node - tracks what specifically changed.
+    node_dirty_flags: HashMap<NodeId, DirtyFlags>,
     /// Performance metrics for layout computation.
     metrics: InvalidationMetrics,
 }
@@ -35,13 +55,33 @@ impl InvalidationTracker {
     }
 
     /// Mark a node as dirty (needs layout recomputation).
+    /// Uses ALL flags by default for backward compatibility.
     pub fn mark_dirty(&mut self, node_id: NodeId) {
+        self.mark_dirty_with_flags(node_id, DirtyFlags::ALL);
+    }
+
+    /// Mark a node as dirty with specific flags indicating what changed.
+    pub fn mark_dirty_with_flags(&mut self, node_id: NodeId, flags: DirtyFlags) {
         self.dirty_nodes.insert(node_id);
+        // Merge with existing flags if any
+        let existing = self.node_dirty_flags.entry(node_id).or_insert(DirtyFlags::empty());
+        *existing |= flags;
     }
 
     /// Mark a node as clean (no longer needs recomputation).
     pub fn mark_clean(&mut self, node_id: NodeId) {
         self.dirty_nodes.remove(&node_id);
+        self.node_dirty_flags.remove(&node_id);
+    }
+
+    /// Get dirty flags for a node.
+    pub fn get_dirty_flags(&self, node_id: NodeId) -> DirtyFlags {
+        self.node_dirty_flags.get(&node_id).copied().unwrap_or(DirtyFlags::empty())
+    }
+
+    /// Check if a node has specific dirty flags set.
+    pub fn has_dirty_flags(&self, node_id: NodeId, flags: DirtyFlags) -> bool {
+        self.get_dirty_flags(node_id).intersects(flags)
     }
 
     /// Check if a node is dirty.
@@ -52,6 +92,14 @@ impl InvalidationTracker {
     /// Mark all nodes as clean (after layout recomputation).
     pub fn clear_all(&mut self) {
         self.dirty_nodes.clear();
+        self.node_dirty_flags.clear();
+    }
+
+    /// Batch mark multiple nodes as dirty with the same flags.
+    pub fn batch_mark_dirty(&mut self, node_ids: &[NodeId], flags: DirtyFlags) {
+        for &node_id in node_ids {
+            self.mark_dirty_with_flags(node_id, flags);
+        }
     }
 
     /// Get all dirty nodes.
@@ -80,10 +128,13 @@ impl InvalidationTracker {
     ///
     /// When a child is marked dirty, all its ancestors should also be marked dirty
     /// since their layout may depend on the child's size.
+    /// Uses GEOMETRY flag by default since child size changes affect parent geometry.
     pub fn propagate_dirty_up(&mut self, node_id: NodeId, parent_map: &HashMap<NodeId, NodeId>) {
+        let flags = self.get_dirty_flags(node_id);
         let mut current = Some(node_id);
         while let Some(node) = current {
-            self.mark_dirty(node);
+            // Propagate with GEOMETRY flag since child changes affect parent layout
+            self.mark_dirty_with_flags(node, flags | DirtyFlags::GEOMETRY);
             current = parent_map.get(&node).copied();
         }
     }

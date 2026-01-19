@@ -128,6 +128,16 @@ where
     cached_style_node: Option<StyleNode>,
     /// Cache for absolute layout bounds of all nodes
     absolute_bounds_cache: std::collections::HashMap<NodeId, taffy::prelude::Layout>,
+    /// Style cache: (style_hash, style_version) -> StyleNode
+    /// Used to avoid recomputing layout_style() when inputs haven't changed
+    style_cache: Option<(u64, u64, StyleNode)>,
+    /// Current style version - incremented when style dependencies change
+    style_version: u64,
+    /// Layout version per node - tracks when a node's layout was last computed
+    /// Used to skip recomputation for unchanged nodes
+    node_layout_versions: std::collections::HashMap<NodeId, u64>,
+    /// Global layout version counter - incremented on each layout pass
+    global_layout_version: u64,
     /// Wayland key repeat rate (characters per second)
     wayland_repeat_rate: i32,
     /// Wayland key repeat delay (milliseconds)
@@ -253,6 +263,10 @@ where
             layout_collection_deferred: false,
             cached_style_node: None,
             absolute_bounds_cache: std::collections::HashMap::new(),
+            style_cache: None,
+            style_version: 0,
+            node_layout_versions: std::collections::HashMap::new(),
+            global_layout_version: 0,
             wayland_repeat_rate: 0,
             wayland_repeat_delay: 0,
             wayland_repeat_timer: None,
@@ -363,9 +377,9 @@ where
         // Use cached widget structure hash if available, otherwise compute it
         let widget_hash = if let Some(cached_hash) = self.cached_widget_structure_hash {
             cached_hash
-        } else if let Some(widget) = &self.widget {
-            let context = crate::layout::LayoutContext::unbounded();
-            let style = widget.layout_style(&context);
+        } else if let Some(_widget) = &self.widget {
+            let context = crate::layout::LayoutContext::unbounded().with_style_version(self.style_version);
+            let (style, _) = self.get_or_compute_style(&context);
             let hash = self.compute_widget_structure_hash(&style);
             self.cached_widget_structure_hash = Some(hash);
             hash
@@ -376,6 +390,87 @@ where
         widget_hash.hash(&mut hasher);
         
         hasher.finish()
+    }
+
+    /// Compute a hash of style dependencies (context inputs that affect style computation).
+    /// This includes constraints, parent size, viewport, etc. - anything that would change the style result.
+    fn compute_style_dependency_hash(&self, context: &LayoutContext) -> u64 {
+        use std::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
+        
+        let mut hasher = DefaultHasher::new();
+        
+        // Hash constraints
+        context.constraints.max_width.to_bits().hash(&mut hasher);
+        context.constraints.max_height.to_bits().hash(&mut hasher);
+        context.constraints.min_width.to_bits().hash(&mut hasher);
+        context.constraints.min_height.to_bits().hash(&mut hasher);
+        
+        // Hash parent size if available
+        if let Some(parent_size) = context.parent_size {
+            parent_size.x.to_bits().hash(&mut hasher);
+            parent_size.y.to_bits().hash(&mut hasher);
+        }
+        
+        // Hash available space
+        std::mem::discriminant(&context.available_space.width).hash(&mut hasher);
+        std::mem::discriminant(&context.available_space.height).hash(&mut hasher);
+        
+        // Hash viewport bounds if available
+        if let Some(viewport) = context.viewport_bounds {
+            viewport.x.to_bits().hash(&mut hasher);
+            viewport.y.to_bits().hash(&mut hasher);
+            viewport.width.to_bits().hash(&mut hasher);
+            viewport.height.to_bits().hash(&mut hasher);
+        }
+        
+        // Hash scroll offset if available
+        if let Some(scroll) = context.scroll_offset {
+            scroll.x.to_bits().hash(&mut hasher);
+            scroll.y.to_bits().hash(&mut hasher);
+        }
+        
+        hasher.finish()
+    }
+
+    /// Compute a hash of the style node itself (structure and properties).
+    fn compute_style_node_hash(&self, style: &StyleNode) -> u64 {
+        use std::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
+        
+        let mut hasher = DefaultHasher::new();
+        self.hash_style_node(style, &mut hasher);
+        hasher.finish()
+    }
+
+    /// Get or compute style with memoization.
+    /// Returns (style, was_cached) tuple.
+    fn get_or_compute_style(&mut self, context: &LayoutContext) -> (StyleNode, bool) {
+        // Check cache first
+        if let Some((_cached_style_hash, cached_version, ref cached_style)) = &self.style_cache {
+            // Check if version matches (dependencies haven't changed)
+            if *cached_version == context.style_version {
+                // Cache hit! Return cached style
+                return (cached_style.clone(), true);
+            }
+        }
+        
+        // Cache miss - compute new style
+        let style = if let Some(widget) = &self.widget {
+            widget.layout_style(context)
+        } else {
+            StyleNode {
+                style: crate::layout::LayoutStyle::default(),
+                children: vec![],
+                measure_func: None,
+            }
+        };
+        
+        // Compute hash of new style and cache it
+        let new_style_hash = self.compute_style_node_hash(&style);
+        self.style_cache = Some((new_style_hash, context.style_version, style.clone()));
+        
+        (style, false)
     }
 
     /// Recursively hash a style node and its children for layout cache invalidation
@@ -421,9 +516,9 @@ where
         // Compute fresh layout
         self.compute_layout()?;
         
-        if let Some(widget) = &self.widget {
-            let context = LayoutContext::unbounded();
-            let style = widget.layout_style(&context);
+        if let Some(_widget) = &self.widget {
+            let context = LayoutContext::unbounded().with_style_version(self.style_version);
+            let (style, _) = self.get_or_compute_style(&context);
             let layout_node = self.collect_layout(self.window_node, &style)?;
             
             // Cache the result
@@ -565,6 +660,9 @@ where
         // Cache absolute layout for fast lookup and viewport intersection tests
         // This avoids recomputing absolute positions during viewport culling
         self.absolute_bounds_cache.insert(node, absolute_layout);
+        
+        // Update layout version for this node
+        self.node_layout_versions.insert(node, self.global_layout_version);
 
         // Early exit if outside viewport (with buffer for smooth scrolling)
         // This skips collecting children for nodes completely outside the visible area
@@ -876,8 +974,9 @@ where
                 let style = if let Some(sn) = &self.cached_style_node {
                     sn.clone()
                 } else {
-                    let context = LayoutContext::unbounded();
-                    self.widget.as_ref().unwrap().layout_style(&context)
+                    let context = LayoutContext::unbounded().with_style_version(self.style_version);
+                    let (style, _) = self.get_or_compute_style(&context);
+                    style
                 };
                 
                 if let Some(root_child) = self.cached_root_child {
@@ -1036,9 +1135,9 @@ where
             child
         };
         
-        // Compute style (can't cache StyleNode due to function pointer)
-        let context = LayoutContext::unbounded();
-        let style = self.widget.as_ref().unwrap().layout_style(&context);
+        // Compute style with memoization
+        let context = LayoutContext::unbounded().with_style_version(self.style_version);
+        let (style, _) = self.get_or_compute_style(&context);
         
         self.collect_layout(root_child, &style)
             .expect("Failed to collect layout")
@@ -1047,8 +1146,8 @@ where
     /// Set up the initial layout tree.
     fn setup_initial_layout(&mut self) {
         log::debug!("Setting up layout...");
-        let context = crate::layout::LayoutContext::unbounded();
-        let style = self.widget.as_ref().unwrap().layout_style(&context);
+        let context = crate::layout::LayoutContext::unbounded().with_style_version(self.style_version);
+        let (style, _) = self.get_or_compute_style(&context);
         
         self.rebuild_layout(&style);
         self.compute_layout().expect("Failed to compute layout");
@@ -1091,8 +1190,8 @@ where
 
         if update_flags.intersects(Update::LAYOUT | Update::FORCE) || self.cached_widget_structure_hash.is_none() || self.cached_style_node.is_none() {
             // Compute style once and reuse it
-            let context = crate::layout::LayoutContext::unbounded();
-            let style = self.widget.as_ref().unwrap().layout_style(&context);
+            let context = crate::layout::LayoutContext::unbounded().with_style_version(self.style_version);
+            let (style, _) = self.get_or_compute_style(&context);
             
             let current_hash = self.compute_widget_structure_hash(&style);
             if let Some(cached_hash) = self.cached_widget_structure_hash {
@@ -1168,8 +1267,8 @@ where
         let style = if let Some(ref sn) = self.cached_style_node {
             sn.clone()
         } else {
-            let context = crate::layout::LayoutContext::unbounded();
-            let style = self.widget.as_ref().unwrap().layout_style(&context);
+            let context = crate::layout::LayoutContext::unbounded().with_style_version(self.style_version);
+            let (style, _) = self.get_or_compute_style(&context);
             self.cached_style_node = Some(style.clone());
             style
         };
@@ -1231,6 +1330,10 @@ where
     fn rebuild_layout(&mut self, style: &StyleNode) {
         log::debug!("Rebuilding layout tree from scratch");
         self.absolute_bounds_cache.clear();
+        // Increment global layout version on full rebuild
+        self.global_layout_version = self.global_layout_version.wrapping_add(1);
+        // Clear node versions since we're rebuilding everything
+        self.node_layout_versions.clear();
 
         // Ensure window node size is up to date before rebuilding
         // This is important for resize events where the window size may have changed
@@ -2069,8 +2172,8 @@ where
                     let width = popup.config.window.size.x as u32;
                     let height = popup.config.window.size.y as u32;
 
-                    // 1. Layout
-                    let context = LayoutContext::unbounded();
+                    // 1. Layout (popups use their own style version, start at 0)
+                    let context = LayoutContext::unbounded().with_style_version(0);
                     let style = popup.widget.layout_style(&context);
                     let _ = popup.taffy.set_children(popup.root_node, &[]);
 

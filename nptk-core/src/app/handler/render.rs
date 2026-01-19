@@ -52,7 +52,14 @@ where
             }
         }
 
-        self.scene.reset();
+        // Use incremental scene updates when possible
+        if self.dirty_region_tracker.is_full_reset_needed() {
+            self.scene.reset();
+        } else {
+            // For now, still reset but in the future we could do partial updates
+            // based on dirty_regions and dirty_elements
+            self.scene.reset();
+        }
         let scene_reset_time = render_start.elapsed();
 
         // Use a single cursor state variable to avoid repeated masking/unmasking
