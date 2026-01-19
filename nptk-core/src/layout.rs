@@ -13,7 +13,7 @@ pub mod constraint;
 pub use constraint::Constraints;
 
 pub mod context;
-pub use context::LayoutContext;
+pub use context::{LayoutContext, ViewportBounds};
 
 pub mod breakpoint;
 pub use breakpoint::{Breakpoint, Breakpoints};

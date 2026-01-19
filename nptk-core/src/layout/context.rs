@@ -1,7 +1,45 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 use crate::layout::{Constraints, LayoutDirection, LayoutPhase};
 use nalgebra::Vector2;
-use taffy::{AvailableSpace, Size};
+use taffy::{AvailableSpace, Rect, Size};
+
+/// Viewport bounds represented as a rectangle (x, y, width, height).
+#[derive(Debug, Clone, Copy)]
+pub struct ViewportBounds {
+    /// X position of viewport top-left corner
+    pub x: f32,
+    /// Y position of viewport top-left corner
+    pub y: f32,
+    /// Width of viewport
+    pub width: f32,
+    /// Height of viewport
+    pub height: f32,
+}
+
+impl ViewportBounds {
+    /// Create new viewport bounds
+    pub fn new(x: f32, y: f32, width: f32, height: f32) -> Self {
+        Self { x, y, width, height }
+    }
+
+    /// Check if a point is within viewport
+    pub fn contains_point(&self, px: f32, py: f32) -> bool {
+        px >= self.x && px < self.x + self.width && py >= self.y && py < self.y + self.height
+    }
+
+    /// Check if a rectangle intersects with viewport (with optional buffer)
+    pub fn intersects(&self, x: f32, y: f32, width: f32, height: f32, buffer: f32) -> bool {
+        let expanded_x = self.x - buffer;
+        let expanded_y = self.y - buffer;
+        let expanded_width = self.width + buffer * 2.0;
+        let expanded_height = self.height + buffer * 2.0;
+        
+        x < expanded_x + expanded_width
+            && x + width > expanded_x
+            && y < expanded_y + expanded_height
+            && y + height > expanded_y
+    }
+}
 
 /// Context information passed to widgets during layout style computation.
 ///
@@ -19,6 +57,10 @@ pub struct LayoutContext {
     pub phase: LayoutPhase,
     /// The layout direction (LTR, RTL, or Auto).
     pub direction: LayoutDirection,
+    /// The viewport bounds (visible area) for layout-level culling.
+    pub viewport_bounds: Option<ViewportBounds>,
+    /// The scroll offset for calculating visible ranges.
+    pub scroll_offset: Option<Vector2<f32>>,
 }
 
 impl LayoutContext {
@@ -43,6 +85,8 @@ impl LayoutContext {
             available_space,
             phase: LayoutPhase::Layout, // Default to layout phase
             direction: LayoutDirection::Ltr, // Default to LTR
+            viewport_bounds: None,
+            scroll_offset: None,
         }
     }
 
@@ -61,6 +105,18 @@ impl LayoutContext {
     /// Create a LayoutContext with a specific direction.
     pub fn with_direction(mut self, direction: LayoutDirection) -> Self {
         self.direction = direction;
+        self
+    }
+
+    /// Create a LayoutContext with viewport bounds for layout-level culling.
+    pub fn with_viewport_bounds(mut self, viewport: ViewportBounds) -> Self {
+        self.viewport_bounds = Some(viewport);
+        self
+    }
+
+    /// Create a LayoutContext with scroll offset for calculating visible ranges.
+    pub fn with_scroll_offset(mut self, offset: Vector2<f32>) -> Self {
+        self.scroll_offset = Some(offset);
         self
     }
 

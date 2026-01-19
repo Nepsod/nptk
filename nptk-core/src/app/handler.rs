@@ -468,6 +468,41 @@ where
         Ok(())
     }
 
+    /// Get the viewport bounds based on window/surface size.
+    /// This represents the visible area of the window.
+    fn get_viewport_bounds(&self) -> Option<crate::layout::context::ViewportBounds> {
+        let (width, height) = if let Some(surface) = &self.surface {
+            surface.size()
+        } else if let Some(window) = self.window.as_ref() {
+            let s = window.inner_size();
+            (s.width, s.height)
+        } else {
+            return None;
+        };
+        
+        Some(crate::layout::context::ViewportBounds::new(
+            0.0,
+            0.0,
+            width as f32,
+            height as f32,
+        ))
+    }
+
+    /// Check if a layout node is within or intersects the viewport (with buffer for smooth scrolling).
+    fn is_in_viewport(
+        layout: &taffy::Layout,
+        viewport: crate::layout::context::ViewportBounds,
+        buffer: f32,
+    ) -> bool {
+        viewport.intersects(
+            layout.location.x,
+            layout.location.y,
+            layout.size.width,
+            layout.size.height,
+            buffer,
+        )
+    }
+
     /// Collect the computed layout of the given node and its children. Make sure to call [AppHandler::compute_layout] before, to not get dirty results.
     ///
     /// This method converts Taffy's relative positions (relative to parent's content area) to absolute positions
@@ -476,11 +511,13 @@ where
         // Get layout direction from context (default to LTR)
         let context = LayoutContext::unbounded();
         let direction = context.direction;
-        self.collect_layout_impl(node, style, 0.0, 0.0, direction)
+        let viewport_bounds = self.get_viewport_bounds();
+        self.collect_layout_impl(node, style, 0.0, 0.0, direction, viewport_bounds)
     }
 
     /// Internal implementation that accumulates parent positions.
     /// parent_x and parent_y represent the absolute position of the parent's content area (after padding).
+    /// viewport_bounds is used for layout-level culling to skip invisible subtrees.
     fn collect_layout_impl(
         &mut self,
         node: NodeId,
@@ -488,6 +525,7 @@ where
         parent_x: f32,
         parent_y: f32,
         direction: crate::layout::LayoutDirection,
+        viewport_bounds: Option<crate::layout::context::ViewportBounds>,
     ) -> TaffyResult<LayoutNode> {
         // Pre-allocate children Vec with capacity hint to reduce allocations
         let visible_count = style.children.iter()
@@ -524,8 +562,22 @@ where
         absolute_layout.location.x = absolute_x;
         absolute_layout.location.y = absolute_y;
 
-        // Cache absolute layout for fast lookup
+        // Cache absolute layout for fast lookup and viewport intersection tests
+        // This avoids recomputing absolute positions during viewport culling
         self.absolute_bounds_cache.insert(node, absolute_layout);
+
+        // Early exit if outside viewport (with buffer for smooth scrolling)
+        // This skips collecting children for nodes completely outside the visible area
+        if let Some(viewport) = viewport_bounds {
+            const VIEWPORT_BUFFER: f32 = 200.0; // Buffer for smooth scrolling
+            if !Self::is_in_viewport(&absolute_layout, viewport, VIEWPORT_BUFFER) {
+                // Return minimal LayoutNode - don't recurse into children
+                return Ok(LayoutNode {
+                    layout: absolute_layout,
+                    children: vec![],
+                });
+            }
+        }
 
         // Calculate this node's content area position (absolute position)
         // This will be the parent position for children
@@ -553,6 +605,7 @@ where
             let child_node_id = self.taffy.child_at_index(node, taffy_index)?;
             let self_ptr = self as *mut Self;
             // The child_style from the outer loop is correct for this child_node_id
+            // Pass viewport_bounds down to children for recursive culling
             let collected_child_node = unsafe {
                 stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
                     (&mut *self_ptr).collect_layout_impl(
@@ -561,6 +614,7 @@ where
                         child_content_x,
                         child_content_y,
                         direction,
+                        viewport_bounds, // Pass viewport down for recursive culling
                     )
                 })
             }?;

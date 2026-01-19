@@ -10,7 +10,7 @@ use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentage, StyleNode, LayoutContext, OverflowDetector, OverflowRegions};
+use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentage, StyleNode, LayoutContext, OverflowDetector, OverflowRegions, ViewportBounds};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::vg::kurbo::{
     Affine, BezPath, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke,
@@ -1445,21 +1445,50 @@ impl Widget for ScrollContainer {
     fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         let mut style = self.layout_style.get().clone();
 
+        // Calculate scrollbar needs (needed for both measure and layout phases)
+        let (needs_vert, needs_horz) = self.calculate_scrollbar_needs_for_layout();
+
         // In measure phase, use loose constraints to get intrinsic sizes
         // In layout phase, calculate scrollbar needs and apply padding
-        if context.phase.is_measure() {
-            // During measure phase, don't apply scrollbar padding yet
-            // This allows content to be measured at its natural size
-        } else {
-            // During layout phase, calculate scrollbar needs and apply padding
-            let (needs_vert, needs_horz) = self.calculate_scrollbar_needs_for_layout();
+        if !context.phase.is_measure() {
+            // During layout phase, apply scrollbar padding
             self.apply_scrollbar_padding(&mut style, needs_vert, needs_horz);
         }
 
         StyleNode {
             style,
             children: if let Some(child) = &self.child {
-                vec![child.layout_style(context)]
+                // Create enhanced context with viewport info for layout-level culling
+                let scroll_offset = *self.scroll_offset.get(); // Clone the value
+                let mut child_context = context.clone();
+                
+                // Calculate viewport bounds relative to scroll container
+                // The viewport is the visible area after accounting for scrollbars
+                let viewport_width = if needs_horz {
+                    self.viewport_size.x - self.scrollbar_width
+                } else {
+                    self.viewport_size.x
+                };
+                let viewport_height = if needs_vert {
+                    self.viewport_size.y - self.scrollbar_width
+                } else {
+                    self.viewport_size.y
+                };
+                
+                // Viewport bounds are relative to the scroll container's content area
+                // Adjust for scroll offset (content is offset by negative scroll)
+                let viewport_bounds = ViewportBounds::new(
+                    -scroll_offset.x, // Content offset by negative scroll
+                    -scroll_offset.y,
+                    viewport_width,
+                    viewport_height,
+                );
+                
+                child_context = child_context
+                    .with_viewport_bounds(viewport_bounds)
+                    .with_scroll_offset(scroll_offset);
+                
+                vec![child.layout_style(&child_context)]
             } else {
                 vec![]
             },
