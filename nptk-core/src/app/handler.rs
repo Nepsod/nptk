@@ -647,7 +647,7 @@ where
         }
 
         // Process pending resize if enough time has passed (throttling)
-        const RESIZE_THROTTLE_MS: u64 = 8; // ~120fps
+        const RESIZE_THROTTLE_MS: u64 = 12; // Adjusted for smoother continuous resize
         if let Some(pending_size) = self.pending_resize {
             let time_since_last_resize = self.last_update.duration_since(self.last_resize_time).as_millis() as u64;
             if time_since_last_resize >= RESIZE_THROTTLE_MS {
@@ -669,6 +669,8 @@ where
                             if surface.take_frame_ready() {
                                 // Reset resize throttle on frame completion to allow the next resize step
                                 self.last_resize_time = Instant::now().checked_sub(Duration::from_millis(RESIZE_THROTTLE_MS)).unwrap_or(self.last_resize_time);
+                                // Ensure we process all events immediately after a frame to minimize latency
+                                surface.dispatch_events().ok();
                             }
                             let size_after = surface.size();
                             if size_before != size_after {
@@ -814,18 +816,17 @@ where
                 update_flags.intersects(Update::DRAW)
             );
             
-            // Re-collect layout if deferred (using cached style)
-            let final_layout_node = if self.layout_collection_deferred && self.taffy.child_count(self.window_node) > 0 {
+            // Ensure layout is up-to-date and collected if it was deferred
+            let final_layout_node = if self.layout_collection_deferred {
+                // We need to re-run layout collection to get the fresh positions
+                let style = if let Some(sn) = &self.cached_style_node {
+                    sn.clone()
+                } else {
+                    let context = LayoutContext::unbounded();
+                    self.widget.as_ref().unwrap().layout_style(&context)
+                };
+                
                 if let Some(root_child) = self.cached_root_child {
-                    let style = if let Some(sn) = &self.cached_style_node {
-                        sn.clone()
-                    } else {
-                        let context = LayoutContext::unbounded();
-                        let style = self.widget.as_ref().unwrap().layout_style(&context);
-                        self.cached_style_node = Some(style.clone());
-                        style
-                    };
-                    
                     if let Ok(fresh_layout) = self.collect_layout(root_child, &style) {
                         self.layout_collection_deferred = false;
                         fresh_layout

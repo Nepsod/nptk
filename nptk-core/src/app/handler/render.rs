@@ -66,39 +66,9 @@ where
         let original_cursor_state = self.info.cursor_pos;
         self.info.cursor_pos = effective_cursor_pos;
         
-        // Ensure layout is up-to-date before rendering
-        // If layout collection was deferred (fast resize path), collect it now
-        let local_layout_node = if self.layout_collection_deferred && self.taffy.child_count(self.window_node) > 0 {
-            if let Some(root_child) = self.cached_root_child {
-                let style = if let Some(sn) = &self.cached_style_node {
-                    sn.clone()
-                } else {
-                    let context = crate::layout::LayoutContext::unbounded();
-                    let style = self.widget.as_ref().unwrap().layout_style(&context);
-                    self.cached_style_node = Some(style.clone());
-                    style
-                };
-                
-                let style_ref = &style;
-                let self_ptr = self as *mut Self;
-                let fresh_layout_result = unsafe {
-                    stacker::maybe_grow(64 * 1024, 1024 * 1024, || {
-                        (&mut *self_ptr).collect_layout(root_child, style_ref)
-                    })
-                };
-                
-                if let Ok(fresh_layout) = fresh_layout_result {
-                    self.layout_collection_deferred = false;
-                    fresh_layout
-                } else {
-                    layout_node.clone()
-                }
-            } else {
-                layout_node.clone()
-            }
-        } else {
-            layout_node.clone()
-        };
+        // Use the layout node passed from update_internal. 
+        // We ensure it's up-to-date in AppHandler::update before calling render_frame.
+        let local_layout_node = layout_node;
 
         let widget_render_time = self.render_widget(&local_layout_node);
         let postfix_render_time = self.render_postfix(&local_layout_node);
@@ -487,43 +457,15 @@ where
             }
         }
 
-        let mut resize_detected_in_render = None;
-        if surface.needs_event_dispatch() {
-            let size_before = surface.size();
-            match surface.dispatch_events() {
-                Ok(needs_redraw) => {
-                    let size_after = surface.size();
-                    if size_before != size_after {
-                        resize_detected_in_render = Some(size_after);
-                        self.update.insert(Update::DRAW | Update::LAYOUT);
-                    } else if needs_redraw {
-                        self.update.insert(Update::DRAW);
-                    }
-                },
-                Err(err) => {
-                    log::info!("Surface dispatch reported close: {}", err);
-                    self.handle_close_request(event_loop);
-                    return None;
-                },
-            }
-        }
-
-        // Handle resize detected during dispatch_events - skip rendering this frame
-        // Note: We can't update window node size here because surface and renderer are borrowed.
-        // The update will happen in the next update() call when Update::LAYOUT flag is processed.
-        if resize_detected_in_render.is_some() {
-            return None; // Skip rendering this frame, let the next update() recompute layout
-        }
-
+        // Event dispatch is now exclusively handled in the update loop to prevent frame skips during render.
+        
         #[cfg(all(target_os = "linux", feature = "wayland"))]
         if let crate::vgi::Surface::Wayland(ref mut wayland_surface) = &mut *surface {
-            if !wayland_surface.has_received_configure() {
-                log::debug!("Wayland surface has not received configure yet. Skipping render.");
-                return None;
-            }
-            let mut resize_detected_in_reconfigure = None;
+            // Note: Don't skip render if !is_configured here, because requires_reconfigure() 
+            // will trigger the first configuration below.
+            
+            // If Wayland requires reconfigure (size mismatch with wgpu), do it now but DON'T skip the frame.
             if wayland_surface.requires_reconfigure() {
-                let size_before_reconfigure = wayland_surface.size();
                 let present_mode = match self.config.render.present_mode {
                     wgpu_types::PresentMode::AutoVsync => vello::wgpu::PresentMode::AutoVsync,
                     wgpu_types::PresentMode::AutoNoVsync => vello::wgpu::PresentMode::AutoNoVsync,
@@ -532,30 +474,11 @@ where
                     wgpu_types::PresentMode::FifoRelaxed => vello::wgpu::PresentMode::Fifo,
                     wgpu_types::PresentMode::Mailbox => vello::wgpu::PresentMode::Mailbox,
                 };
-                if let Err(e) = wayland_surface.configure_surface(
+                let _ = wayland_surface.configure_surface(
                     &device_handle.device,
                     wayland_surface.format(),
                     present_mode,
-                ) {
-                    log::warn!("Wayland reconfigure failed: {}", e);
-                } else {
-                    let size_after_reconfigure = wayland_surface.size();
-                    if size_before_reconfigure != size_after_reconfigure {
-                        resize_detected_in_reconfigure = Some(size_after_reconfigure);
-                        // Trigger layout update (update is atomic so safe to call here)
-                        self.update.insert(Update::DRAW | Update::LAYOUT);
-                    }
-                }
-            }
-            if !wayland_surface.is_configured() {
-                log::warn!("Wayland surface not yet configured. Skipping render.");
-                return None;
-            }
-            // Handle resize detected during reconfigure - skip rendering this frame
-            // Note: We can't update window node size here because surface and renderer are borrowed.
-            // The update will happen in the next update() call when Update::LAYOUT flag is processed.
-            if resize_detected_in_reconfigure.is_some() {
-                return None; // Skip rendering this frame, let the next update() recompute layout
+                );
             }
         }
 
@@ -565,8 +488,7 @@ where
                     let size = window.inner_size();
                     (size.width, size.height)
                 } else {
-                    log::warn!("Winit surface but no window available");
-                    return None;
+                    (0, 0)
                 }
             },
             #[cfg(all(target_os = "linux", feature = "wayland"))]
@@ -576,27 +498,6 @@ where
         if width == 0 || height == 0 {
             log::warn!("Surface invalid ({}x{}). Skipping render.", width, height);
             return None;
-        }
-
-        #[cfg(all(target_os = "linux", feature = "wayland"))]
-        if let crate::vgi::Surface::Wayland(ref mut wayland_surface) = &mut *surface {
-            if wayland_surface.is_configured() && wayland_surface.requires_reconfigure() {
-                let present_mode = match self.config.render.present_mode {
-                    wgpu_types::PresentMode::AutoVsync => vello::wgpu::PresentMode::AutoVsync,
-                    wgpu_types::PresentMode::AutoNoVsync => vello::wgpu::PresentMode::AutoNoVsync,
-                    wgpu_types::PresentMode::Immediate => vello::wgpu::PresentMode::Immediate,
-                    wgpu_types::PresentMode::Fifo => vello::wgpu::PresentMode::Fifo,
-                    wgpu_types::PresentMode::FifoRelaxed => vello::wgpu::PresentMode::Fifo,
-                    wgpu_types::PresentMode::Mailbox => vello::wgpu::PresentMode::Mailbox,
-                };
-                if let Err(e) = wayland_surface.configure_surface(
-                    &device_handle.device,
-                    wayland_surface.format(),
-                    present_mode,
-                ) {
-                    log::warn!("Wayland proactive configure failed: {}", e);
-                }
-            }
         }
 
         let render_view = match surface.create_render_view(&device_handle.device, width, height) {
