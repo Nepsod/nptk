@@ -178,7 +178,11 @@ impl WaylandSurfaceInner {
         }
 
         let mut state = self.state.lock().unwrap();
+        // #region agent log - HYP E: Track when state.size is updated in handle_configure_after_ack
+        let old_state_size = state.size;
         state.size = (width, height);
+        log::debug!("[HYP-E] handle_configure_after_ack: state.size changed from {:?} to {:?}", old_state_size, state.size);
+        // #endregion
         state.configured = true;
         state.needs_redraw = true;
         state.first_configure_acked = true;
@@ -655,9 +659,12 @@ impl SurfaceTrait for WaylandSurface {
         self.client.dispatch_pending()?;
 
         let status = self.inner.take_status();
+        // #region agent log - HYP C: Check status.size vs self.size from take_status
+        log::debug!("[HYP-C] dispatch_events: self.size={:?}, status.size={:?}, status.configured={}", self.size, status.size, status.configured);
+        // #endregion
         if self.size != status.size {
             log::debug!(
-                "Wayland dispatch: size changed to {}x{}",
+                "[HYP-C CONFIRMED] Wayland dispatch: size changed to {}x{}",
                 status.size.0,
                 status.size.1
             );

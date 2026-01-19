@@ -106,7 +106,7 @@ where
             return;
         }
 
-        log::info!("Window resized to {}x{}", new_size.width, new_size.height);
+        log::info!("=== RESIZE EVENT RECEIVED === Window resized to {}x{} (physical)", new_size.width, new_size.height);
 
         if let Some(surface) = &mut self.surface {
             if let Err(e) = surface.resize(new_size.width, new_size.height) {
@@ -325,10 +325,17 @@ where
             return;
         }
 
-        let flags_to_clear = self.update.get() & !(Update::DRAW | Update::FORCE);
+        // Preserve LAYOUT flag if DRAW is also set (indicates resize detected during render)
+        // This ensures layout recomputation happens in the next frame
+        let flags_to_clear = if self.update.get().intersects(Update::DRAW | Update::LAYOUT) {
+            // If both DRAW and LAYOUT are set, preserve both (resize detected)
+            self.update.get() & !(Update::DRAW | Update::FORCE | Update::LAYOUT)
+        } else {
+            // Otherwise, clear all flags except DRAW and FORCE
+            self.update.get() & !(Update::DRAW | Update::FORCE)
+        };
         if flags_to_clear.bits() != 0 {
-            self.update
-                .set(self.update.get() & (Update::DRAW | Update::FORCE));
+            self.update.set(self.update.get() & !flags_to_clear);
         }
     }
 }
