@@ -35,6 +35,7 @@ pub mod widget;
 
 /// Contains structures to work with the component architecture
 pub mod component;
+pub mod diagnostics;
 
 /// Contains the task runner and utilities for running async
 pub mod tasks;

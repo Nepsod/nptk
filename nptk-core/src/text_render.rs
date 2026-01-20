@@ -18,12 +18,42 @@ const LAYOUT_CACHE_CAPACITY: usize = 1000;
 #[derive(Clone, PartialEq, Default, Debug)]
 pub struct BrushIndex(pub usize);
 
+/// Statistics for text layout cache performance tracking
+#[derive(Debug, Default, Clone)]
+pub struct TextCacheStats {
+    /// Number of cache hits
+    pub hits: usize,
+    /// Number of cache misses
+    pub misses: usize,
+    /// Total number of cache lookups
+    pub total_lookups: usize,
+}
+
+impl TextCacheStats {
+    /// Get cache hit ratio (0.0 to 1.0)
+    pub fn hit_ratio(&self) -> f64 {
+        if self.total_lookups == 0 {
+            return 0.0;
+        }
+        self.hits as f64 / self.total_lookups as f64
+    }
+
+    /// Reset statistics
+    pub fn reset(&mut self) {
+        self.hits = 0;
+        self.misses = 0;
+        self.total_lookups = 0;
+    }
+}
+
 /// Text rendering context that manages layout contexts
 pub struct TextRenderContext {
     layout_cx: LayoutContext,
     /// LRU cache for text layouts to prevent memory leaks
     /// Key: (text, font_family, max_width_u32, font_size_u32, max_lines, center_align)
     layout_cache: LruCache<(String, String, u32, u32, Option<usize>, bool), Layout<[u8; 4]>>,
+    /// Cache statistics for performance tracking
+    cache_stats: TextCacheStats,
     /// Text direction for RTL support (placeholder for future implementation)
     /// TODO: Integrate with system locale detection and Parley's RTL support
     _text_direction: Option<crate::layout::LayoutDirection>,
@@ -35,8 +65,19 @@ impl TextRenderContext {
         Self {
             layout_cx: LayoutContext::new(),
             layout_cache: LruCache::new(NonZeroUsize::new(LAYOUT_CACHE_CAPACITY).unwrap()),
+            cache_stats: TextCacheStats::default(),
             _text_direction: None, // TODO: Detect from system locale
         }
+    }
+
+    /// Get cache statistics
+    pub fn cache_stats(&self) -> &TextCacheStats {
+        &self.cache_stats
+    }
+
+    /// Reset cache statistics
+    pub fn reset_stats(&mut self) {
+        self.cache_stats.reset();
     }
 
     /// Set text direction for RTL support (placeholder)
@@ -313,6 +354,8 @@ impl TextRenderContext {
         max_lines: Option<usize>,
         center_align: bool,
     ) -> Layout<[u8; 4]> {
+        // Optimize cache key: avoid cloning strings when possible
+        // Use references for comparison, but need owned for cache key
         let cache_key = (
             text.to_string(),
             font_family.clone().unwrap_or_default(),
@@ -322,9 +365,17 @@ impl TextRenderContext {
             center_align,
         );
 
+        // Track cache lookup
+        self.cache_stats.total_lookups += 1;
+
         if let Some(cached) = self.layout_cache.get(&cache_key) {
+            // Cache hit
+            self.cache_stats.hits += 1;
             return cached.clone();
         }
+
+        // Cache miss
+        self.cache_stats.misses += 1;
 
         let display_scale = 1.0;
         let mut parley_font_cx = font_cx.create_parley_font_context();

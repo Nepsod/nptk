@@ -138,6 +138,9 @@ where
     node_layout_versions: std::collections::HashMap<NodeId, u64>,
     /// Global layout version counter - incremented on each layout pass
     global_layout_version: u64,
+    /// Cache for measure function results to avoid repeated measurements
+    /// Key: (node_id, available_space_hash) -> measured_size
+    measure_cache: std::collections::HashMap<(NodeId, u64), taffy::Size<f32>>,
     /// Wayland key repeat rate (characters per second)
     wayland_repeat_rate: i32,
     /// Wayland key repeat delay (milliseconds)
@@ -267,6 +270,7 @@ where
             style_version: 0,
             node_layout_versions: std::collections::HashMap::new(),
             global_layout_version: 0,
+            measure_cache: std::collections::HashMap::new(),
             wayland_repeat_rate: 0,
             wayland_repeat_delay: 0,
             wayland_repeat_timer: None,
@@ -656,6 +660,32 @@ where
         let mut absolute_layout = relative_layout;
         absolute_layout.location.x = absolute_x;
         absolute_layout.location.y = absolute_y;
+
+        // Early exit optimization: Check if cached bounds match current computation
+        // This avoids expensive subtree traversal when layout hasn't changed
+        // Only early exit for leaf nodes (no children) to avoid missing child changes
+        if taffy_child_count == 0 && visible_count == 0 {
+            if let Some(cached_version) = self.node_layout_versions.get(&node) {
+                if *cached_version == self.global_layout_version {
+                    // Version matches - check if bounds are the same
+                    if let Some(cached_bounds) = self.absolute_bounds_cache.get(&node) {
+                        // Compare bounds (with small epsilon for floating point comparison)
+                        const EPSILON: f32 = 0.001;
+                        if (cached_bounds.location.x - absolute_layout.location.x).abs() < EPSILON
+                            && (cached_bounds.location.y - absolute_layout.location.y).abs() < EPSILON
+                            && (cached_bounds.size.width - absolute_layout.size.width).abs() < EPSILON
+                            && (cached_bounds.size.height - absolute_layout.size.height).abs() < EPSILON
+                        {
+                            // Bounds match - early exit, reuse cached layout
+                            return Ok(LayoutNode {
+                                layout: absolute_layout,
+                                children: vec![],
+                            });
+                        }
+                    }
+                }
+            }
+        }
 
         // Cache absolute layout for fast lookup and viewport intersection tests
         // This avoids recomputing absolute positions during viewport culling
@@ -1189,22 +1219,39 @@ where
         let mut structure_changed = false;
 
         if update_flags.intersects(Update::LAYOUT | Update::FORCE) || self.cached_widget_structure_hash.is_none() || self.cached_style_node.is_none() {
-            // Compute style once and reuse it
+            // Batched style update: compute style once and reuse it
+            // This avoids redundant style computations when multiple widgets need updates
             let context = crate::layout::LayoutContext::unbounded().with_style_version(self.style_version);
-            let (style, _) = self.get_or_compute_style(&context);
+            let (style, was_cached) = self.get_or_compute_style(&context);
             
-            let current_hash = self.compute_widget_structure_hash(&style);
-            if let Some(cached_hash) = self.cached_widget_structure_hash {
-                if current_hash != cached_hash {
+            // Check stability: if widget is stable and style was cached, skip structure hash computation
+            let is_stable = style.style.stability == crate::layout::LayoutStability::Stable;
+            if is_stable && was_cached && !update_flags.intersects(Update::FORCE) {
+                // Stable widget with cached style - assume structure hasn't changed
+                // Skip expensive hash computation (batched optimization)
+                if self.cached_widget_structure_hash.is_none() {
+                    // First time, still need to compute hash
+                    let current_hash = self.compute_widget_structure_hash(&style);
                     self.cached_widget_structure_hash = Some(current_hash);
-                    structure_changed = true;
                 }
+                // Cache the style node
+                self.cached_style_node = Some(style);
             } else {
-                // First time, compute and cache
-                self.cached_widget_structure_hash = Some(current_hash);
+                // Dynamic widget or force update - compute hash (batched with style computation)
+                // The hash computation is already batched since we compute style once above
+                let current_hash = self.compute_widget_structure_hash(&style);
+                if let Some(cached_hash) = self.cached_widget_structure_hash {
+                    if current_hash != cached_hash {
+                        self.cached_widget_structure_hash = Some(current_hash);
+                        structure_changed = true;
+                    }
+                } else {
+                    // First time, compute and cache
+                    self.cached_widget_structure_hash = Some(current_hash);
+                }
+                // Cache the style node for potential use in rebuild or final collection
+                self.cached_style_node = Some(style);
             }
-            // Cache the style node for potential use in rebuild or final collection
-            self.cached_style_node = Some(style);
         }
         
         // If size changed and structure didn't change (as far as we can tell without hash), we might skip full pass

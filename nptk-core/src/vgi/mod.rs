@@ -25,6 +25,7 @@ pub mod gpu_context;
 pub mod options;
 pub mod renderer;
 pub mod scene;
+pub mod geometry_cache;
 pub mod surface;
 
 pub use self::options::RendererOptions;

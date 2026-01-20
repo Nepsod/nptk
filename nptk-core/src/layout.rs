@@ -38,6 +38,27 @@ pub use overflow::{OverflowDetector, OverflowRegions};
 pub mod anchor;
 pub use anchor::{Anchor, AnchorPosition};
 
+/// Layout stability hint for widgets.
+/// 
+/// Widgets can declare their stability to enable optimizations:
+/// - Stable widgets skip layout/style recomputation unless explicitly invalidated
+/// - Dynamic widgets are always recomputed
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayoutStability {
+    /// Widget layout and style are stable and won't change unless explicitly invalidated.
+    /// Use this for widgets that rarely change (e.g., static labels, icons).
+    Stable,
+    /// Widget layout/style may change frequently (default).
+    /// Use this for dynamic content or widgets that respond to user input.
+    Dynamic,
+}
+
+impl Default for LayoutStability {
+    fn default() -> Self {
+        LayoutStability::Dynamic
+    }
+}
+
 /// Defines different aspects and properties of a widget layout.
 #[derive(Clone, PartialEq, Debug)]
 pub struct LayoutStyle {
@@ -130,6 +151,12 @@ pub struct LayoutStyle {
     /// Defines which column in the grid the item should start and end at.
     pub grid_column: Line<GridPlacement>,
 
+    /// Layout stability hint for optimization.
+    ///
+    /// Stable widgets skip layout/style recomputation unless explicitly invalidated.
+    /// Dynamic widgets are always recomputed. Default is `Dynamic`.
+    pub stability: LayoutStability,
+
     /// Layout priority for this widget.
     ///
     /// Higher priority widgets get space first when distributing available space.
@@ -190,6 +217,7 @@ impl Default for LayoutStyle {
                 end: GridPlacement::Auto,
             },
             layout_priority: 0.0,
+            stability: LayoutStability::Dynamic,
         }
     }
 }
