@@ -201,6 +201,38 @@ impl DirtyRegionTracker {
         self.element_regions.clear();
         self.dirty_elements.clear();
     }
+
+    /// Merge overlapping dirty regions to reduce the number of regions tracked.
+    /// This helps optimize rendering by reducing the number of regions to process.
+    pub fn merge_overlapping_regions(&mut self) {
+        if self.full_reset_needed || self.dirty_regions.is_empty() {
+            return;
+        }
+
+        // Simple merge: combine overlapping regions
+        // More sophisticated algorithms could be used for better results
+        let mut merged: Vec<vello::kurbo::Rect> = Vec::new();
+        for region in self.dirty_regions.drain(..) {
+            let mut found_overlap = false;
+            for merged_region in merged.iter_mut() {
+                let intersection = merged_region.intersect(region);
+                if intersection.width() > 0.0 && intersection.height() > 0.0 {
+                    // Expand merged_region to include region
+                    let x0 = merged_region.x0.min(region.x0);
+                    let y0 = merged_region.y0.min(region.y0);
+                    let x1 = merged_region.x1.max(region.x1);
+                    let y1 = merged_region.y1.max(region.y1);
+                    *merged_region = vello::kurbo::Rect::new(x0, y0, x1, y1);
+                    found_overlap = true;
+                    break;
+                }
+            }
+            if !found_overlap {
+                merged.push(region);
+            }
+        }
+        self.dirty_regions = merged;
+    }
 }
 
 impl Scene {

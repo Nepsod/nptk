@@ -38,6 +38,9 @@ pub use gpu_context::{DeviceHandle, GpuContext};
 pub use renderer::{Renderer, RendererTrait};
 pub use scene::{Scene, SceneTrait};
 pub use surface::{Surface, SurfaceTrait};
+pub use atlas::{AtlasCoordinates, TextureAtlas};
+pub use batching::BatchedGraphics;
+pub use pool::{VecPool, RectPool, ScenePool};
 
 /// A trait for rendering vector graphics.
 ///

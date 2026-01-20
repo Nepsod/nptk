@@ -73,6 +73,10 @@ where
             // Incremental update: reset scene but track dirty regions for optimization
             // Note: Vello doesn't support partial scene clearing, so we still reset
             // but we can use dirty regions to optimize rendering by skipping unchanged elements
+            
+            // Merge overlapping dirty regions to reduce processing overhead
+            self.dirty_region_tracker.merge_overlapping_regions();
+            
             self.scene.reset();
             // Keep dirty regions for element skipping logic during rendering
             // They will be cleared after rendering is complete
