@@ -3,12 +3,10 @@
 //! Provides utilities for extracting theme colors for menu rendering,
 //! ensuring consistent defaults and fallback behavior.
 
-use nptk_theme::id::WidgetId;
-use nptk_theme::properties::ThemeProperty;
-use nptk_theme::theme::Theme;
+use crate::theme::{ColorRole, Palette};
 use vello::peniko::Color;
 
-/// Theme colors extracted from the theme for menu rendering
+/// Theme colors extracted from the palette for menu rendering
 pub struct MenuThemeColors {
     /// Background color of the menu
     pub bg_color: Color,
@@ -23,40 +21,24 @@ pub struct MenuThemeColors {
 }
 
 impl MenuThemeColors {
-    /// Extract all theme colors for menu rendering
+    /// Extract all theme colors for menu rendering from palette
     ///
-    /// Uses the provided `WidgetId` to look up theme-specific properties,
-    /// falling back to default colors if properties are not found.
-    pub fn extract(theme: &dyn Theme, widget_id: WidgetId) -> Self {
-        let bg_color = theme
-            .get_property(widget_id.clone(), &ThemeProperty::ColorBackground)
-            .unwrap_or_else(|| Color::from_rgb8(255, 255, 255));
-
-        let border_color = theme
-            .get_property(widget_id.clone(), &ThemeProperty::ColorBorder)
-            .unwrap_or_else(|| Color::from_rgb8(200, 200, 200));
-
-        let text_color = theme
-            .get_property(widget_id.clone(), &ThemeProperty::ColorText)
-            .unwrap_or_else(|| Color::from_rgb8(0, 0, 0));
-
-        // Disabled color is derived from text color with reduced opacity
-        let disabled_color = theme
-            .get_property(widget_id.clone(), &ThemeProperty::ColorText)
-            .map(|c| {
-                // Make disabled color more transparent
-                let components = c.components;
-                let r = (components[0] * 255.0).clamp(0.0, 255.0) as u8;
-                let g = (components[1] * 255.0).clamp(0.0, 255.0) as u8;
-                let b = (components[2] * 255.0).clamp(0.0, 255.0) as u8;
-                let alpha = (components[3] * 0.5 * 255.0).clamp(0.0, 255.0) as u8;
-                Color::from_rgba8(r, g, b, alpha)
-            })
-            .unwrap_or_else(|| Color::from_rgb8(128, 128, 128));
-
-        let hovered_color = theme
-            .get_property(widget_id, &ThemeProperty::ColorMenuHovered)
-            .unwrap_or_else(|| Color::from_rgb8(230, 230, 230));
+    /// Uses palette color roles (based on SerenityOS):
+    /// - MenuBase for background
+    /// - MenuBaseText for text
+    /// - MenuSelection for hovered background
+    /// - MenuSelectionText for hovered text
+    /// - DisabledTextFront for disabled text
+    pub fn extract_from_palette(palette: &Palette) -> Self {
+        let bg_color = palette.color(ColorRole::MenuBase);
+        let text_color = palette.color(ColorRole::MenuBaseText);
+        let hovered_color = palette.color(ColorRole::MenuSelection);
+        
+        // Border color - use a darker shade of menu base or threed shadow
+        let border_color = palette.color(ColorRole::ThreedShadow1);
+        
+        // Disabled color - use DisabledTextFront or derive from text color with reduced opacity
+        let disabled_color = palette.color(ColorRole::DisabledTextFront);
 
         Self {
             bg_color,
@@ -66,4 +48,5 @@ impl MenuThemeColors {
             hovered_color,
         }
     }
+    
 }

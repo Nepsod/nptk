@@ -836,16 +836,12 @@ where
                         self.palette.clone(),
                     );
 
-                            let theme_manager = popup.config.theme_manager.clone();
-                            theme_manager.read().unwrap().access_theme_mut(|theme| {
-                                popup.widget.render(
-                                    graphics.as_mut(),
-                                    theme,
-                                    &layout_node,
-                                    &mut popup.info,
-                                    context,
-                                );
-                            });
+                            popup.widget.render(
+                                graphics.as_mut(),
+                                &layout_node,
+                                &mut popup.info,
+                                context,
+                            );
                         },
                         Err(e) => eprintln!("Failed to collect popup layout: {}", e),
                     }

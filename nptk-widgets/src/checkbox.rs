@@ -5,6 +5,7 @@ use nptk_core::app::update::Update;
 use nptk_core::layout;
 use nptk_core::layout::{Dimension, LayoutContext, LayoutNode, LayoutStyle, LengthPercentageAuto, StyleNode};
 use nptk_core::signal::MaybeSignal;
+use nptk_core::theme::ColorRole;
 use nptk_core::vg::kurbo::{
     Affine, Line, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke,
 };
@@ -12,9 +13,7 @@ use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
-use nptk_theme::helpers::ThemeHelper;
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use async_trait::async_trait;
 
 /// The state of a checkbox widget.
@@ -306,45 +305,30 @@ impl Widget for Checkbox {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         _: &mut AppInfo,
-        _: AppContext,
+        context: AppContext,
     ) {
         let state = self.current_state();
+        let palette = context.palette();
 
         // Check if current state is locked for graying out
         let is_locked = self.is_state_locked(state);
 
-        // Get colors based on state using theme helper
-        let theme_checkbox_state = match state {
-            CheckboxState::Unchecked => nptk_theme::helpers::CheckboxState::Unchecked,
-            CheckboxState::Checked => nptk_theme::helpers::CheckboxState::Checked,
-            CheckboxState::Indeterminate => nptk_theme::helpers::CheckboxState::Indeterminate,
-        };
-        let base_border_color = ThemeHelper::get_checkbox_color_three_state(
-            &*theme,
-            self.widget_id(),
-            theme_checkbox_state,
-        );
-
-        // Get symbol color from theme
-        let base_symbol_color = theme
-            .get_property(
-                self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::CheckboxSymbol,
-            )
-            .unwrap_or(Color::from_rgb8(255, 255, 255));
+        // Get colors from palette (based on SerenityOS)
+        // Checkbox base uses Base color, symbol uses BaseText
+        let base_border_color = palette.color(ColorRole::Base);
+        let base_symbol_color = palette.color(ColorRole::BaseText);
 
         // Gray out colors if locked (like Windows disabled state)
         let border_color = if is_locked {
-            Color::from_rgb8(150, 150, 150) // Light gray for locked/disabled appearance
+            palette.color(ColorRole::ThreedShadow1) // Disabled symbol color
         } else {
             base_border_color
         };
 
         let symbol_color = if is_locked {
-            Color::from_rgb8(220, 220, 220) // Light gray for locked symbols
+            palette.color(ColorRole::ThreedShadow1) // Disabled symbol color
         } else {
             base_symbol_color
         };

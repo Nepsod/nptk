@@ -7,7 +7,6 @@ use nptk_core::layout::{Dimension, FlexDirection, LayoutNode, LayoutStyle, Style
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, BoxedWidget};
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use async_trait::async_trait;
 
 /// A horizontal stack container that arranges children in a row.
@@ -63,14 +62,13 @@ impl Widget for HStack {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) {
         for (i, child) in self.children.iter_mut().enumerate() {
             if i < layout.children.len() {
-                child.render(graphics, theme, &layout.children[i], info, context.clone());
+                child.render(graphics, &layout.children[i], info, context.clone());
             }
         }
     }
@@ -163,14 +161,13 @@ impl Widget for VStack {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) {
         for (i, child) in self.children.iter_mut().enumerate() {
             if i < layout.children.len() {
-                child.render(graphics, theme, &layout.children[i], info, context.clone());
+                child.render(graphics, &layout.children[i], info, context.clone());
             }
         }
     }
@@ -266,13 +263,12 @@ impl Widget for Expanded {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) {
         if !layout.children.is_empty() {
-            self.child.render(graphics, theme, &layout.children[0], info, context);
+            self.child.render(graphics, &layout.children[0], info, context);
         }
     }
 
@@ -355,13 +351,12 @@ impl Widget for Flexible {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) {
         if !layout.children.is_empty() {
-            self.child.render(graphics, theme, &layout.children[0], info, context);
+            self.child.render(graphics, &layout.children[0], info, context);
         }
     }
 

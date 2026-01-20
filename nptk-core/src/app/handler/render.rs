@@ -158,31 +158,12 @@ where
         let mut graphics =
             graphics_from_scene(&mut self.scene).expect("Failed to create graphics from scene");
         
-        // Use cached theme reference to avoid cloning theme manager Arc
-        // Fall back to theme_manager if cache is not available
-        if let Some(ref theme_cache) = self.theme_cache {
-            let mut theme_guard = theme_cache.write().unwrap();
-            let theme: &mut dyn nptk_theme::theme::Theme = theme_guard.as_mut();
-            self.widget.as_mut().unwrap().render(
-                graphics.as_mut(),
-                theme,
-                layout_node,
-                &mut self.info,
-                context,
-            );
-        } else {
-            // Fallback to manager if cache not available
-            let theme_manager = self.config.theme_manager.clone();
-            theme_manager.read().unwrap().access_theme_mut(|theme| {
-                self.widget.as_mut().unwrap().render(
-                    graphics.as_mut(),
-                    theme,
-                    layout_node,
-                    &mut self.info,
-                    context,
-                );
-            });
-        }
+        self.widget.as_mut().unwrap().render(
+            graphics.as_mut(),
+            layout_node,
+            &mut self.info,
+            context,
+        );
 
         start.elapsed()
     }
@@ -196,30 +177,12 @@ where
         };
         if let Some(mut graphics) = graphics_from_scene(&mut self.scene) {
             if let Some(widget) = &mut self.widget {
-                // Use cached theme reference to avoid cloning theme manager Arc
-                if let Some(ref theme_cache) = self.theme_cache {
-                    let mut theme_guard = theme_cache.write().unwrap();
-                    let theme: &mut dyn nptk_theme::theme::Theme = theme_guard.as_mut();
-                    widget.render_postfix(
-                        &mut *graphics,
-                        theme,
-                        layout_node,
-                        &mut self.info,
-                        context,
-                    );
-                } else {
-                    // Fallback to manager if cache not available
-                    let theme_manager = self.config.theme_manager.clone();
-                    theme_manager.read().unwrap().access_theme_mut(|theme| {
-                        widget.render_postfix(
-                            &mut *graphics,
-                            theme,
-                            layout_node,
-                            &mut self.info,
-                            context,
-                        );
-                    });
-                }
+                widget.render_postfix(
+                    &mut *graphics,
+                    layout_node,
+                    &mut self.info,
+                    context,
+                );
             }
         }
         start.elapsed()
@@ -294,71 +257,34 @@ where
         if let Some(mut graphics) = graphics_from_scene(&mut self.scene) {
             let cursor_pos = cursor_pos_for_menu
                 .map(|p| vello::kurbo::Point::new(p.x, p.y));
-            // Use cached theme reference to avoid cloning theme manager Arc
-            if let Some(ref theme_cache) = self.theme_cache {
-                let mut theme_guard = theme_cache.write().unwrap();
-                let theme: &mut dyn nptk_theme::theme::Theme = theme_guard.as_mut();
-                for (template, position) in context.menu_manager.get_stack().iter() {
-                    // Calculate hovered index for this menu
-                    use crate::menu::render::MenuGeometry;
-                    let geometry = MenuGeometry::new(
-                        &template,
-                        *position,
-                        &mut self.text_render,
-                        &mut self.info.font_context,
-                    );
-                    let hovered = cursor_pos.and_then(|cursor| {
-                        if geometry.rect.contains(cursor) {
-                            geometry.hit_test_index(cursor)
-                        } else {
-                            None
-                        }
-                    });
+            let palette = context.palette();
+            for (template, position) in context.menu_manager.get_stack().iter() {
+                // Calculate hovered index for this menu
+                use crate::menu::render::MenuGeometry;
+                let geometry = MenuGeometry::new(
+                    &template,
+                    *position,
+                    &mut self.text_render,
+                    &mut self.info.font_context,
+                );
+                let hovered = cursor_pos.and_then(|cursor| {
+                    if geometry.rect.contains(cursor) {
+                        geometry.hit_test_index(cursor)
+                    } else {
+                        None
+                    }
+                });
 
-                    crate::menu::render_menu(
-                        graphics.as_mut(),
-                        &template,
-                        *position,
-                        theme,
-                        &mut self.text_render,
-                        &mut self.info.font_context,
-                        cursor_pos,
-                        hovered,
-                    );
-                }
-            } else {
-                // Fallback to manager if cache not available
-                let theme_manager = self.config.theme_manager.clone();
-                for (template, position) in context.menu_manager.get_stack().iter() {
-                    theme_manager.read().unwrap().access_theme_mut(|theme| {
-                        // Calculate hovered index for this menu
-                        use crate::menu::render::MenuGeometry;
-                        let geometry = MenuGeometry::new(
-                            &template,
-                            *position,
-                            &mut self.text_render,
-                            &mut self.info.font_context,
-                        );
-                        let hovered = cursor_pos.and_then(|cursor| {
-                            if geometry.rect.contains(cursor) {
-                                geometry.hit_test_index(cursor)
-                            } else {
-                                None
-                            }
-                        });
-
-                        crate::menu::render_menu(
-                            graphics.as_mut(),
-                            &template,
-                            *position,
-                            theme,
-                            &mut self.text_render,
-                            &mut self.info.font_context,
-                            cursor_pos,
-                            hovered,
-                        );
-                    });
-                }
+                crate::menu::render_menu(
+                    graphics.as_mut(),
+                    &template,
+                    *position,
+                    &palette,
+                    &mut self.text_render,
+                    &mut self.info.font_context,
+                    cursor_pos,
+                    hovered,
+                );
             }
         }
     }

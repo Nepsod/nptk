@@ -6,7 +6,6 @@ use nptk_core::signal::MaybeSignal;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetChildrenExt, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use async_trait::async_trait;
 
 /// A simple container widget that can display and layout multiple child widgets.
@@ -120,28 +119,26 @@ impl Widget for Container {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) {
         let layout_context = LayoutContext::unbounded();
         self.for_each_visible_child(layout_node, &layout_context, |child, child_layout, _idx| {
-            child.render(graphics, theme, child_layout, info, context.clone());
+            child.render(graphics, child_layout, info, context.clone());
         });
     }
 
     fn render_postfix(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) {
         let layout_context = LayoutContext::unbounded();
         self.for_each_visible_child(layout_node, &layout_context, |child, child_layout, _idx| {
-            child.render_postfix(graphics, theme, child_layout, info, context.clone());
+            child.render_postfix(graphics, child_layout, info, context.clone());
         });
     }
 

@@ -6,7 +6,6 @@ use crate::signal::MaybeSignal;
 use crate::vgi::Graphics;
 use crate::widget::{BoxedWidget, Widget, WidgetChildExt, WidgetChildrenExt, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 use async_trait::async_trait;
@@ -54,18 +53,17 @@ impl<C: Component + Send + Sync> Widget for Composed<C> {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) {
         if let Some(widget) = &mut self.widget {
-            widget.render(graphics, theme, layout_node, info, context)
+            widget.render(graphics, layout_node, info, context)
         } else {
             // Build widget lazily and render it immediately
             self.widget = Some(Box::new(self.component.build(context.clone())));
             if let Some(widget) = &mut self.widget {
-                widget.render(graphics, theme, layout_node, info, context);
+                widget.render(graphics, layout_node, info, context);
             }
         }
     }
@@ -73,14 +71,13 @@ impl<C: Component + Send + Sync> Widget for Composed<C> {
     fn render_postfix(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) {
         // Propagate render_postfix to inner widget if it exists
         if let Some(widget) = &mut self.widget {
-            widget.render_postfix(graphics, theme, layout_node, info, context);
+            widget.render_postfix(graphics, layout_node, info, context);
         }
     }
 

@@ -10,7 +10,7 @@ use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentage, StyleNode, LayoutContext, OverflowDetector, OverflowRegions, ViewportBounds};
+use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, LengthPercentage, StyleNode, LayoutContext, OverflowDetector, ViewportBounds};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::vg::kurbo::{
     Affine, BezPath, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke,
@@ -19,8 +19,8 @@ use nptk_core::vg::peniko::{Brush, Color, Fill, Mix};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton, MouseScrollDelta};
+use nptk_core::theme::{ColorRole, Palette};
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use async_trait::async_trait;
 
 /// Determines when scrollbars should be shown.
@@ -559,22 +559,15 @@ impl ScrollContainer {
     fn render_scrollbar(
         &self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
+        palette: &Palette,
         scrollbar_bounds: Rect,
         thumb_bounds: Rect,
         _is_vertical: bool,
         is_hovered: bool,
         is_pressed: bool,
     ) {
-        let widget_id = self.widget_id();
-
         // Draw scrollbar track
-        let track_color = theme
-            .get_property(
-                widget_id.clone(),
-                &nptk_theme::properties::ThemeProperty::ColorScrollbar,
-            )
-            .unwrap_or_else(|| Color::from_rgb8(230, 230, 230));
+        let track_color = palette.color(ColorRole::ThreedShadow1);
 
         graphics.fill(
             Fill::NonZero,
@@ -586,26 +579,11 @@ impl ScrollContainer {
 
         // Draw scrollbar thumb
         let thumb_color = if is_pressed {
-            theme
-                .get_property(
-                    widget_id.clone(),
-                    &nptk_theme::properties::ThemeProperty::ColorScrollbarThumbActive,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(120, 120, 120))
+            palette.color(ColorRole::Selection)
         } else if is_hovered {
-            theme
-                .get_property(
-                    widget_id.clone(),
-                    &nptk_theme::properties::ThemeProperty::ColorScrollbarThumbHover,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(150, 150, 150))
+            palette.color(ColorRole::HoverHighlight)
         } else {
-            theme
-                .get_property(
-                    widget_id,
-                    &nptk_theme::properties::ThemeProperty::ColorScrollbarThumb,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(180, 180, 180))
+            palette.color(ColorRole::ThreedShadow2)
         };
 
         let thumb_rounded = RoundedRect::new(
@@ -628,36 +606,19 @@ impl ScrollContainer {
     fn render_scroll_button(
         &self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
+        palette: &Palette,
         bounds: Rect,
         direction: ArrowDirection,
         is_hovered: bool,
         is_pressed: bool,
     ) {
-        let widget_id = self.widget_id();
-
         // Use scrollbar thumb colors for buttons
         let bg_color = if is_pressed {
-            theme
-                .get_property(
-                    widget_id.clone(),
-                    &nptk_theme::properties::ThemeProperty::ColorScrollbarThumbActive,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(120, 120, 120))
+            palette.color(ColorRole::Selection)
         } else if is_hovered {
-            theme
-                .get_property(
-                    widget_id.clone(),
-                    &nptk_theme::properties::ThemeProperty::ColorScrollbarThumbHover,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(150, 150, 150))
+            palette.color(ColorRole::HoverHighlight)
         } else {
-            theme
-                .get_property(
-                    widget_id.clone(),
-                    &nptk_theme::properties::ThemeProperty::ColorScrollbarThumb,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(180, 180, 180))
+            palette.color(ColorRole::ThreedShadow2)
         };
         graphics.fill(
             Fill::NonZero,
@@ -668,9 +629,7 @@ impl ScrollContainer {
         );
 
         // Use text color for arrow
-        let arrow_color = theme
-            .get_property(widget_id, &nptk_theme::properties::ThemeProperty::ColorText)
-            .unwrap_or_else(|| Color::BLACK);
+        let arrow_color = palette.color(ColorRole::BaseText);
         let center = bounds.center();
         let size = bounds.width().min(bounds.height()) * 0.4;
         let mut path = BezPath::new();
@@ -1075,15 +1034,10 @@ impl ScrollContainer {
     fn render_container_border(
         &self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
+        palette: &Palette,
         container_bounds: Rect,
     ) {
-        let border_color = theme
-            .get_property(
-                self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::ColorBorder,
-            )
-            .unwrap_or_else(|| Color::from_rgb8(200, 200, 200));
+        let border_color = palette.color(ColorRole::ThreedShadow1);
         let stroke = Stroke::new(1.0);
         graphics.stroke(
             &stroke,
@@ -1098,7 +1052,6 @@ impl ScrollContainer {
     fn render_child_content(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
@@ -1126,7 +1079,7 @@ impl ScrollContainer {
             scrolled_layout.layout.location.x -= self.scroll_offset.get().x;
             scrolled_layout.layout.location.y -= self.scroll_offset.get().y;
 
-            child.render(graphics, theme, &scrolled_layout, info, context);
+            child.render(graphics, &scrolled_layout, info, context);
 
             graphics.pop_layer();
         }
@@ -1136,7 +1089,7 @@ impl ScrollContainer {
     fn render_vertical_scrollbar_with_buttons(
         &self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
+        palette: &Palette,
         layout: &LayoutNode,
     ) {
         if !self.needs_vertical_scrollbar() {
@@ -1147,7 +1100,7 @@ impl ScrollContainer {
         let thumb_bounds = self.get_vertical_thumb_bounds(scrollbar_bounds);
         self.render_scrollbar(
             graphics,
-            theme,
+            palette,
             scrollbar_bounds,
             thumb_bounds,
             true,
@@ -1160,7 +1113,7 @@ impl ScrollContainer {
             let down_button_bounds = self.get_vertical_down_button_bounds(scrollbar_bounds);
             self.render_scroll_button(
                 graphics,
-                theme,
+                palette,
                 up_button_bounds,
                 ArrowDirection::Up,
                 self.button_state.up_button_hovered,
@@ -1168,7 +1121,7 @@ impl ScrollContainer {
             );
             self.render_scroll_button(
                 graphics,
-                theme,
+                palette,
                 down_button_bounds,
                 ArrowDirection::Down,
                 self.button_state.down_button_hovered,
@@ -1181,7 +1134,7 @@ impl ScrollContainer {
     fn render_horizontal_scrollbar_with_buttons(
         &self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
+        palette: &Palette,
         layout: &LayoutNode,
     ) {
         if !self.needs_horizontal_scrollbar() {
@@ -1192,7 +1145,7 @@ impl ScrollContainer {
         let thumb_bounds = self.get_horizontal_thumb_bounds(scrollbar_bounds);
         self.render_scrollbar(
             graphics,
-            theme,
+            palette,
             scrollbar_bounds,
             thumb_bounds,
             false,
@@ -1205,7 +1158,7 @@ impl ScrollContainer {
             let right_button_bounds = self.get_horizontal_right_button_bounds(scrollbar_bounds);
             self.render_scroll_button(
                 graphics,
-                theme,
+                palette,
                 left_button_bounds,
                 ArrowDirection::Left,
                 self.button_state.left_button_hovered,
@@ -1213,7 +1166,7 @@ impl ScrollContainer {
             );
             self.render_scroll_button(
                 graphics,
-                theme,
+                palette,
                 right_button_bounds,
                 ArrowDirection::Right,
                 self.button_state.right_button_hovered,
@@ -1345,17 +1298,18 @@ impl Default for ScrollContainer {
 #[async_trait(?Send)]
 impl Widget for ScrollContainer {
     fn widget_id(&self) -> WidgetId {
-        self.widget_id()
+        WidgetId::new("nptk-widgets", "ScrollContainer")
     }
 
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) -> () {
+        let palette = context.palette();
+        
         // Calculate viewport size accounting for scrollbars
         self.calculate_viewport_size_for_render(layout);
 
@@ -1366,17 +1320,17 @@ impl Widget for ScrollContainer {
             (layout.layout.location.x + layout.layout.size.width) as f64,
             (layout.layout.location.y + layout.layout.size.height) as f64,
         );
-        self.render_container_border(graphics, theme, container_bounds);
+        self.render_container_border(graphics, palette, container_bounds);
 
         // Render child content with clipping and scrolling
-        self.render_child_content(graphics, theme, layout, info, context);
+        self.render_child_content(graphics, layout, info, context.clone());
 
         // Update visible range for virtual scrolling
         self.update_visible_range();
 
         // Render scrollbars
-        self.render_vertical_scrollbar_with_buttons(graphics, theme, layout);
-        self.render_horizontal_scrollbar_with_buttons(graphics, theme, layout);
+        self.render_vertical_scrollbar_with_buttons(graphics, palette, layout);
+        self.render_horizontal_scrollbar_with_buttons(graphics, palette, layout);
     }
 
     async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {

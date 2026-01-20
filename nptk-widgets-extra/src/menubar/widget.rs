@@ -29,8 +29,8 @@ use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, KeyCode, MouseButton, PhysicalKey};
+use nptk_core::theme::{ColorRole, Palette};
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 #[cfg(feature = "global-menu")]
 use std::collections::hash_map::DefaultHasher;
 #[cfg(feature = "global-menu")]
@@ -388,11 +388,12 @@ impl Widget for MenuBar {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
-        _context: AppContext,
+        context: AppContext,
     ) -> () {
+        let palette = context.palette();
+        
         // Don't render if not visible
         // Note: If importer is detected and user presses F10, importer_detected is cleared,
         // so we just need to check is_visible()
@@ -400,48 +401,13 @@ impl Widget for MenuBar {
             return;
         }
 
-        // Pre-calculate theme colors with proper fallbacks
-        let bg_color = theme
-            .get_property(
-                self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::ColorBackground,
-            )
-            .unwrap_or_else(|| Color::from_rgb8(240, 240, 240));
-
-        let border_color = theme
-            .get_property(
-                self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::ColorBorder,
-            )
-            .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)); // Light gray border
-
-        let text_color = theme
-            .get_property(
-                self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::ColorText,
-            )
-            .unwrap_or_else(|| Color::from_rgb8(0, 0, 0));
-
-        let disabled_color = theme
-            .get_property(
-                self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::ColorDisabled,
-            )
-            .unwrap_or_else(|| Color::from_rgb8(150, 150, 150));
-
-        let selected_color = theme
-            .get_property(
-                self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::ColorMenuSelected,
-            )
-            .unwrap_or_else(|| Color::from_rgb8(100, 150, 255));
-
-        let hovered_color = theme
-            .get_property(
-                self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::ColorMenuHovered,
-            )
-            .unwrap_or_else(|| Color::from_rgb8(180, 180, 180));
+        // Pre-calculate theme colors
+        let bg_color = palette.color(ColorRole::MenuBase);
+        let border_color = palette.color(ColorRole::ThreedShadow1);
+        let text_color = palette.color(ColorRole::MenuBaseText);
+        let disabled_color = palette.color(ColorRole::DisabledTextFront);
+        let selected_color = palette.color(ColorRole::MenuSelection);
+        let hovered_color = palette.color(ColorRole::MenuSelection);
 
         // Draw menu bar background
         let menu_rect = Rect::new(
@@ -564,10 +530,9 @@ impl Widget for MenuBar {
     fn render_postfix(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
-        _context: AppContext,
+        context: AppContext,
     ) {
         // Don't render popup if menu bar not visible
         // Note: If importer is detected and user presses F10, importer_detected is cleared,
@@ -592,7 +557,7 @@ impl Widget for MenuBar {
                     graphics,
                     template,
                     popup_position,
-                    theme,
+                    context.palette(),
                     &mut self.text_render_context,
                     &mut info.font_context,
                     cursor_pos,
@@ -609,7 +574,7 @@ impl Widget for MenuBar {
                         graphics,
                         submenu_template,
                         submenu_position,
-                        theme,
+                        context.palette(),
                         &mut self.text_render_context,
                         &mut info.font_context,
                         cursor_pos,

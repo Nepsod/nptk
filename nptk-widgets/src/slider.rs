@@ -11,7 +11,6 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::MouseButton;
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use async_trait::async_trait;
 
 /// A slider widget to control a floating point value between `0.0` and `1.0`.
@@ -72,34 +71,21 @@ impl Widget for Slider {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         _: &mut AppInfo,
-        _: AppContext,
+        context: AppContext,
     ) {
         let value = *self.value.get();
+        let palette = context.palette();
 
-        // Background track color (unfilled portion)
-        let track_brush = theme
-            .get_property(
-                self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::SliderTrack,
-            )
-            .map(|color| Brush::Solid(color))
-            .unwrap_or_else(|| Brush::Solid(Color::from_rgb8(200, 200, 200)));
+        // Background track color (unfilled portion) - use Base color (based on SerenityOS)
+        let track_brush = Brush::Solid(palette.color(nptk_core::theme::ColorRole::Base));
 
-        // Filled track color (up to thumb position) - using primary-dark
-        // For Sweet theme, primary-dark is (157, 51, 213), but we use primary as fallback
-        // Ideally we'd have a ThemeProperty for filled track, but for now use primary-dark directly
-        let filled_track_color = Color::from_rgb8(157, 51, 213); // primary-dark
+        // Filled track color (up to thumb position) - using Accent color
+        let filled_track_color = palette.color(nptk_core::theme::ColorRole::Accent);
 
-        let thumb_brush = theme
-            .get_property(
-                self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::SliderThumb,
-            )
-            .map(|color| Brush::Solid(color))
-            .unwrap_or_else(|| Brush::Solid(Color::from_rgb8(100, 150, 255)));
+        // Thumb color - use Button color (based on SerenityOS)
+        let thumb_brush = Brush::Solid(palette.color(nptk_core::theme::ColorRole::Button));
 
         let track_height = 3.0; // Thin track
         let track_center_y =

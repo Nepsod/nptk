@@ -11,7 +11,6 @@ use nptk_core::layout::{GridAutoFlow, GridPlacement, LayoutNode, LayoutStyle, Le
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, BoxedWidget};
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use async_trait::async_trait;
 
 /// A CSS Grid container widget.
@@ -117,14 +116,13 @@ impl Widget for Grid {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) {
         for (i, (_, _, child)) in self.children.iter_mut().enumerate() {
             if i < layout.children.len() {
-                child.render(graphics, theme, &layout.children[i], info, context.clone());
+                child.render(graphics, &layout.children[i], info, context.clone());
             }
         }
     }

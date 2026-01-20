@@ -8,12 +8,10 @@ use nptk_core::vg::peniko::{Brush, Fill};
 use nptk_core::vgi::Graphics;
 use npio::service::icon::CachedIcon;
 use nptk_services::filesystem::entry::{FileEntry, FileType};
-use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
+use nptk_core::theme::Palette;
 use vello_svg;
 
 use crate::file_icon::constants::{DIRECTORY_FALLBACK_ALPHA, FALLBACK_ICON_BORDER_RADIUS, FILE_FALLBACK_ALPHA};
-use crate::file_icon::theme::get_icon_color;
 
 /// Render an image icon.
 pub fn render_image_icon(
@@ -103,12 +101,11 @@ pub fn render_svg_icon(
 /// Render a fallback icon (used when icon path is unavailable or icon not yet loaded).
 pub fn render_fallback_icon(
     graphics: &mut dyn Graphics,
-    theme: &mut dyn Theme,
-    widget_id: WidgetId,
+    palette: &Palette,
     icon_rect: Rect,
     entry: &FileEntry,
 ) {
-    let icon_color = get_icon_color(theme, widget_id);
+    let icon_color = palette.color(nptk_core::theme::ColorRole::BaseText);
     let is_directory = entry.file_type == FileType::Directory;
     let alpha = if is_directory {
         DIRECTORY_FALLBACK_ALPHA
@@ -129,8 +126,7 @@ pub fn render_fallback_icon(
 /// Render a cached icon based on its type.
 pub fn render_cached_icon(
     graphics: &mut dyn Graphics,
-    theme: &mut dyn Theme,
-    widget_id: WidgetId,
+    palette: &Palette,
     icon: CachedIcon,
     icon_rect: Rect,
     entry: &FileEntry,
@@ -148,7 +144,7 @@ pub fn render_cached_icon(
             render_svg_icon(graphics, &svg_source, icon_rect, svg_scene_cache);
         },
         CachedIcon::Path(_) => {
-            render_fallback_icon(graphics, theme, widget_id, icon_rect, entry);
+            render_fallback_icon(graphics, palette, icon_rect, entry);
         },
     }
 }

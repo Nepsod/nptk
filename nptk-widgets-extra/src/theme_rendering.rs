@@ -148,10 +148,9 @@ pub fn render_text_input_with_theme(
     }
 }
 
-/// Helper for rendering progress bars using the theme system
+/// Helper for rendering progress bars using the palette
 pub fn render_progress_with_theme(
-    theme: &mut dyn Theme,
-    widget_id: &WidgetId,
+    palette: &nptk_core::theme::Palette,
     value: f32,
     is_indeterminate: bool,
     animation_time: f32,
@@ -163,25 +162,10 @@ pub fn render_progress_with_theme(
     let x = layout.layout.location.x as f64;
     let y = layout.layout.location.y as f64;
 
-    // Get theme colors using ThemeRenderer - use proper progress bar colors
-    let background_color = theme
-        .get_property(
-            widget_id.clone(),
-            &nptk_theme::properties::ThemeProperty::Color,
-        )
-        .unwrap_or_else(|| nptk_core::vg::peniko::Color::from_rgb8(220, 220, 220));
-    let progress_color = theme
-        .get_property(
-            widget_id.clone(),
-            &nptk_theme::properties::ThemeProperty::ColorProgress,
-        )
-        .unwrap_or_else(|| nptk_core::vg::peniko::Color::from_rgb8(100, 150, 255));
-    let border_color = theme
-        .get_property(
-            widget_id.clone(),
-            &nptk_theme::properties::ThemeProperty::ColorBorder,
-        )
-        .unwrap_or_else(|| nptk_core::vg::peniko::Color::from_rgb8(180, 180, 180));
+    // Get colors from palette (based on SerenityOS)
+    let background_color = palette.color(nptk_core::theme::ColorRole::Base);
+    let progress_color = palette.color(nptk_core::theme::ColorRole::Accent);
+    let border_color = palette.color(nptk_core::theme::ColorRole::ThreedShadow1);
 
     // Draw background
     let background_rect = RoundedRect::new(

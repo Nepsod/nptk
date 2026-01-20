@@ -18,9 +18,8 @@ use nptk_core::vg::kurbo::Rect;
 use nptk_core::vg::peniko::Color;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
+use nptk_core::theme::{ColorRole, Palette};
 use nptk_theme::id::WidgetId;
-use nptk_theme::properties::ThemeProperty;
-use nptk_theme::theme::Theme;
 use crate::menu_popup::MenuPopup;
 use std::sync::Arc;
 use async_trait::async_trait;
@@ -114,7 +113,6 @@ impl BreadcrumbItem {
 ///     });
 /// ```
 pub struct Breadcrumbs {
-    widget_id: WidgetId,
     items: MaybeSignal<Vec<BreadcrumbItem>>,
     items_signal: Option<StateSignal<Vec<BreadcrumbItem>>>,
     separator: String,
@@ -143,7 +141,6 @@ pub struct Breadcrumbs {
 impl std::fmt::Debug for Breadcrumbs {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Breadcrumbs")
-            .field("widget_id", &self.widget_id)
             .field("items", &self.get_items_vec())
             .field("separator", &self.separator)
             .field("max_items", &self.max_items)
@@ -157,7 +154,6 @@ impl Breadcrumbs {
     /// Create a new breadcrumbs widget
     pub fn new() -> Self {
         Self {
-            widget_id: WidgetId::new("nptk_widgets_extra", "Breadcrumbs"),
             items: MaybeSignal::value(Vec::new()),
             items_signal: None,
             separator: " > ".to_string(),
@@ -548,46 +544,23 @@ impl Breadcrumbs {
     }
 
     /// Get color for a breadcrumb item based on its state
-    fn get_item_color(&self, theme: &mut dyn Theme, _index: usize, is_current: bool, is_hovered: bool) -> Color {
-        let widget_id = self.widget_id.clone();
+    fn get_item_color(&self, palette: &Palette, _index: usize, is_current: bool, is_hovered: bool) -> Color {
         if is_current {
-            // Current (last) item - use ColorText (same as normal, but could be styled differently)
-            theme
-                .get_property(widget_id.clone(), &ThemeProperty::ColorText)
-                .or_else(|| theme.get_default_property(&ThemeProperty::ColorText))
-                .unwrap_or_else(|| Color::from_rgb8(211, 218, 227)) // Fallback to theme text color
+            // Current (last) item - use BaseText
+            palette.color(ColorRole::BaseText)
         } else if is_hovered {
-            // Hovered item - use ColorHovered if available, otherwise ColorText
-            theme
-                .get_property(widget_id.clone(), &ThemeProperty::ColorHovered)
-                .or_else(|| {
-                    theme
-                        .get_property(widget_id, &ThemeProperty::ColorText)
-                        .or_else(|| theme.get_default_property(&ThemeProperty::ColorText))
-                })
-                .unwrap_or_else(|| Color::from_rgb8(211, 218, 227))
+            // Hovered item - use HoverHighlight
+            palette.color(ColorRole::HoverHighlight)
         } else {
-            // Normal clickable item - use ColorText
-            theme
-                .get_property(widget_id, &ThemeProperty::ColorText)
-                .or_else(|| theme.get_default_property(&ThemeProperty::ColorText))
-                .unwrap_or_else(|| Color::from_rgb8(211, 218, 227))
+            // Normal clickable item - use BaseText
+            palette.color(ColorRole::BaseText)
         }
     }
 
     /// Get separator color - use muted text color
-    fn get_separator_color(&self, theme: &mut dyn Theme) -> Color {
-        let widget_id = self.widget_id.clone();
-        // Try to get a border or muted color, fallback to text with reduced alpha
-        theme
-            .get_property(widget_id.clone(), &ThemeProperty::Border)
-            .or_else(|| {
-                theme
-                    .get_property(widget_id, &ThemeProperty::ColorText)
-                    .or_else(|| theme.get_default_property(&ThemeProperty::ColorText))
-            })
-            .unwrap_or_else(|| Color::from_rgb8(150, 150, 150))
-            .with_alpha(0.6)
+    fn get_separator_color(&self, palette: &Palette) -> Color {
+        // Use ThreedShadow1 with reduced alpha for separator
+        palette.color(ColorRole::ThreedShadow1).with_alpha(0.6)
     }
 
     /// Show neighbor popup for the given item index
@@ -684,11 +657,11 @@ impl Widget for Breadcrumbs {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
-        _: AppContext,
+        context: AppContext,
     ) {
+        let palette = context.palette();
         let items = self.get_items_vec();
         if items.is_empty() {
             return;
@@ -715,7 +688,7 @@ impl Widget for Breadcrumbs {
         self.separator_positions.clear();
 
         let mut current_x = base_x;
-        let separator_color = self.get_separator_color(theme);
+        let separator_color = self.get_separator_color(palette);
 
         // Render home icon if enabled and first item is "Home"
         if self.show_home_icon && !visible_items.is_empty() {
@@ -784,7 +757,7 @@ impl Widget for Breadcrumbs {
                 let item = &items[*orig_idx];
                 let is_current = *orig_idx == last_index;
                 let is_hovered = self.hovered_index == Some(*orig_idx);
-                let item_color = self.get_item_color(theme, *orig_idx, is_current, is_hovered);
+                let item_color = self.get_item_color(palette, *orig_idx, is_current, is_hovered);
 
                 // Measure text width for click detection
                 let text = &item.label;
@@ -1054,7 +1027,6 @@ impl Widget for Breadcrumbs {
     fn render_postfix(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
@@ -1086,7 +1058,7 @@ impl Widget for Breadcrumbs {
                     popup_layout.layout.size.width = popup_width as f32;
                     popup_layout.layout.size.height = popup_height as f32;
 
-                    popup.render(graphics, theme, &popup_layout, info, context);
+                    popup.render(graphics, &popup_layout, info, context);
                 }
                 // If item_bounds is None, item is not visible (e.g., due to max_items)
                 // Popup won't render but will be cleaned up in update()
@@ -1095,6 +1067,6 @@ impl Widget for Breadcrumbs {
     }
 
     fn widget_id(&self) -> WidgetId {
-        self.widget_id.clone()
+        WidgetId::new("nptk_widgets_extra", "Breadcrumbs")
     }
 }

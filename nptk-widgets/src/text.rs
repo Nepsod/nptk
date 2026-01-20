@@ -9,7 +9,6 @@ use nptk_core::vg::peniko::{Brush, Color};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use async_trait::async_trait;
 use std::ops::Deref;
 
@@ -88,51 +87,21 @@ impl Widget for Text {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
-        _: AppContext,
+        context: AppContext,
     ) {
         let font_size = *self.font_size.get();
         let hinting = *self.hinting.get();
         let text = self.text.get();
         let font_name = self.font.get().clone();
 
-        // First, try to get ColorText from common parent widget IDs
-        // This allows parent widgets (like ToolbarButton) to override text color
-        let parent_ids = [
-            WidgetId::new("nptk-widgets", "ToolbarButton"),
-            WidgetId::new("nptk-widgets", "Button"),
-            WidgetId::new("nptk-widgets", "MenuButton"),
-        ];
-        let parent_color = parent_ids.iter()
-            .find_map(|parent_id| {
-                theme.get_property(
-                    parent_id.clone(),
-                    &nptk_theme::properties::ThemeProperty::ColorText,
-                )
-            });
-
-        let color = if let Some(parent_color) = parent_color {
-            // Use parent widget's ColorText if available
-            parent_color
-        } else if theme.globals().invert_text_color {
-            // Fall back to Text widget's ColorInvert
-            theme
-                .get_property(
-                    Self::widget_id(self),
-                    &nptk_theme::properties::ThemeProperty::ColorInvert,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
-        } else {
-            // Fall back to Text widget's Color
-            theme
-                .get_property(
-                    Self::widget_id(self),
-                    &nptk_theme::properties::ThemeProperty::Color,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
-        };
+        let palette = context.palette();
+        
+        // Use palette-based color selection (based on SerenityOS)
+        // Default to BaseText for text in Base background, WindowText for Window background
+        // For now, use BaseText as default (can be enhanced later to check parent background)
+        let color = palette.color(nptk_core::theme::ColorRole::BaseText);
 
         // Use TextRenderContext for proper text rendering
         let transform = nptk_core::vg::kurbo::Affine::translate((

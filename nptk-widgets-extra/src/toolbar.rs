@@ -10,9 +10,8 @@ use nptk_core::vg::kurbo::{Affine, Line, Point, Rect, Shape, Stroke};
 use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetChildrenExt, WidgetLayoutExt};
+use nptk_core::theme::{ColorRole, Palette};
 use nptk_theme::id::WidgetId;
-use nptk_theme::properties::ThemeProperty;
-use nptk_theme::theme::Theme;
 use async_trait::async_trait;
 
 /// Configuration for toolbar border lines.
@@ -128,35 +127,14 @@ impl Widget for Toolbar {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) {
-        // Get theme colors with proper fallbacks
-        let bg_color = theme
-            .get_property(self.widget_id(), &ThemeProperty::ColorToolbarBackground)
-            .unwrap_or_else(|| {
-                // Fallback to MenuBar background color if available
-                theme
-                    .get_property(
-                        WidgetId::new("nptk-widgets", "MenuBar"),
-                        &ThemeProperty::ColorBackground,
-                    )
-                    .unwrap_or_else(|| Color::from_rgb8(240, 240, 240))
-            });
-
-        let border_color = theme
-            .get_property(self.widget_id(), &ThemeProperty::ColorToolbarBorder)
-            .unwrap_or_else(|| {
-                // Fallback to MenuBar border color if available
-                theme
-                    .get_property(
-                        WidgetId::new("nptk-widgets", "MenuBar"),
-                        &ThemeProperty::ColorBorder,
-                    )
-                    .unwrap_or_else(|| Color::from_rgb8(180, 180, 180))
-            });
+        let palette = context.palette();
+        // Get theme colors
+        let bg_color = palette.color(ColorRole::Base);
+        let border_color = palette.color(ColorRole::ThreedShadow1);
 
         let rect = Rect::new(
             layout.layout.location.x as f64,
@@ -208,7 +186,7 @@ impl Widget for Toolbar {
         // Render children
         for (i, child) in self.children.iter_mut().enumerate() {
             if i < layout.children.len() {
-                child.render(graphics, theme, &layout.children[i], info, context.clone());
+                child.render(graphics, &layout.children[i], info, context.clone());
             }
         }
     }
@@ -216,7 +194,6 @@ impl Widget for Toolbar {
     fn render_postfix(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
@@ -224,7 +201,7 @@ impl Widget for Toolbar {
         // Propagate render_postfix to children (for overlays, popups, etc.)
         for (i, child) in self.children.iter_mut().enumerate() {
             if i < layout.children.len() {
-                child.render_postfix(graphics, theme, &layout.children[i], info, context.clone());
+                child.render_postfix(graphics, &layout.children[i], info, context.clone());
             }
         }
     }
@@ -294,23 +271,13 @@ impl Widget for ToolbarSeparator {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         _info: &mut AppInfo,
-        _context: AppContext,
+        context: AppContext,
     ) {
-        // Get separator color with proper fallback (more subtle than border)
-        let color = theme
-            .get_property(self.widget_id(), &ThemeProperty::ColorToolbarSeparator)
-            .unwrap_or_else(|| {
-                // Fallback to toolbar border color, or use a subtle default
-                theme
-                    .get_property(
-                        WidgetId::new("nptk-widgets", "Toolbar"),
-                        &ThemeProperty::ColorToolbarBorder,
-                    )
-                    .unwrap_or_else(|| Color::from_rgb8(180, 180, 180))
-            });
+        let palette = context.palette();
+        // Get separator color (more subtle than border)
+        let color = palette.color(ColorRole::ThreedShadow1).with_alpha(0.5);
 
         let rect = Rect::new(
             layout.layout.location.x as f64,
@@ -379,7 +346,6 @@ impl Widget for ToolbarSpacer {
     fn render(
         &mut self,
         _graphics: &mut dyn Graphics,
-        _theme: &mut dyn Theme,
         _layout: &LayoutNode,
         _info: &mut AppInfo,
         _context: AppContext,

@@ -11,8 +11,8 @@ use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, KeyCode, MouseButton, PhysicalKey};
+use nptk_core::theme::{ColorRole, Palette};
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use async_trait::async_trait;
 
 /// Represents the state of a radio button.
@@ -128,14 +128,18 @@ impl WidgetLayoutExt for RadioButton {
 
 #[async_trait(?Send)]
 impl Widget for RadioButton {
+    fn widget_id(&self) -> WidgetId {
+        WidgetId::new("nptk-widgets", "RadioButton")
+    }
+
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
-        _context: AppContext,
+        context: AppContext,
     ) {
+        let palette = context.palette();
         // Update focus state
         if let Ok(mut manager) = info.focus_manager.lock() {
             self.focus_state = manager.get_focus_state(self.focus_id);
@@ -151,72 +155,27 @@ impl Widget for RadioButton {
 
         // Radio button circle colors
         let bg_color = if self.disabled {
-            theme
-                .get_property(
-                    self.widget_id(),
-                    &nptk_theme::properties::ThemeProperty::ColorBackgroundDisabled,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(240, 240, 240))
+            palette.color(ColorRole::DisabledTextBack)
         } else if is_selected {
-            theme
-                .get_property(
-                    self.widget_id(),
-                    &nptk_theme::properties::ThemeProperty::ColorBackgroundSelected,
-                )
-                .unwrap_or_else(|| Color::WHITE)
+            palette.color(ColorRole::Selection)
         } else {
-            theme
-                .get_property(
-                    self.widget_id(),
-                    &nptk_theme::properties::ThemeProperty::ColorBackground,
-                )
-                .unwrap_or_else(|| Color::WHITE)
+            palette.color(ColorRole::Window)
         };
 
         let border_color = if self.disabled {
-            theme
-                .get_property(
-                    self.widget_id(),
-                    &nptk_theme::properties::ThemeProperty::ColorBorderDisabled,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(200, 200, 200))
+            palette.color(ColorRole::DisabledTextFront)
         } else if is_focused && self.focus_via_keyboard {
-            theme
-                .get_property(
-                    self.widget_id(),
-                    &nptk_theme::properties::ThemeProperty::ColorBorderFocused,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(0, 120, 255))
+            palette.color(ColorRole::FocusOutline)
         } else if matches!(self.state, RadioButtonState::Hovered) {
-            theme
-                .get_property(
-                    self.widget_id(),
-                    &nptk_theme::properties::ThemeProperty::ColorBorderHovered,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(100, 100, 100))
+            palette.color(ColorRole::HoverHighlight)
         } else {
-            theme
-                .get_property(
-                    self.widget_id(),
-                    &nptk_theme::properties::ThemeProperty::ColorBorder,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(150, 150, 150))
+            palette.color(ColorRole::ThreedShadow1)
         };
 
         let dot_color = if self.disabled {
-            theme
-                .get_property(
-                    self.widget_id(),
-                    &nptk_theme::properties::ThemeProperty::ColorDotDisabled,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(180, 180, 180))
+            palette.color(ColorRole::DisabledTextFront)
         } else {
-            theme
-                .get_property(
-                    self.widget_id(),
-                    &nptk_theme::properties::ThemeProperty::ColorDot,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(0, 120, 255))
+            palette.color(ColorRole::Accent)
         };
 
         // Draw radio button circle background
@@ -281,19 +240,9 @@ impl Widget for RadioButton {
         let label_text = self.label.get();
         if !label_text.is_empty() {
             let _text_color = if self.disabled {
-                theme
-                    .get_property(
-                        self.widget_id(),
-                        &nptk_theme::properties::ThemeProperty::ColorTextDisabled,
-                    )
-                    .unwrap_or_else(|| Color::from_rgb8(150, 150, 150))
+                palette.color(ColorRole::DisabledTextFront)
             } else {
-                theme
-                    .get_property(
-                        self.widget_id(),
-                        &nptk_theme::properties::ThemeProperty::ColorText,
-                    )
-                    .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
+                palette.color(ColorRole::BaseText)
             };
 
             // TODO: Implement text rendering similar to other widgets
@@ -474,9 +423,6 @@ impl Widget for RadioButton {
         }
     }
 
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "RadioButton")
-    }
 }
 
 impl Default for RadioButton {

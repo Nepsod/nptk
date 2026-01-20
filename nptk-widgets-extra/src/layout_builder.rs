@@ -7,7 +7,6 @@ use nptk_core::layout::{Constraints, LayoutNode, StyleNode, LayoutContext};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, BoxedWidget};
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use async_trait::async_trait;
 
 /// A widget that provides layout constraints to its child builder function.
@@ -64,14 +63,13 @@ impl Widget for LayoutBuilder {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) {
         if let Some(ref mut widget) = self.current_widget {
             if !layout.children.is_empty() {
-                widget.render(graphics, theme, &layout.children[0], info, context);
+                widget.render(graphics, &layout.children[0], info, context);
             }
         }
     }

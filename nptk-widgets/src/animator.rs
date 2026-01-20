@@ -37,13 +37,12 @@ impl<W: Widget, A: Fn(&mut W, f32) -> Update + Send + Sync> Widget for Animator<
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) {
         self.widget
-            .render(graphics, theme, layout_node, info, context);
+            .render(graphics, layout_node, info, context);
     }
 
     fn layout_style(&self, context: &LayoutContext) -> StyleNode {

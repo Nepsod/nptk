@@ -18,8 +18,8 @@ use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
+use nptk_core::theme::{ColorRole, Palette};
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use std::sync::Arc;
 use async_trait::async_trait;
 
@@ -159,7 +159,6 @@ impl ExpandableSection {
     fn render_header(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
@@ -172,30 +171,11 @@ impl ExpandableSection {
         );
 
         // Draw background
+        let palette = context.palette();
         let bg_color = if self.hovered {
-            theme
-                .get_property(
-                    self.widget_id(),
-                    &nptk_theme::properties::ThemeProperty::ColorHovered,
-                )
-                .or_else(|| {
-                    theme.get_default_property(
-                        &nptk_theme::properties::ThemeProperty::ColorHovered,
-                    )
-                })
-                .unwrap_or_else(|| Color::from_rgb8(240, 240, 240))
+            palette.color(ColorRole::HoverHighlight)
         } else {
-            theme
-                .get_property(
-                    self.widget_id(),
-                    &nptk_theme::properties::ThemeProperty::ColorBackground,
-                )
-                .or_else(|| {
-                    theme.get_default_property(
-                        &nptk_theme::properties::ThemeProperty::ColorBackground,
-                    )
-                })
-                .unwrap_or_else(|| theme.window_background())
+            palette.color(ColorRole::Base)
         };
 
         graphics.fill(
@@ -235,7 +215,7 @@ impl ExpandableSection {
                 let mut icon_scene = nptk_core::vg::Scene::new();
                 let mut icon_gfx = nptk_core::vgi::vello_vg::VelloGraphics::new(&mut icon_scene);
                 let mut icon_widget = icon_widget;
-                icon_widget.render(&mut icon_gfx, theme, &icon_layout, info, context.clone());
+                icon_widget.render(&mut icon_gfx, &icon_layout, info, context.clone());
                 scene.append(&icon_scene, Some(icon_transform));
             }
             
@@ -243,16 +223,6 @@ impl ExpandableSection {
         }
 
         // Render title text
-        let text_color = theme
-            .get_property(
-                self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::ColorText,
-            )
-            .or_else(|| {
-                theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorText)
-            })
-            .unwrap_or_else(|| Color::from_rgb8(0, 0, 0));
-
         let text_width = layout.layout.size.width - (x - layout.layout.location.x) - self.indicator_size as f32 - padding * 2.0;
         let text_widget = Text::new(self.title.clone())
             .with_font_size(14.0)
@@ -272,7 +242,7 @@ impl ExpandableSection {
             children: vec![],
         };
         let mut text_widget = text_widget;
-        text_widget.render(&mut text_graphics, theme, &text_layout, info, context.clone());
+        text_widget.render(&mut text_graphics, &text_layout, info, context.clone());
         
         // Apply transform to position the text
         if let Some(ref mut scene) = graphics.as_scene_mut() {
@@ -308,7 +278,7 @@ impl ExpandableSection {
             ),
             ..Default::default()
         });
-        indicator_widget.render(&mut indicator_graphics, theme, &indicator_layout, info, context.clone());
+        indicator_widget.render(&mut indicator_graphics, &indicator_layout, info, context.clone());
         
         // Apply transform to position the indicator
         if let Some(ref mut scene) = graphics.as_scene_mut() {
@@ -422,27 +392,25 @@ impl Widget for ExpandableSection {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) {
         // Render header (always visible)
         if layout.children.len() > 0 {
-            self.render_header(graphics, theme, &layout.children[0], info, context.clone());
+            self.render_header(graphics, &layout.children[0], info, context.clone());
         }
 
         // Render content (only when expanded)
         if *self.expanded.get() && layout.children.len() > 1 {
             self.content
-                .render(graphics, theme, &layout.children[1], info, context);
+                .render(graphics, &layout.children[1], info, context);
         }
     }
 
     fn render_postfix(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
@@ -450,7 +418,7 @@ impl Widget for ExpandableSection {
         // Propagate render_postfix to content only (header is rendered inline, not as a child widget)
         // Content overlays (popups, tooltips) should appear on top
         if *self.expanded.get() && layout.children.len() > 1 {
-            self.content.render_postfix(graphics, theme, &layout.children[1], info, context);
+            self.content.render_postfix(graphics, &layout.children[1], info, context);
         }
     }
 }

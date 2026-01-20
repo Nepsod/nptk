@@ -81,7 +81,6 @@ impl Widget for Image {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        _: &mut dyn Theme,
         layout_node: &LayoutNode,
         _: &mut AppInfo,
         _: AppContext,

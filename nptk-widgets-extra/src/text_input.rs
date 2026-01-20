@@ -14,8 +14,8 @@ use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, Ime, KeyCode, PhysicalKey};
+use nptk_core::theme::{ColorRole, Palette};
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use std::ops::Deref;
 use std::time::{Duration, Instant};
 use async_trait::async_trait;
@@ -270,11 +270,12 @@ impl Widget for TextInput {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) {
+        let palette = context.palette();
+        
         // Update focus state
         if let Ok(mut manager) = info.focus_manager.lock() {
             self.focus_state = manager.get_focus_state(self.focus_id);
@@ -293,36 +294,14 @@ impl Widget for TextInput {
             }
         }
 
-        // Get colors from theme with proper fallbacks
-        let bg_color = theme
-            .get_property(
-                self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::ColorBackground,
-            )
-            .unwrap_or_else(|| Color::from_rgb8(255, 255, 255));
-
+        // Get colors from palette
+        let bg_color = palette.color(ColorRole::Base);
         let border_color = if is_focused {
-            theme
-                .get_property(
-                    self.widget_id(),
-                    &nptk_theme::properties::ThemeProperty::ColorBorderFocused,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(100, 150, 255))
+            palette.color(ColorRole::FocusOutline)
         } else {
-            theme
-                .get_property(
-                    self.widget_id(),
-                    &nptk_theme::properties::ThemeProperty::ColorBorder,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)) // Light gray border
+            palette.color(ColorRole::ThreedShadow1)
         };
-
-        let _text_color = theme
-            .get_property(
-                self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::ColorText,
-            )
-            .unwrap_or_else(|| Color::from_rgb8(0, 0, 0));
+        let _text_color = palette.color(ColorRole::BaseText);
 
         let input_rect = RoundedRect::from_rect(
             Rect::new(
@@ -364,13 +343,8 @@ impl Widget for TextInput {
 
         // Render selection highlight first (behind text)
         if let Some(selection_range) = self.buffer.cursor().selection() {
-            // Use theme selection color with proper fallback
-            let selection_color = theme
-                .get_property(
-                    self.widget_id(),
-                    &nptk_theme::properties::ThemeProperty::ColorSelection,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(100, 150, 255));
+            // Use palette selection color
+            let selection_color = palette.color(ColorRole::Selection);
 
             // Calculate selection bounds using the same method as cursor positioning
             let selection_start_x =
@@ -400,9 +374,9 @@ impl Widget for TextInput {
 
         if !display_text.is_empty() {
             let text_color = if self.buffer.text().is_empty() {
-                Color::from_rgb8(150, 150, 150) // Placeholder color from theme
+                palette.color(ColorRole::PlaceholderText)
             } else {
-                _text_color
+                palette.color(ColorRole::BaseText)
             };
 
             // Use TextRenderContext for proper text rendering (Parley-based, same as Text widget)
@@ -436,12 +410,7 @@ impl Widget for TextInput {
 
         // Render cursor when focused and visible (always show cursor when focused)
         if is_focused && self.cursor_visible {
-            let cursor_color = theme
-                .get_property(
-                    self.widget_id(),
-                    &nptk_theme::properties::ThemeProperty::ColorCursor,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(0, 0, 0));
+            let cursor_color = palette.color(ColorRole::TextCursor);
 
             // Calculate cursor position using the same method as mouse positioning
             let cursor_pos = self.buffer.cursor().position;

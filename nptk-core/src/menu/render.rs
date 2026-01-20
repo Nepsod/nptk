@@ -10,8 +10,6 @@ use crate::menu::unified::{MenuTemplate, MenuItem};
 use crate::text_render::TextRenderContext;
 use crate::vgi::Graphics;
 use crate::vgi::shape_to_path;
-use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use vello::kurbo::{Affine, Line, Point, Rect, RoundedRect, RoundedRectRadii};
 use vello::peniko::{Brush, Color, Fill};
 
@@ -360,7 +358,7 @@ pub fn render_menu(
     graphics: &mut dyn Graphics,
     template: &MenuTemplate,
     position: Point,
-    theme: &mut dyn Theme,
+    palette: &crate::theme::Palette,
     text_render: &mut TextRenderContext,
     font_cx: &mut FontContext,
     cursor_pos: Option<Point>,
@@ -369,10 +367,8 @@ pub fn render_menu(
     let geometry = MenuGeometry::new(template, position, text_render, font_cx);
     let rect = geometry.rect;
 
-    let menu_id = WidgetId::new("nptk-widgets", "MenuPopup");
-
-    // Extract theme colors using centralized theme extractor
-    let theme_colors = MenuThemeColors::extract(theme, menu_id);
+    // Extract theme colors from palette
+    let theme_colors = MenuThemeColors::extract_from_palette(palette);
 
     // Render background
     render_menu_background(

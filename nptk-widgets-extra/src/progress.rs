@@ -10,7 +10,6 @@ use nptk_core::signal::MaybeSignal;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use async_trait::async_trait;
 
 /// A progress bar widget to display progress from `0.0` to `1.0`.
@@ -81,15 +80,14 @@ impl Widget for Progress {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         _info: &mut AppInfo,
-        _context: AppContext,
+        context: AppContext,
     ) {
-        // Use centralized theme rendering (all themes support it via supertrait)
+        // Use palette-based rendering
+        let palette = context.palette();
         render_progress_with_theme(
-            theme,
-            &self.widget_id(),
+            &palette,
             *self.value.get(),
             *self.indeterminate.get(),
             self.animation_time,

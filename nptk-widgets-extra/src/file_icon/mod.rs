@@ -24,8 +24,8 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use npio::service::icon::{CachedIcon, IconRegistry};
 use nptk_services::filesystem::entry::FileEntry;
+use nptk_core::theme::Palette;
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use async_trait::async_trait;
 
 use crate::file_icon::loader::request_icon_loading;
@@ -131,11 +131,11 @@ impl Widget for FileIcon {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         _: &mut AppInfo,
         context: AppContext,
     ) {
+        let palette = context.palette();
         let entry = self.entry.get().clone();
         let path = entry.path.clone();
         let size = *self.size.get();
@@ -154,7 +154,7 @@ impl Widget for FileIcon {
                 self.icon_registry.clone(),
                 entry.clone(),
                 size,
-                context,
+                context.clone(),
             );
         }
 
@@ -162,8 +162,7 @@ impl Widget for FileIcon {
         if let Some(icon) = cached_icon {
             render_cached_icon(
                 graphics,
-                theme,
-                self.widget_id(),
+                palette,
                 icon,
                 icon_rect,
                 &entry,
@@ -172,8 +171,7 @@ impl Widget for FileIcon {
         } else {
             render_fallback_icon(
                 graphics,
-                theme,
-                self.widget_id(),
+                palette,
                 icon_rect,
                 &entry,
             );

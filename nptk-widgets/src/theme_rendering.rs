@@ -71,6 +71,11 @@ pub fn button_state_to_widget_state(
 }
 
 /// Helper for rendering buttons using the theme system
+///
+/// # Deprecated
+/// This function is deprecated. Use palette-based rendering directly in widgets instead.
+/// This is kept for backward compatibility with nptk-widgets-extra widgets.
+#[deprecated(note = "Use palette-based rendering instead. Access palette via context.palette()")]
 pub fn render_button_with_theme(
     theme: &mut dyn Theme,
     widget_id: &WidgetId,
@@ -120,6 +125,11 @@ pub fn render_button_with_theme(
 }
 
 /// Helper for rendering checkboxes using the theme system
+///
+/// # Deprecated
+/// This function is deprecated. Use palette-based rendering directly in widgets instead.
+/// This is kept for backward compatibility with nptk-widgets-extra widgets.
+#[deprecated(note = "Use palette-based rendering instead. Access palette via context.palette()")]
 pub fn render_checkbox_with_theme(
     theme: &mut dyn Theme,
     widget_id: &WidgetId,

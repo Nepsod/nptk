@@ -10,7 +10,6 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetChildExt, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use std::sync::Arc;
 use async_trait::async_trait;
 
@@ -284,7 +283,6 @@ impl Widget for MenuButton {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
@@ -295,7 +293,6 @@ impl Widget for MenuButton {
             let mut child_graphics = VelloGraphics::new(&mut child_scene);
             self.child.render(
                 &mut child_graphics,
-                theme,
                 &layout.children[0],
                 info,
                 context.clone(),
@@ -309,7 +306,6 @@ impl Widget for MenuButton {
     fn render_postfix(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
@@ -332,7 +328,7 @@ impl Widget for MenuButton {
                 popup_layout.layout.size.width = popup_width as f32;
                 popup_layout.layout.size.height = popup_height as f32;
 
-                popup.render(graphics, theme, &popup_layout, info, context);
+                popup.render(graphics, &popup_layout, info, context);
             }
         }
     }

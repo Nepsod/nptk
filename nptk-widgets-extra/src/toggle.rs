@@ -11,9 +11,8 @@ use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
+use nptk_core::theme::{ColorRole, Palette};
 use nptk_theme::id::WidgetId;
-use nptk_theme::properties::ThemeProperty;
-use nptk_theme::theme::Theme;
 use async_trait::async_trait;
 
 /// A toggle/switch button widget with Win8 Metro style.
@@ -100,14 +99,18 @@ impl WidgetLayoutExt for Toggle {
 
 #[async_trait(?Send)]
 impl Widget for Toggle {
+    fn widget_id(&self) -> WidgetId {
+        WidgetId::new("nptk-widgets", "Toggle")
+    }
+
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         _: &mut AppInfo,
-        _: AppContext,
+        context: AppContext,
     ) {
+        let palette = context.palette();
         let is_on = *self.state.get();
 
         let track_width = layout_node.layout.size.width;
@@ -121,13 +124,10 @@ impl Widget for Toggle {
             track_y + track_height as f64,
         );
 
-        // Get colors from theme
-        let widget_id = self.widget_id();
+        // Get colors from palette
         let (track_color, track_border_color, thumb_color, thumb_border_color) = if self.disabled {
-            // Disabled: use theme disabled color
-            let disabled_color = theme
-                .get_property(widget_id.clone(), &ThemeProperty::ColorToggleDisabled)
-                .unwrap_or_else(|| Color::from_rgb8(200, 200, 200));
+            // Disabled: use disabled color
+            let disabled_color = palette.color(ColorRole::DisabledTextBack);
             (
                 disabled_color,
                 disabled_color,
@@ -135,38 +135,20 @@ impl Widget for Toggle {
                 disabled_color,
             )
         } else if is_on {
-            // ON state: get colors from theme
+            // ON state: use accent colors
             (
-                theme
-                    .get_property(widget_id.clone(), &ThemeProperty::ColorToggleTrackOn)
-                    .unwrap_or_else(|| Color::from_rgb8(157, 51, 213)),
-                // theme.get_property(widget_id.clone(), &ThemeProperty::ColorToggleTrackOn)
-                //     .unwrap_or_else(|| Color::from_rgb8(157, 51, 213)), // same as track (no visible border)
-                theme
-                    .get_property(widget_id.clone(), &ThemeProperty::ColorToggleThumbBorder)
-                    .unwrap_or_else(|| Color::from_rgb8(180, 180, 180)),
-                theme
-                    .get_property(widget_id.clone(), &ThemeProperty::ColorToggleThumb)
-                    .unwrap_or_else(|| Color::from_rgb8(255, 255, 255)),
-                theme
-                    .get_property(widget_id.clone(), &ThemeProperty::ColorToggleThumbBorder)
-                    .unwrap_or_else(|| Color::from_rgb8(180, 180, 180)),
+                palette.color(ColorRole::Accent),
+                palette.color(ColorRole::ThreedShadow1),
+                palette.color(ColorRole::Window),
+                palette.color(ColorRole::ThreedShadow1),
             )
         } else {
-            // OFF state: get colors from theme
+            // OFF state: use base colors
             (
-                theme
-                    .get_property(widget_id.clone(), &ThemeProperty::ColorToggleTrackOff)
-                    .unwrap_or_else(|| Color::from_rgb8(240, 240, 240)),
-                theme
-                    .get_property(widget_id.clone(), &ThemeProperty::ColorToggleTrackBorder)
-                    .unwrap_or_else(|| Color::from_rgb8(180, 180, 180)),
-                theme
-                    .get_property(widget_id.clone(), &ThemeProperty::ColorToggleThumb)
-                    .unwrap_or_else(|| Color::from_rgb8(255, 255, 255)),
-                theme
-                    .get_property(widget_id.clone(), &ThemeProperty::ColorToggleThumbBorder)
-                    .unwrap_or_else(|| Color::from_rgb8(180, 180, 180)),
+                palette.color(ColorRole::Base),
+                palette.color(ColorRole::ThreedShadow1),
+                palette.color(ColorRole::Window),
+                palette.color(ColorRole::ThreedShadow1),
             )
         };
 
@@ -263,9 +245,6 @@ impl Widget for Toggle {
         update
     }
 
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "Toggle")
-    }
 }
 
 impl Default for Toggle {

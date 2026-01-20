@@ -14,8 +14,8 @@ use nptk_core::vg::peniko::{Brush, Color, Fill, Gradient, Mix};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
+use nptk_core::theme::{ColorRole, Palette};
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use async_trait::async_trait;
@@ -939,7 +939,6 @@ impl TabsContainer {
     fn draw_active_tab_accent(
         &self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         tab_bounds: Rect,
     ) {
         // Use a vibrant gradient color that will be visible regardless of tab background
@@ -1083,7 +1082,6 @@ impl Widget for TabsContainer {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
@@ -1107,27 +1105,21 @@ impl Widget for TabsContainer {
             (layout.layout.location.y + layout.layout.size.height) as f64,
         );
 
-        if let Some(bg_color) = theme.get_property(
-            self.widget_id(),
-            &nptk_theme::properties::ThemeProperty::ColorBackground,
-        ) {
-            graphics.fill(
-                Fill::NonZero,
-                Affine::IDENTITY,
-                &Brush::Solid(bg_color),
-                None,
-                &container_bounds.to_path(0.1),
-            );
-        }
+        let palette = context.palette();
+        
+        // Draw container background
+        let bg_color = palette.color(ColorRole::Window);
+        graphics.fill(
+            Fill::NonZero,
+            Affine::IDENTITY,
+            &Brush::Solid(bg_color),
+            None,
+            &container_bounds.to_path(0.1),
+        );
 
         // Draw tab bar background (slightly different color)
         let tab_bar_bounds = self.get_tab_bar_bounds(layout);
-        let tab_bar_color = theme
-            .get_property(
-                self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::TabBarBackground,
-            )
-            .unwrap_or_else(|| Color::from_rgb8(255, 255, 255));
+        let tab_bar_color = palette.color(ColorRole::Base);
 
         graphics.fill(
             Fill::NonZero,
@@ -1138,12 +1130,7 @@ impl Widget for TabsContainer {
         );
 
         // Draw tab bar border
-        let border_color = theme
-            .get_property(
-                self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::ColorBorder,
-            )
-            .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)); // Default border color
+        let border_color = palette.color(ColorRole::ThreedShadow1);
 
         graphics.stroke(
             &Stroke::new(1.0),
@@ -1161,34 +1148,15 @@ impl Widget for TabsContainer {
             let is_pressed = self.pressed_tab == Some(index);
 
             // Tab background with rounded corners
+            let palette = context.palette();
             let tab_color = if is_active {
-                theme
-                    .get_property(
-                        self.widget_id(),
-                        &nptk_theme::properties::ThemeProperty::TabActive,
-                    )
-                    .unwrap_or_else(|| Color::from_rgb8(255, 255, 255))
+                palette.color(ColorRole::Selection)
             } else if is_pressed {
-                theme
-                    .get_property(
-                        self.widget_id(),
-                        &nptk_theme::properties::ThemeProperty::TabPressed,
-                    )
-                    .unwrap_or_else(|| Color::from_rgb8(100, 150, 255))
+                palette.color(ColorRole::Selection)
             } else if is_hovered {
-                theme
-                    .get_property(
-                        self.widget_id(),
-                        &nptk_theme::properties::ThemeProperty::TabHovered,
-                    )
-                    .unwrap_or_else(|| Color::from_rgb8(180, 180, 180))
+                palette.color(ColorRole::HoverHighlight)
             } else {
-                theme
-                    .get_property(
-                        self.widget_id(),
-                        &nptk_theme::properties::ThemeProperty::TabInactive,
-                    )
-                    .unwrap_or_else(|| Color::from_rgb8(255, 255, 255))
+                palette.color(ColorRole::Base)
             };
 
             // Create rounded rectangle for tab (only round top corners for top tabs)
@@ -1220,12 +1188,7 @@ impl Widget for TabsContainer {
             );
 
             // Tab border with subtle styling
-            let border_color = theme
-                .get_property(
-                    self.widget_id(),
-                    &nptk_theme::properties::ThemeProperty::ColorBorder,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(200, 200, 200)); // Default border color
+            let border_color = palette.color(ColorRole::ThreedShadow1);
 
             graphics.stroke(
                 &Stroke::new(if is_active { 1.5 } else { 1.0 }),
@@ -1236,24 +1199,14 @@ impl Widget for TabsContainer {
             );
 
             if is_active {
-                self.draw_active_tab_accent(graphics, theme, tab_bounds);
+                self.draw_active_tab_accent(graphics, tab_bounds);
             }
 
             // Tab text with proper rendering and theme colors
             let text_color = if is_active {
-                theme
-                    .get_property(
-                        self.widget_id(),
-                        &nptk_theme::properties::ThemeProperty::TabTextActive,
-                    )
-                    .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
+                palette.color(ColorRole::SelectionText)
             } else {
-                theme
-                    .get_property(
-                        self.widget_id(),
-                        &nptk_theme::properties::ThemeProperty::TabText,
-                    )
-                    .unwrap_or_else(|| Color::from_rgb8(0, 0, 0))
+                palette.color(ColorRole::BaseText)
             };
 
             // Center text in tab
@@ -1286,19 +1239,9 @@ impl Widget for TabsContainer {
 
             // Button background
             let button_color = if self.action_button_hovered {
-                theme
-                    .get_property(
-                        self.widget_id(),
-                        &nptk_theme::properties::ThemeProperty::TabHovered,
-                    )
-                    .unwrap_or_else(|| Color::from_rgb8(180, 180, 180))
+                palette.color(ColorRole::HoverHighlight)
             } else {
-                theme
-                    .get_property(
-                        self.widget_id(),
-                        &nptk_theme::properties::ThemeProperty::TabInactive,
-                    )
-                    .unwrap_or_else(|| Color::from_rgb8(240, 240, 240))
+                palette.color(ColorRole::Base)
             };
 
             // Create rounded rectangle for button
@@ -1378,12 +1321,7 @@ impl Widget for TabsContainer {
 
         if let Some(active_tab) = self.tabs.get_mut(active_tab_index) {
             // Draw content area background
-            let content_bg_color = theme
-                .get_property(
-                    widget_id,
-                    &nptk_theme::properties::ThemeProperty::ContentBackground,
-                )
-                .unwrap_or_else(|| Color::from_rgb8(255, 255, 255));
+            let content_bg_color = palette.color(ColorRole::Window);
 
             graphics.fill(
                 Fill::NonZero,
@@ -1417,12 +1355,12 @@ impl Widget for TabsContainer {
                 // Use the first child's layout (which should be positioned correctly)
                 active_tab
                     .content
-                    .render(graphics, theme, &layout.children[0], info, context);
+                    .render(graphics, &layout.children[0], info, context);
             } else {
                 // Fallback: just render with original layout (content might overlap tabs)
                 active_tab
                     .content
-                    .render(graphics, theme, layout, info, context);
+                    .render(graphics, layout, info, context);
             }
 
             // Pop the clipping layer
@@ -1433,7 +1371,6 @@ impl Widget for TabsContainer {
     fn render_postfix(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
@@ -1458,7 +1395,6 @@ impl Widget for TabsContainer {
                 // Propagate render_postfix to content
                 active_tab.content.render_postfix(
                     graphics,
-                    theme,
                     &layout.children[0],
                     info,
                     context,
@@ -1468,7 +1404,7 @@ impl Widget for TabsContainer {
                 graphics.pop_layer();
             } else {
                 // Fallback: render with original layout (content might overlap tabs)
-                active_tab.content.render_postfix(graphics, theme, layout, info, context);
+                active_tab.content.render_postfix(graphics, layout, info, context);
             }
         }
     }

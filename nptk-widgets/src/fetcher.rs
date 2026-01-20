@@ -51,13 +51,12 @@ impl<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Option<T>) -> W + Send +
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) {
         if let Some(widget) = &mut self.widget {
-            widget.render(graphics, theme, layout_node, info, context)
+            widget.render(graphics, layout_node, info, context)
         }
     }
 

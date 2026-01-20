@@ -8,7 +8,6 @@ use nptk_core::vg::kurbo::Rect;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -148,7 +147,6 @@ impl Widget for Icon {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         _: &mut AppInfo,
         context: AppContext,
@@ -206,24 +204,24 @@ impl Widget for Icon {
                     registry.clone(),
                     icon_name.clone(),
                     size,
-                    context,
+                    context.clone(),
                 );
             }
 
             // Render icon or fallback
+            let palette = context.palette();
             if let Some(icon) = cached_icon {
                 use crate::icon::renderer::render_cached_icon;
                 render_cached_icon(
                     graphics,
-                    theme,
-                    self.widget_id(),
+                    &palette,
                     icon,
                     icon_rect,
                     &mut self.svg_scene_cache,
                 );
             } else {
                 use crate::icon::renderer::render_fallback_icon;
-                render_fallback_icon(graphics, theme, self.widget_id(), icon_rect);
+                render_fallback_icon(graphics, &palette, icon_rect);
             }
         }
     }

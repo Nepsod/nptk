@@ -59,7 +59,6 @@ impl Widget for Spacer {
     fn render(
         &mut self,
         _graphics: &mut dyn Graphics,
-        _theme: &mut dyn Theme,
         _layout: &LayoutNode,
         _info: &mut AppInfo,
         _context: AppContext,

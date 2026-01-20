@@ -18,8 +18,8 @@ use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
+use nptk_core::theme::{ColorRole, Palette};
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use std::sync::Arc;
 use async_trait::async_trait;
 
@@ -276,59 +276,25 @@ impl Sidebar {
     }
 
     // Theme helper functions
-    fn get_theme_color(
-        theme: &mut dyn Theme,
-        widget_id: WidgetId,
-        property: &nptk_theme::properties::ThemeProperty,
-        default: Color,
-    ) -> Color {
-        theme
-            .get_property(widget_id, property)
-            .or_else(|| theme.get_default_property(property))
-            .unwrap_or(default)
+    fn get_background_color(palette: &Palette) -> Color {
+        palette.color(ColorRole::Base)
     }
 
-    fn get_background_color(theme: &mut dyn Theme, widget_id: WidgetId) -> Color {
-        let default = theme.window_background();
-        Self::get_theme_color(
-            theme,
-            widget_id,
-            &nptk_theme::properties::ThemeProperty::ColorBackground,
-            default,
-        )
+    fn get_text_color(palette: &Palette) -> Color {
+        palette.color(ColorRole::BaseText)
     }
 
-    fn get_text_color(theme: &mut dyn Theme, widget_id: WidgetId) -> Color {
-        Self::get_theme_color(
-            theme,
-            widget_id,
-            &nptk_theme::properties::ThemeProperty::ColorText,
-            Color::from_rgb8(0, 0, 0),
-        )
+    fn get_selected_color(palette: &Palette) -> Color {
+        palette.color(ColorRole::Selection)
     }
 
-    fn get_selected_color(theme: &mut dyn Theme, widget_id: WidgetId) -> Color {
-        Self::get_theme_color(
-            theme,
-            widget_id,
-            &nptk_theme::properties::ThemeProperty::ColorBackgroundSelected,
-            Color::from_rgb8(200, 220, 255),
-        )
-    }
-
-    fn get_hovered_color(theme: &mut dyn Theme, widget_id: WidgetId) -> Color {
-        Self::get_theme_color(
-            theme,
-            widget_id,
-            &nptk_theme::properties::ThemeProperty::ColorMenuHovered,
-            Color::from_rgb8(240, 240, 240),
-        )
+    fn get_hovered_color(palette: &Palette) -> Color {
+        palette.color(ColorRole::HoverHighlight)
     }
 
     // Rendering helper functions
     fn render_icon(
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         info: &mut AppInfo,
         context: AppContext,
         icon_name: &str,
@@ -351,7 +317,7 @@ impl Sidebar {
                 children: vec![],
             };
             let mut icon_widget = Icon::new(icon_name.to_string(), icon_size, None);
-            icon_widget.render(&mut icon_gfx, theme, &icon_layout, info, context);
+            icon_widget.render(&mut icon_gfx, &icon_layout, info, context);
             let icon_transform = Affine::translate(Vec2::new(x as f64, y as f64));
             scene.append(&icon_scene, Some(icon_transform));
         }
@@ -359,7 +325,6 @@ impl Sidebar {
 
     fn render_text(
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         info: &mut AppInfo,
         context: AppContext,
         text: &str,
@@ -368,7 +333,6 @@ impl Sidebar {
         y: f32,
         width: f32,
         height: f32,
-        widget_id: WidgetId,
     ) {
         if width > 0.0 {
             if let Some(scene) = graphics.as_scene_mut() {
@@ -387,7 +351,7 @@ impl Sidebar {
                         ),
                         ..Default::default()
                     });
-                text_widget.render(&mut text_gfx, theme, &text_layout, info, context);
+                text_widget.render(&mut text_gfx, &text_layout, info, context);
                 let text_transform = Affine::translate(Vec2::new(x as f64, y as f64));
                 scene.append(&text_scene, Some(text_transform));
             }
@@ -416,7 +380,7 @@ impl Sidebar {
     fn render_item(
         ctx: &RenderContext,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
+        palette: &Palette,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
@@ -435,10 +399,10 @@ impl Sidebar {
 
         // Draw background
         if is_selected {
-            let bg_color = Self::get_selected_color(theme, ctx.widget_id.clone());
+            let bg_color = Self::get_selected_color(palette);
             Self::render_background(graphics, item_rect, bg_color);
         } else if is_hovered {
-            let bg_color = Self::get_hovered_color(theme, ctx.widget_id.clone());
+            let bg_color = Self::get_hovered_color(palette);
             Self::render_background(graphics, item_rect, bg_color);
         }
 
@@ -453,7 +417,6 @@ impl Sidebar {
                 let icon_y = y - icon_size_f / 2.0;
                 Self::render_icon(
                     graphics,
-                    theme,
                     info,
                     context.clone(),
                     icon_name,
@@ -471,7 +434,6 @@ impl Sidebar {
         let text_width = layout.layout.size.width - (x - layout.layout.location.x) - ctx.padding * 2.0;
         Self::render_text(
             graphics,
-            theme,
             info,
             context,
             &item.label,
@@ -480,7 +442,6 @@ impl Sidebar {
             (layout.layout.location.y + y_offset) as f32,
             text_width,
             ctx.item_height,
-            ctx.widget_id.clone(),
         );
     }
 
@@ -488,7 +449,7 @@ impl Sidebar {
     fn render_section_header(
         ctx: &RenderContext,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
+        palette: &Palette,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
@@ -504,7 +465,7 @@ impl Sidebar {
         );
 
         // Draw header background
-        let bg_color = Self::get_background_color(theme, ctx.widget_id.clone());
+        let bg_color = Self::get_background_color(palette);
         Self::render_background(graphics, header_rect, bg_color);
 
         // Render section title and icon
@@ -517,7 +478,6 @@ impl Sidebar {
             let icon_y = y - icon_size_f / 2.0;
             Self::render_icon(
                 graphics,
-                theme,
                 info,
                 context.clone(),
                 icon_name,
@@ -538,7 +498,6 @@ impl Sidebar {
 
         Self::render_icon(
             graphics,
-            theme,
             info,
             context.clone(),
             indicator_icon,
@@ -551,7 +510,6 @@ impl Sidebar {
         let text_width = layout.layout.size.width - (x - layout.layout.location.x) - indicator_size - ctx.padding * 2.0;
         Self::render_text(
             graphics,
-            theme,
             info,
             context,
             &section.title,
@@ -560,7 +518,6 @@ impl Sidebar {
             (layout.layout.location.y + y_offset) as f32,
             text_width,
             HEADER_HEIGHT,
-            ctx.widget_id.clone(),
         );
     }
 
@@ -568,7 +525,7 @@ impl Sidebar {
     fn render_section_static(
         ctx: &RenderContext,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
+        palette: &Palette,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
@@ -581,7 +538,7 @@ impl Sidebar {
             Self::render_section_header(
                 ctx,
                 graphics,
-                theme,
+                palette,
                 layout,
                 info,
                 context.clone(),
@@ -597,7 +554,7 @@ impl Sidebar {
                     Self::render_item(
                         ctx,
                         graphics,
-                        theme,
+                        palette,
                         layout,
                         info,
                         context.clone(),
@@ -613,7 +570,7 @@ impl Sidebar {
                 Self::render_item(
                     ctx,
                     graphics,
-                    theme,
+                    palette,
                     layout,
                     info,
                     context.clone(),
@@ -798,21 +755,14 @@ impl Widget for Sidebar {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
     ) {
+        let palette = context.palette();
+        
         // Draw background
-        let bg_color = theme
-            .get_property(
-                self.widget_id(),
-                &nptk_theme::properties::ThemeProperty::ColorBackground,
-            )
-            .or_else(|| {
-                theme.get_default_property(&nptk_theme::properties::ThemeProperty::ColorBackground)
-            })
-            .unwrap_or_else(|| theme.window_background());
+        let bg_color = palette.color(ColorRole::Base);
 
         let sidebar_rect = Rect::new(
             layout.layout.location.x as f64,
@@ -853,7 +803,7 @@ impl Widget for Sidebar {
             Self::render_section_static(
                 &render_ctx,
                 graphics,
-                theme,
+                palette,
                 layout,
                 info,
                 context.clone(),

@@ -23,7 +23,6 @@ use nptk_core::vg::kurbo::Point;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use nptk_core::vgi::Graphics;
 use std::sync::Arc;
 use async_trait::async_trait;
@@ -157,10 +156,9 @@ impl Widget for MenuPopup {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
-        _context: AppContext,
+        context: AppContext,
     ) {
         let popup_position = Point::new(
             layout.layout.location.x as f64,
@@ -168,12 +166,13 @@ impl Widget for MenuPopup {
         );
 
         let cursor_pos = info.cursor_pos.map(|p| Point::new(p.x, p.y));
+        let palette = context.palette();
 
         render_menu(
             graphics,
             &self.template,
             popup_position,
-            theme,
+            &palette,
             &mut self.text_render_context,
             &mut info.font_context,
             cursor_pos,
@@ -209,7 +208,7 @@ impl Widget for MenuPopup {
                         layout: child_layout_struct,
                         children: Vec::new(),
                     };
-                    child.render(graphics, theme, &child_layout, info, _context);
+                    child.render(graphics, &child_layout, info, context);
                 }
             }
         }

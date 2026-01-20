@@ -1,4 +1,3 @@
-use crate::theme_rendering::render_button_with_theme;
 use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::focus::{FocusBounds, FocusId, FocusProperties, FocusState, FocusableWidget};
@@ -7,13 +6,13 @@ use nptk_core::app::update::Update;
 use nptk_core::layout;
 use nptk_core::layout::{LayoutContext, LayoutNode, LayoutStyle, LengthPercentage, StyleNode};
 use nptk_core::signal::MaybeSignal;
-use nptk_core::vg::kurbo::{Affine, Rect, Shape};
-use nptk_core::vg::peniko::Mix;
+use nptk_core::theme::ColorRole;
+use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
+use nptk_core::vg::peniko::{Brush, Fill, Mix};
 use nptk_core::vgi::{vello_vg::VelloGraphics, Graphics};
 use nptk_core::widget::{BoxedWidget, Widget, WidgetChildExt, WidgetLayoutExt};
 use nptk_core::window::{ElementState, KeyCode, MouseButton, PhysicalKey};
 use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use async_trait::async_trait;
 use std::time::{Duration, Instant};
 
@@ -324,7 +323,6 @@ impl Widget for Button {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
@@ -334,24 +332,80 @@ impl Widget for Button {
             self.focus_state = manager.get_focus_state(self.focus_id);
         }
 
-        // Use centralized theme rendering (all themes support it via supertrait)
+        let palette = context.palette();
         let is_focused = matches!(self.focus_state, FocusState::Focused | FocusState::Gained)
             && self.focus_via_keyboard;
-        render_button_with_theme(
-            theme,
-            &self.widget_id(),
-            self.state,
-            self.focus_state,
-            is_focused,
-            self.disabled,
-            layout_node,
-            graphics,
+
+        // Get button colors from palette (based on SerenityOS)
+        let button_bounds = Rect::new(
+            layout_node.layout.location.x as f64,
+            layout_node.layout.location.y as f64,
+            (layout_node.layout.location.x + layout_node.layout.size.width) as f64,
+            (layout_node.layout.location.y + layout_node.layout.size.height) as f64,
         );
+
+        let rounded_rect = RoundedRect::from_rect(button_bounds, RoundedRectRadii::from_single_radius(10.0));
+
+        // Determine button background color based on state
+        let button_color = if self.disabled {
+            palette.color(ColorRole::Button)
+        } else {
+            match self.state {
+                ButtonState::Hovered => palette.color(ColorRole::HoverHighlight),
+                ButtonState::Pressed | ButtonState::Released => palette.color(ColorRole::Button),
+                ButtonState::Idle => palette.color(ColorRole::Button),
+            }
+        };
+
+        // Fill button background
+        graphics.fill(
+            Fill::NonZero,
+            Affine::IDENTITY,
+            &Brush::Solid(button_color),
+            None,
+            &rounded_rect.to_path(0.1),
+        );
+
+        // Draw 3D effect shadows/highlights (simplified - full implementation would match SerenityOS)
+        if !self.disabled && matches!(self.state, ButtonState::Pressed | ButtonState::Released) {
+            // Draw shadow for pressed state
+            let shadow_color = palette.color(ColorRole::ThreedShadow1);
+            let shadow_stroke = Stroke::new(1.0);
+            graphics.stroke(
+                &shadow_stroke,
+                Affine::IDENTITY,
+                &Brush::Solid(shadow_color),
+                None,
+                &rounded_rect.to_path(0.1),
+            );
+        } else if !self.disabled {
+            // Draw highlight for normal state
+            let highlight_color = palette.color(ColorRole::ThreedHighlight);
+            let highlight_stroke = Stroke::new(1.0);
+            graphics.stroke(
+                &highlight_stroke,
+                Affine::IDENTITY,
+                &Brush::Solid(highlight_color),
+                None,
+                &rounded_rect.to_path(0.1),
+            );
+        }
+
+        // Draw focus outline if focused
+        if is_focused {
+            let focus_color = palette.color(ColorRole::FocusOutline);
+            let focus_stroke = Stroke::new(3.0);
+            graphics.stroke(
+                &focus_stroke,
+                Affine::IDENTITY,
+                &Brush::Solid(focus_color),
+                None,
+                &rounded_rect.to_path(0.1),
+            );
+        }
 
         // Render child widget
         if !layout_node.children.is_empty() {
-            theme.globals_mut().invert_text_color = self.invert_text;
-
             let mut child_scene = nptk_core::vg::Scene::new();
             let mut child_graphics = VelloGraphics::new(&mut child_scene);
 
@@ -360,10 +414,9 @@ impl Widget for Button {
             // Render child to scene - child layout coordinates are already relative to button
             self.child.render(
                 &mut child_graphics,
-                theme,
                 child_layout,
                 info,
-                context,
+                context.clone(),
             );
 
             // Apply clipping to prevent label overflow
@@ -388,8 +441,6 @@ impl Widget for Button {
             graphics.append(&child_scene, None);
 
             graphics.pop_layer();
-
-            theme.globals_mut().invert_text_color = false;
         }
     }
 

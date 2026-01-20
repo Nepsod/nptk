@@ -51,9 +51,9 @@ pub type BoxedWidget = Box<dyn Widget + Send + Sync>;
 /// use nptk_core::layout::{LayoutNode, StyleNode};
 /// use nptk_core::app::context::AppContext;
 /// use nptk_core::app::info::AppInfo;
-/// use nptk_theme::theme::Theme;
 /// use nptk_core::app::update::Update;
 /// use nptk_theme::id::WidgetId;
+/// use nptk_core::theme::ColorRole;
 ///
 /// struct TooltipWidget {
 ///     child: Box<dyn Widget>,
@@ -62,20 +62,21 @@ pub type BoxedWidget = Box<dyn Widget + Send + Sync>;
 /// }
 ///
 /// impl Widget for TooltipWidget {
-///     fn render(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme,
+///     fn render(&mut self, graphics: &mut dyn Graphics,
 ///               layout: &LayoutNode, info: &mut AppInfo, context: AppContext) {
 ///         // Render the main widget content (the child)
 ///         if !layout.children.is_empty() {
-///             self.child.render(graphics, theme, &layout.children[0], info, context);
+///             self.child.render(graphics, &layout.children[0], info, context);
 ///         }
 ///     }
 ///
-///     fn render_postfix(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme,
+///     fn render_postfix(&mut self, graphics: &mut dyn Graphics,
 ///                       layout: &LayoutNode, info: &mut AppInfo, context: AppContext) {
 ///         // Render tooltip on top if hovered
 ///         if self.is_hovered {
 ///             // Draw tooltip box below the widget
 ///             // This will appear on top of everything else!
+///             // Access colors via context.palette().color(ColorRole::...)
 ///             // ... tooltip rendering code ...
 ///         }
 ///     }
@@ -108,9 +109,9 @@ pub type BoxedWidget = Box<dyn Widget + Send + Sync>;
 /// use nptk_core::layout::{LayoutNode, StyleNode, Layout};
 /// use nptk_core::app::context::AppContext;
 /// use nptk_core::app::info::AppInfo;
-/// use nptk_theme::theme::Theme;
 /// use nptk_core::app::update::Update;
 /// use nptk_theme::id::WidgetId;
+/// use nptk_core::theme::ColorRole;
 ///
 /// struct DropdownWidget {
 ///     button: Box<dyn Widget>,
@@ -120,15 +121,15 @@ pub type BoxedWidget = Box<dyn Widget + Send + Sync>;
 /// }
 ///
 /// impl Widget for DropdownWidget {
-///     fn render(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme,
+///     fn render(&mut self, graphics: &mut dyn Graphics,
 ///               layout: &LayoutNode, info: &mut AppInfo, context: AppContext) {
 ///         // Render just the button showing selected item
 ///         if !layout.children.is_empty() {
-///             self.button.render(graphics, theme, &layout.children[0], info, context);
+///             self.button.render(graphics, &layout.children[0], info, context);
 ///         }
 ///     }
 ///
-///     fn render_postfix(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme,
+///     fn render_postfix(&mut self, graphics: &mut dyn Graphics,
 ///                       layout: &LayoutNode, info: &mut AppInfo, context: AppContext) {
 ///         // Render dropdown list on top when open
 ///         if self.is_open {
@@ -146,6 +147,7 @@ pub type BoxedWidget = Box<dyn Widget + Send + Sync>;
 ///
 ///             // Render each item in the list
 ///             // This appears on top of ALL other content!
+///             // Access colors via context.palette().color(ColorRole::...)
 ///             for (i, item) in self.items.iter().enumerate() {
 ///                 // ... render item ...
 ///             }
@@ -184,7 +186,6 @@ pub type BoxedWidget = Box<dyn Widget + Send + Sync>;
 /// use nptk_core::layout::{LayoutNode, StyleNode};
 /// use nptk_core::app::context::AppContext;
 /// use nptk_core::app::info::AppInfo;
-/// use nptk_theme::theme::Theme;
 /// use nptk_core::app::update::Update;
 /// use nptk_theme::id::WidgetId;
 ///
@@ -193,20 +194,20 @@ pub type BoxedWidget = Box<dyn Widget + Send + Sync>;
 /// }
 ///
 /// impl Widget for MyContainer {
-///     fn render(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme,
+///     fn render(&mut self, graphics: &mut dyn Graphics,
 ///               layout: &LayoutNode, info: &mut AppInfo, context: AppContext) {
 ///         // Render all children
 ///         for (i, child) in self.children.iter_mut().enumerate() {
-///             child.render(graphics, theme, &layout.children[i], info, context.clone());
+///             child.render(graphics, &layout.children[i], info, context.clone());
 ///         }
 ///     }
 ///
-///     fn render_postfix(&mut self, graphics: &mut dyn Graphics, theme: &mut dyn Theme,
+///     fn render_postfix(&mut self, graphics: &mut dyn Graphics,
 ///                       layout: &LayoutNode, info: &mut AppInfo, context: AppContext) {
 ///         // IMPORTANT: Call render_postfix on all children!
 ///         // This ensures their overlays appear on top
 ///         for (i, child) in self.children.iter_mut().enumerate() {
-///             child.render_postfix(graphics, theme, &layout.children[i], info, context.clone());
+///             child.render_postfix(graphics, &layout.children[i], info, context.clone());
 ///         }
 ///     }
 ///
@@ -238,10 +239,11 @@ pub type BoxedWidget = Box<dyn Widget + Send + Sync>;
 #[async_trait(?Send)]
 pub trait Widget: Send + Sync {
     /// Render the widget to the canvas.
+    ///
+    /// Access theme colors via `context.palette().color(ColorRole::...)`.
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout_node: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
@@ -292,7 +294,6 @@ pub trait Widget: Send + Sync {
     fn render_postfix(
         &mut self,
         _graphics: &mut dyn Graphics,
-        _theme: &mut dyn Theme,
         _layout_node: &LayoutNode,
         _info: &mut AppInfo,
         _context: AppContext,

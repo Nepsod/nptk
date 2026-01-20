@@ -2,13 +2,11 @@
 
 use std::collections::HashMap;
 
+use nptk_core::theme::{ColorRole, Palette};
 use nptk_core::vg::kurbo::{Affine, Rect, Shape, Vec2};
 use nptk_core::vg::peniko::{Brush, Fill};
 use nptk_core::vgi::Graphics;
 use npio::service::icon::CachedIcon;
-use nptk_theme::id::WidgetId;
-use nptk_theme::properties::ThemeProperty;
-use nptk_theme::theme::Theme;
 
 use crate::icon::constants::{FALLBACK_ICON_ALPHA, FALLBACK_ICON_BORDER_RADIUS};
 
@@ -109,22 +107,19 @@ pub fn render_svg_icon(
     graphics.append(vello_scene_ref, Some(transform));
 }
 
-/// Get icon color from theme.
-fn get_icon_color(theme: &mut dyn Theme, widget_id: WidgetId) -> nptk_core::vg::peniko::Color {
-    theme
-        .get_property(widget_id, &ThemeProperty::ColorText)
-        .or_else(|| theme.get_default_property(&ThemeProperty::ColorText))
-        .unwrap_or(nptk_core::vg::peniko::Color::from_rgb8(150, 150, 150))
+/// Get icon color from palette.
+fn get_icon_color(palette: &Palette) -> nptk_core::vg::peniko::Color {
+    // Use BaseText or WindowText for icon color (based on SerenityOS)
+    palette.color(ColorRole::BaseText)
 }
 
 /// Render a fallback icon (used when icon is not found/loaded).
 pub fn render_fallback_icon(
     graphics: &mut dyn Graphics,
-    theme: &mut dyn Theme,
-    widget_id: WidgetId,
+    palette: &Palette,
     icon_rect: Rect,
 ) {
-    let icon_color = get_icon_color(theme, widget_id);
+    let icon_color = get_icon_color(palette);
     let fallback_color = icon_color.with_alpha(FALLBACK_ICON_ALPHA);
 
     graphics.fill(
@@ -139,8 +134,7 @@ pub fn render_fallback_icon(
 /// Render a cached icon based on its type.
 pub fn render_cached_icon(
     graphics: &mut dyn Graphics,
-    theme: &mut dyn Theme,
-    widget_id: WidgetId,
+    palette: &Palette,
     icon: CachedIcon,
     icon_rect: Rect,
     svg_scene_cache: &mut HashMap<String, (nptk_core::vg::Scene, f64, f64)>,
@@ -158,7 +152,7 @@ pub fn render_cached_icon(
         },
         CachedIcon::Path(_) => {
             // Path variant means async loading is needed - render fallback
-            render_fallback_icon(graphics, theme, widget_id, icon_rect);
+            render_fallback_icon(graphics, palette, icon_rect);
         },
     }
 }
