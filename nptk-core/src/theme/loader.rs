@@ -11,7 +11,16 @@ use super::roles::{
 use super::terminal::{resolve_terminal_colors, TerminalColors};
 use super::Theme;
 
-/// Parse a hex color string (e.g., "#ff0000" or "#ff0000ff").
+/// Parse a hex color string with optional alpha channel.
+///
+/// Supports both RGB and RGBA formats:
+/// - `#rrggbb` - 6 characters, opaque (alpha = 255)
+/// - `#rrggbbaa` - 8 characters, with alpha channel
+///
+/// Examples:
+/// - `#ff0000` - Red (opaque)
+/// - `#ff000080` - Red with 50% opacity (128/255)
+/// - `#00000000` - Transparent black
 fn parse_hex_color(hex: &str) -> Result<Color, ThemeError> {
     TerminalColors::parse_hex_color(hex)
 }

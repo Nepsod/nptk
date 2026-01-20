@@ -336,7 +336,7 @@ impl Widget for Button {
         let is_focused = matches!(self.focus_state, FocusState::Focused | FocusState::Gained)
             && self.focus_via_keyboard;
 
-        // Get button colors from palette (based on SerenityOS)
+        // Get button colors from palette
         let button_bounds = Rect::new(
             layout_node.layout.location.x as f64,
             layout_node.layout.location.y as f64,
@@ -366,7 +366,7 @@ impl Widget for Button {
             &rounded_rect.to_path(0.1),
         );
 
-        // Draw 3D effect shadows/highlights (simplified - full implementation would match SerenityOS)
+        // Draw 3D effect shadows/highlights
         if !self.disabled && matches!(self.state, ButtonState::Pressed | ButtonState::Released) {
             // Draw shadow for pressed state
             let shadow_color = palette.color(ColorRole::ThreedShadow1);

@@ -109,7 +109,7 @@ pub fn render_svg_icon(
 
 /// Get icon color from palette.
 fn get_icon_color(palette: &Palette) -> nptk_core::vg::peniko::Color {
-    // Use BaseText or WindowText for icon color (based on SerenityOS)
+    // Use BaseText or WindowText for icon color
     palette.color(ColorRole::BaseText)
 }
 

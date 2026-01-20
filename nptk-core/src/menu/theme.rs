@@ -18,21 +18,25 @@ pub struct MenuThemeColors {
     pub disabled_color: Color,
     /// Background color for hovered menu items
     pub hovered_color: Color,
+    /// Text color for hovered menu items
+    pub hovered_text_color: Color,
 }
 
 impl MenuThemeColors {
     /// Extract all theme colors for menu rendering from palette
     ///
-    /// Uses palette color roles (based on SerenityOS):
+    /// Uses palette color roles:
     /// - MenuBase for background
-    /// - MenuBaseText for text
+    /// - MenuBaseText for normal text
     /// - MenuSelection for hovered background
     /// - MenuSelectionText for hovered text
     /// - DisabledTextFront for disabled text
+    /// - ThreedShadow1 for borders/separators
     pub fn extract_from_palette(palette: &Palette) -> Self {
         let bg_color = palette.color(ColorRole::MenuBase);
         let text_color = palette.color(ColorRole::MenuBaseText);
         let hovered_color = palette.color(ColorRole::MenuSelection);
+        let hovered_text_color = palette.color(ColorRole::MenuSelectionText);
         
         // Border color - use a darker shade of menu base or threed shadow
         let border_color = palette.color(ColorRole::ThreedShadow1);
@@ -46,6 +50,7 @@ impl MenuThemeColors {
             text_color,
             disabled_color,
             hovered_color,
+            hovered_text_color,
         }
     }
     

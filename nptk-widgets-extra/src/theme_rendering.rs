@@ -162,7 +162,7 @@ pub fn render_progress_with_theme(
     let x = layout.layout.location.x as f64;
     let y = layout.layout.location.y as f64;
 
-    // Get colors from palette (based on SerenityOS)
+    // Get colors from palette
     let background_color = palette.color(nptk_core::theme::ColorRole::Base);
     let progress_color = palette.color(nptk_core::theme::ColorRole::Accent);
     let border_color = palette.color(nptk_core::theme::ColorRole::ThreedShadow1);

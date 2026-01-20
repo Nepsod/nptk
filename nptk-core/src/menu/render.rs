@@ -316,6 +316,7 @@ fn render_menu_item(
     is_hovered: bool,
     hovered_color: Color,
     text_color: Color,
+    hovered_text_color: Color,
     disabled_color: Color,
     border_color: Color,
 ) {
@@ -340,6 +341,13 @@ fn render_menu_item(
     if item.is_separator() {
         render_separator(graphics, menu_rect, current_y, border_color);
     } else {
+        // Use hovered_text_color when hovered and enabled
+        let effective_text_color = if is_hovered && item.enabled {
+            hovered_text_color
+        } else {
+            text_color
+        };
+        
         render_menu_item_content(
             graphics,
             text_render,
@@ -347,7 +355,7 @@ fn render_menu_item(
             item,
             menu_rect,
             current_y,
-            text_color,
+            effective_text_color,
             disabled_color,
         );
     }
@@ -399,6 +407,7 @@ pub fn render_menu(
             is_hovered,
             theme_colors.hovered_color,
             theme_colors.text_color,
+            theme_colors.hovered_text_color,
             theme_colors.disabled_color,
             theme_colors.border_color,
         );

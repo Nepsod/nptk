@@ -98,7 +98,7 @@ impl Widget for Text {
 
         let palette = context.palette();
         
-        // Use palette-based color selection (based on SerenityOS)
+        // Use palette-based color selection
         // Default to BaseText for text in Base background, WindowText for Window background
         // For now, use BaseText as default (can be enhanced later to check parent background)
         let color = palette.color(nptk_core::theme::ColorRole::BaseText);

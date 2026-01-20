@@ -315,7 +315,7 @@ impl Widget for Checkbox {
         // Check if current state is locked for graying out
         let is_locked = self.is_state_locked(state);
 
-        // Get colors from palette (based on SerenityOS)
+        // Get colors from palette
         // Checkbox base uses Base color, symbol uses BaseText
         let base_border_color = palette.color(ColorRole::Base);
         let base_symbol_color = palette.color(ColorRole::BaseText);

@@ -78,13 +78,13 @@ impl Widget for Slider {
         let value = *self.value.get();
         let palette = context.palette();
 
-        // Background track color (unfilled portion) - use Base color (based on SerenityOS)
+        // Background track color (unfilled portion) - use Base color
         let track_brush = Brush::Solid(palette.color(nptk_core::theme::ColorRole::Base));
 
         // Filled track color (up to thumb position) - using Accent color
         let filled_track_color = palette.color(nptk_core::theme::ColorRole::Accent);
 
-        // Thumb color - use Button color (based on SerenityOS)
+        // Thumb color - use Button color
         let thumb_brush = Brush::Solid(palette.color(nptk_core::theme::ColorRole::Button));
 
         let track_height = 3.0; // Thin track
