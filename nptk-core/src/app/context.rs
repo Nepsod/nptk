@@ -13,6 +13,7 @@ use crate::signal::future::FutureSignal;
 use crate::signal::memoized::MemoizedSignal;
 use crate::signal::state::StateSignal;
 use crate::signal::{MaybeSignal, Signal};
+use crate::theme::Palette;
 use crate::vgi::GpuContext;
 use nptk_theme::id::WidgetId;
 use std::sync::Arc;
@@ -37,6 +38,7 @@ pub struct AppContext {
     pub tooltip_manager: TooltipRequestManager,
     pub status_bar: StatusBarManager,
     pub settings: Arc<SettingsRegistry>,
+    pub palette: Arc<Palette>,
 }
 
 impl AppContext {
@@ -53,6 +55,7 @@ impl AppContext {
         tooltip_manager: TooltipRequestManager,
         status_bar: StatusBarManager,
         settings: Arc<SettingsRegistry>,
+        palette: Arc<Palette>,
     ) -> Self {
         Self {
             update,
@@ -66,7 +69,13 @@ impl AppContext {
             tooltip_manager,
             status_bar,
             settings,
+            palette,
         }
+    }
+
+    /// Get the palette for accessing theme colors and properties.
+    pub fn palette(&self) -> &Palette {
+        &self.palette
     }
 
     /// Get the [Diagnostics] of the application.

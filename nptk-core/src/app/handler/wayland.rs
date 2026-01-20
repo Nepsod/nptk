@@ -821,19 +821,20 @@ where
                     let widget_node = popup.taffy.child_at_index(popup.root_node, 0).unwrap();
                     match collect_layout_tree(&popup.taffy, widget_node, &style, 0.0, 0.0) {
                         Ok(layout_node) => {
-                            let context = AppContext::new(
-                                self.update.clone(),
-                                self.info.diagnostics.clone(),
-                                gpu_context.clone(),
-                                self.info.focus_manager.clone(),
-                                self.menu_manager.clone(),
-                                self.shortcut_registry.clone(),
-                                self.action_callbacks.clone(),
-                                self.popup_manager.clone(),
-                                self.tooltip_request_manager.clone(),
-                                self.status_bar.clone(),
-                                self.settings.clone(),
-                            );
+                    let context = AppContext::new(
+                        self.update.clone(),
+                        self.info.diagnostics.clone(),
+                        gpu_context.clone(),
+                        self.info.focus_manager.clone(),
+                        self.menu_manager.clone(),
+                        self.shortcut_registry.clone(),
+                        self.action_callbacks.clone(),
+                        self.popup_manager.clone(),
+                        self.tooltip_request_manager.clone(),
+                        self.status_bar.clone(),
+                        self.settings.clone(),
+                        self.palette.clone(),
+                    );
 
                             let theme_manager = popup.config.theme_manager.clone();
                             theme_manager.read().unwrap().access_theme_mut(|theme| {

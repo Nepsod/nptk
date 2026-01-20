@@ -74,3 +74,6 @@ pub mod platform;
 
 /// Re-export BrushIndex for use in other modules
 pub use text_render::BrushIndex;
+
+/// Contains the theme system for role-based theming.
+pub mod theme;

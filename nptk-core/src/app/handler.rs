@@ -102,6 +102,8 @@ where
     theme_cache: Option<Arc<std::sync::RwLock<Box<dyn nptk_theme::theme::Theme + Send + Sync>>>>,
     /// Receiver for theme change notifications
     theme_change_rx: Option<std::sync::mpsc::Receiver<String>>,
+    /// Palette for the new role-based theme system
+    palette: Arc<crate::theme::Palette>,
     /// Tracks dirty regions to avoid unnecessary scene resets
     dirty_region_tracker: DirtyRegionTracker,
     /// Cache for layout computation to avoid redundant calculations
@@ -213,6 +215,11 @@ where
             Some(manager_read.current_theme())
         };
 
+        // Load new role-based theme system (default to Sweet theme for now)
+        // TODO: Load theme from settings/config
+        let theme = crate::theme::create_sweet_theme();
+        let palette = Arc::new(crate::theme::Palette::new(theme));
+
         Self {
             attrs,
             window: None,
@@ -280,6 +287,7 @@ where
             wayland_repeat_delay: 0,
             wayland_repeat_timer: None,
             wayland_repeat_keycode: None,
+            palette,
         }
     }
 
@@ -299,6 +307,7 @@ where
                 self.tooltip_request_manager.clone(),
                 self.status_bar.clone(),
                 self.settings.clone(),
+                self.palette.clone(),
             )
         })
     }
@@ -1755,6 +1764,7 @@ where
                 self.tooltip_request_manager.clone(),
                 self.status_bar.clone(),
                 self.config.settings.clone(),
+                self.palette.clone(),
             ),
             self.state.take().unwrap(),
         ));
@@ -2261,6 +2271,7 @@ where
                                         self.tooltip_request_manager.clone(),
                                         self.status_bar.clone(),
                                         self.settings.clone(),
+                                        self.palette.clone(),
                                     );
                                     let theme_manager = popup.config.theme_manager.clone();
                                     theme_manager.read().unwrap().access_theme_mut(|theme| {
