@@ -349,7 +349,7 @@ impl Widget for Button {
         );
 
         // Render child widget
-        {
+        if !layout_node.children.is_empty() {
             theme.globals_mut().invert_text_color = self.invert_text;
 
             let mut child_scene = nptk_core::vg::Scene::new();

@@ -369,9 +369,11 @@ impl Widget for MenuButton {
         }
 
         // Then propagate update to child
-        update |= self
-            .child
-            .update(&layout.children[0], context.clone(), info).await;
+        if !layout.children.is_empty() {
+            update |= self
+                .child
+                .update(&layout.children[0], context.clone(), info).await;
+        }
 
         if *self.is_menu_open.get() {
             if let Some(ref mut popup) = self.popup_data {
