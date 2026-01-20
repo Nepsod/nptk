@@ -1,10 +1,6 @@
 <div align="center">
 
 # nptk (Nepsod Toolkit)
-
-**Modern and Innovative UI Framework written in Rust**
-
-*(Fork of the [Maycoon](https://github.com/maycoon-ui/maycoon) Toolkit)*
 </div>
 
 Private Cursor AI testing field, as I'd call it for now.
@@ -67,9 +63,6 @@ This project uses a mixed licensing model:
 
 The following crates are dual licensed under the [MIT license](LICENSE-MIT) and the [Apache License 2.0](LICENSE-APACHE):
 
-- `nptk-core` - Core framework and utilities
-- `nptk-theme` - Theme system
-- `nptk-macros` - Procedural macros
 - `nptk-widgets` - Core widget library (button, checkbox, container, icon, image, slider, text, etc.)
 
 ### Copyleft License (LGPL-3.0-only)
@@ -79,13 +72,11 @@ The following crates are licensed under the [GNU Lesser General Public License v
 - `nptk-widgets-extra` - Additional widgets (menu, progress, text input, sidebar, tabs, toolbar, etc.)
 - `nptk-services` - Services layer (filesystem, bookmarks, thumbnails, etc.)
 
-### Main Crate (`nptk`)
+### Mixed License (per-file)
 
-The main `nptk` crate facade is MIT/Apache-2.0, but by default includes optional LGPL-3.0 dependencies via the `lgpl-widgets` feature. To build a purely permissive version, disable this feature:
+The following crates are SPDX-licensed on the per-file basis. Either under the [MIT license](LICENSE-MIT) and [Apache License 2.0](LICENSE-APACHE), or under the [GNU Lesser General Public License v3.0](LICENSE-LGPLv3).
 
-```toml
-[dependencies]
-nptk = { version = "0.5.0", default-features = false, features = ["macros"] }
-```
+- `nptk-core` - Core framework and utilities
+- `nptk-macros` - Procedural macros
 
 Any contributions are, unless otherwise stated, licensed under the same terms as the crate they modify.

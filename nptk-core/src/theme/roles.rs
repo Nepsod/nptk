@@ -508,8 +508,9 @@ impl PathRole {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowThemeProvider {
     Classic,
-    RedmondGlass,
-    RedmondPlastic,
+    Redmond98,
+    Silver,
+    Sweet,
 }
 
 impl WindowThemeProvider {
@@ -517,8 +518,9 @@ impl WindowThemeProvider {
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "Classic" => Some(WindowThemeProvider::Classic),
-            "RedmondGlass" => Some(WindowThemeProvider::RedmondGlass),
-            "RedmondPlastic" => Some(WindowThemeProvider::RedmondPlastic),
+            "Redmond98" => Some(WindowThemeProvider::Redmond98),
+            "Silver" => Some(WindowThemeProvider::Silver),
+            "Sweet" => Some(WindowThemeProvider::Sweet),
             _ => None,
         }
     }

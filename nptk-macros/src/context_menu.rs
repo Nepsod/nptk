@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-only
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
