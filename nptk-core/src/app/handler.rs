@@ -141,6 +141,9 @@ where
     /// Cache for measure function results to avoid repeated measurements
     /// Key: (node_id, available_space_hash) -> measured_size
     measure_cache: std::collections::HashMap<(NodeId, u64), taffy::Size<f32>>,
+    /// Object pools for temporary rendering data to reduce allocations
+    rect_pool: crate::vgi::pool::RectPool,
+    layout_node_pool: crate::vgi::pool::VecPool<LayoutNode>,
     /// Wayland key repeat rate (characters per second)
     wayland_repeat_rate: i32,
     /// Wayland key repeat delay (milliseconds)
@@ -271,6 +274,8 @@ where
             node_layout_versions: std::collections::HashMap::new(),
             global_layout_version: 0,
             measure_cache: std::collections::HashMap::new(),
+            rect_pool: crate::vgi::pool::RectPool::default(),
+            layout_node_pool: crate::vgi::pool::VecPool::default(),
             wayland_repeat_rate: 0,
             wayland_repeat_delay: 0,
             wayland_repeat_timer: None,
@@ -1301,6 +1306,8 @@ where
         self.layout_cache = None;
         self.cached_root_child = None;
         self.layout_collection_deferred = false; // Clear deferred flag on rebuild
+        // Mark full scene reset needed when layout structure changes
+        self.dirty_region_tracker.mark_full_reset_needed();
         // Invalidate widget structure hash cache if structure changed
         if structure_changed {
             self.cached_widget_structure_hash = None;

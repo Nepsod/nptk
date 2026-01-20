@@ -151,6 +151,43 @@ impl DirtyRegionTracker {
         &self.dirty_regions
     }
 
+    /// Calculate the total area of dirty regions
+    pub fn dirty_regions_area(&self) -> f64 {
+        if self.full_reset_needed {
+            return f64::INFINITY;
+        }
+        self.dirty_regions
+            .iter()
+            .map(|r| r.width() * r.height())
+            .sum()
+    }
+
+    /// Check if a rectangle intersects any dirty region
+    pub fn intersects_dirty_region(&self, rect: vello::kurbo::Rect) -> bool {
+        if self.full_reset_needed {
+            return true;
+        }
+        self.dirty_regions
+            .iter()
+            .any(|dirty| {
+                let intersection = dirty.intersect(rect);
+                intersection.width() > 0.0 && intersection.height() > 0.0
+            })
+    }
+
+    /// Check if dirty regions cover more than a threshold percentage of screen area
+    pub fn should_use_full_reset(&self, screen_width: f64, screen_height: f64, threshold: f64) -> bool {
+        if self.full_reset_needed {
+            return true;
+        }
+        let screen_area = screen_width * screen_height;
+        if screen_area == 0.0 {
+            return true;
+        }
+        let dirty_area = self.dirty_regions_area();
+        (dirty_area / screen_area) >= threshold
+    }
+
     /// Clear all dirty state
     pub fn clear(&mut self) {
         self.full_reset_needed = false;

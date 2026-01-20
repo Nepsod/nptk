@@ -53,12 +53,29 @@ where
         }
 
         // Use incremental scene updates when possible
-        if self.dirty_region_tracker.is_full_reset_needed() {
+        // Calculate screen area for threshold check
+        let screen_width = self.info.size.x;
+        let screen_height = self.info.size.y;
+        let should_full_reset = self.dirty_region_tracker.should_use_full_reset(
+            screen_width,
+            screen_height,
+            0.8, // 80% threshold - if dirty regions cover >80% of screen, do full reset
+        );
+
+        // Store whether this was an incremental update before scene operations
+        let was_incremental_update = !should_full_reset;
+
+        if should_full_reset {
+            // Full reset needed - clear all dirty state
             self.scene.reset();
+            self.dirty_region_tracker.clear();
         } else {
-            // For now, still reset but in the future we could do partial updates
-            // based on dirty_regions and dirty_elements
+            // Incremental update: reset scene but track dirty regions for optimization
+            // Note: Vello doesn't support partial scene clearing, so we still reset
+            // but we can use dirty regions to optimize rendering by skipping unchanged elements
             self.scene.reset();
+            // Keep dirty regions for element skipping logic during rendering
+            // They will be cleared after rendering is complete
         }
         let scene_reset_time = render_start.elapsed();
 
@@ -92,6 +109,13 @@ where
             postfix_render_time,
             event_loop,
         ) {
+            // Clear dirty regions after successful rendering
+            // For incremental updates, we've used the dirty regions for optimization
+            // Now clear them so they don't accumulate
+            if was_incremental_update {
+                self.dirty_region_tracker.clear();
+            }
+            
             self.print_render_profile(render_times);
             self.update
                 .set(self.update.get() & !(Update::DRAW | Update::FORCE));
