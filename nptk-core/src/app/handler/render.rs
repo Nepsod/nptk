@@ -25,14 +25,12 @@ where
 
         // Check for resize BEFORE rendering - if resize detected, skip this frame
         // Layout will be recomputed in next update() call
-        let mut resize_detected_before_render = None;
         if let Some(ref mut surface) = self.surface {
             if surface.needs_event_dispatch() {
                 let size_before = surface.size();
                 if let Ok(_) = surface.dispatch_events() {
                     let size_after = surface.size();
                     if size_before != size_after {
-                        resize_detected_before_render = Some(size_after);
                         self.update_window_node_size(size_after.0, size_after.1);
                         self.info.size = nalgebra::Vector2::new(size_after.0 as f64, size_after.1 as f64);
                         self.last_window_size = (size_after.0, size_after.1);
@@ -98,6 +96,13 @@ where
         // We ensure it's up-to-date in AppHandler::update before calling render_frame.
         let local_layout_node = layout_node;
 
+        // Use the layout node passed from update_internal. 
+        // We ensure it's up-to-date in AppHandler::update before calling render_frame.
+        // Create graphics wrapper once per frame to avoid multiple allocations
+        // Note: We still need to create separate wrappers for each render call
+        // because they need mutable access to the scene, but we can minimize
+        // the overhead by ensuring we only create when needed
+
         let widget_render_time = self.render_widget(&local_layout_node);
         let postfix_render_time = self.render_postfix(&local_layout_node);
         
@@ -124,19 +129,11 @@ where
             self.update
                 .set(self.update.get() & !(Update::DRAW | Update::FORCE));
         } else {
-            let surface_size = match &self.surface {
-                Some(crate::vgi::Surface::Winit(_)) => {
-                    if let Some(window) = &self.window {
-                        let size = window.inner_size();
-                        (size.width, size.height)
-                    } else {
-                        (0, 0)
-                    }
-                },
-                #[cfg(all(target_os = "linux", feature = "wayland"))]
-                Some(crate::vgi::Surface::Wayland(wayland_surface)) => wayland_surface.size(),
-                None => (0, 0),
-            };
+            // Use cached size instead of querying window/surface multiple times
+            let surface_size = (
+                self.info.size.x as u32,
+                self.info.size.y as u32,
+            );
 
             if surface_size.0 == 0 || surface_size.1 == 0 {
                 log::trace!(
@@ -161,10 +158,11 @@ where
         let mut graphics =
             graphics_from_scene(&mut self.scene).expect("Failed to create graphics from scene");
         
-        // Access theme from manager for rendering
-        // We need &mut dyn Theme, so we'll use access_theme_mut to get mutable access
-        let theme_manager = self.config.theme_manager.clone();
-        theme_manager.read().unwrap().access_theme_mut(|theme| {
+        // Use cached theme reference to avoid cloning theme manager Arc
+        // Fall back to theme_manager if cache is not available
+        if let Some(ref theme_cache) = self.theme_cache {
+            let mut theme_guard = theme_cache.write().unwrap();
+            let theme: &mut dyn nptk_theme::theme::Theme = theme_guard.as_mut();
             self.widget.as_mut().unwrap().render(
                 graphics.as_mut(),
                 theme,
@@ -172,7 +170,19 @@ where
                 &mut self.info,
                 context,
             );
-        });
+        } else {
+            // Fallback to manager if cache not available
+            let theme_manager = self.config.theme_manager.clone();
+            theme_manager.read().unwrap().access_theme_mut(|theme| {
+                self.widget.as_mut().unwrap().render(
+                    graphics.as_mut(),
+                    theme,
+                    layout_node,
+                    &mut self.info,
+                    context,
+                );
+            });
+        }
 
         start.elapsed()
     }
@@ -186,8 +196,10 @@ where
         };
         if let Some(mut graphics) = graphics_from_scene(&mut self.scene) {
             if let Some(widget) = &mut self.widget {
-                let theme_manager = self.config.theme_manager.clone();
-                theme_manager.read().unwrap().access_theme_mut(|theme| {
+                // Use cached theme reference to avoid cloning theme manager Arc
+                if let Some(ref theme_cache) = self.theme_cache {
+                    let mut theme_guard = theme_cache.write().unwrap();
+                    let theme: &mut dyn nptk_theme::theme::Theme = theme_guard.as_mut();
                     widget.render_postfix(
                         &mut *graphics,
                         theme,
@@ -195,7 +207,19 @@ where
                         &mut self.info,
                         context,
                     );
-                });
+                } else {
+                    // Fallback to manager if cache not available
+                    let theme_manager = self.config.theme_manager.clone();
+                    theme_manager.read().unwrap().access_theme_mut(|theme| {
+                        widget.render_postfix(
+                            &mut *graphics,
+                            theme,
+                            layout_node,
+                            &mut self.info,
+                            context,
+                        );
+                    });
+                }
             }
         }
         start.elapsed()
@@ -270,9 +294,11 @@ where
         if let Some(mut graphics) = graphics_from_scene(&mut self.scene) {
             let cursor_pos = cursor_pos_for_menu
                 .map(|p| vello::kurbo::Point::new(p.x, p.y));
-            let theme_manager = self.config.theme_manager.clone();
-            for (template, position) in context.menu_manager.get_stack().iter() {
-                theme_manager.read().unwrap().access_theme_mut(|theme| {
+            // Use cached theme reference to avoid cloning theme manager Arc
+            if let Some(ref theme_cache) = self.theme_cache {
+                let mut theme_guard = theme_cache.write().unwrap();
+                let theme: &mut dyn nptk_theme::theme::Theme = theme_guard.as_mut();
+                for (template, position) in context.menu_manager.get_stack().iter() {
                     // Calculate hovered index for this menu
                     use crate::menu::render::MenuGeometry;
                     let geometry = MenuGeometry::new(
@@ -299,7 +325,40 @@ where
                         cursor_pos,
                         hovered,
                     );
-                });
+                }
+            } else {
+                // Fallback to manager if cache not available
+                let theme_manager = self.config.theme_manager.clone();
+                for (template, position) in context.menu_manager.get_stack().iter() {
+                    theme_manager.read().unwrap().access_theme_mut(|theme| {
+                        // Calculate hovered index for this menu
+                        use crate::menu::render::MenuGeometry;
+                        let geometry = MenuGeometry::new(
+                            &template,
+                            *position,
+                            &mut self.text_render,
+                            &mut self.info.font_context,
+                        );
+                        let hovered = cursor_pos.and_then(|cursor| {
+                            if geometry.rect.contains(cursor) {
+                                geometry.hit_test_index(cursor)
+                            } else {
+                                None
+                            }
+                        });
+
+                        crate::menu::render_menu(
+                            graphics.as_mut(),
+                            &template,
+                            *position,
+                            theme,
+                            &mut self.text_render,
+                            &mut self.info.font_context,
+                            cursor_pos,
+                            hovered,
+                        );
+                    });
+                }
             }
         }
     }
@@ -318,22 +377,9 @@ where
         };
 
         // Get window/surface size for bounds checking
-        let (window_width, window_height) = match &self.surface {
-            Some(crate::vgi::Surface::Winit(_)) => {
-                if let Some(window) = &self.window {
-                    let size = window.inner_size();
-                    (size.width as f64, size.height as f64)
-                } else {
-                    return;
-                }
-            },
-            #[cfg(all(target_os = "linux", feature = "wayland"))]
-            Some(crate::vgi::Surface::Wayland(wayland_surface)) => {
-                let (w, h) = wayland_surface.size();
-                (w as f64, h as f64)
-            },
-            None => return,
-        };
+        // Use cached size from self.info.size instead of querying window/surface
+        let window_width = self.info.size.x;
+        let window_height = self.info.size.y;
 
         // Tooltip styling constants
         const PADDING: f64 = 8.0;
@@ -387,8 +433,10 @@ where
         );
 
         // Render tooltip background and text with theme integration
-        let theme_manager = self.config.theme_manager.clone();
-        theme_manager.read().unwrap().access_theme_mut(|theme| {
+        // Use cached theme reference to avoid cloning theme manager Arc
+        if let Some(ref theme_cache) = self.theme_cache {
+            let mut theme_guard = theme_cache.write().unwrap();
+            let theme: &mut dyn nptk_theme::theme::Theme = theme_guard.as_mut();
             // Use theme variables for tooltip colors (similar to menus)
             // bg-tertiary is the elevated background used for popups/tooltips
             // text-primary is the standard text color
@@ -426,7 +474,49 @@ where
                 true,
                 None,
             );
-        });
+        } else {
+            // Fallback to manager if cache not available
+            let theme_manager = self.config.theme_manager.clone();
+            theme_manager.read().unwrap().access_theme_mut(|theme| {
+                // Use theme variables for tooltip colors (similar to menus)
+                // bg-tertiary is the elevated background used for popups/tooltips
+                // text-primary is the standard text color
+                let bg_color = theme
+                    .variables()
+                    .get_color("bg-tertiary")
+                    .or_else(|| theme.variables().get_color("bg-elevated"))
+                    .or_else(|| theme.variables().get_color("bg-secondary"))
+                    .unwrap_or_else(|| vello::peniko::Color::from_rgba8(40, 40, 40, 230));
+                
+                graphics.fill(
+                    vello::peniko::Fill::NonZero,
+                    vello::kurbo::Affine::IDENTITY,
+                    &vello::peniko::Brush::Solid(bg_color),
+                    None,
+                    &tooltip_rect.to_path(0.1),
+                );
+
+                // Get text color from theme variables
+                let text_color = theme
+                    .variables()
+                    .get_color("text-primary")
+                    .unwrap_or_else(|| vello::peniko::Color::WHITE);
+                
+                // Render text - baseline is at tooltip_y + PADDING + FONT_SIZE * 0.8 (typical baseline offset)
+                let baseline_y = tooltip_y;
+                self.text_render.render_text(
+                    &mut self.info.font_context,
+                    graphics.as_mut(),
+                    tooltip_text,
+                    None,
+                    FONT_SIZE,
+                    vello::peniko::Brush::Solid(text_color),
+                    vello::kurbo::Affine::translate((tooltip_x + (PADDING / 2.0), baseline_y)),
+                    true,
+                    None,
+                );
+            });
+        }
     }
 
     fn render_to_surface(
@@ -435,7 +525,7 @@ where
         scene_reset_time: Duration,
         widget_render_time: Duration,
         postfix_render_time: Duration,
-        event_loop: &ActiveEventLoop,
+        _event_loop: &ActiveEventLoop,
     ) -> Option<RenderTimes> {
         log::trace!("render_to_surface() called");
 
@@ -460,13 +550,14 @@ where
         if let crate::vgi::Surface::Winit(ref mut winit_surface) = surface {
             if winit_surface.config.is_none() {
                 log::debug!("Lazily configuring Winit surface on first render");
-                let (width, height) = if let Some(window) = &self.window {
-                    let size = window.inner_size();
-                    (size.width, size.height)
-                } else {
-                    log::warn!("No window available for Winit surface configuration");
+                // Use cached size from self.info.size instead of querying window
+                // This avoids redundant system calls and is updated when size changes
+                let width = self.info.size.x as u32;
+                let height = self.info.size.y as u32;
+                if width == 0 || height == 0 {
+                    log::warn!("Window size is 0x0 for Winit surface configuration");
                     return None;
-                };
+                }
                 
                 let present_mode = match self.config.render.present_mode {
                     wgpu_types::PresentMode::AutoVsync => vello::wgpu::PresentMode::AutoVsync,
@@ -517,18 +608,12 @@ where
             }
         }
 
-        let (width, height) = match &*surface {
-            crate::vgi::Surface::Winit(_) => {
-                if let Some(window) = &self.window {
-                    let size = window.inner_size();
-                    (size.width, size.height)
-                } else {
-                    (0, 0)
-                }
-            },
-            #[cfg(all(target_os = "linux", feature = "wayland"))]
-            crate::vgi::Surface::Wayland(wayland_surface) => wayland_surface.size(),
-        };
+        // Use cached size instead of querying window/surface
+        // This avoids redundant system calls and is updated when size changes
+        let (width, height) = (
+            self.info.size.x as u32,
+            self.info.size.y as u32,
+        );
 
         if width == 0 || height == 0 {
             log::warn!("Surface invalid ({}x{}). Skipping render.", width, height);

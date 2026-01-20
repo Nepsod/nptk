@@ -50,8 +50,9 @@ impl TextCacheStats {
 pub struct TextRenderContext {
     layout_cx: LayoutContext,
     /// LRU cache for text layouts to prevent memory leaks
-    /// Key: (text, font_family, max_width_u32, font_size_u32, max_lines, center_align)
-    layout_cache: LruCache<(String, String, u32, u32, Option<usize>, bool), Layout<[u8; 4]>>,
+    /// Key: u64 hash of (text, font_family, max_width, font_size, max_lines, center_align)
+    /// Using hash-based keys to avoid string allocations
+    layout_cache: LruCache<u64, Layout<[u8; 4]>>,
     /// Cache statistics for performance tracking
     cache_stats: TextCacheStats,
     /// Text direction for RTL support (placeholder for future implementation)
@@ -354,16 +355,18 @@ impl TextRenderContext {
         max_lines: Option<usize>,
         center_align: bool,
     ) -> Layout<[u8; 4]> {
-        // Optimize cache key: avoid cloning strings when possible
-        // Use references for comparison, but need owned for cache key
-        let cache_key = (
-            text.to_string(),
-            font_family.clone().unwrap_or_default(),
-            max_width.map(|w| w as u32).unwrap_or(0),
-            font_size as u32,
-            max_lines,
-            center_align,
-        );
+        // Use hash-based cache key to avoid string allocations
+        // Hash string references directly without cloning
+        use std::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
+        let mut hasher = DefaultHasher::new();
+        text.hash(&mut hasher);
+        font_family.as_deref().hash(&mut hasher);
+        max_width.map(|w| w as u32).hash(&mut hasher);
+        (font_size as u32).hash(&mut hasher);
+        max_lines.hash(&mut hasher);
+        center_align.hash(&mut hasher);
+        let cache_key = hasher.finish();
 
         // Track cache lookup
         self.cache_stats.total_lookups += 1;

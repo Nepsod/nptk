@@ -58,9 +58,12 @@ pub fn render_svg_icon(
     let icon_size_f64 = icon_rect.width().min(icon_rect.height());
 
     // Check SVG scene cache first
-    let cached_scene = svg_scene_cache.get(svg_source).cloned();
-    let (scene, svg_width, svg_height) = if let Some((scene, w, h)) = cached_scene {
-        (scene, w, h)
+    // Optimize cache retrieval: use reference directly to avoid cloning on cache hit
+    // nptk_core::vg::Scene is a re-export of vello::Scene, so we can use it directly
+    // graphics.append() takes &vello::Scene, and nptk_core::vg::Scene is vello::Scene
+    let (vello_scene_ref, svg_width, svg_height) = if let Some((cached_scene, w, h)) = svg_scene_cache.get(svg_source) {
+        // Cache hit - use reference to cached scene directly - no cloning needed
+        (cached_scene, *w, *h)
     } else {
         // Cache miss - parse and render SVG
         use vello_svg::usvg::{
@@ -79,13 +82,21 @@ pub fn render_svg_icon(
             let svg_size = tree.size();
             let w = svg_size.width() as f64;
             let h = svg_size.height() as f64;
+            // Clone to store in cache
+            // Note: We still need to clone on cache miss, but avoid cloning on cache hit (common case)
             svg_scene_cache.insert(
                 svg_source.to_string(),
                 (scene.clone(), w, h),
             );
-            (scene, w, h)
+            // Get the scene back from cache to use for rendering (avoids lifetime issues)
+            // This is a second lookup but only happens on cache miss
+            if let Some((cached_scene, _, _)) = svg_scene_cache.get(svg_source) {
+                (cached_scene, w, h)
+            } else {
+                return; // Should not happen, but handle it
+            }
         } else {
-            (nptk_core::vg::Scene::new(), 1.0, 1.0)
+            return; // Invalid SVG, skip rendering
         }
     };
 
@@ -94,7 +105,8 @@ pub fn render_svg_icon(
     let scale = scale_x.min(scale_y);
     let transform = Affine::scale_non_uniform(scale, scale)
         .then_translate(Vec2::new(icon_x, icon_y));
-    graphics.append(&scene, Some(transform));
+    // Append takes &vello::Scene - we have a reference from cache or the newly created scene
+    graphics.append(vello_scene_ref, Some(transform));
 }
 
 /// Get icon color from theme.
