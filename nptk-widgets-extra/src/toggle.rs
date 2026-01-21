@@ -12,7 +12,6 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_core::theme::{ColorRole, Palette};
-use nptk_theme::id::WidgetId;
 use async_trait::async_trait;
 
 /// A toggle/switch button widget with Win8 Metro style.
@@ -99,9 +98,6 @@ impl WidgetLayoutExt for Toggle {
 
 #[async_trait(?Send)]
 impl Widget for Toggle {
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "Toggle")
-    }
 
     fn render(
         &mut self,

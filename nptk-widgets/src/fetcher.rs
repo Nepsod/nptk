@@ -6,8 +6,6 @@ use nptk_core::signal::future::FutureSignal;
 use nptk_core::signal::Signal;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::Widget;
-use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use std::future::Future;
 use async_trait::async_trait;
 
@@ -100,13 +98,5 @@ impl<T: Send + Sync + Clone + 'static, W: Widget, F: Fn(Option<T>) -> W + Send +
         }
 
         self.widget.as_mut().unwrap().update(layout, context, info).await | update
-    }
-
-    fn widget_id(&self) -> WidgetId {
-        if let Some(widget) = &self.widget {
-            widget.widget_id()
-        } else {
-            WidgetId::new("nptk-widgets", "WidgetFetcher")
-        }
     }
 }

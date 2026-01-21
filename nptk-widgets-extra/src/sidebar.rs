@@ -19,7 +19,6 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_core::theme::{ColorRole, Palette};
-use nptk_theme::id::WidgetId;
 use std::sync::Arc;
 use async_trait::async_trait;
 
@@ -31,7 +30,6 @@ const PATH_ROUNDING: f64 = 0.1;
 
 /// Rendering context for sidebar items and sections.
 struct RenderContext {
-    widget_id: WidgetId,
     item_height: f32,
     icon_size: u32,
     padding: f32,
@@ -170,8 +168,6 @@ pub struct Sidebar {
     section_expanded: Vec<StateSignal<bool>>,
     /// Layout style.
     layout_style: MaybeSignal<LayoutStyle>,
-    /// Widget ID for theming.
-    widget_id: WidgetId,
 }
 
 impl Sidebar {
@@ -200,7 +196,6 @@ impl Sidebar {
                 ..Default::default()
             }
             .into(),
-            widget_id: WidgetId::new("nptk-widgets", "Sidebar"),
         }
     }
 
@@ -698,9 +693,6 @@ impl Default for Sidebar {
 
 #[async_trait(?Send)]
 impl Widget for Sidebar {
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "Sidebar")
-    }
 
     fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         StyleNode {
@@ -786,7 +778,6 @@ impl Widget for Sidebar {
         let sections: Vec<&SidebarSection> = self.sections.iter().collect();
         
         let render_ctx = RenderContext {
-            widget_id: self.widget_id(),
             item_height: self.item_height,
             icon_size: self.icon_size,
             padding: self.padding,

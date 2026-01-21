@@ -9,7 +9,6 @@ use nptk_core::vgi::vello_vg::VelloGraphics;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetChildExt, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
-use nptk_theme::id::WidgetId;
 use std::sync::Arc;
 use async_trait::async_trait;
 
@@ -79,7 +78,6 @@ impl MenuItem {
 /// - `menu_hovered` - The background color when hovering over menu items.
 /// - `menu_disabled` - The text color for disabled menu items.
 pub struct MenuButton {
-    widget_id: WidgetId,
     child: Box<dyn Widget>,
     is_menu_open: Arc<StateSignal<bool>>,
     menu_items: Vec<MenuItem>,
@@ -91,7 +89,6 @@ pub struct MenuButton {
 impl std::fmt::Debug for MenuButton {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MenuButton")
-            .field("widget_id", &self.widget_id)
             .field("is_menu_open", &*self.is_menu_open.get())
             .field("menu_items", &self.menu_items.len())
             .field("popup_data", &self.popup_data.is_some())
@@ -150,7 +147,6 @@ impl MenuButton {
                 ..Default::default()
             });
         Self {
-            widget_id: WidgetId::new("nptk_widgets", "MenuButton"),
             child: Box::new(button),
             is_menu_open: Arc::new(StateSignal::new(false)),
             menu_items: Vec::new(),
@@ -163,7 +159,6 @@ impl MenuButton {
     /// Create a new menu button with a custom child widget
     pub fn with_child(child: impl Widget + 'static) -> Self {
         Self {
-            widget_id: WidgetId::new("nptk_widgets", "MenuButton"),
             child: Box::new(child),
             is_menu_open: Arc::new(StateSignal::new(false)),
             menu_items: Vec::new(),
@@ -441,7 +436,4 @@ impl Widget for MenuButton {
         update
     }
 
-    fn widget_id(&self) -> WidgetId {
-        self.widget_id.clone()
-    }
 }

@@ -11,7 +11,6 @@ use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetChildrenExt, WidgetLayoutExt};
 use nptk_core::theme::{ColorRole, Palette};
-use nptk_theme::id::WidgetId;
 use async_trait::async_trait;
 
 /// Configuration for toolbar border lines.
@@ -120,9 +119,6 @@ impl WidgetLayoutExt for Toolbar {
 
 #[async_trait(?Send)]
 impl Widget for Toolbar {
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "Toolbar")
-    }
 
     fn render(
         &mut self,
@@ -264,9 +260,6 @@ impl WidgetLayoutExt for ToolbarSeparator {
 
 #[async_trait(?Send)]
 impl Widget for ToolbarSeparator {
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "ToolbarSeparator")
-    }
 
     fn render(
         &mut self,
@@ -339,9 +332,6 @@ impl WidgetLayoutExt for ToolbarSpacer {
 
 #[async_trait(?Send)]
 impl Widget for ToolbarSpacer {
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "ToolbarSpacer")
-    }
 
     fn render(
         &mut self,

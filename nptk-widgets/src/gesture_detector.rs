@@ -6,8 +6,6 @@ use nptk_core::signal::MaybeSignal;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget};
 use nptk_core::window::{ElementState, MouseButton};
-use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use async_trait::async_trait;
 
 /// A widget to detect gestures like pressing or releasing the left mouse button.
@@ -201,7 +199,4 @@ impl Widget for GestureDetector {
         update
     }
 
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "GestureDetector")
-    }
 }

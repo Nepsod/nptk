@@ -6,7 +6,6 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{Breakpoint, Breakpoints, Constraints, LayoutNode, StyleNode, LayoutContext};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, BoxedWidget};
-use nptk_theme::id::WidgetId;
 use async_trait::async_trait;
 
 /// A widget that adapts its layout based on breakpoints.
@@ -157,7 +156,4 @@ impl Widget for Adaptive {
         }
     }
 
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets-extra", "Adaptive")
-    }
 }

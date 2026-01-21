@@ -4,7 +4,6 @@ use crate::config::MayConfig;
 use crate::vgi::GpuContext;
 use crate::vgi::{Renderer, Scene, Surface};
 use indexmap::IndexMap;
-use nptk_theme::theme::Theme;
 use std::sync::Arc;
 use std::time::Instant;
 use taffy::{NodeId, TaffyTree};

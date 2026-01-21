@@ -6,7 +6,6 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{Constraints, LayoutNode, StyleNode, LayoutContext};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, BoxedWidget};
-use nptk_theme::id::WidgetId;
 use async_trait::async_trait;
 
 /// A widget that provides layout constraints to its child builder function.
@@ -129,7 +128,4 @@ impl Widget for LayoutBuilder {
         }
     }
 
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets-extra", "LayoutBuilder")
-    }
 }

@@ -19,7 +19,6 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_core::theme::{ColorRole, Palette};
-use nptk_theme::id::WidgetId;
 use std::sync::Arc;
 use async_trait::async_trait;
 
@@ -296,9 +295,6 @@ impl WidgetLayoutExt for ExpandableSection {
 
 #[async_trait(?Send)]
 impl Widget for ExpandableSection {
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "ExpandableSection")
-    }
 
     fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         let mut style = self.layout_style.get().clone();

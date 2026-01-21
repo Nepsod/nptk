@@ -4,8 +4,6 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{LayoutContext, LayoutNode, StyleNode};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::Widget;
-use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use async_trait::async_trait;
 use std::time::{Duration, Instant};
 
@@ -61,9 +59,5 @@ impl<W: Widget, A: Fn(&mut W, f32) -> Update + Send + Sync> Widget for Animator<
         }
 
         update
-    }
-
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "Animator")
     }
 }

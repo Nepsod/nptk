@@ -9,7 +9,6 @@ pub use nptk_core as core;
 #[cfg(feature = "macros")]
 pub use nptk_macros as macros;
 pub use nptk_services as services;
-pub use nptk_theme as theme;
 
 /// Widgets module aggregating core and extra widgets.
 pub mod widgets {
@@ -35,14 +34,9 @@ pub mod prelude {
     };
     pub use crate::core::widget::{Widget, WidgetLayoutExt};
 
-    // Theme
-    pub use crate::theme::config::{ThemeConfig, ThemeSource};
-    pub use crate::theme::globals::Globals;
-    pub use crate::theme::id::WidgetId;
-    pub use crate::theme::properties::ThemeProperty;
-    pub use crate::theme::theme::{
-        celeste::CelesteTheme, dark::DarkTheme, sweet::SweetTheme, system::SystemTheme,
-    };
+    // Theme (new role-based system)
+    pub use crate::core::theme::{Palette, ColorRole, ThemeResolver};
+
     // Math
     pub use nalgebra::Vector2;
 

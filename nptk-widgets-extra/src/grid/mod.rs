@@ -10,7 +10,6 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{GridAutoFlow, GridPlacement, LayoutNode, LayoutStyle, LengthPercentage, StyleNode, LayoutContext};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, BoxedWidget};
-use nptk_theme::id::WidgetId;
 use async_trait::async_trait;
 
 /// A CSS Grid container widget.
@@ -185,7 +184,4 @@ impl Widget for Grid {
         update
     }
 
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets-extra", "Grid")
-    }
 }

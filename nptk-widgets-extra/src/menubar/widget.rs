@@ -30,7 +30,6 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, KeyCode, MouseButton, PhysicalKey};
 use nptk_core::theme::{ColorRole, Palette};
-use nptk_theme::id::WidgetId;
 #[cfg(feature = "global-menu")]
 use std::collections::hash_map::DefaultHasher;
 #[cfg(feature = "global-menu")]
@@ -381,9 +380,6 @@ impl Default for MenuBar {
 
 #[async_trait(?Send)]
 impl Widget for MenuBar {
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "MenuBar")
-    }
 
     fn render(
         &mut self,

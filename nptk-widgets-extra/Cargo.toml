@@ -12,7 +12,6 @@ homepage.workspace = true
 
 [dependencies]
 nptk-widgets = { workspace = true }
-nptk-theme = { workspace = true }
 nptk-services = { workspace = true }
 nptk-core = { workspace = true, features = ["vg"] }
 nptk-macros = { workspace = true }

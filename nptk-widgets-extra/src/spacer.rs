@@ -6,8 +6,6 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, FlexDirection, LayoutNode, LayoutStyle, StyleNode, LayoutContext};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::Widget;
-use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use async_trait::async_trait;
 
 /// A spacer widget that expands to fill available space.
@@ -92,7 +90,4 @@ impl Widget for Spacer {
         Update::empty()
     }
 
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets-extra", "Spacer")
-    }
 }

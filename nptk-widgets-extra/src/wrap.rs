@@ -6,7 +6,6 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{FlexWrap, LayoutNode, LayoutStyle, LengthPercentage, StyleNode, LayoutContext};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, BoxedWidget};
-use nptk_theme::id::WidgetId;
 use async_trait::async_trait;
 
 /// A wrap container that flows children and wraps them to the next line when needed.
@@ -121,7 +120,4 @@ impl Widget for Wrap {
         update
     }
 
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets-extra", "Wrap")
-    }
 }

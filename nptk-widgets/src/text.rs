@@ -8,7 +8,6 @@ use nptk_core::text_render::TextRenderContext;
 use nptk_core::vg::peniko::{Brush, Color};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
-use nptk_theme::id::WidgetId;
 use async_trait::async_trait;
 use std::ops::Deref;
 
@@ -17,9 +16,7 @@ use std::ops::Deref;
 /// ### Theming
 /// You can style the text with the following properties:
 /// - `color` - The color of the text.
-/// - `color_invert` - The color to use when the `invert_color` property is set to `true` in the theme [Globals].
-///
-/// [Globals]: nptk_theme::globals::Globals
+/// - `color_invert` - The color to use when the `invert_color` property is set to `true` (uses ColorRole::WindowText for invert).
 pub struct Text {
     style: MaybeSignal<LayoutStyle>,
     text: MaybeSignal<String>,
@@ -274,9 +271,5 @@ impl Widget for Text {
         }
 
         Update::empty()
-    }
-
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "Text")
     }
 }

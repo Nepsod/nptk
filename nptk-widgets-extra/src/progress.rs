@@ -9,7 +9,6 @@ use nptk_core::layout::{Dimension, LayoutContext, LayoutNode, LayoutStyle, Lengt
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
-use nptk_theme::id::WidgetId;
 use async_trait::async_trait;
 
 /// A progress bar widget to display progress from `0.0` to `1.0`.
@@ -125,7 +124,4 @@ impl Widget for Progress {
         }
     }
 
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "Progress")
-    }
 }

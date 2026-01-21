@@ -98,11 +98,7 @@ where
     #[cfg(all(target_os = "linux", feature = "wayland"))]
     wayland_popup_id_counter: u32,
     settings: Arc<SettingsRegistry>,
-    /// Cached theme reference for rendering (updated when theme changes)
-    theme_cache: Option<Arc<std::sync::RwLock<Box<dyn nptk_theme::theme::Theme + Send + Sync>>>>,
-    /// Receiver for theme change notifications
-    theme_change_rx: Option<std::sync::mpsc::Receiver<String>>,
-    /// Palette for the new role-based theme system
+    /// Palette for the role-based theme system
     palette: Arc<crate::theme::Palette>,
     /// Tracks dirty regions to avoid unnecessary scene resets
     dirty_region_tracker: DirtyRegionTracker,
@@ -166,7 +162,9 @@ struct PopupWindow {
     root_node: NodeId,
     widget: Box<dyn Widget>,
     info: AppInfo,
-    config: MayConfig, // Each window needs its own config copy/ref for theme access
+    config: MayConfig,
+    /// Palette for the role-based theme system
+    palette: Arc<crate::theme::Palette>,
     /// Scale factor for HiDPI (1.0 for X11/Winit, 2.0 or higher for Wayland HiDPI)
     scale_factor: f32,
 }
@@ -203,19 +201,7 @@ where
             crate::app::keymap::XkbKeymapManager::default()
         });
 
-        // Subscribe to theme changes
-        let theme_change_rx = {
-            let manager_read = config.theme_manager.read().unwrap();
-            Some(manager_read.subscribe_theme_changes())
-        };
-        
-        // Cache the current theme reference
-        let theme_cache = {
-            let manager_read = config.theme_manager.read().unwrap();
-            Some(manager_read.current_theme())
-        };
-
-        // Load new role-based theme system (default to Sweet theme for now)
+        // Load role-based theme system (default to Sweet theme for now)
         // TODO: Load theme from settings/config
         let theme = crate::theme::create_sweet_theme();
         let palette = Arc::new(crate::theme::Palette::new(theme));
@@ -228,8 +214,6 @@ where
             scene: Scene::new(backend, 0, 0), // Will be updated on resize
             surface: None,
             taffy,
-            theme_cache,
-            theme_change_rx,
             widget: None,
             info: AppInfo {
                 font_context,
@@ -359,10 +343,7 @@ where
         let mut hasher = DefaultHasher::new();
         
         // Hash widget structure and style information (but NOT window size)
-        if let Some(widget) = &self.widget {
-            // Hash widget ID
-            widget.widget_id().hash(&mut hasher);
-            
+        if let Some(_widget) = &self.widget {
             // Hash layout style to detect style changes
             // This is expensive but necessary to detect structure changes
             self.hash_style_node(style, &mut hasher);
@@ -939,9 +920,6 @@ where
         // Process popup requests first (in case they were requested during widget updates)
         // This ensures popups are created in the same update cycle
         self.process_popup_requests(event_loop);
-        
-        // Check for theme changes and trigger redraw if needed
-        self.check_theme_changes();
 
         // Check for async GPU initialization completion
         if let Some(ref rx) = self.gpu_init_rx {
@@ -1062,51 +1040,6 @@ where
         log::trace!("Updates per sec: {}", self.info.diagnostics.updates_per_sec);
     }
 
-    /// Update plugins with current state.
-    /// Check for theme changes and trigger redraw if the theme has changed.
-    fn check_theme_changes(&mut self) {
-        // Check for theme change notifications
-        if let Some(ref mut rx) = self.theme_change_rx {
-            // Non-blocking check for theme changes
-            while let Ok(_variant) = rx.try_recv() {
-                log::debug!("Theme changed, triggering redraw");
-                // Update cached theme reference
-                self.theme_cache = {
-                    let manager_read = self.config.theme_manager.read().unwrap();
-                    Some(manager_read.current_theme())
-                };
-                // Request redraw to apply new theme
-                self.update.insert(Update::DRAW);
-            }
-        }
-
-        // Update active theme transitions
-        if let Ok(mut manager) = self.config.theme_manager.write() {
-            let had_transition = manager.has_active_transition();
-            manager.update_transition();
-            
-            // If transition is active or just completed, trigger redraw
-            if had_transition || manager.has_active_transition() {
-                self.update.insert(Update::DRAW);
-            }
-
-            // Check for hot reload file changes
-            match manager.check_and_reload() {
-                Ok(true) => {
-                    // Reload was triggered, update cached theme reference
-                    self.theme_cache = Some(manager.current_theme());
-                    // Trigger redraw to apply reloaded theme
-                    self.update.insert(Update::DRAW);
-                },
-                Ok(false) => {
-                    // No reload needed
-                },
-                Err(e) => {
-                    log::warn!("Failed to reload theme: {}", e);
-                },
-            }
-        }
-    }
 
     fn update_plugins(&mut self, event_loop: &ActiveEventLoop) {
         // For Wayland, window is None - skip plugin updates that require window
@@ -1949,6 +1882,7 @@ where
                 widget: req.widget,
                 info,
                 config: self.config.clone(),
+                palette: self.palette.clone(),
                 scale_factor: popup_scale_factor,
             };
 
@@ -2311,9 +2245,7 @@ where
                                 &builder,
                                 &render_view,
                                 &RenderParams {
-                                    base_color: popup.config.theme_manager.read().unwrap()
-                                        .access_theme(|theme| theme.window_background())
-                                        .unwrap_or_else(|| vello::peniko::Color::WHITE),
+                                    base_color: popup.palette.color(crate::theme::ColorRole::Window),
                                     width,
                                     height,
                                     antialiasing_method: popup.config.render.antialiasing,

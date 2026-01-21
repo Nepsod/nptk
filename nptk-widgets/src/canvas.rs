@@ -5,7 +5,6 @@ use nptk_core::layout::{LayoutContext, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::vgi::vello_vg::VelloGraphics;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::Widget;
-use nptk_theme::id::WidgetId;
 use async_trait::async_trait;
 
 /// A canvas widget to directly draw to the screen.
@@ -63,9 +62,5 @@ impl Widget for Canvas
 
     async fn update(&mut self, _layout: &LayoutNode, _context: AppContext, _info: &mut AppInfo) -> Update {
         Update::DRAW | Update::LAYOUT
-    }
-
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "Canvas")
     }
 }

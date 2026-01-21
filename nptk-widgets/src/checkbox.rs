@@ -13,7 +13,6 @@ use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
-use nptk_theme::id::WidgetId;
 use async_trait::async_trait;
 
 /// The state of a checkbox widget.
@@ -477,9 +476,5 @@ impl Widget for Checkbox {
         }
 
         update
-    }
-
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "Checkbox")
     }
 }

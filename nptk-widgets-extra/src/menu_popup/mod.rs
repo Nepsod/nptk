@@ -22,7 +22,6 @@ use nptk_core::text_render::TextRenderContext;
 use nptk_core::vg::kurbo::Point;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
-use nptk_theme::id::WidgetId;
 use nptk_core::vgi::Graphics;
 use std::sync::Arc;
 use async_trait::async_trait;
@@ -131,9 +130,6 @@ impl WidgetLayoutExt for MenuPopup {
 
 #[async_trait(?Send)]
 impl Widget for MenuPopup {
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "MenuPopup")
-    }
 
     fn layout_style(&self, context: &LayoutContext) -> StyleNode {
         // Calculate size using temporary contexts (layout_style is called before we have font context)

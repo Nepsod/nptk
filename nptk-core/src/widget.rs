@@ -4,8 +4,6 @@ use crate::app::update::Update;
 use crate::layout::{LayoutContext, LayoutNode, LayoutStyle, StyleNode};
 use crate::signal::MaybeSignal;
 use crate::vgi::Graphics;
-use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use taffy::{AvailableSpace, Size};
 use async_trait::async_trait;
 
@@ -52,7 +50,6 @@ pub type BoxedWidget = Box<dyn Widget + Send + Sync>;
 /// use nptk_core::app::context::AppContext;
 /// use nptk_core::app::info::AppInfo;
 /// use nptk_core::app::update::Update;
-/// use nptk_theme::id::WidgetId;
 /// use nptk_core::theme::ColorRole;
 ///
 /// struct TooltipWidget {
@@ -94,10 +91,6 @@ pub type BoxedWidget = Box<dyn Widget + Send + Sync>;
 /// #       StyleNode { style: Default::default(), children: vec![] }
 ///         // ... layout code ...
 ///     }
-///
-///     fn widget_id(&self) -> WidgetId {
-///         WidgetId::new("myapp", "TooltipWidget")
-///     }
 /// }
 /// ```
 ///
@@ -110,7 +103,6 @@ pub type BoxedWidget = Box<dyn Widget + Send + Sync>;
 /// use nptk_core::app::context::AppContext;
 /// use nptk_core::app::info::AppInfo;
 /// use nptk_core::app::update::Update;
-/// use nptk_theme::id::WidgetId;
 /// use nptk_core::theme::ColorRole;
 ///
 /// struct DropdownWidget {
@@ -169,10 +161,6 @@ pub type BoxedWidget = Box<dyn Widget + Send + Sync>;
 /// #       StyleNode { style: Default::default(), children: vec![] }
 ///         // ... layout code ...
 ///     }
-///
-///     fn widget_id(&self) -> WidgetId {
-///         WidgetId::new("myapp", "DropdownWidget")
-///     }
 /// }
 /// ```
 ///
@@ -187,7 +175,6 @@ pub type BoxedWidget = Box<dyn Widget + Send + Sync>;
 /// use nptk_core::app::context::AppContext;
 /// use nptk_core::app::info::AppInfo;
 /// use nptk_core::app::update::Update;
-/// use nptk_theme::id::WidgetId;
 ///
 /// struct MyContainer {
 ///     children: Vec<BoxedWidget>,
@@ -216,9 +203,6 @@ pub type BoxedWidget = Box<dyn Widget + Send + Sync>;
 /// #   }
 /// #   fn layout_style(&self) -> StyleNode {
 /// #       StyleNode { style: Default::default(), children: vec![] }
-/// #   }
-/// #   fn widget_id(&self) -> WidgetId {
-/// #       WidgetId::new("myapp", "MyContainer")
 /// #   }
 ///     // ... other methods ...
 /// }
@@ -364,9 +348,6 @@ pub trait Widget: Send + Sync {
 
     /// Update the widget state with given info and layout. Returns if the app should be updated.
     async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update;
-
-    /// Return the widget id.
-    fn widget_id(&self) -> WidgetId;
 
     /// Return the context menu for this widget, if any.
     fn context_menu(&self) -> Option<crate::menu::MenuTemplate> {

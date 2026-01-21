@@ -12,7 +12,6 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, KeyCode, MouseButton, PhysicalKey};
 use nptk_core::theme::{ColorRole, Palette};
-use nptk_theme::id::WidgetId;
 use async_trait::async_trait;
 
 /// Represents the state of a radio button.
@@ -128,9 +127,6 @@ impl WidgetLayoutExt for RadioButton {
 
 #[async_trait(?Send)]
 impl Widget for RadioButton {
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "RadioButton")
-    }
 
     fn render(
         &mut self,

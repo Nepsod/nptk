@@ -20,7 +20,6 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton, MouseScrollDelta};
 use nptk_core::theme::{ColorRole, Palette};
-use nptk_theme::id::WidgetId;
 use async_trait::async_trait;
 
 /// Determines when scrollbars should be shown.
@@ -348,9 +347,6 @@ impl ScrollContainer {
         self.set_scroll_offset(new_offset);
     }
 
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "ScrollContainer")
-    }
 
     fn clamp_scroll_offset(&self, offset: Vector2<f32>) -> Vector2<f32> {
         let max_x = (self.content_size.x - self.viewport_size.x).max(0.0);
@@ -1297,9 +1293,6 @@ impl Default for ScrollContainer {
 
 #[async_trait(?Send)]
 impl Widget for ScrollContainer {
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "ScrollContainer")
-    }
 
     fn render(
         &mut self,

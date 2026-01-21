@@ -15,7 +15,6 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_core::theme::{ColorRole, Palette};
-use nptk_theme::id::WidgetId;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use async_trait::async_trait;
@@ -115,8 +114,6 @@ enum TabsMode {
 
 /// A container widget that displays tabs and switches between content
 pub struct TabsContainer {
-    /// Widget ID
-    widget_id: WidgetId,
     /// Layout style
     layout_style: MaybeSignal<LayoutStyle>,
     /// Mode of operation (static or dynamic)
@@ -172,7 +169,6 @@ impl TabsContainer {
     /// Create a new TabsContainer in static mode
     pub fn new() -> Self {
         Self {
-            widget_id: WidgetId::new("nptk-widgets", "TabsContainer"),
             layout_style: MaybeSignal::value(LayoutStyle::default()),
             mode: TabsMode::Static,
             tabs: Vec::new(),
@@ -215,7 +211,6 @@ impl TabsContainer {
         let tabs_shared = Arc::new(Mutex::new(tabs_data));
 
         Self {
-            widget_id: WidgetId::new("nptk-widgets", "TabsContainer"),
             layout_style: MaybeSignal::value(LayoutStyle::default()),
             mode: TabsMode::Dynamic(tabs_signal, tabs_shared, initial_tabs),
             tabs: Vec::new(), // Will be populated from signal
@@ -1317,7 +1312,6 @@ impl Widget for TabsContainer {
         // Render active tab content in the content area
         let active_tab_index = self.active_tab();
         let content_bounds = self.get_content_bounds(layout);
-        let widget_id = self.widget_id();
 
         if let Some(active_tab) = self.tabs.get_mut(active_tab_index) {
             // Draw content area background
@@ -1683,9 +1677,6 @@ impl Widget for TabsContainer {
         }
     }
 
-    fn widget_id(&self) -> WidgetId {
-        self.widget_id.clone()
-    }
 }
 
 impl WidgetLayoutExt for TabsContainer {

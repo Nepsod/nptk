@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 use anyhow::Result;
-use nptk_theme::config::ThemeConfig;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
@@ -43,7 +42,6 @@ pub struct KeyboardSettings {
 /// Registry for managing application settings.
 pub struct SettingsRegistry {
     config: Config,
-    pub theme_config: ThemeConfig,
 }
 
 impl SettingsRegistry {
@@ -61,7 +59,6 @@ impl SettingsRegistry {
                 keyboard: KeyboardSettings {},
                 other: HashMap::new(),
             },
-            theme_config: ThemeConfig::new(),
         };
         registry.load().await?;
         Ok(registry)
@@ -81,8 +78,6 @@ impl SettingsRegistry {
 
         // Load input.toml
         self.load_config_type(&xdg_dirs, "input.toml").await;
-
-        self.load_theme_config(&xdg_dirs).await;
 
         Ok(())
     }
@@ -106,48 +101,6 @@ impl SettingsRegistry {
             if user_config_path.exists() {
                 self.load_file(&user_config_path).await;
             }
-        }
-    }
-
-    /// Load theme configuration from standard locations.
-    async fn load_theme_config(&mut self, xdg_dirs: &BaseDirectories) {
-        let theme_filename = "theme.toml";
-
-        // 1. Load from system data directories
-        for path in xdg_dirs.find_data_files(theme_filename).rev() {
-            self.load_theme_file(&path).await;
-        }
-
-        // 2. Load from system config directories
-        for path in xdg_dirs.find_config_files(theme_filename).rev() {
-            self.load_theme_file(&path).await;
-        }
-
-        // 3. Load from user config directory
-        if let Some(user_config_path) = xdg_dirs.find_config_file(theme_filename) {
-            self.load_theme_file(&user_config_path).await;
-        } else {
-            let user_config_path = xdg_dirs.get_config_home().join(theme_filename);
-            if user_config_path.exists() {
-                self.load_theme_file(&user_config_path).await;
-            }
-        }
-    }
-
-    async fn load_theme_file(&mut self, path: &Path) {
-        log::info!("Loading theme config from: {:?}", path);
-        match fs::read_to_string(path).await {
-            Ok(content) => match ThemeConfig::from_toml(&content) {
-                Ok(loaded_config) => {
-                    self.theme_config.merge(loaded_config);
-                },
-                Err(e) => {
-                    log::warn!("Failed to parse theme config {:?}: {}", path, e);
-                },
-            },
-            Err(e) => {
-                log::warn!("Failed to read theme config {:?}: {}", path, e);
-            },
         }
     }
 
@@ -231,7 +184,6 @@ impl SettingsRegistry {
                 keyboard: KeyboardSettings {},
                 other: HashMap::new(),
             },
-            theme_config: nptk_theme::config::ThemeConfig::new(),
         };
         
         // Reload everything
@@ -257,7 +209,6 @@ mod tests {
                 keyboard: KeyboardSettings {},
                 other: HashMap::new(),
             },
-            theme_config: ThemeConfig::new(),
         };
 
         let new_config = Config {

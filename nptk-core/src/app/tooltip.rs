@@ -1,4 +1,3 @@
-use nptk_theme::id::WidgetId;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -17,7 +16,6 @@ pub enum TooltipRequest {
     /// Request to show a tooltip.
     Show {
         text: String,
-        source_widget_id: WidgetId,
         cursor_pos: (f64, f64),
     },
     /// Request to hide the tooltip.
@@ -32,14 +30,12 @@ enum TooltipState {
     /// Tooltip requested, waiting for show delay to expire.
     PendingShow {
         text: String,
-        source_widget_id: WidgetId,
         cursor_pos: (f64, f64),
         show_at: Instant,
     },
     /// Tooltip is currently showing.
     Showing {
         text: String,
-        source_widget_id: WidgetId,
         cursor_pos: (f64, f64),
     },
     /// Tooltip hide requested, waiting for hide delay to expire.
@@ -66,13 +62,11 @@ impl TooltipRequestManager {
     pub fn request_show(
         &self,
         text: String,
-        source_widget_id: WidgetId,
         cursor_pos: (f64, f64),
     ) {
         let mut requests = self.requests.lock().unwrap();
         requests.push(TooltipRequest::Show {
             text,
-            source_widget_id,
             cursor_pos,
         });
     }
@@ -113,10 +107,9 @@ impl TooltipManager {
             match request {
                 TooltipRequest::Show {
                     text,
-                    source_widget_id,
                     cursor_pos,
                 } => {
-                    self.request_show(text, source_widget_id, cursor_pos);
+                    self.request_show(text, cursor_pos);
                 },
                 TooltipRequest::Hide => {
                     self.request_hide();
@@ -133,18 +126,16 @@ impl TooltipManager {
     fn request_show(
         &mut self,
         text: String,
-        source_widget_id: WidgetId,
         cursor_pos: (f64, f64),
     ) {
         let now = Instant::now();
         match &self.state {
-            TooltipState::Showing { text: existing_text, source_widget_id: existing_id, .. } => {
-                // Already showing - if different text/widget, hide current and start new timer
-                if *existing_text != text || *existing_id != source_widget_id {
+            TooltipState::Showing { text: existing_text, .. } => {
+                // Already showing - if different text, hide current and start new timer
+                if *existing_text != text {
                     let show_at = now + Duration::from_millis(TOOLTIP_SHOW_DELAY_MS);
                     self.state = TooltipState::PendingShow {
                         text,
-                        source_widget_id,
                         cursor_pos,
                         show_at,
                     };
@@ -153,18 +144,16 @@ impl TooltipManager {
                     // Same tooltip, just update cursor position
                     self.state = TooltipState::Showing {
                         text: existing_text.clone(),
-                        source_widget_id: existing_id.clone(),
                         cursor_pos,
                     };
                 }
             },
-            TooltipState::PendingShow { text: existing_text, source_widget_id: existing_id, show_at, .. } => {
+            TooltipState::PendingShow { text: existing_text, show_at, .. } => {
                 // Already pending - only update cursor position, don't reset timer
-                if *existing_text == text && *existing_id == source_widget_id {
+                if *existing_text == text {
                     // Same tooltip, just update cursor position
                     self.state = TooltipState::PendingShow {
                         text: existing_text.clone(),
-                        source_widget_id: existing_id.clone(),
                         cursor_pos,
                         show_at: *show_at,
                     };
@@ -172,7 +161,6 @@ impl TooltipManager {
                     let show_at = now + Duration::from_millis(TOOLTIP_SHOW_DELAY_MS);
                     self.state = TooltipState::PendingShow {
                         text,
-                        source_widget_id,
                         cursor_pos,
                         show_at,
                     };
@@ -183,7 +171,6 @@ impl TooltipManager {
                 let show_at = now + Duration::from_millis(TOOLTIP_SHOW_DELAY_MS);
                 self.state = TooltipState::PendingShow {
                     text,
-                    source_widget_id,
                     cursor_pos,
                     show_at,
                 };
@@ -229,11 +216,10 @@ impl TooltipManager {
                 // No timer to check
                 false
             },
-            TooltipState::PendingShow { show_at, text, source_widget_id, cursor_pos } => {
+            TooltipState::PendingShow { show_at, text, cursor_pos } => {
                 if now >= *show_at {
                     self.state = TooltipState::Showing {
                         text: text.clone(),
-                        source_widget_id: source_widget_id.clone(),
                         cursor_pos: *cursor_pos,
                     };
                     self.last_state_change = now;
@@ -255,10 +241,10 @@ impl TooltipManager {
     }
 
     /// Get the current tooltip text if a tooltip is showing.
-    pub fn current_tooltip(&self) -> Option<(&String, &WidgetId, (f64, f64))> {
+    pub fn current_tooltip(&self) -> Option<(&String, (f64, f64))> {
         match &self.state {
-            TooltipState::Showing { text, source_widget_id, cursor_pos } => {
-                Some((text, source_widget_id, *cursor_pos))
+            TooltipState::Showing { text, cursor_pos } => {
+                Some((text, *cursor_pos))
             },
             _ => None,
         }

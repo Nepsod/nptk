@@ -17,7 +17,6 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, Ime, KeyCode, MouseButton, PhysicalKey};
 use nptk_core::theme::{ColorRole, Palette};
-use nptk_theme::id::WidgetId;
 use std::ops::Deref;
 
 /// A numeric input widget with validation and constraints.
@@ -929,7 +928,4 @@ impl Widget for ValueInput {
             measure_func: None,}
     }
 
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "ValueInput")
-    }
 }

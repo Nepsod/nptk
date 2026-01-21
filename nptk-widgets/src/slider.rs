@@ -10,7 +10,6 @@ use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::MouseButton;
-use nptk_theme::id::WidgetId;
 use async_trait::async_trait;
 
 /// A slider widget to control a floating point value between `0.0` and `1.0`.
@@ -198,9 +197,5 @@ impl Widget for Slider {
         }
 
         update
-    }
-
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "Slider")
     }
 }

@@ -8,8 +8,6 @@ use nptk_core::vg::peniko::{Blob, ImageAlphaType, ImageBrush, ImageFormat};
 pub use nptk_core::vg::peniko::ImageData;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
-use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
 use async_trait::async_trait;
 
 /// An image widget that renders a brush-backed bitmap inside the layout rect.
@@ -113,9 +111,6 @@ impl Widget for Image {
         Update::empty()
     }
 
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "Image")
-    }
 }
 
 struct ImageState {

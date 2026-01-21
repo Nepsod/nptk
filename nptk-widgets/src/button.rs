@@ -12,7 +12,6 @@ use nptk_core::vg::peniko::{Brush, Fill, Mix};
 use nptk_core::vgi::{vello_vg::VelloGraphics, Graphics};
 use nptk_core::widget::{BoxedWidget, Widget, WidgetChildExt, WidgetLayoutExt};
 use nptk_core::window::{ElementState, KeyCode, MouseButton, PhysicalKey};
-use nptk_theme::id::WidgetId;
 use async_trait::async_trait;
 use std::time::{Duration, Instant};
 
@@ -477,7 +476,6 @@ impl Widget for Button {
                     if let Some(cursor_pos) = info.cursor_pos {
                         context.request_tooltip_show(
                             tooltip_text.clone(),
-                            self.widget_id(),
                             (cursor_pos.x, cursor_pos.y),
                         );
                     }
@@ -530,10 +528,6 @@ impl Widget for Button {
         }
 
         update
-    }
-
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", self.style_id)
     }
 
     fn tooltip(&self) -> Option<String> {

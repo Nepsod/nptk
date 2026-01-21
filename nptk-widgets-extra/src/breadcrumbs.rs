@@ -19,7 +19,6 @@ use nptk_core::vg::peniko::Color;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_core::theme::{ColorRole, Palette};
-use nptk_theme::id::WidgetId;
 use crate::menu_popup::MenuPopup;
 use std::sync::Arc;
 use async_trait::async_trait;
@@ -1066,7 +1065,4 @@ impl Widget for Breadcrumbs {
         }
     }
 
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk_widgets_extra", "Breadcrumbs")
-    }
 }

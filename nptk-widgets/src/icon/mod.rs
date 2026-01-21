@@ -7,7 +7,6 @@ use nptk_core::signal::MaybeSignal;
 use nptk_core::vg::kurbo::Rect;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
-use nptk_theme::id::WidgetId;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -274,10 +273,6 @@ impl Widget for Icon {
         }
 
         Update::empty()
-    }
-
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "Icon")
     }
 }
 

@@ -16,7 +16,6 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, Ime, KeyCode, PhysicalKey};
 use nptk_core::theme::{ColorRole, Palette};
-use nptk_theme::id::WidgetId;
 use std::ops::Deref;
 use std::time::{Duration, Instant};
 use async_trait::async_trait;
@@ -893,9 +892,6 @@ impl Widget for SecretInput {
         update
     }
 
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "SecretInput")
-    }
 }
 
 impl Default for SecretInput {

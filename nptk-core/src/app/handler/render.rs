@@ -291,7 +291,7 @@ where
 
     fn render_tooltip(&mut self, cursor_pos: Option<nalgebra::Vector2<f64>>) {
         // Check if tooltip is showing
-        let Some((tooltip_text, _source_widget_id, tooltip_cursor_pos)) = self.tooltip_manager.current_tooltip() else {
+        let Some((tooltip_text, tooltip_cursor_pos)) = self.tooltip_manager.current_tooltip() else {
             return;
         };
 
@@ -358,91 +358,31 @@ where
             RoundedRectRadii::from_single_radius(BORDER_RADIUS),
         );
 
-        // Render tooltip background and text with theme integration
-        // Use cached theme reference to avoid cloning theme manager Arc
-        if let Some(ref theme_cache) = self.theme_cache {
-            let mut theme_guard = theme_cache.write().unwrap();
-            let theme: &mut dyn nptk_theme::theme::Theme = theme_guard.as_mut();
-            // Use theme variables for tooltip colors (similar to menus)
-            // bg-tertiary is the elevated background used for popups/tooltips
-            // text-primary is the standard text color
-            let bg_color = theme
-                .variables()
-                .get_color("bg-tertiary")
-                .or_else(|| theme.variables().get_color("bg-elevated"))
-                .or_else(|| theme.variables().get_color("bg-secondary"))
-                .unwrap_or_else(|| vello::peniko::Color::from_rgba8(40, 40, 40, 230));
-            
-            graphics.fill(
-                vello::peniko::Fill::NonZero,
-                vello::kurbo::Affine::IDENTITY,
-                &vello::peniko::Brush::Solid(bg_color),
-                None,
-                &tooltip_rect.to_path(0.1),
-            );
-
-            // Get text color from theme variables
-            let text_color = theme
-                .variables()
-                .get_color("text-primary")
-                .unwrap_or_else(|| vello::peniko::Color::WHITE);
-            
-            // Render text - baseline is at tooltip_y + PADDING + FONT_SIZE * 0.8 (typical baseline offset)
-            let baseline_y = tooltip_y;
-            self.text_render.render_text(
-                &mut self.info.font_context,
-                graphics.as_mut(),
-                tooltip_text,
-                None,
-                FONT_SIZE,
-                vello::peniko::Brush::Solid(text_color),
-                vello::kurbo::Affine::translate((tooltip_x + (PADDING / 2.0), baseline_y)),
-                true,
-                None,
-            );
-        } else {
-            // Fallback to manager if cache not available
-            let theme_manager = self.config.theme_manager.clone();
-            theme_manager.read().unwrap().access_theme_mut(|theme| {
-                // Use theme variables for tooltip colors (similar to menus)
-                // bg-tertiary is the elevated background used for popups/tooltips
-                // text-primary is the standard text color
-                let bg_color = theme
-                    .variables()
-                    .get_color("bg-tertiary")
-                    .or_else(|| theme.variables().get_color("bg-elevated"))
-                    .or_else(|| theme.variables().get_color("bg-secondary"))
-                    .unwrap_or_else(|| vello::peniko::Color::from_rgba8(40, 40, 40, 230));
-                
-                graphics.fill(
-                    vello::peniko::Fill::NonZero,
-                    vello::kurbo::Affine::IDENTITY,
-                    &vello::peniko::Brush::Solid(bg_color),
-                    None,
-                    &tooltip_rect.to_path(0.1),
-                );
-
-                // Get text color from theme variables
-                let text_color = theme
-                    .variables()
-                    .get_color("text-primary")
-                    .unwrap_or_else(|| vello::peniko::Color::WHITE);
-                
-                // Render text - baseline is at tooltip_y + PADDING + FONT_SIZE * 0.8 (typical baseline offset)
-                let baseline_y = tooltip_y;
-                self.text_render.render_text(
-                    &mut self.info.font_context,
-                    graphics.as_mut(),
-                    tooltip_text,
-                    None,
-                    FONT_SIZE,
-                    vello::peniko::Brush::Solid(text_color),
-                    vello::kurbo::Affine::translate((tooltip_x + (PADDING / 2.0), baseline_y)),
-                    true,
-                    None,
-                );
-            });
-        }
+        // Render tooltip background and text using palette
+        let bg_color = self.palette.color(crate::theme::ColorRole::Tooltip);
+        let text_color = self.palette.color(crate::theme::ColorRole::TooltipText);
+        
+        graphics.fill(
+            vello::peniko::Fill::NonZero,
+            vello::kurbo::Affine::IDENTITY,
+            &vello::peniko::Brush::Solid(bg_color),
+            None,
+            &tooltip_rect.to_path(0.1),
+        );
+        
+        // Render text - baseline is at tooltip_y + PADDING + FONT_SIZE * 0.8 (typical baseline offset)
+        let baseline_y = tooltip_y;
+        self.text_render.render_text(
+            &mut self.info.font_context,
+            graphics.as_mut(),
+            tooltip_text,
+            None,
+            FONT_SIZE,
+            vello::peniko::Brush::Solid(text_color),
+            vello::kurbo::Affine::translate((tooltip_x + (PADDING / 2.0), baseline_y)),
+            true,
+            None,
+        );
     }
 
     fn render_to_surface(
@@ -569,9 +509,7 @@ where
         }
 
         let gpu_render_start = Instant::now();
-        let base_color = self.config.theme_manager.read().unwrap()
-            .access_theme(|theme| theme.window_background())
-            .unwrap_or_else(|| vello::peniko::Color::WHITE);
+        let base_color = self.palette.color(crate::theme::ColorRole::Window);
         
         if let Err(e) = renderer.render_to_view(
             &device_handle.device,

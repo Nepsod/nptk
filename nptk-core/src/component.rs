@@ -5,7 +5,6 @@ use crate::layout::{LayoutContext, LayoutNode, LayoutStyle, StyleNode};
 use crate::signal::MaybeSignal;
 use crate::vgi::Graphics;
 use crate::widget::{BoxedWidget, Widget, WidgetChildExt, WidgetChildrenExt, WidgetLayoutExt};
-use nptk_theme::id::WidgetId;
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 use async_trait::async_trait;
@@ -16,9 +15,6 @@ use async_trait::async_trait;
 pub trait Component {
     /// Builds the inner widget.
     fn build(&self, context: AppContext) -> impl Widget + 'static;
-
-    /// The id of this widget/component.
-    fn widget_id(&self) -> WidgetId;
 
     /// Composes this component into a [Widget] using [ComposedWidget].
     fn compose(self) -> Composed<Self>
@@ -100,10 +96,6 @@ impl<C: Component + Send + Sync> Widget for Composed<C> {
             self.widget = Some(Box::new(self.component.build(context.clone())));
             Update::FORCE
         }
-    }
-
-    fn widget_id(&self) -> WidgetId {
-        self.component.widget_id()
     }
 }
 

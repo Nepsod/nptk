@@ -10,7 +10,6 @@ use crate::vgi::surface::SurfaceTrait;
 use crate::vgi::Scene;
 use crate::widget::Widget;
 use nalgebra::Vector2;
-use nptk_theme::theme::Theme;
 use taffy::prelude::*;
 use vello::wgpu::{CommandEncoderDescriptor, TextureViewDescriptor};
 use vello::RenderParams;
@@ -862,9 +861,7 @@ where
                 },
             };
 
-            let base_color = popup.config.theme_manager.read().unwrap()
-                .access_theme(|theme| theme.window_background())
-                .unwrap_or_else(|| vello::peniko::Color::WHITE);
+            let base_color = popup.palette.color(crate::theme::ColorRole::Window);
             
             if let Err(e) = popup.renderer.render_to_view(
                 &device_handle.device,

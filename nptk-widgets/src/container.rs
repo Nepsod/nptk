@@ -5,7 +5,6 @@ use nptk_core::layout::{Display, LayoutContext, LayoutNode, LayoutStyle, StyleNo
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetChildrenExt, WidgetLayoutExt};
-use nptk_theme::id::WidgetId;
 use async_trait::async_trait;
 
 /// A simple container widget that can display and layout multiple child widgets.
@@ -190,9 +189,5 @@ impl Widget for Container {
         }
 
         update
-    }
-
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets", "Container")
     }
 }

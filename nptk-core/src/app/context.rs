@@ -15,7 +15,6 @@ use crate::signal::state::StateSignal;
 use crate::signal::{MaybeSignal, Signal};
 use crate::theme::Palette;
 use crate::vgi::GpuContext;
-use nptk_theme::id::WidgetId;
 use std::sync::Arc;
 
 use nptk_services::settings::SettingsRegistry;
@@ -452,10 +451,9 @@ impl AppContext {
     pub fn request_tooltip_show(
         &self,
         text: String,
-        source_widget_id: WidgetId,
         cursor_pos: (f64, f64),
     ) {
-        self.tooltip_manager.request_show(text, source_widget_id, cursor_pos);
+        self.tooltip_manager.request_show(text, cursor_pos);
         // Request redraw to process tooltip requests
         self.update.insert(Update::DRAW);
     }

@@ -6,7 +6,6 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, FlexDirection, LayoutNode, LayoutStyle, StyleNode, LayoutContext};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, BoxedWidget};
-use nptk_theme::id::WidgetId;
 use async_trait::async_trait;
 
 /// A horizontal stack container that arranges children in a row.
@@ -103,9 +102,6 @@ impl Widget for HStack {
         update
     }
 
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets-extra", "HStack")
-    }
 }
 
 /// A vertical stack container that arranges children in a column.
@@ -202,9 +198,6 @@ impl Widget for VStack {
         update
     }
 
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets-extra", "VStack")
-    }
 }
 
 /// A wrapper widget that expands its child to fill available space.
@@ -292,9 +285,6 @@ impl Widget for Expanded {
         }
     }
 
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets-extra", "Expanded")
-    }
 }
 
 /// A wrapper widget that allows its child to flex within available space.
@@ -381,7 +371,4 @@ impl Widget for Flexible {
         }
     }
 
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("nptk-widgets-extra", "Flexible")
-    }
 }
