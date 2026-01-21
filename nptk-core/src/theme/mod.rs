@@ -4,6 +4,30 @@
 //!
 //! This module provides a role-based theming system,
 //! where widgets use semantic color roles instead of per-widget properties.
+//!
+//! ## Overview
+//!
+//! The theme system consists of:
+//!
+//! - **[Theme]**: Main theme structure containing role-based data
+//! - **[Palette]**: Widget-facing API for accessing theme data
+//! - **[ColorRole]**, **[AlignmentRole]**, **[FlagRole]**, etc.: Role enums for theme properties
+//! - **[ThemeLoader]**: Async loader for TOML theme files
+//! - **[ThemeResolver]**: Resolver for built-in vs custom themes
+//! - **[TerminalColors]**: Terminal color scheme management
+//!
+//! ## Usage
+//!
+//! ```rust
+//! use nptk_core::theme::{ThemeResolver, Palette};
+//!
+//! // Load a theme
+//! let theme = ThemeResolver::resolve("Sweet").await?;
+//! let palette = Palette::new(theme);
+//!
+//! // Use the palette in widgets
+//! let color = palette.color(ColorRole::Button);
+//! ```
 
 mod error;
 mod roles;
@@ -12,6 +36,7 @@ mod loader;
 mod resolver;
 mod terminal;
 mod builtin;
+mod util;
 
 pub use error::ThemeError;
 pub use roles::{
@@ -27,6 +52,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use vello::peniko::Color;
+use crate::theme::util::rgba8;
 
 /// Main theme structure containing all role-based theme data.
 #[derive(Debug, Clone)]
@@ -143,23 +169,23 @@ impl Theme {
     /// Get default color for a role (used as fallback).
     fn default_color(role: ColorRole) -> Color {
         match role {
-            ColorRole::Window => Color::from_rgb8(50, 50, 50),
-            ColorRole::WindowText => Color::WHITE,
-            ColorRole::Button => Color::from_rgb8(85, 85, 85),
-            ColorRole::ButtonText => Color::WHITE,
-            ColorRole::Base => Color::from_rgb8(66, 66, 66),
-            ColorRole::BaseText => Color::WHITE,
-            ColorRole::Selection => Color::from_rgb8(100, 150, 255),
-            ColorRole::SelectionText => Color::WHITE,
-            ColorRole::Black => Color::from_rgb8(0, 0, 0),
-            ColorRole::White => Color::from_rgb8(255, 255, 255),
-            ColorRole::Red => Color::from_rgb8(204, 0, 0),
-            ColorRole::Green => Color::from_rgb8(62, 154, 6),
-            ColorRole::Blue => Color::from_rgb8(52, 101, 164),
-            ColorRole::Yellow => Color::from_rgb8(196, 160, 0),
-            ColorRole::Magenta => Color::from_rgb8(117, 80, 123),
-            ColorRole::Cyan => Color::from_rgb8(6, 152, 154),
-            _ => Color::BLACK,
+            ColorRole::Window => rgba8(50, 50, 50, 255),
+            ColorRole::WindowText => rgba8(255, 255, 255, 255),
+            ColorRole::Button => rgba8(85, 85, 85, 255),
+            ColorRole::ButtonText => rgba8(255, 255, 255, 255),
+            ColorRole::Base => rgba8(66, 66, 66, 255),
+            ColorRole::BaseText => rgba8(255, 255, 255, 255),
+            ColorRole::Selection => rgba8(100, 150, 255, 255),
+            ColorRole::SelectionText => rgba8(255, 255, 255, 255),
+            ColorRole::Black => rgba8(0, 0, 0, 255),
+            ColorRole::White => rgba8(255, 255, 255, 255),
+            ColorRole::Red => rgba8(204, 0, 0, 255),
+            ColorRole::Green => rgba8(62, 154, 6, 255),
+            ColorRole::Blue => rgba8(52, 101, 164, 255),
+            ColorRole::Yellow => rgba8(196, 160, 0, 255),
+            ColorRole::Magenta => rgba8(117, 80, 123, 255),
+            ColorRole::Cyan => rgba8(6, 152, 154, 255),
+            _ => rgba8(0, 0, 0, 255),
         }
     }
 }

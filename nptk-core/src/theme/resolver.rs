@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 //! Theme resolver for built-in vs custom themes.
+//!
+//! The `ThemeResolver` provides functionality to resolve theme names to
+//! actual `Theme` instances, handling both built-in themes (like "Sweet")
+//! and custom themes loaded from XDG directories.
 
 use std::path::PathBuf;
 use super::error::ThemeError;

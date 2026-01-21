@@ -1,29 +1,43 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 //! Async theme loader for TOML theme files.
+//!
+//! This module provides functionality for loading themes from TOML files,
+//! including parsing of color roles, alignments, flags, metrics, paths,
+//! and terminal color schemes.
+//!
+//! ## TOML Format
+//!
+//! Theme files use the following TOML structure:
+//!
+//! ```toml
+//! [Colors]
+//! Window = "#161925"
+//! WindowText = "#C3C7D1"
+//! Button = "#181b28"
+//!
+//! [Alignments]
+//! TitleAlignment = "Center"
+//!
+//! [Flags]
+//! BoldTextAsBright = true
+//!
+//! [Metrics]
+//! BorderThickness = 4
+//! TitleHeight = 19
+//!
+//! [TerminalColors]
+//! TerminalColors = "theme"
+//! ```
 
 use std::path::{Path, PathBuf};
-use vello::peniko::Color;
 use super::error::ThemeError;
 use super::roles::{
     AlignmentRole, ColorRole, FlagRole, MetricRole, PathRole, TextAlignment, WindowThemeProvider,
 };
 use super::terminal::{resolve_terminal_colors, TerminalColors};
+use super::util::parse_hex_color;
 use super::Theme;
-
-/// Parse a hex color string with optional alpha channel.
-///
-/// Supports both RGB and RGBA formats:
-/// - `#rrggbb` - 6 characters, opaque (alpha = 255)
-/// - `#rrggbbaa` - 8 characters, with alpha channel
-///
-/// Examples:
-/// - `#ff0000` - Red (opaque)
-/// - `#ff000080` - Red with 50% opacity (128/255)
-/// - `#00000000` - Transparent black
-fn parse_hex_color(hex: &str) -> Result<Color, ThemeError> {
-    TerminalColors::parse_hex_color(hex)
-}
 
 /// Theme loader for loading themes from TOML files.
 pub struct ThemeLoader;
@@ -51,7 +65,19 @@ impl ThemeLoader {
         let mut theme = Theme::new();
         let theme_dir = path.parent();
 
-        // Parse [Colors] section
+        Self::parse_colors_section(&table, &mut theme)?;
+        Self::parse_alignments_section(&table, &mut theme)?;
+        Self::parse_flags_section(&table, &mut theme);
+        Self::parse_metrics_section(&table, &mut theme);
+        Self::parse_paths_section(&table, &mut theme);
+        Self::parse_window_section(&table, &mut theme);
+        Self::parse_terminal_colors_section(&table, &mut theme, theme_dir).await;
+
+        Ok(theme)
+    }
+
+    /// Parse the [Colors] section from TOML.
+    fn parse_colors_section(table: &toml::Value, theme: &mut Theme) -> Result<(), ThemeError> {
         if let Some(colors) = table.get("Colors").and_then(|v| v.as_table()) {
             for (key, value) in colors.iter() {
                 if let Some(color_str) = value.as_str() {
@@ -62,8 +88,11 @@ impl ThemeLoader {
                 }
             }
         }
+        Ok(())
+    }
 
-        // Parse [Alignments] section
+    /// Parse the [Alignments] section from TOML.
+    fn parse_alignments_section(table: &toml::Value, theme: &mut Theme) -> Result<(), ThemeError> {
         if let Some(alignments) = table.get("Alignments").and_then(|v| v.as_table()) {
             for (key, value) in alignments.iter() {
                 if let Some(alignment_str) = value.as_str() {
@@ -77,8 +106,11 @@ impl ThemeLoader {
                 }
             }
         }
+        Ok(())
+    }
 
-        // Parse [Flags] section
+    /// Parse the [Flags] section from TOML.
+    fn parse_flags_section(table: &toml::Value, theme: &mut Theme) {
         if let Some(flags) = table.get("Flags").and_then(|v| v.as_table()) {
             for (key, value) in flags.iter() {
                 if let Some(flag_value) = value.as_bool() {
@@ -88,8 +120,10 @@ impl ThemeLoader {
                 }
             }
         }
+    }
 
-        // Parse [Metrics] section
+    /// Parse the [Metrics] section from TOML.
+    fn parse_metrics_section(table: &toml::Value, theme: &mut Theme) {
         if let Some(metrics) = table.get("Metrics").and_then(|v| v.as_table()) {
             for (key, value) in metrics.iter() {
                 if let Some(metric_value) = value.as_integer() {
@@ -99,8 +133,10 @@ impl ThemeLoader {
                 }
             }
         }
+    }
 
-        // Parse [Paths] section
+    /// Parse the [Paths] section from TOML.
+    fn parse_paths_section(table: &toml::Value, theme: &mut Theme) {
         if let Some(paths) = table.get("Paths").and_then(|v| v.as_table()) {
             for (key, value) in paths.iter() {
                 if let Some(path_str) = value.as_str() {
@@ -111,8 +147,10 @@ impl ThemeLoader {
                 }
             }
         }
+    }
 
-        // Parse [Window] section (for window theme provider)
+    /// Parse the [Window] section from TOML.
+    fn parse_window_section(table: &toml::Value, theme: &mut Theme) {
         if let Some(window) = table.get("Window").and_then(|v| v.as_table()) {
             if let Some(theme_str) = window.get("WindowTheme").and_then(|v| v.as_str()) {
                 if let Some(provider) = WindowThemeProvider::from_str(theme_str) {
@@ -120,8 +158,14 @@ impl ThemeLoader {
                 }
             }
         }
+    }
 
-        // Parse [TerminalColors] section
+    /// Parse the [TerminalColors] section from TOML.
+    async fn parse_terminal_colors_section(
+        table: &toml::Value,
+        theme: &mut Theme,
+        theme_dir: Option<&Path>,
+    ) {
         if let Some(term_colors) = table.get("TerminalColors").and_then(|v| v.as_table()) {
             let terminal_colors_value = term_colors
                 .get("TerminalColors")
@@ -142,8 +186,6 @@ impl ThemeLoader {
                 }
             }
         }
-
-        Ok(theme)
     }
 
     /// Get search paths for custom themes in XDG directories.

@@ -3,7 +3,18 @@
 //! Palette API for widgets.
 //!
 //! The Palette provides a widget-facing API to access theme colors, metrics,
-//! flags, and paths. It wraps a shared Theme and provides convenient methods.
+//! flags, and paths. It wraps a shared Theme (via `Arc`) to avoid cloning
+//! the entire theme data, making it efficient for widget rendering.
+//!
+//! ## Example
+//!
+//! ```rust
+//! use nptk_core::theme::{Palette, ColorRole};
+//!
+//! // Get a color from the palette
+//! let button_color = palette.color(ColorRole::Button);
+//! let text_color = palette.color(ColorRole::ButtonText);
+//! ```
 
 use std::path::Path;
 use std::sync::Arc;
