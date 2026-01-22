@@ -77,3 +77,4 @@ pub use text_render::BrushIndex;
 
 /// Contains the theme system for role-based theming.
 pub mod theme;
+pub mod model;
