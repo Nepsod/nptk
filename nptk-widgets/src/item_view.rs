@@ -416,6 +416,131 @@ impl Widget for ItemView {
     async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
         
+        // Handle Keyboard Events for Navigation
+        for (_, key_event) in &info.keys {
+            if key_event.state == ElementState::Pressed && !key_event.repeat {
+                use nptk_core::window::Key;
+                
+                match &key_event.logical_key {
+                    Key::Named(named_key) => {
+                        use nptk_core::window::NamedKey;
+                        
+                        let current_selection = self.selected_rows.get().clone();
+                        let row_count = self.model.row_count();
+                        
+                        match named_key {
+                            NamedKey::ArrowDown => {
+                                // Move selection down
+                                if let Some(&last_selected) = current_selection.last() {
+                                    if last_selected + 1 < row_count {
+                                        let new_index = last_selected + 1;
+                                        let mut new_selection = if info.modifiers.shift_key() {
+                                            // Extend selection
+                                            let mut sel = current_selection.clone();
+                                            sel.push(new_index);
+                                            sel
+                                        } else {
+                                            vec![new_index]
+                                        };
+                                        new_selection.sort_unstable();
+                                        new_selection.dedup();
+                                        
+                                        if let Some(signal) = self.selected_rows.as_signal() {
+                                            signal.set(new_selection.clone());
+                                        }
+                                        if let Some(cb) = &self.on_selection_change {
+                                            update |= cb(new_selection);
+                                        }
+                                        self.last_selected_index = Some(new_index);
+                                        update.insert(Update::DRAW);
+                                    }
+                                } else if row_count > 0 {
+                                    // No selection, select first item
+                                    if let Some(signal) = self.selected_rows.as_signal() {
+                                        signal.set(vec![0]);
+                                    }
+                                    if let Some(cb) = &self.on_selection_change {
+                                        update |= cb(vec![0]);
+                                    }
+                                    self.last_selected_index = Some(0);
+                                    update.insert(Update::DRAW);
+                                }
+                            }
+                            NamedKey::ArrowUp => {
+                                // Move selection up
+                                if let Some(&first_selected) = current_selection.first() {
+                                    if first_selected > 0 {
+                                        let new_index = first_selected - 1;
+                                        let mut new_selection = if info.modifiers.shift_key() {
+                                            // Extend selection
+                                            let mut sel = current_selection.clone();
+                                            sel.push(new_index);
+                                            sel
+                                        } else {
+                                            vec![new_index]
+                                        };
+                                        new_selection.sort_unstable();
+                                        new_selection.dedup();
+                                        
+                                        if let Some(signal) = self.selected_rows.as_signal() {
+                                            signal.set(new_selection.clone());
+                                        }
+                                        if let Some(cb) = &self.on_selection_change {
+                                            update |= cb(new_selection);
+                                        }
+                                        self.last_selected_index = Some(new_index);
+                                        update.insert(Update::DRAW);
+                                    }
+                                } else if row_count > 0 {
+                                    // No selection, select last item
+                                    let last_idx = row_count - 1;
+                                    if let Some(signal) = self.selected_rows.as_signal() {
+                                        signal.set(vec![last_idx]);
+                                    }
+                                    if let Some(cb) = &self.on_selection_change {
+                                        update |= cb(vec![last_idx]);
+                                    }
+                                    self.last_selected_index = Some(last_idx);
+                                    update.insert(Update::DRAW);
+                                }
+                            }
+                            NamedKey::Enter => {
+                                // Activate selected item
+                                if let Some(&selected) = current_selection.first() {
+                                    if let Some(cb) = &self.on_activate {
+                                        update |= cb(selected);
+                                    }
+                                }
+                            }
+                            NamedKey::Space => {
+                                // Toggle selection (like Ctrl+click)
+                                if let Some(last_idx) = self.last_selected_index {
+                                    let mut new_selection = current_selection.clone();
+                                    if let Some(pos) = new_selection.iter().position(|&r| r == last_idx) {
+                                        new_selection.remove(pos);
+                                    } else {
+                                        new_selection.push(last_idx);
+                                    }
+                                    new_selection.sort_unstable();
+                                    new_selection.dedup();
+                                    
+                                    if let Some(signal) = self.selected_rows.as_signal() {
+                                        signal.set(new_selection.clone());
+                                    }
+                                    if let Some(cb) = &self.on_selection_change {
+                                        update |= cb(new_selection);
+                                    }
+                                    update.insert(Update::DRAW);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        
         // Handle Mouse Events for Selection
         if let Some(pos) = info.cursor_pos {
             let rect = layout.layout;
