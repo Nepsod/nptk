@@ -36,6 +36,7 @@ pub struct ItemView {
     on_activate: Option<Box<dyn Fn(usize) -> Update + Send + Sync>>,
     sorted_column: MaybeSignal<Option<(usize, SortOrder)>>,
     last_click: Option<(usize, Instant)>,
+    last_selected_index: Option<usize>,
 }
 
 impl ItemView {
@@ -51,6 +52,7 @@ impl ItemView {
             on_activate: None,
             sorted_column: MaybeSignal::value(None),
             last_click: None,
+            last_selected_index: None,
         }
     }
 
@@ -274,8 +276,52 @@ impl ItemView {
                         Brush::Solid(text_color),
                         transform,
                         true,
-                        Some(col_width as f32 - 10.0),
+                        Some(col_width as f32 - 30.0), // Leave space for sort arrow
                     );
+                 
+                 // Draw sort indicator if this column is sorted
+                 if let Some((sorted_col, sort_order)) = self.sorted_column.get().as_ref() {
+                     if *sorted_col == c {
+                         let arrow_x = x + col_width - 15.0;
+                         let arrow_y = layout_node.layout.location.y as f64 + 15.0;
+                         let arrow_size = 4.0;
+                         
+                         // Draw triangle based on sort order
+                         let (p1, p2, p3) = match sort_order {
+                             SortOrder::Ascending => {
+                                 // Upward triangle
+                                 (
+                                     nptk_core::vg::kurbo::Point::new(arrow_x, arrow_y - arrow_size),
+                                     nptk_core::vg::kurbo::Point::new(arrow_x - arrow_size, arrow_y + arrow_size),
+                                     nptk_core::vg::kurbo::Point::new(arrow_x + arrow_size, arrow_y + arrow_size),
+                                 )
+                             }
+                             SortOrder::Descending => {
+                                 // Downward triangle
+                                 (
+                                     nptk_core::vg::kurbo::Point::new(arrow_x, arrow_y + arrow_size),
+                                     nptk_core::vg::kurbo::Point::new(arrow_x - arrow_size, arrow_y - arrow_size),
+                                     nptk_core::vg::kurbo::Point::new(arrow_x + arrow_size, arrow_y - arrow_size),
+                                 )
+                             }
+                         };
+                         
+                         // Create triangle path
+                         let mut path = nptk_core::vg::kurbo::BezPath::new();
+                         path.move_to(p1);
+                         path.line_to(p2);
+                         path.line_to(p3);
+                         path.close_path();
+                         
+                         graphics.fill(
+                             nptk_core::vg::peniko::Fill::NonZero,
+                             Affine::IDENTITY,
+                             &Brush::Solid(text_color),
+                             None,
+                             &path,
+                         );
+                     }
+                 }
              }
              
              // Separator
@@ -453,14 +499,43 @@ impl Widget for ItemView {
                     
                     if let Some(row_index) = row_index {
                         if row_index < self.model.row_count() {
-                            // Select this row
-                            // TODO: Add support for multi-selection (Ctrl/Shift)
-                            // For now, simple single selection or toggle
                             let mut current_selection = self.selected_rows.get().clone();
                             
-                            // Simple clear and select logic for now
-                            current_selection.clear();
-                            current_selection.push(row_index);
+                            // Multi-selection support
+                            if info.modifiers.control_key() {
+                                // Ctrl: Toggle selection
+                                if let Some(pos) = current_selection.iter().position(|&r| r == row_index) {
+                                    current_selection.remove(pos);
+                                } else {
+                                    current_selection.push(row_index);
+                                }
+                                self.last_selected_index = Some(row_index);
+                            } else if info.modifiers.shift_key() {
+                                // Shift: Range selection
+                                if let Some(last_idx) = self.last_selected_index {
+                                    let start = last_idx.min(row_index);
+                                    let end = last_idx.max(row_index);
+                                    current_selection.clear();
+                                    for idx in start..=end {
+                                        if idx < self.model.row_count() {
+                                            current_selection.push(idx);
+                                        }
+                                    }
+                                } else {
+                                    current_selection.clear();
+                                    current_selection.push(row_index);
+                                    self.last_selected_index = Some(row_index);
+                                }
+                            } else {
+                                // Normal click: Single selection
+                                current_selection.clear();
+                                current_selection.push(row_index);
+                                self.last_selected_index = Some(row_index);
+                            }
+                            
+                            // Sort selection for consistency
+                            current_selection.sort_unstable();
+                            current_selection.dedup();
                             
                             if let Some(signal) = self.selected_rows.as_signal() {
                                 signal.set(current_selection.clone());
