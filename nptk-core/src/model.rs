@@ -17,6 +17,13 @@ pub enum ItemRole {
     User(u32),
 }
 
+/// Sort order for sorting operations
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortOrder {
+    Ascending,
+    Descending,
+}
+
 /// Generic data variant for model data
 #[derive(Debug, Clone)]
 pub enum ModelData {
@@ -66,6 +73,11 @@ pub trait ItemModel: Send + Sync {
     /// or the Model exposes a signal.
     fn on_update(&self) -> Option<StateSignal<()>> {
        None 
+    }
+
+    /// Sort the model data
+    fn sort(&self, _column: usize, _order: SortOrder) {
+        // Default implementation does nothing
     }
 }
 

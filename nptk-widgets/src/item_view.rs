@@ -1,7 +1,8 @@
 use std::sync::Arc;
+use std::time::{Instant, Duration};
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::layout::{LayoutNode, StyleNode, LayoutStyle, Dimension};
-use nptk_core::model::{ItemModel, ItemRole, ModelData, Orientation};
+use nptk_core::model::{ItemModel, ItemRole, ModelData, Orientation, SortOrder};
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
@@ -21,29 +22,46 @@ pub enum ViewMode {
     List,
     Icon,
     Table,
+    Compact,
 }
 
 pub struct ItemView {
     model: Arc<dyn ItemModel>,
-    view_mode: ViewMode,
+    view_mode: MaybeSignal<ViewMode>,
     layout_style: MaybeSignal<LayoutStyle>,
     item_height: f32,
     text_context: TextRenderContext,
     selected_rows: MaybeSignal<Vec<usize>>,
     on_selection_change: Option<Box<dyn Fn(Vec<usize>) -> Update + Send + Sync>>,
+    on_activate: Option<Box<dyn Fn(usize) -> Update + Send + Sync>>,
+    sorted_column: MaybeSignal<Option<(usize, SortOrder)>>,
+    last_click: Option<(usize, Instant)>,
 }
 
 impl ItemView {
     pub fn new(model: Arc<dyn ItemModel>) -> Self {
         Self {
             model,
-            view_mode: ViewMode::List,
+            view_mode: MaybeSignal::value(ViewMode::List),
             layout_style: Default::default(),
             item_height: 30.0,
             text_context: TextRenderContext::new(),
             selected_rows: MaybeSignal::signal(Box::new(StateSignal::new(Vec::new()))),
             on_selection_change: None,
+            on_activate: None,
+            sorted_column: MaybeSignal::value(None),
+            last_click: None,
         }
+    }
+
+    pub fn with_on_activate(mut self, callback: impl Fn(usize) -> Update + Send + Sync + 'static) -> Self {
+        self.on_activate = Some(Box::new(callback));
+        self
+    }
+
+    pub fn with_sorted_column(mut self, signal: impl Into<MaybeSignal<Option<(usize, SortOrder)>>>) -> Self {
+        self.sorted_column = signal.into();
+        self
     }
     
     pub fn with_selected_rows(mut self, signal: impl Into<MaybeSignal<Vec<usize>>>) -> Self {
@@ -58,8 +76,8 @@ impl ItemView {
         self
     }
 
-    pub fn with_view_mode(mut self, mode: ViewMode) -> Self {
-        self.view_mode = mode;
+    pub fn with_view_mode(mut self, mode: impl Into<MaybeSignal<ViewMode>>) -> Self {
+        self.view_mode = mode.into();
         self
     }
     
@@ -128,6 +146,89 @@ impl ItemView {
          }
     }
 
+    fn render_icon(&mut self, graphics: &mut dyn Graphics, layout_node: &LayoutNode, info: &mut AppInfo, context: &AppContext) {
+         let rows = self.model.row_count();
+         let start_x = layout_node.layout.location.x;
+         let start_y = layout_node.layout.location.y;
+         let width = layout_node.layout.size.width;
+         
+         let item_width = 100.0; // TODO: Configurable
+         let item_height = 100.0;
+         
+         let cols = (width / item_width).floor() as usize;
+         let cols = cols.max(1);
+         
+         let palette = context.palette();
+         
+         for i in 0..rows {
+             let is_selected = self.selected_rows.get().contains(&i);
+             
+             let row = i / cols;
+             let col = i % cols;
+             
+             let x = start_x + (col as f32 * item_width);
+             let y = start_y + (row as f32 * item_height);
+             
+             // Culling
+             if y > start_y + layout_node.layout.size.height {
+                 break;
+             }
+             if y + item_height < start_y {
+                 continue;
+             }
+             
+             let item_rect = Rect::new(
+                 x as f64,
+                 y as f64,
+                 (x + item_width) as f64,
+                 (y + item_height) as f64
+             );
+
+            // Selection background
+            if is_selected {
+                let selection_color = palette.color(ColorRole::Selection);
+                let rounded = nptk_core::vg::kurbo::RoundedRect::new(item_rect.x0, item_rect.y0, item_rect.x1, item_rect.y1, 4.0);
+                graphics.fill(
+                     nptk_core::vg::peniko::Fill::NonZero,
+                     Affine::IDENTITY,
+                     &Brush::Solid(selection_color),
+                     None,
+                     &Self::shape_to_path(&rounded)
+                );
+            }
+
+             // Icon
+             /*
+             if let ModelData::Icon(_icon) = self.model.data(i, 0, ItemRole::Icon) {
+                 // Draw Icon centered
+                // Placeholder for icon drawing logic (needs generic icon rendering which depends on backend)
+                // For now, draw a rect or skip
+             }
+             */
+             
+             // Text
+             if let ModelData::String(text) = self.model.data(i, 0, ItemRole::Display) {
+                 let text_brush = Brush::Solid(palette.color(ColorRole::WindowText));
+                 self.text_context.render_text(
+                     &mut info.font_context,
+                     graphics,
+                     &text,
+                     None,
+                     12.0,
+                     text_brush,
+                     Affine::translate((x as f64 + 5.0, y as f64 + 70.0)), // Text at bottom
+                     true,
+                     Some((item_width - 10.0) as f32)
+                 );
+             }
+         }
+    }
+    
+    // Helper to avoid duplicate shape_to_path logic if not available elsewhere
+    fn shape_to_path(shape: &impl Shape) -> nptk_core::vg::peniko::kurbo::BezPath {
+        shape.path_elements(0.1).collect()
+    }
+    
     fn render_table(&mut self, graphics: &mut dyn Graphics, layout_node: &LayoutNode, info: &mut AppInfo, context: &AppContext) {
          let rows = self.model.row_count();
          let cols = self.model.column_count();
@@ -277,15 +378,80 @@ impl Widget for ItemView {
                 // Check for clicks
                 let left_click = info.buttons.iter().any(|(_, btn, state)| *btn == MouseButton::Left && *state == ElementState::Pressed);
                 if left_click {
+                    // Check for header click in Table mode
+                    if *self.view_mode.get() == ViewMode::Table {
+                        let local_y = pos.y - (layout.layout.location.y as f64);
+                        if local_y < 30.0 {
+                            // Header click
+                            let cols = self.model.column_count();
+                            let col_width = (layout.layout.size.width / cols as f32) as f64;
+                            let local_x = pos.x - (layout.layout.location.x as f64);
+                            
+                            let clicked_col = (local_x / col_width).floor() as usize;
+                            if clicked_col < cols {
+                                // Toggle sort
+                                let new_order = if let Some((current_col, current_order)) = self.sorted_column.get().as_ref() {
+                                    if *current_col == clicked_col {
+                                        match current_order {
+                                            SortOrder::Ascending => SortOrder::Descending,
+                                            SortOrder::Descending => SortOrder::Ascending,
+                                        }
+                                    } else {
+                                        SortOrder::Ascending
+                                    }
+                                } else {
+                                    SortOrder::Ascending
+                                };
+                                
+                                // Update model (generic model needs to support sorting)
+                                self.model.sort(clicked_col, new_order);
+                                
+                                // Update state
+                                if let Some(signal) = self.sorted_column.as_signal() {
+                                    signal.set(Some((clicked_col, new_order)));
+                                }
+                                
+                                update.insert(Update::DRAW);
+                                return update;
+                            }
+                        }
+                    }
+
                     // Calculate clicked row
-                     let item_y = if self.view_mode == ViewMode::Table {
+                     let item_y = if *self.view_mode.get() == ViewMode::Table {
                         pos.y - (layout.layout.location.y as f64) - 30.0 // Minus header
                     } else {
                         pos.y - (layout.layout.location.y as f64)
                     };
                     
-                    if item_y >= 0.0 {
-                        let row_index = (item_y / self.item_height as f64).floor() as usize;
+                    let row_index = if *self.view_mode.get() == ViewMode::Icon {
+                         let item_width = 100.0;
+                         let item_height = 100.0;
+                         let width = layout.layout.size.width as f64;
+                         let cols = (width / item_width).floor() as usize;
+                         let cols = cols.max(1);
+                         
+                         let local_x = pos.x - (layout.layout.location.x as f64);
+                         let local_y = pos.y - (layout.layout.location.y as f64);
+                         
+                         if local_x >= 0.0 && local_y >= 0.0 {
+                             let row = (local_y / item_height).floor() as usize;
+                             let col = (local_x / item_width).floor() as usize;
+                             if col < cols {
+                                 Some(row * cols + col)
+                             } else {
+                                 None
+                             }
+                         } else {
+                             None
+                         }
+                    } else if item_y >= 0.0 {
+                        Some((item_y / self.item_height as f64).floor() as usize)
+                    } else {
+                        None
+                    };
+                    
+                    if let Some(row_index) = row_index {
                         if row_index < self.model.row_count() {
                             // Select this row
                             // TODO: Add support for multi-selection (Ctrl/Shift)
@@ -302,6 +468,21 @@ impl Widget for ItemView {
                             
                             if let Some(cb) = &self.on_selection_change {
                                 update |= cb(current_selection);
+                            }
+                            
+                            // Check for activation (double click)
+                            let now = Instant::now();
+                            if let Some((last_row, last_time)) = self.last_click {
+                                if last_row == row_index && now.duration_since(last_time) < Duration::from_millis(500) {
+                                    if let Some(cb) = &self.on_activate {
+                                         update |= cb(row_index);
+                                    }
+                                    self.last_click = None; // Reset
+                                } else {
+                                    self.last_click = Some((row_index, now));
+                                }
+                            } else {
+                                self.last_click = Some((row_index, now));
                             }
                             
                             update.insert(Update::DRAW);
@@ -346,10 +527,12 @@ impl Widget for ItemView {
         );
 
         // Render based on mode
-        match self.view_mode {
+        let view_mode = *self.view_mode.get();
+        match view_mode {
             ViewMode::List => self.render_list(graphics, layout, info, &context),
             ViewMode::Table => self.render_table(graphics, layout, info, &context),
-            _ => self.render_list(graphics, layout, info, &context), // Fallback
+            ViewMode::Icon => self.render_icon(graphics, layout, info, &context),
+            ViewMode::Compact => self.render_list(graphics, layout, info, &context), // Fallback to list for now
         }
     }
 }

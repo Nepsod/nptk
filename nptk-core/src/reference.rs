@@ -7,6 +7,7 @@ use std::sync::{Arc, RwLockReadGuard};
 /// Due to Rust's temporal borrowing rules,
 /// returning a reference to a value may not be always possible,
 /// so this enum is used to represent one by having multiple variants for multiple types of references.
+#[derive(Debug)]
 pub enum Ref<'a, T> {
     /// An owned value. Useful for [Copy] types.
     Owned(T),

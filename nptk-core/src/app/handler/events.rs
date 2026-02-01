@@ -292,9 +292,17 @@ where
                                     } else {
                                         // Execute action
                                         // Note: We need a way to route commands - for now use item.action
-                                        if let Some(ref action) = item.action {
-                                            action();
+                                        
+                                        // Trigger bound action if present
+                                        if let Some(ref action) = item.bound_action {
+                                            self.update.insert(action.trigger());
                                         }
+                                        
+                                        // Trigger legacy callback if present
+                                        if let Some(ref action) = item.action {
+                                            self.update.insert(action());
+                                        }
+                                        
                                         context.menu_manager.close();
                                         self.update.insert(Update::DRAW);
                                         return;

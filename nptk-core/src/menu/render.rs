@@ -7,6 +7,7 @@ use crate::app::font_ctx::FontContext;
 use crate::menu::constants::*;
 use crate::menu::theme::MenuThemeColors;
 use crate::menu::unified::{MenuTemplate, MenuItem};
+use crate::signal::Signal;
 use crate::text_render::TextRenderContext;
 use crate::vgi::Graphics;
 use crate::vgi::shape_to_path;
@@ -78,10 +79,17 @@ pub fn calculate_menu_size(
     let mut max_total_width: f64 = MIN_WIDTH;
     for item in items {
         if !item.is_separator() {
+            // Use action label if bound, otherwise item label
+            let label = if let Some(ref action) = item.bound_action {
+                action.text.get().clone()
+            } else {
+                item.label.clone()
+            };
+
             // Measure actual text width using text renderer
             let (text_width, _) = text_render.measure_text_layout(
                 font_cx,
-                &item.label,
+                &label,
                 None,
                 FONT_SIZE as f32,
                 None,
@@ -89,7 +97,14 @@ pub fn calculate_menu_size(
             let text_width = text_width as f64;
 
             // Calculate shortcut width if present
-            let shortcut_width: f64 = if let Some(ref shortcut) = item.shortcut {
+            // Priority: Action shortcut > Item shortcut
+            let shortcut_opt = if let Some(ref action) = item.bound_action {
+                action.shortcut.get().clone()
+            } else {
+                item.shortcut.clone()
+            };
+
+            let shortcut_width: f64 = if let Some(ref shortcut) = shortcut_opt {
                 let (sw, _) = text_render.measure_text_layout(
                     font_cx,
                     shortcut,
@@ -113,8 +128,15 @@ pub fn calculate_menu_size(
                 + shortcut_width
                 + SHORTCUT_RIGHT_PADDING;
 
+
             // Add space for submenu arrow or checkmark
-            if item.has_submenu() || item.checked {
+            let is_checked = if let Some(ref action) = item.bound_action {
+                *action.checked.get()
+            } else {
+                item.checked
+            };
+            
+            if item.has_submenu() || is_checked {
                 total_width += crate::menu::constants::CHECKMARK_ARROW_WIDTH;
             }
 
@@ -211,11 +233,23 @@ fn render_menu_item_content(
     text_color: Color,
     disabled_color: Color,
 ) {
+    let is_checked = if let Some(ref action) = item.bound_action {
+        *action.checked.get()
+    } else {
+        item.checked
+    };
+    
+    let is_enabled = if let Some(ref action) = item.bound_action {
+        *action.enabled.get()
+    } else {
+        item.enabled
+    };
+
     // Draw checkmark if checked
-    if item.checked {
+    if is_checked {
         let check_x = rect.x0 + ITEM_TEXT_X_OFFSET;
         let check_y = current_y + ITEM_HEIGHT / 2.0;
-        let check_color = if item.enabled { text_color } else { disabled_color };
+        let check_color = if is_enabled { text_color } else { disabled_color };
         graphics.stroke(
             &vello::kurbo::Stroke::new(1.5),
             Affine::IDENTITY,
@@ -239,15 +273,21 @@ fn render_menu_item_content(
     }
 
     // Draw text
-    let item_text_color = if item.enabled { text_color } else { disabled_color };
-    let checkmark_offset = if item.checked { crate::menu::constants::CHECKMARK_ARROW_WIDTH } else { 0.0 };
+    let item_text_color = if is_enabled { text_color } else { disabled_color };
+    let checkmark_offset = if is_checked { crate::menu::constants::CHECKMARK_ARROW_WIDTH } else { 0.0 };
     let text_x = rect.x0 + TEXT_PADDING + checkmark_offset;
     let text_y = current_y + crate::menu::constants::TEXT_Y_OFFSET;
+    
+    let label = if let Some(ref action) = item.bound_action {
+        action.text.get().clone()
+    } else {
+        item.label.clone()
+    };
 
     text_render.render_text(
         font_cx,
         graphics,
-        &item.label,
+        &label,
         None,
         FONT_SIZE as f32,
         Brush::Solid(item_text_color),
@@ -257,7 +297,13 @@ fn render_menu_item_content(
     );
 
     // Draw shortcut if present
-    if let Some(ref shortcut) = item.shortcut {
+    let shortcut_opt = if let Some(ref action) = item.bound_action {
+        action.shortcut.get().clone()
+    } else {
+        item.shortcut.clone()
+    };
+
+    if let Some(ref shortcut) = shortcut_opt {
         let shortcut_x = rect.x1 - SHORTCUT_RIGHT_PADDING - (shortcut.len() as f64 * SHORTCUT_CHAR_WIDTH);
         text_render.render_text(
             font_cx,
@@ -276,7 +322,7 @@ fn render_menu_item_content(
     if item.has_submenu() {
         let arrow_x = rect.x1 - ARROW_X_OFFSET;
         let arrow_y = current_y + ITEM_HEIGHT / 2.0;
-        let arrow_color = if item.enabled { text_color } else { disabled_color };
+        let arrow_color = if is_enabled { text_color } else { disabled_color };
 
         graphics.stroke(
             &vello::kurbo::Stroke::new(1.0),
@@ -321,7 +367,13 @@ fn render_menu_item(
     border_color: Color,
 ) {
     // Draw hover background
-    if is_hovered && item.enabled && !item.is_separator() {
+    let is_enabled = if let Some(ref action) = item.bound_action {
+        *action.enabled.get()
+    } else {
+        item.enabled
+    };
+
+    if is_hovered && is_enabled && !item.is_separator() {
         let item_rounded = RoundedRect::new(
             item_rect.x0 + ITEM_BG_MARGIN,
             item_rect.y0,
@@ -342,7 +394,7 @@ fn render_menu_item(
         render_separator(graphics, menu_rect, current_y, border_color);
     } else {
         // Use hovered_text_color when hovered and enabled
-        let effective_text_color = if is_hovered && item.enabled {
+        let effective_text_color = if is_hovered && is_enabled {
             hovered_text_color
         } else {
             text_color

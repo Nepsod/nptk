@@ -5,6 +5,8 @@
 
 use crate::app::update::Update;
 use crate::menu::commands::MenuCommand;
+use crate::action::Action;
+use crate::signal::Signal;
 use std::sync::Arc;
 
 /// Unified menu item that can be used in both menubar and context menus.
@@ -26,6 +28,8 @@ pub struct MenuItem {
     pub submenu: Option<MenuTemplate>,
     /// Callback function to execute when the menu item is activated
     pub action: Option<Arc<dyn Fn() -> Update + Send + Sync>>,
+    /// Bound action (replaces static properties if present)
+    pub bound_action: Option<Action>,
 }
 
 impl MenuItem {
@@ -40,6 +44,7 @@ impl MenuItem {
             checked: false,
             submenu: None,
             action: None,
+            bound_action: None,
         }
     }
 
@@ -54,12 +59,36 @@ impl MenuItem {
             checked: false,
             submenu: None,
             action: None,
+            bound_action: None,
         }
     }
 
     /// Check if this is a separator
     pub fn is_separator(&self) -> bool {
         self.label.trim() == "---" || matches!(self.id, MenuCommand::Custom(0xFFFF))
+    }
+
+    /// Create a menu item from an Action
+    pub fn from_action(action: Action) -> Self {
+        let label = action.text.get().clone();
+        let shortcut = action.shortcut.get().clone();
+        let status_tip = action.status_tip.get().clone();
+        let enabled = *action.enabled.get();
+        let checked = *action.checked.get();
+
+        // Since action properties are reactive, we take initial values here.
+        // The renderer checks the action state directly.
+        Self {
+            id: MenuCommand::Custom(0), // Placeholder
+            label, 
+            shortcut,
+            status_tip,
+            enabled,
+            checked,
+            submenu: None,
+            action: None,
+            bound_action: Some(action),
+        }
     }
 
     /// Set the keyboard shortcut
