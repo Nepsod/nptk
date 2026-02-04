@@ -621,11 +621,11 @@ impl Widget for ItemView {
                     } else {
                         None
                     };
-                    
-                    if let Some(row_index) = row_index {
-                        if row_index < self.model.row_count() {
-                            let mut current_selection = self.selected_rows.get().clone();
-                            
+                     
+                     if let Some(row_index) = row_index {
+                         if row_index < self.model.row_count() {
+                             let mut current_selection = self.selected_rows.get().clone();
+                             
                             // Multi-selection support
                             if info.modifiers.control_key() {
                                 // Ctrl: Toggle selection
