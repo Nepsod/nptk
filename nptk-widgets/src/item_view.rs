@@ -128,10 +128,25 @@ impl ItemView {
                 );
             }
             
+             // Draw Icon
+             let mut text_offset = 5.0;
+             let icon_size = 16.0;
+
+             if let ModelData::String(icon_name) = self.model.data(i, 0, ItemRole::Icon) {
+                 let icon_rect = Rect::new(
+                     row_rect.x0 + 5.0,
+                     row_rect.y0 + (self.item_height as f64 - icon_size) / 2.0,
+                     row_rect.x0 + 5.0 + icon_size,
+                     row_rect.y0 + (self.item_height as f64 + icon_size) / 2.0
+                 );
+                 self.draw_icon(graphics, &icon_name, icon_rect, &palette);
+                 text_offset += icon_size + 5.0;
+             }
+            
             let text_data = self.model.data(i, 0, ItemRole::Display);
             if let ModelData::String(text) = text_data {
                 let text_color = palette.color(ColorRole::BaseText);
-                let transform = Affine::translate((row_rect.x0 + 5.0, row_rect.y0 + 5.0));
+                let transform = Affine::translate((row_rect.x0 + text_offset, row_rect.y0 + 5.0));
                 
                  self.text_context.render_text(
                     &mut info.font_context,
@@ -142,7 +157,7 @@ impl ItemView {
                     Brush::Solid(text_color),
                     transform,
                     true,
-                    Some(row_rect.width() as f32 - 10.0),
+                    Some(row_rect.width() as f32 - text_offset as f32 - 5.0),
                 );
             }
             
@@ -202,13 +217,20 @@ impl ItemView {
             }
 
              // Icon
-             /*
-             if let ModelData::Icon(_icon) = self.model.data(i, 0, ItemRole::Icon) {
+             if let ModelData::String(icon_name) = self.model.data(i, 0, ItemRole::Icon) {
                  // Draw Icon centered
-                // Placeholder for icon drawing logic (needs generic icon rendering which depends on backend)
-                // For now, draw a rect or skip
+                 let icon_size = 48.0;
+                 let icon_x = x + (item_width - icon_size) / 2.0;
+                 let icon_y = y + (item_height - icon_size) / 2.0 - 10.0; // Slightly up to leave room for text
+                 
+                 let icon_rect = Rect::new(
+                     icon_x as f64,
+                     icon_y as f64,
+                     (icon_x + icon_size) as f64,
+                     (icon_y + icon_size) as f64
+                 );
+                 self.draw_icon(graphics, &icon_name, icon_rect, &palette);
              }
-             */
              
              // Text
              if let ModelData::String(text) = self.model.data(i, 0, ItemRole::Display) {
@@ -227,7 +249,7 @@ impl ItemView {
              }
          }
     }
-    
+
     // Helper to avoid duplicate shape_to_path logic if not available elsewhere
     fn shape_to_path(shape: &impl Shape) -> nptk_core::vg::peniko::kurbo::BezPath {
         shape.path_elements(0.1).collect()
@@ -381,10 +403,25 @@ impl ItemView {
                  );
                  
                   // Fetch data
+                 let mut text_offset = 5.0;
+                 let icon_size = 16.0;
+
+                 // Draw Icon
+                 if let ModelData::String(icon_name) = self.model.data(i, c, ItemRole::Icon) {
+                     let icon_rect = Rect::new(
+                         x + 5.0,
+                         y as f64 + (self.item_height as f64 - icon_size) / 2.0,
+                         x + 5.0 + icon_size,
+                         y as f64 + (self.item_height as f64 + icon_size) / 2.0
+                     );
+                     self.draw_icon(graphics, &icon_name, icon_rect, &palette);
+                     text_offset += icon_size + 5.0;
+                 }
+                
                 let text_data = self.model.data(i, c, ItemRole::Display);
                 if let ModelData::String(text) = text_data {
                     let text_color = palette.color(ColorRole::BaseText);
-                    let transform = Affine::translate((cell_rect.x0 + 5.0, cell_rect.y0 + 5.0));
+                    let transform = Affine::translate((cell_rect.x0 + text_offset, cell_rect.y0 + 5.0));
                     
                      self.text_context.render_text(
                         &mut info.font_context,
@@ -395,7 +432,7 @@ impl ItemView {
                         Brush::Solid(text_color),
                         transform,
                         true,
-                        Some(cell_rect.width() as f32 - 10.0),
+                        Some(cell_rect.width() as f32 - text_offset as f32 - 5.0),
                     );
                 }
             }
@@ -404,6 +441,72 @@ impl ItemView {
          }
     }
 
+
+    fn draw_icon(&self, graphics: &mut dyn Graphics, name: &str, rect: Rect, palette: &Palette) {
+        use nptk_core::vg::kurbo::{BezPath, Point, Stroke};
+        
+        let color = if name == "directory" {
+             // Folder color (yellow-ish/orange)
+             nptk_core::vg::peniko::Color::from_rgb8(240, 180, 60)
+        } else {
+             // File color (white/gray)
+             palette.color(ColorRole::BaseText).with_alpha(0.7)
+        };
+        
+        let icon_path = if name == "directory" {
+             // Draw folder shape
+             let mut path = BezPath::new();
+             let w = rect.width();
+             let h = rect.height();
+             let x = rect.x0;
+             let y = rect.y0;
+             
+             path.move_to(Point::new(x, y + h * 0.15));
+             path.line_to(Point::new(x + w * 0.4, y + h * 0.15));
+             path.line_to(Point::new(x + w * 0.5, y));
+             path.line_to(Point::new(x + w, y));
+             path.line_to(Point::new(x + w, y + h));
+             path.line_to(Point::new(x, y + h));
+             path.close_path();
+             path
+        } else {
+             // Draw file shape
+             let mut path = BezPath::new();
+             let w = rect.width() * 0.8; // Make file slighty narrower
+             let h = rect.height();
+             let x = rect.x0 + (rect.width() - w) / 2.0;
+             let y = rect.y0;
+             
+             path.move_to(Point::new(x, y));
+             path.line_to(Point::new(x + w * 0.7, y));
+             path.line_to(Point::new(x + w, y + h * 0.25));
+             path.line_to(Point::new(x + w, y + h));
+             path.line_to(Point::new(x, y + h));
+             path.close_path();
+             // Fold corner
+             path.move_to(Point::new(x + w * 0.7, y));
+             path.line_to(Point::new(x + w * 0.7, y + h * 0.25));
+             path.line_to(Point::new(x + w, y + h * 0.25));
+             path
+        };
+        
+        graphics.fill(
+             nptk_core::vg::peniko::Fill::NonZero,
+             Affine::IDENTITY,
+             &Brush::Solid(color),
+             None,
+             &icon_path
+        );
+        
+        // Stroke
+        graphics.stroke(
+            &Stroke::new(1.0),
+            Affine::IDENTITY,
+            &Brush::Solid(palette.color(ColorRole::WindowText).with_alpha(0.3)),
+            None,
+            &icon_path
+        );
+    }
 
     fn render_compact(&mut self, graphics: &mut dyn Graphics, layout_node: &LayoutNode, info: &mut AppInfo, context: &AppContext) {
          // Re-use list rendering for now
@@ -424,8 +527,9 @@ impl Widget for ItemView {
     async fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
         
-        let mode = *self.view_mode.get();
-        // eprintln!("ItemView::update: mode={:?}", mode);
+        let _mode = *self.view_mode.get(); // Kept for logic if needed, but unused error suggests removing or prefixing
+        // Actually, just prefix it
+        let _mode = *self.view_mode.get();
 
         
         // Handle Keyboard Events for Navigation
