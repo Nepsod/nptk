@@ -37,6 +37,7 @@ pub struct ItemView {
     sorted_column: MaybeSignal<Option<(usize, SortOrder)>>,
     last_click: Option<(usize, Instant)>,
     last_selected_index: Option<usize>,
+    was_left_down: bool,
 }
 
 impl ItemView {
@@ -53,6 +54,7 @@ impl ItemView {
             sorted_column: MaybeSignal::value(None),
             last_click: None,
             last_selected_index: None,
+            was_left_down: false,
         }
     }
 
@@ -401,6 +403,12 @@ impl ItemView {
             y += self.item_height;
          }
     }
+
+
+    fn render_compact(&mut self, graphics: &mut dyn Graphics, layout_node: &LayoutNode, info: &mut AppInfo, context: &AppContext) {
+         // Re-use list rendering for now
+         self.render_list(graphics, layout_node, info, context);
+    }
 }
 
 #[async_trait(?Send)]
@@ -413,8 +421,12 @@ impl Widget for ItemView {
         }
     }
 
-    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
+        
+        let mode = *self.view_mode.get();
+        // eprintln!("ItemView::update: mode={:?}", mode);
+
         
         // Handle Keyboard Events for Navigation
         for (_, key_event) in &info.keys {
@@ -547,7 +559,14 @@ impl Widget for ItemView {
             if pos.x >= rect.location.x as f64 && pos.x <= (rect.location.x + rect.size.width) as f64 &&
                pos.y >= rect.location.y as f64 && pos.y <= (rect.location.y + rect.size.height) as f64 {
                 // Check for clicks
-                let left_click = info.buttons.iter().any(|(_, btn, state)| *btn == MouseButton::Left && *state == ElementState::Pressed);
+                let left_click_current = info.buttons.iter().any(|(_, btn, state)| *btn == MouseButton::Left && *state == ElementState::Pressed);
+                
+                // Only trigger if pressed NOW and NOT pressed BEFORE (Edge detection)
+                let left_click = left_click_current && !self.was_left_down;
+                
+                // Update state for next frame
+                self.was_left_down = left_click_current;
+
                 if left_click {
                     // Check for header click in Table mode
                     if *self.view_mode.get() == ViewMode::Table {
@@ -727,12 +746,14 @@ impl Widget for ItemView {
         );
 
         // Render based on mode
-        let view_mode = *self.view_mode.get();
-        match view_mode {
+        let mode = *self.view_mode.get();
+        // eprintln!("ItemView::render: mode={:?}", mode);
+        
+        match mode {
             ViewMode::List => self.render_list(graphics, layout, info, &context),
-            ViewMode::Table => self.render_table(graphics, layout, info, &context),
             ViewMode::Icon => self.render_icon(graphics, layout, info, &context),
-            ViewMode::Compact => self.render_list(graphics, layout, info, &context), // Fallback to list for now
+            ViewMode::Compact => self.render_compact(graphics, layout, info, &context),
+            ViewMode::Table => self.render_table(graphics, layout, info, &context),
         }
     }
 }
@@ -742,3 +763,5 @@ impl WidgetLayoutExt for ItemView {
         self.layout_style = layout_style.into();
     }
 }
+
+
