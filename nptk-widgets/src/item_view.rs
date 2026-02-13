@@ -8,7 +8,8 @@ use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::vgi::{Graphics};
 use nptk_core::vg::peniko::{Brush, Color};
-use nptk_core::vg::kurbo::{Rect, Affine, Shape};
+use nptk_core::vg::kurbo::{Rect, Affine, Shape, Point};
+use nalgebra::Vector2;
 use nptk_core::text_render::TextRenderContext;
 use async_trait::async_trait;
 use nptk_core::signal::MaybeSignal;
@@ -40,6 +41,7 @@ pub struct ItemView {
     last_click: Option<(usize, Instant)>,
     last_selected_index: Option<usize>,
     was_left_down: bool,
+    on_context_menu: Option<Box<dyn Fn(usize, Vector2<f64>, AppContext) -> Update + Send + Sync>>,
 }
 
 impl ItemView {
@@ -57,7 +59,15 @@ impl ItemView {
             last_click: None,
             last_selected_index: None,
             was_left_down: false,
+            on_context_menu: None,
         }
+    }
+
+    pub fn with_on_context_menu<F>(mut self, callback: F) -> Self 
+    where F: Fn(usize, Vector2<f64>, AppContext) -> Update + Send + Sync + 'static 
+    {
+        self.on_context_menu = Some(Box::new(callback));
+        self
     }
 
     pub fn with_on_activate(mut self, callback: impl Fn(usize) -> Update + Send + Sync + 'static) -> Self {
@@ -526,7 +536,7 @@ impl Widget for ItemView {
         }
     }
 
-    async fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
         
         let mode = *self.view_mode.get();
@@ -731,6 +741,71 @@ impl Widget for ItemView {
                 
                 // Update state for next frame
                 self.was_left_down = left_click_current;
+
+                // Handle Right Click (Context Menu)
+                let is_right_clicked = info.buttons.iter().any(|(_, btn, state)| *btn == MouseButton::Right && *state == ElementState::Pressed);
+                
+                if is_right_clicked {
+                     // Find item under cursor
+                     let mode = *self.view_mode.get();
+                     let row_height = self.item_height as f64;
+                     let header_height = if mode == ViewMode::Table { 30.0 } else { 0.0 };
+                     
+                     let local_y = pos.y - layout.layout.location.y as f64;
+                     let local_x = pos.x - layout.layout.location.x as f64;
+                     
+                     // Reuse logic to find item index
+                     let clicked_index = if mode == ViewMode::Icon {
+                            let item_width = GRID_ITEM_SIZE;
+                            let item_height = GRID_ITEM_SIZE;
+                            let width = layout.layout.size.width as f64;
+                            let cols = (width / item_width).floor().max(1.0) as usize;
+                            
+                            let col = (local_x / item_width).floor() as usize;
+                            let row = (local_y / item_height).floor() as usize;
+                            
+                            if col < cols {
+                                let idx = row * cols + col;
+                                 if idx < self.model.row_count() {
+                                     Some(idx)
+                                 } else {
+                                     None
+                                 }
+                            } else {
+                                None
+                            }
+                     } else {
+                         if local_y >= header_height {
+                             let index = ((local_y - header_height) / row_height).floor() as usize;
+                             if index < self.model.row_count() {
+                                 Some(index)
+                             } else {
+                                 None
+                             }
+                         } else {
+                             None
+                         }
+                     };
+
+                     if let Some(index) = clicked_index {
+                         // Select item if not already selected (right click usually selects)
+                         let current_selection = (*self.selected_rows.get()).clone();
+                         if !current_selection.contains(&index) {
+                                if let Some(signal) = self.selected_rows.as_signal() {
+                                    signal.set(vec![index]);
+                                }
+                                if let Some(cb) = &self.on_selection_change {
+                                    update |= cb(vec![index]);
+                                }
+                                update.insert(Update::DRAW);
+                         }
+                         
+                         // Trigger context menu callback
+                         if let Some(cb) = &self.on_context_menu {
+                             update |= cb(index, info.cursor_pos.unwrap_or(Vector2::new(0.0, 0.0)), context.clone());
+                         }
+                     }
+                }
 
                 if left_click {
                     // Check for header click in Table mode
