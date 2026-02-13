@@ -16,6 +16,8 @@ use nptk_core::signal::state::StateSignal;
 use nptk_core::theme::{Palette, ColorRole};
 use nptk_core::window::{MouseButton, ElementState};
 
+const GRID_ITEM_SIZE: f64 = 100.0;
+
 /// View mode for the ItemView
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewMode {
@@ -171,8 +173,8 @@ impl ItemView {
          let start_y = layout_node.layout.location.y;
          let width = layout_node.layout.size.width;
          
-         let item_width = 100.0; // TODO: Configurable
-         let item_height = 100.0;
+         let item_width = GRID_ITEM_SIZE as f32;
+         let item_height = GRID_ITEM_SIZE as f32;
          
          let cols = (width / item_width).floor() as usize;
          let cols = cols.max(1);
@@ -527,9 +529,14 @@ impl Widget for ItemView {
     async fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
         
-        let _mode = *self.view_mode.get(); // Kept for logic if needed, but unused error suggests removing or prefixing
-        // Actually, just prefix it
-        let _mode = *self.view_mode.get();
+        let mode = *self.view_mode.get();
+        
+        let columns = if mode == ViewMode::Icon {
+            let width = layout.layout.size.width as f64;
+            (width / GRID_ITEM_SIZE).floor().max(1.0) as usize
+        } else {
+            1
+        };
 
         
         // Handle Keyboard Events for Navigation
@@ -548,10 +555,12 @@ impl Widget for ItemView {
                             NamedKey::ArrowDown => {
                                 // Move selection down
                                 if let Some(&last_selected) = current_selection.last() {
-                                    if last_selected + 1 < row_count {
-                                        let new_index = last_selected + 1;
+                                    if last_selected + columns < row_count {
+                                        let new_index = last_selected + columns;
                                         let mut new_selection = if info.modifiers.shift_key() {
-                                            // Extend selection
+                                            // Extend selection (not perfect for grid, but standard for list)
+                                            // For grid shift-selection, usually selects range or rectangle. 
+                                            // NPTK simple list selection is range driven.
                                             let mut sel = current_selection.clone();
                                             sel.push(new_index);
                                             sel
@@ -585,8 +594,8 @@ impl Widget for ItemView {
                             NamedKey::ArrowUp => {
                                 // Move selection up
                                 if let Some(&first_selected) = current_selection.first() {
-                                    if first_selected > 0 {
-                                        let new_index = first_selected - 1;
+                                    if first_selected >= columns {
+                                        let new_index = first_selected - columns;
                                         let mut new_selection = if info.modifiers.shift_key() {
                                             // Extend selection
                                             let mut sel = current_selection.clone();
@@ -618,6 +627,58 @@ impl Widget for ItemView {
                                     }
                                     self.last_selected_index = Some(last_idx);
                                     update.insert(Update::DRAW);
+                                }
+                            }
+                            NamedKey::ArrowRight => {
+                                // Move selection next (only relevant for Grid, or just +1)
+                                if let Some(&last_selected) = current_selection.last() {
+                                    if last_selected + 1 < row_count {
+                                        let new_index = last_selected + 1;
+                                        let mut new_selection = if info.modifiers.shift_key() {
+                                            let mut sel = current_selection.clone();
+                                            sel.push(new_index);
+                                            sel
+                                        } else {
+                                            vec![new_index]
+                                        };
+                                        new_selection.sort_unstable();
+                                        new_selection.dedup();
+                                        
+                                        if let Some(signal) = self.selected_rows.as_signal() {
+                                            signal.set(new_selection.clone());
+                                        }
+                                        if let Some(cb) = &self.on_selection_change {
+                                            update |= cb(new_selection);
+                                        }
+                                        self.last_selected_index = Some(new_index);
+                                        update.insert(Update::DRAW);
+                                    }
+                                }
+                            }
+                            NamedKey::ArrowLeft => {
+                                // Move selection prev
+                                if let Some(&first_selected) = current_selection.first() {
+                                    if first_selected > 0 {
+                                        let new_index = first_selected - 1;
+                                        let mut new_selection = if info.modifiers.shift_key() {
+                                            let mut sel = current_selection.clone();
+                                            sel.push(new_index);
+                                            sel
+                                        } else {
+                                            vec![new_index]
+                                        };
+                                        new_selection.sort_unstable();
+                                        new_selection.dedup();
+                                        
+                                        if let Some(signal) = self.selected_rows.as_signal() {
+                                            signal.set(new_selection.clone());
+                                        }
+                                        if let Some(cb) = &self.on_selection_change {
+                                            update |= cb(new_selection);
+                                        }
+                                        self.last_selected_index = Some(new_index);
+                                        update.insert(Update::DRAW);
+                                    }
                                 }
                             }
                             NamedKey::Enter => {
