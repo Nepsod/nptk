@@ -8,7 +8,7 @@ use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::vgi::{Graphics};
 use nptk_core::vg::peniko::{Brush, Color};
-use nptk_core::vg::kurbo::{Rect, Affine, Shape, Point};
+use nptk_core::vg::kurbo::{Rect, Affine, Shape, Point, Vec2};
 use nalgebra::Vector2;
 use nptk_core::text_render::TextRenderContext;
 use async_trait::async_trait;
@@ -18,6 +18,13 @@ use nptk_core::theme::{Palette, ColorRole};
 use nptk_core::window::{MouseButton, ElementState};
 
 const GRID_ITEM_SIZE: f64 = 100.0;
+
+/// Data for rendering an icon (Image or Vector Scene)
+#[derive(Clone)]
+pub enum IconData {
+    Image(nptk_core::vg::peniko::ImageBrush, u32, u32),
+    Scene(nptk_core::vg::Scene, f64, f64),
+}
 
 /// View mode for the ItemView
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,6 +49,7 @@ pub struct ItemView {
     last_selected_index: Option<usize>,
     was_left_down: bool,
     on_context_menu: Option<Box<dyn Fn(usize, Vector2<f64>, AppContext) -> Update + Send + Sync>>,
+    icon_size: MaybeSignal<f32>,
 }
 
 impl ItemView {
@@ -60,7 +68,13 @@ impl ItemView {
             last_selected_index: None,
             was_left_down: false,
             on_context_menu: None,
+            icon_size: MaybeSignal::value(16.0),
         }
+    }
+
+    pub fn with_icon_size(mut self, size: impl Into<MaybeSignal<f32>>) -> Self {
+        self.icon_size = size.into();
+        self
     }
 
     pub fn with_on_context_menu<F>(mut self, callback: F) -> Self 
@@ -142,17 +156,19 @@ impl ItemView {
             
              // Draw Icon
              let mut text_offset = 5.0;
-             let icon_size = 16.0;
+             let icon_size = *self.icon_size.get() as f64;
 
-             if let ModelData::String(icon_name) = self.model.data(i, 0, ItemRole::Icon) {
-                 let icon_rect = Rect::new(
-                     row_rect.x0 + 5.0,
-                     row_rect.y0 + (self.item_height as f64 - icon_size) / 2.0,
-                     row_rect.x0 + 5.0 + icon_size,
-                     row_rect.y0 + (self.item_height as f64 + icon_size) / 2.0
-                 );
-                 self.draw_icon(graphics, &icon_name, icon_rect, &palette);
-                 text_offset += icon_size + 5.0;
+             if let data = self.model.data(i, 0, ItemRole::Icon) {
+                 if !matches!(data, ModelData::None) {
+                     let icon_rect = Rect::new(
+                         row_rect.x0 + 5.0,
+                         row_rect.y0 + (self.item_height as f64 - icon_size) / 2.0,
+                         row_rect.x0 + 5.0 + icon_size,
+                         row_rect.y0 + (self.item_height as f64 + icon_size) / 2.0
+                     );
+                     self.draw_icon(graphics, &data, icon_rect, &palette);
+                     text_offset += icon_size + 5.0;
+                 }
              }
             
             let text_data = self.model.data(i, 0, ItemRole::Display);
@@ -229,20 +245,16 @@ impl ItemView {
             }
 
              // Icon
-             if let ModelData::String(icon_name) = self.model.data(i, 0, ItemRole::Icon) {
-                 // Draw Icon centered
-                 let icon_size = 48.0;
-                 let icon_x = x + (item_width - icon_size) / 2.0;
-                 let icon_y = y + (item_height - icon_size) / 2.0 - 10.0; // Slightly up to leave room for text
-                 
-                 let icon_rect = Rect::new(
-                     icon_x as f64,
-                     icon_y as f64,
-                     (icon_x + icon_size) as f64,
-                     (icon_y + icon_size) as f64
-                 );
-                 self.draw_icon(graphics, &icon_name, icon_rect, &palette);
-             }
+             let data = self.model.data(i, 0, ItemRole::Icon);
+             let icon_size = 48.0;
+             let icon_rect = Rect::new(
+                x as f64 + (item_width as f64 - icon_size) / 2.0,
+                y as f64 + 10.0,
+                x as f64 + (item_width as f64 + icon_size) / 2.0,
+                y as f64 + 10.0 + icon_size
+             );
+             
+             self.draw_icon(graphics, &data, icon_rect, &palette);
              
              // Text
              if let ModelData::String(text) = self.model.data(i, 0, ItemRole::Display) {
@@ -416,19 +428,20 @@ impl ItemView {
                  
                   // Fetch data
                  let mut text_offset = 5.0;
-                 let icon_size = 16.0;
+                 let icon_size = *self.icon_size.get() as f64;
 
                  // Draw Icon
-                 if let ModelData::String(icon_name) = self.model.data(i, c, ItemRole::Icon) {
+                let data = self.model.data(i, c, ItemRole::Icon);
+                if !matches!(data, ModelData::None) {
                      let icon_rect = Rect::new(
                          x + 5.0,
                          y as f64 + (self.item_height as f64 - icon_size) / 2.0,
                          x + 5.0 + icon_size,
                          y as f64 + (self.item_height as f64 + icon_size) / 2.0
                      );
-                     self.draw_icon(graphics, &icon_name, icon_rect, &palette);
+                     self.draw_icon(graphics, &data, icon_rect, &palette);
                      text_offset += icon_size + 5.0;
-                 }
+                }
                 
                 let text_data = self.model.data(i, c, ItemRole::Display);
                 if let ModelData::String(text) = text_data {
@@ -454,9 +467,53 @@ impl ItemView {
     }
 
 
-    fn draw_icon(&self, graphics: &mut dyn Graphics, name: &str, rect: Rect, palette: &Palette) {
+    fn draw_icon(&self, graphics: &mut dyn Graphics, data: &ModelData, rect: Rect, palette: &Palette) {
         use nptk_core::vg::kurbo::{BezPath, Point, Stroke};
         
+        // Check for custom IconData (Image or Scene)
+        if let ModelData::Custom(any) = data {
+            if let Some(icon_data) = any.downcast_ref::<IconData>() {
+                match icon_data {
+                    IconData::Image(brush, width, height) => {
+                         if let Some(scene) = graphics.as_scene_mut() {
+                             let scale_x = rect.width() / *width as f64;
+                             let scale_y = rect.height() / *height as f64;
+                             // Use uniform scaling to preserve aspect ratio? Or stretch?
+                             // Usually stretch to icon rect or fit?
+                             // Let's use uniform fit.
+                             let scale = scale_x.min(scale_y);
+                             
+                             // Center it
+                             let new_width = *width as f64 * scale;
+                             let new_height = *height as f64 * scale;
+                             let offset_x = rect.x0 + (rect.width() - new_width) / 2.0;
+                             let offset_y = rect.y0 + (rect.height() - new_height) / 2.0;
+                             
+                             scene.draw_image(brush, Affine::scale(scale).then_translate(Vec2::new(offset_x, offset_y)));
+                         }
+                        return;
+                    },
+                    IconData::Scene(scene, width, height) => {
+                        let scale_x = rect.width() / *width;
+                        let scale_y = rect.height() / *height;
+                        let scale = scale_x.min(scale_y);
+                        
+                        // Center it
+                        let new_width = *width * scale;
+                        let new_height = *height * scale;
+                        let offset_x = rect.x0 + (rect.width() - new_width) / 2.0;
+                        let offset_y = rect.y0 + (rect.height() - new_height) / 2.0;
+
+                        graphics.append(scene, Some(Affine::scale(scale).then_translate(Vec2::new(offset_x, offset_y))));
+                        return;
+                    },
+                }
+            }
+        }
+
+        // Fallback to string-based vector icons
+        let name = if let ModelData::String(s) = data { s.as_str() } else { "file" };
+
         let color = if name == "directory" {
              // Folder color (yellow-ish/orange)
              nptk_core::vg::peniko::Color::from_rgb8(240, 180, 60)
