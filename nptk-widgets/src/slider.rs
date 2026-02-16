@@ -6,7 +6,7 @@ use nptk_core::layout;
 use nptk_core::layout::{Dimension, LayoutContext, LayoutNode, LayoutStyle, LengthPercentageAuto, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Shape};
-use nptk_core::vg::peniko::{Brush, Color, Fill};
+use nptk_core::vg::peniko::{Brush, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::MouseButton;
@@ -165,7 +165,7 @@ impl Widget for Slider {
         }
     }
 
-    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         if let Some(cursor) = info.cursor_pos {

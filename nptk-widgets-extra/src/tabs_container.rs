@@ -14,9 +14,8 @@ use nptk_core::vg::peniko::{Brush, Color, Fill, Gradient, Mix};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
-use nptk_core::theme::{ColorRole, Palette};
+use nptk_core::theme::ColorRole;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 use async_trait::async_trait;
 
 const TAB_CORNER_RADIUS: f64 = 3.0;
@@ -504,21 +503,21 @@ impl TabsContainer {
         }
     }
 
-    /// Ensure tab IDs are unique
-    fn ensure_unique_ids(&self) -> Result<(), TabsError> {
-        let ids: Vec<String> = match &self.mode {
-            TabsMode::Static => self.tabs.iter().map(|t| t.id.clone()).collect(),
-            TabsMode::Dynamic(signal, _, _) => signal.get().iter().map(|t| t.id.clone()).collect(),
-        };
-        let unique_ids: std::collections::HashSet<_> = ids.iter().collect();
-        if ids.len() != unique_ids.len() {
-            Err(TabsError::TabNotFound(
-                "Duplicate tab IDs found".to_string(),
-            ))
-        } else {
-            Ok(())
-        }
-    }
+    // Ensure tab IDs are unique
+    // fn ensure_unique_ids(&self) -> Result<(), TabsError> {
+    //     let ids: Vec<String> = match &self.mode {
+    //         TabsMode::Static => self.tabs.iter().map(|t| t.id.clone()).collect(),
+    //         TabsMode::Dynamic(signal, _, _) => signal.get().iter().map(|t| t.id.clone()).collect(),
+    //     };
+    //     let unique_ids: std::collections::HashSet<_> = ids.iter().collect();
+    //     if ids.len() != unique_ids.len() {
+    //         Err(TabsError::TabNotFound(
+    //             "Duplicate tab IDs found".to_string(),
+    //         ))
+    //     } else {
+    //         Ok(())
+    //     }
+    // }
 
     /// Rebuild tabs from signal (for dynamic mode)
     fn rebuild_tabs_from_signal(&mut self) {
@@ -596,22 +595,22 @@ impl TabsContainer {
         }
     }
 
-    /// Get current tabs (clones from Vec or rebuilds from signal)
-    fn get_tabs(&self) -> Vec<TabItem> {
-        match &self.mode {
-            TabsMode::Static => {
-                // Can't clone TabItem, so we need to reconstruct
-                // For static mode, we can return a reference or reconstruct
-                // Since we can't return &Vec, we'll need to handle this differently
-                // For now, return empty and let render/update use self.tabs directly
-                Vec::new()
-            },
-            TabsMode::Dynamic(_, _, _) => {
-                // Return empty - tabs are accessed via content_store in dynamic mode
-                Vec::new()
-            },
-        }
-    }
+    // Get current tabs (clones from Vec or rebuilds from signal)
+    // fn get_tabs(&self) -> Vec<TabItem> {
+    //     match &self.mode {
+    //         TabsMode::Static => {
+    //             // Can't clone TabItem, so we need to reconstruct
+    //             // For static mode, we can return a reference or reconstruct
+    //             // Since we can't return &Vec, we'll need to handle this differently
+    //             // For now, return empty and let render/update use self.tabs directly
+    //             Vec::new()
+    //         },
+    //         TabsMode::Dynamic(_, _, _) => {
+    //             // Return empty - tabs are accessed via content_store in dynamic mode
+    //             Vec::new()
+    //         },
+    //     }
+    // }
 
     /// Calculate the width of a tab based on its label text
     fn calculate_tab_width(&self, label: &str, info: &mut AppInfo) -> f32 {
@@ -1497,7 +1496,7 @@ impl Widget for TabsContainer {
 
         // Handle mouse wheel scrolling (for horizontal tabs only)
         if matches!(self.tab_position, TabPosition::Top | TabPosition::Bottom) {
-            for scroll_delta in &info.mouse_scroll_delta {
+            if let Some(scroll_delta) = &info.mouse_scroll_delta {
                 match scroll_delta {
                     nptk_core::window::MouseScrollDelta::LineDelta(_, y) => {
                         // Scroll horizontally with vertical wheel
@@ -1509,7 +1508,7 @@ impl Widget for TabsContainer {
                         self.scroll_offset -= delta.y as f32;
                         self.scroll_offset = self.scroll_offset.clamp(0.0, self.max_scroll);
                         update |= Update::DRAW;
-                    },
+                    }
                 }
             }
         }

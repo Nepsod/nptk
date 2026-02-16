@@ -7,10 +7,10 @@ use nptk_core::layout::{
     LengthPercentageAuto, StyleNode, LayoutContext};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vg::kurbo::{Affine, Line, Point, Rect, Shape, Stroke};
-use nptk_core::vg::peniko::{Brush, Color, Fill};
+use nptk_core::vg::peniko::{Brush, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetChildrenExt, WidgetLayoutExt};
-use nptk_core::theme::{ColorRole, Palette};
+use nptk_core::theme::ColorRole;
 use async_trait::async_trait;
 
 /// Configuration for toolbar border lines.
@@ -288,7 +288,7 @@ impl Widget for ToolbarSeparator {
         );
     }
 
-    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
+    fn layout_style(&self, _context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: self.layout_style.get().clone(),
             children: Vec::new(),
@@ -343,7 +343,7 @@ impl Widget for ToolbarSpacer {
         // Spacer is invisible
     }
 
-    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
+    fn layout_style(&self, _context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: self.layout_style.get().clone(),
             children: Vec::new(),
@@ -374,7 +374,7 @@ impl ToolbarButton {
     ///
     /// The returned button supports all `Button` methods including `with_tooltip()`.
     pub fn new(child: impl Widget + 'static) -> nptk_widgets::button::Button {
-        use nptk_core::layout::{Dimension, LengthPercentage, LayoutStyle, LayoutContext};
+        use nptk_core::layout::{Dimension, LengthPercentage, LayoutStyle};
         
         nptk_widgets::button::Button::new(child)
             .with_style_id("ToolbarButton")
@@ -402,7 +402,7 @@ impl ToolbarButton {
     /// The children will be arranged horizontally in a row with a small gap between them.
     /// This is useful for toolbar buttons that contain both an icon and text, or multiple elements.
     pub fn with_children(children: Vec<BoxedWidget>) -> nptk_widgets::button::Button {
-        use nptk_core::layout::{AlignItems, FlexDirection, LengthPercentage, LayoutStyle, LayoutContext};
+        use nptk_core::layout::{AlignItems, FlexDirection, LengthPercentage, LayoutStyle};
         use nptk_widgets::container::Container;
         
         let container = Container::new(children)

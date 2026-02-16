@@ -12,13 +12,13 @@ use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, Display, LayoutNode, LayoutStyle, LengthPercentage, StyleNode, LayoutContext};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
-use nptk_core::text_render::TextRenderContext;
+// use nptk_core::text_render::TextRenderContext;
 use nptk_core::vg::kurbo::{Affine, Rect, Shape, Vec2};
-use nptk_core::vg::peniko::{Brush, Color, Fill};
+use nptk_core::vg::peniko::{Brush, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
-use nptk_core::theme::{ColorRole, Palette};
+use nptk_core::theme::ColorRole;
 use std::sync::Arc;
 use async_trait::async_trait;
 
@@ -56,7 +56,7 @@ pub struct ExpandableSection {
     
     // Internal state
     hovered: bool,
-    text_render_context: TextRenderContext,
+    // text_render_context: TextRenderContext,
 }
 
 impl ExpandableSection {
@@ -81,7 +81,7 @@ impl ExpandableSection {
             icon_size: 16,
             indicator_size: 16,
             hovered: false,
-            text_render_context: TextRenderContext::new(),
+            // text_render_context: TextRenderContext::new(),
         }
     }
 

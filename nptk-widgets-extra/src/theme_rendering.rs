@@ -5,7 +5,7 @@
 
 use nptk_core::layout::LayoutNode;
 use nptk_core::vg::kurbo::{
-    Affine, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke,
+    Affine, RoundedRect, RoundedRectRadii, Shape, Stroke,
 };
 use nptk_core::vg::peniko::{Brush, Fill};
 use nptk_core::vgi::Graphics;

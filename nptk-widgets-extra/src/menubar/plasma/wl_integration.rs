@@ -6,7 +6,7 @@
 
 #![cfg(all(target_os = "linux", feature = "global-menu"))]
 
-use wayland_client::protocol::wl_surface;
+// use wayland_client::protocol::wl_surface;
 
 use nptk_core::platform::MenuInfoStorage;
 
@@ -21,17 +21,17 @@ use nptk_core::platform::MenuInfoStorage;
 /// # Returns
 /// * `Ok(())` if the appmenu was set successfully
 /// * `Err(String)` if there was an error (e.g., appmenu manager not available, menu info not set)
-pub fn set_appmenu_for_surface_via_wl_client(
-    surface: &wl_surface::WlSurface,
-) -> Result<(), String> {
-    // Get menu info from menubar module
-    let Some((service, path)) = MenuInfoStorage::get() else {
-        return Err("Menu info not available yet".to_string());
-    };
-
-    // Use platform's public appmenu API
-    nptk_core::platform::appmenu::set_appmenu_for_surface(surface, service, path)
-}
+// pub fn set_appmenu_for_surface_via_wl_client(
+//     surface: &wl_surface::WlSurface,
+// ) -> Result<(), String> {
+//     // Get menu info from menubar module
+//     let Some((service, path)) = MenuInfoStorage::get() else {
+//         return Err("Menu info not available yet".to_string());
+//     };
+//
+//     // Use platform's public appmenu API
+//     nptk_core::platform::appmenu::set_appmenu_for_surface(surface, service, path)
+// }
 
 /// Notify VGI's Wayland client that menu info has been updated.
 ///

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LGPL-3.0-only
-use nptk_core::layout::{Dimension, LengthPercentage};
+use nptk_core::layout::Dimension;
 
 /// Defines how a grid item should be sized.
 ///

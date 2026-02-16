@@ -10,11 +10,11 @@ use nptk_core::signal::{MaybeSignal, Signal, state::StateSignal};
 use nptk_core::text_input::TextBuffer;
 use nptk_core::text_render::TextRenderContext;
 use nptk_core::vg::kurbo::{Affine, Line, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
-use nptk_core::vg::peniko::{Brush, Color, Fill};
+use nptk_core::vg::peniko::{Brush, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, Ime, KeyCode, PhysicalKey};
-use nptk_core::theme::{ColorRole, Palette};
+use nptk_core::theme::ColorRole;
 use std::ops::Deref;
 use std::time::{Duration, Instant};
 use async_trait::async_trait;
@@ -122,6 +122,11 @@ impl TextInput {
     /// Get the text signal for observability (returns None if text is static)
     pub fn get_text_signal(&self) -> Option<StateSignal<String>> {
         self.text_signal.clone()
+    }
+
+    /// Get the focus ID of the text input.
+    pub fn focus_id(&self) -> FocusId {
+        self.focus_id
     }
 
     /// Sync buffer from signal (when signal changes externally)

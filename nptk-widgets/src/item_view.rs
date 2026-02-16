@@ -1,14 +1,14 @@
 use std::sync::Arc;
 use std::time::{Instant, Duration};
 use nptk_core::widget::{Widget, WidgetLayoutExt};
-use nptk_core::layout::{LayoutNode, StyleNode, LayoutStyle, Dimension};
+use nptk_core::layout::{LayoutNode, StyleNode, LayoutStyle};
 use nptk_core::model::{ItemModel, ItemRole, ModelData, Orientation, SortOrder};
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::vgi::{Graphics};
-use nptk_core::vg::peniko::{Brush, Color};
-use nptk_core::vg::kurbo::{Rect, Affine, Shape, Point, Vec2};
+use nptk_core::vg::peniko::Brush;
+use nptk_core::vg::kurbo::{Rect, Affine, Shape, Vec2};
 use nalgebra::Vector2;
 use nptk_core::text_render::TextRenderContext;
 use async_trait::async_trait;
@@ -158,7 +158,8 @@ impl ItemView {
              let mut text_offset = 5.0;
              let icon_size = *self.icon_size.get() as f64;
 
-             if let data = self.model.data(i, 0, ItemRole::Icon) {
+             let data = self.model.data(i, 0, ItemRole::Icon);
+             {
                  if !matches!(data, ModelData::None) {
                      let icon_rect = Rect::new(
                          row_rect.x0 + 5.0,

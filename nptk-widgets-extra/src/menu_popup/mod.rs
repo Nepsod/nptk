@@ -131,7 +131,7 @@ impl WidgetLayoutExt for MenuPopup {
 #[async_trait(?Send)]
 impl Widget for MenuPopup {
 
-    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
+    fn layout_style(&self, _context: &LayoutContext) -> StyleNode {
         // Calculate size using temporary contexts (layout_style is called before we have font context)
         // Actual rendering will use the app's font context for more accurate sizing
         let (width, height) = self.calculate_size();

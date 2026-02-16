@@ -99,7 +99,7 @@ impl Widget for Image {
         );
     }
 
-    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
+    fn layout_style(&self, _context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: self.state.layout_style(),
             children: Vec::new(),

@@ -134,7 +134,7 @@ impl Widget for Grid {
         let children_styles: Vec<StyleNode> = self
             .children
             .iter()
-            .map(|(col, row, child)| {
+            .map(|(_col, _row, child)| {
                 let mut child_style = child.layout_style(context);
                 
                 // Set grid position for this child

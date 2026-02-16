@@ -7,11 +7,11 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{Dimension, LayoutContext, LayoutNode, LayoutStyle, StyleNode};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::vg::kurbo::{Affine, Circle, Shape, Stroke};
-use nptk_core::vg::peniko::{Brush, Color, Fill};
+use nptk_core::vg::peniko::{Brush, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, KeyCode, MouseButton, PhysicalKey};
-use nptk_core::theme::{ColorRole, Palette};
+use nptk_core::theme::ColorRole;
 use async_trait::async_trait;
 
 /// Represents the state of a radio button.

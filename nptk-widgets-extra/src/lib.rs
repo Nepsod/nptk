@@ -71,7 +71,7 @@ pub mod tabs_container;
 pub mod text_input;
 
 /// Contains theme rendering bridge functionality.
-pub mod theme_rendering;
+mod theme_rendering;
 
 /// Contains the [toggle::Toggle] widget.
 pub mod toggle;

@@ -196,7 +196,7 @@ impl Breadcrumbs {
     }
 
     /// Add a single breadcrumb item
-    pub fn with_item(mut self, item: BreadcrumbItem) -> Self {
+    pub fn with_item(self, item: BreadcrumbItem) -> Self {
         if let Some(ref signal) = self.items_signal {
             signal.mutate(|items| items.push(item));
         } else {
@@ -408,11 +408,11 @@ impl Breadcrumbs {
         self.items.get().iter().cloned().collect()
     }
 
-    /// Get the visible items considering max_items constraint
-    fn get_visible_items(&self) -> Vec<(usize, bool)> {
-        let items = self.get_items_vec();
-        self.get_visible_items_from_slice(&items)
-    }
+    // Get the visible items considering max_items constraint
+    // fn get_visible_items(&self) -> Vec<(usize, bool)> {
+    //     let items = self.get_items_vec();
+    //     self.get_visible_items_from_slice(&items)
+    // }
 
     /// Get the visible items considering max_items constraint (internal helper)
     fn get_visible_items_from_slice(&self, items: &[BreadcrumbItem]) -> Vec<(usize, bool)> {
@@ -824,7 +824,7 @@ impl Widget for Breadcrumbs {
         }
     }
 
-    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
+    fn layout_style(&self, _context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: {
                 let mut style = self.layout_style.get().clone();

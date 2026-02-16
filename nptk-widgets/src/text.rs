@@ -5,7 +5,7 @@ use nptk_core::app::update::Update;
 use nptk_core::layout::{AvailableSpace, Dimension, LayoutContext, LayoutNode, LayoutStyle, Size, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::text_render::TextRenderContext;
-use nptk_core::vg::peniko::{Brush, Color};
+use nptk_core::vg::peniko::Brush;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use async_trait::async_trait;

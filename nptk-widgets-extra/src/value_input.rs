@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LGPL-3.0-only
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use async_trait::async_trait;
 
 use crate::input_helpers;
@@ -16,7 +16,7 @@ use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, Ime, KeyCode, MouseButton, PhysicalKey};
-use nptk_core::theme::{ColorRole, Palette};
+use nptk_core::theme::ColorRole;
 use std::ops::Deref;
 
 /// A numeric input widget with validation and constraints.
@@ -228,24 +228,24 @@ impl ValueInput {
         }
     }
 
-    /// Sync buffer from text signal
-    fn sync_buffer_from_text(&mut self) {
-        let text = (*self.text.get()).clone();
-        let current_buffer_text = self.buffer.text().to_string();
-        
-        // Only update if text actually changed
-        if text != current_buffer_text {
-            let old_cursor_pos = self.buffer.cursor.position;
-            self.buffer.set_text(text.clone());
-            // set_text already clamps cursor, but we want to preserve it if possible
-            let new_text_len = self.buffer.text().chars().count();
-            if old_cursor_pos <= new_text_len {
-                // Preserve cursor position if valid
-                self.buffer.cursor.position = old_cursor_pos;
-                // set_text's move_to already cleared selection, no need to clear again
-            }
-        }
-    }
+    // Sync buffer from text signal
+    // fn sync_buffer_from_text(&mut self) {
+    //     let text = (*self.text.get()).clone();
+    //     let current_buffer_text = self.buffer.text().to_string();
+    //     
+    //     // Only update if text actually changed
+    //     if text != current_buffer_text {
+    //         let old_cursor_pos = self.buffer.cursor.position;
+    //         self.buffer.set_text(text.clone());
+    //         // set_text already clamps cursor, but we want to preserve it if possible
+    //         let new_text_len = self.buffer.text().chars().count();
+    //         if old_cursor_pos <= new_text_len {
+    //             // Preserve cursor position if valid
+    //             self.buffer.cursor.position = old_cursor_pos;
+    //             // set_text's move_to already cleared selection, no need to clear again
+    //         }
+    //     }
+    // }
 
     /// Parse and validate text input, update value if valid.
     fn validate_and_update(&mut self) -> bool {

@@ -275,9 +275,9 @@ impl Sidebar {
         palette.color(ColorRole::Base)
     }
 
-    fn get_text_color(palette: &Palette) -> Color {
-        palette.color(ColorRole::BaseText)
-    }
+    // fn get_text_color(palette: &Palette) -> Color {
+    //     palette.color(ColorRole::BaseText)
+    // }
 
     fn get_selected_color(palette: &Palette) -> Color {
         palette.color(ColorRole::Selection)
@@ -694,7 +694,7 @@ impl Default for Sidebar {
 #[async_trait(?Send)]
 impl Widget for Sidebar {
 
-    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
+    fn layout_style(&self, _context: &LayoutContext) -> StyleNode {
         StyleNode {
             style: self.layout_style.get().clone(),
             children: vec![],
@@ -705,7 +705,7 @@ impl Widget for Sidebar {
     async fn update(
         &mut self,
         layout: &LayoutNode,
-        context: AppContext,
+        _context: AppContext,
         info: &mut AppInfo,
     ) -> Update {
         let mut update = Update::empty();

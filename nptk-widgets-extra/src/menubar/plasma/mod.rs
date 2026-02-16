@@ -18,7 +18,7 @@
 
 use std::sync::{Arc, Mutex, OnceLock};
 use wayland_client::globals::registry_queue_init;
-use wayland_client::protocol::wl_surface;
+// use wayland_client::protocol::wl_surface;
 use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle};
 use wayland_protocols_plasma::appmenu::client::{
     org_kde_kwin_appmenu, org_kde_kwin_appmenu_manager,
@@ -30,15 +30,15 @@ mod wl_integration;
 /// Plasma AppMenu client state.
 struct PlasmaMenuState {
     menu_info: Arc<Mutex<Option<(String, String)>>>,
-    appmenu_objects:
-        Arc<Mutex<std::collections::HashMap<u32, org_kde_kwin_appmenu::OrgKdeKwinAppmenu>>>,
+    // appmenu_objects:
+    //     Arc<Mutex<std::collections::HashMap<u32, org_kde_kwin_appmenu::OrgKdeKwinAppmenu>>>,
 }
 
 static PLASMA_CLIENT: OnceLock<Arc<Mutex<Option<PlasmaMenuClient>>>> = OnceLock::new();
 
 struct PlasmaMenuClient {
-    connection: Connection,
-    queue_handle: QueueHandle<PlasmaMenuState>,
+    // connection: Connection,
+    // queue_handle: QueueHandle<PlasmaMenuState>,
     state: Arc<Mutex<PlasmaMenuState>>,
     _event_queue: Mutex<EventQueue<PlasmaMenuState>>,
     appmenu_manager: Option<org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager>,
@@ -59,15 +59,15 @@ impl PlasmaMenuClient {
         let queue_handle = event_queue.handle();
 
         let menu_info = Arc::new(Mutex::new(MenuInfoStorage::get()));
-        let appmenu_objects = Arc::new(Mutex::new(std::collections::HashMap::new()));
+        // let appmenu_objects = Arc::new(Mutex::new(std::collections::HashMap::new()));
         let state = Arc::new(Mutex::new(PlasmaMenuState {
             menu_info: menu_info.clone(),
-            appmenu_objects: appmenu_objects.clone(),
+            // appmenu_objects: appmenu_objects.clone(),
         }));
 
         let mut client_state = PlasmaMenuState {
             menu_info: menu_info.clone(),
-            appmenu_objects: appmenu_objects.clone(),
+            // appmenu_objects: appmenu_objects.clone(),
         };
 
         // Perform initial roundtrip to get globals
@@ -83,7 +83,7 @@ impl PlasmaMenuClient {
             1..=2,
             (),
         ) {
-            Ok(mut manager) => {
+            Ok(manager) => {
                 let version = manager.version();
                 log::info!("Bound to org.kde.kwin.appmenu_manager version {}", version);
                 Some(manager)
@@ -99,8 +99,8 @@ impl PlasmaMenuClient {
         };
 
         Ok(Self {
-            connection,
-            queue_handle,
+            // connection,
+            // queue_handle,
             state,
             _event_queue: Mutex::new(event_queue),
             appmenu_manager,
@@ -118,49 +118,49 @@ impl PlasmaMenuClient {
         }
     }
 
-    /// Set the application menu for a Wayland surface.
-    ///
-    /// This should be called when a window surface is created and menu info is available.
-    pub fn set_appmenu_for_surface(&self, surface: &wl_surface::WlSurface) -> Result<(), String> {
-        let Some(ref manager) = self.appmenu_manager else {
-            return Err("AppMenu manager not available".to_string());
-        };
+    // /// Set the application menu for a Wayland surface.
+    // ///
+    // /// This should be called when a window surface is created and menu info is available.
+    // pub fn set_appmenu_for_surface(&self, surface: &wl_surface::WlSurface) -> Result<(), String> {
+    //     let Some(ref manager) = self.appmenu_manager else {
+    //         return Err("AppMenu manager not available".to_string());
+    //     };
+    //
+    //     let state_guard = self.state.lock().unwrap();
+    //     let menu_info_guard = state_guard.menu_info.lock().unwrap();
+    //     let Some((ref service, ref path)) = *menu_info_guard else {
+    //         return Err("Menu info not available yet".to_string());
+    //     };
+    //
+    //     // Create an appmenu object for this surface
+    //     let appmenu = manager.create(surface, &self.queue_handle, ());
+    //     let surface_id = surface.id().protocol_id();
+    //
+    //     // Set the menu address
+    //     appmenu.set_address(service.clone(), path.clone());
+    //
+    //     // Store the appmenu object
+    //     let mut appmenu_objects = state_guard.appmenu_objects.lock().unwrap();
+    //     appmenu_objects.insert(surface_id, appmenu);
+    //
+    //     log::info!(
+    //         "Set application menu for surface {}: service={}, path={}",
+    //         surface_id,
+    //         service,
+    //         path
+    //     );
+    //
+    //     Ok(())
+    // }
 
-        let state_guard = self.state.lock().unwrap();
-        let menu_info_guard = state_guard.menu_info.lock().unwrap();
-        let Some((ref service, ref path)) = *menu_info_guard else {
-            return Err("Menu info not available yet".to_string());
-        };
-
-        // Create an appmenu object for this surface
-        let appmenu = manager.create(surface, &self.queue_handle, ());
-        let surface_id = surface.id().protocol_id();
-
-        // Set the menu address
-        appmenu.set_address(service.clone(), path.clone());
-
-        // Store the appmenu object
-        let mut appmenu_objects = state_guard.appmenu_objects.lock().unwrap();
-        appmenu_objects.insert(surface_id, appmenu);
-
-        log::info!(
-            "Set application menu for surface {}: service={}, path={}",
-            surface_id,
-            service,
-            path
-        );
-
-        Ok(())
-    }
-
-    fn dispatch_events(&self) -> Result<(), String> {
-        let mut event_queue = self._event_queue.lock().unwrap();
-        let mut state = self.state.lock().unwrap();
-        event_queue
-            .dispatch_pending(&mut *state)
-            .map_err(|e| format!("Failed to dispatch Wayland events: {:?}", e))?;
-        Ok(())
-    }
+    // fn dispatch_events(&self) -> Result<(), String> {
+    //     let mut event_queue = self._event_queue.lock().unwrap();
+    //     let mut state = self.state.lock().unwrap();
+    //     event_queue
+    //         .dispatch_pending(&mut *state)
+    //         .map_err(|e| format!("Failed to dispatch Wayland events: {:?}", e))?;
+    //     Ok(())
+    // }
 }
 
 /// Initialize the Plasma AppMenu protocol client.
@@ -185,20 +185,20 @@ pub fn initialize() -> Result<(), String> {
     Ok(())
 }
 
-/// Set the application menu for a Wayland surface.
-///
-/// This should be called when a window surface is created and menu info is available.
-/// The surface should be a `wl_surface` from the Wayland connection.
-pub fn set_appmenu_for_surface(surface: &wl_surface::WlSurface) -> Result<(), String> {
-    let client_guard = PLASMA_CLIENT.get().ok_or("Plasma client not initialized")?;
-    let client = client_guard.lock().unwrap();
-    if let Some(ref client) = *client {
-        client.set_appmenu_for_surface(surface)?;
-    } else {
-        return Err("Plasma client not initialized".to_string());
-    }
-    Ok(())
-}
+// /// Set the application menu for a Wayland surface.
+// ///
+// /// This should be called when a window surface is created and menu info is available.
+// /// The surface should be a `wl_surface` from the Wayland connection.
+// pub fn set_appmenu_for_surface(surface: &wl_surface::WlSurface) -> Result<(), String> {
+//     let client_guard = PLASMA_CLIENT.get().ok_or("Plasma client not initialized")?;
+//     let client = client_guard.lock().unwrap();
+//     if let Some(ref client) = *client {
+//         client.set_appmenu_for_surface(surface)?;
+//     } else {
+//         return Err("Plasma client not initialized".to_string());
+//     }
+//     Ok(())
+// }
 
 /// Set application menu properties via Plasma's Wayland window management protocol.
 ///
@@ -227,51 +227,51 @@ pub fn set_appmenu_properties(service_name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Update the menu info when it changes.
-///
-/// This should be called whenever the menu service name or object path changes.
-pub fn update_menu_info() {
-    if let Some(client_guard) = PLASMA_CLIENT.get() {
-        if let Ok(client_lock) = client_guard.lock() {
-            if let Some(ref client) = *client_lock {
-                // Update the stored menu info
-                if let Some((service, path)) = MenuInfoStorage::get() {
-                    if let Ok(state_guard) = client.state.lock() {
-                        if let Ok(mut menu_info_guard) = state_guard.menu_info.lock() {
-                            *menu_info_guard = Some((service, path));
-                        }
-                    }
-                }
-                client.update_menu_info();
-            }
-        }
-    }
-}
+// /// Update the menu info when it changes.
+// ///
+// /// This should be called whenever the menu service name or object path changes.
+// pub fn update_menu_info() {
+//     if let Some(client_guard) = PLASMA_CLIENT.get() {
+//         if let Ok(client_lock) = client_guard.lock() {
+//             if let Some(ref client) = *client_lock {
+//                 // Update the stored menu info
+//                 if let Some((service, path)) = MenuInfoStorage::get() {
+//                     if let Ok(state_guard) = client.state.lock() {
+//                         if let Ok(mut menu_info_guard) = state_guard.menu_info.lock() {
+//                             *menu_info_guard = Some((service, path));
+//                         }
+//                     }
+//                 }
+//                 client.update_menu_info();
+//             }
+//         }
+//     }
+// }
 
-/// Dispatch pending events from the Plasma window management protocol.
-///
-/// This should be called periodically (e.g., in the main event loop) to process
-/// window creation events and other protocol messages from the compositor.
-pub fn dispatch_events() -> Result<(), String> {
-    if let Some(client_guard) = PLASMA_CLIENT.get() {
-        if let Ok(client_lock) = client_guard.lock() {
-            if let Some(ref client) = *client_lock {
-                client.dispatch_events()?;
-            }
-        }
-    }
-    Ok(())
-}
+// /// Dispatch pending events from the Plasma window management protocol.
+// ///
+// /// This should be called periodically (e.g., in the main event loop) to process
+// /// window creation events and other protocol messages from the compositor.
+// pub fn dispatch_events() -> Result<(), String> {
+//     if let Some(client_guard) = PLASMA_CLIENT.get() {
+//         if let Ok(client_lock) = client_guard.lock() {
+//             if let Some(ref client) = *client_lock {
+//                 client.dispatch_events()?;
+//             }
+//         }
+//     }
+//     Ok(())
+// }
 
-/// Check if the Plasma client is initialized.
-pub fn is_initialized() -> bool {
-    if let Some(client_guard) = PLASMA_CLIENT.get() {
-        if let Ok(client_lock) = client_guard.lock() {
-            return client_lock.is_some();
-        }
-    }
-    false
-}
+// /// Check if the Plasma client is initialized.
+// pub fn is_initialized() -> bool {
+//     if let Some(client_guard) = PLASMA_CLIENT.get() {
+//         if let Ok(client_lock) = client_guard.lock() {
+//             return client_lock.is_some();
+//         }
+//     }
+//     false
+// }
 
 impl
     Dispatch<

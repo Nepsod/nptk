@@ -15,7 +15,7 @@ use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::vg::kurbo::{
     Affine, BezPath, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke,
 };
-use nptk_core::vg::peniko::{Brush, Color, Fill, Mix};
+use nptk_core::vg::peniko::{Brush, Fill, Mix};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton, MouseScrollDelta};

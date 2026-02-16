@@ -7,11 +7,11 @@ use nptk_core::layout;
 use nptk_core::layout::{Dimension, LayoutContext, LayoutNode, LayoutStyle, LengthPercentageAuto, StyleNode};
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vg::kurbo::{Affine, Rect, Shape, Stroke};
-use nptk_core::vg::peniko::{Brush, Color, Fill};
+use nptk_core::vg::peniko::{Brush, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
-use nptk_core::theme::{ColorRole, Palette};
+use nptk_core::theme::ColorRole;
 use async_trait::async_trait;
 
 /// A toggle/switch button widget with Win8 Metro style.
@@ -214,7 +214,7 @@ impl Widget for Toggle {
         }
     }
 
-    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         if self.disabled {

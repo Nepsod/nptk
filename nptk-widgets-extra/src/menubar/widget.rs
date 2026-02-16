@@ -5,19 +5,17 @@ use nptk_core::app::info::AppInfo;
 #[cfg(feature = "global-menu")]
 use super::common::platform;
 #[cfg(feature = "global-menu")]
-use super::dbus::{Bridge, MenuSnapshot, RemoteMenuNode};
-use crate::menu_popup::MenuPopup;
-use nptk_core::menu::unified::{MenuTemplate, MenuItem, MenuContext};
+use super::dbus::{Bridge, MenuSnapshot};
+use nptk_core::menu::unified::{MenuTemplate, MenuContext};
 use nptk_core::menu::templates::{init_edit_commands, init_view_menu};
 use nptk_core::menu::render::render_menu;
 use nptk_core::menu::manager::MenuManager;
-use nptk_core::menu::commands::MenuCommand;
 #[cfg(feature = "global-menu")]
 use log::error;
 use nptk_core::app::update::Update;
 use nptk_core::layout;
 use nptk_core::layout::{
-    Dimension, Display, Layout, LayoutContext, LayoutNode, LayoutStyle, LengthPercentage, LengthPercentageAuto,
+    Dimension, Display, LayoutContext, LayoutNode, LayoutStyle, LengthPercentage, LengthPercentageAuto,
     StyleNode,
 };
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
@@ -29,13 +27,9 @@ use nptk_core::vg::peniko::{Brush, Color, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, KeyCode, MouseButton, PhysicalKey};
-use nptk_core::theme::{ColorRole, Palette};
-#[cfg(feature = "global-menu")]
-use std::collections::hash_map::DefaultHasher;
+use nptk_core::theme::ColorRole;
 #[cfg(feature = "global-menu")]
 use std::collections::HashMap;
-#[cfg(feature = "global-menu")]
-use std::hash::{Hash, Hasher};
 #[cfg(feature = "global-menu")]
 use std::sync::Arc;
 use async_trait::async_trait;
@@ -855,7 +849,7 @@ impl Widget for MenuBar {
         update
     }
 
-    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
+    fn layout_style(&self, _context: &LayoutContext) -> StyleNode {
         // Hide the widget by setting display to None when not visible
         // This completely removes it from the layout flow, allowing content below to move up
         // Note: If importer is detected and user presses F10, importer_detected is cleared,

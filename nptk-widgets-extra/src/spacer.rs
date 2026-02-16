@@ -3,7 +3,7 @@ use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Dimension, FlexDirection, LayoutNode, LayoutStyle, StyleNode, LayoutContext};
+use nptk_core::layout::{Dimension, LayoutNode, LayoutStyle, StyleNode, LayoutContext};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::Widget;
 use async_trait::async_trait;

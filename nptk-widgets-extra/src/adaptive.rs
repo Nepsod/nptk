@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
-use nalgebra::Vector2;
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
-use nptk_core::layout::{Breakpoint, Breakpoints, Constraints, LayoutNode, StyleNode, LayoutContext};
+use nptk_core::layout::{Breakpoint, Breakpoints, LayoutNode, StyleNode, LayoutContext};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, BoxedWidget};
 use async_trait::async_trait;

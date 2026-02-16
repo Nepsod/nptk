@@ -9,7 +9,7 @@ use nptk_core::theme::ColorRole;
 use nptk_core::vg::kurbo::{
     Affine, Line, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke,
 };
-use nptk_core::vg::peniko::{Brush, Color, Fill};
+use nptk_core::vg::peniko::{Brush, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
@@ -455,7 +455,7 @@ impl Widget for Checkbox {
         }
     }
 
-    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
         let on_change = *self.on_change.get();
 

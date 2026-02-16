@@ -24,7 +24,6 @@ use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetLayoutExt};
 use npio::service::icon::{CachedIcon, IconRegistry};
 use nptk_services::filesystem::entry::FileEntry;
-use nptk_core::theme::Palette;
 use async_trait::async_trait;
 
 use crate::file_icon::loader::request_icon_loading;

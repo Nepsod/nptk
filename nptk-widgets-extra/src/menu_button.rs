@@ -4,7 +4,7 @@ use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout::{Layout, LayoutNode, LayoutStyle, StyleNode, LayoutContext};
 use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
-use nptk_core::vg::kurbo::{Affine, Rect, Vec2};
+use nptk_core::vg::kurbo::Rect;
 use nptk_core::vgi::vello_vg::VelloGraphics;
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{Widget, WidgetChildExt, WidgetLayoutExt};
@@ -100,7 +100,7 @@ impl std::fmt::Debug for MenuButton {
 impl MenuButton {
     /// Create a new menu button with the given label
     pub fn new(label: impl Into<String>) -> Self {
-        use nptk_core::layout::{Dimension, LengthPercentage, LayoutContext};
+        use nptk_core::layout::{Dimension, LengthPercentage};
 
         let label_string = label.into();
 
