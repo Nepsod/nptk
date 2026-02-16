@@ -1166,6 +1166,9 @@ where
         let mut structure_changed = false;
 
         if update_flags.intersects(Update::LAYOUT | Update::FORCE) || self.cached_widget_structure_hash.is_none() || self.cached_style_node.is_none() {
+            if update_flags.intersects(Update::LAYOUT | Update::FORCE) {
+                self.style_cache = None;
+            }
             // Batched style update: compute style once and reuse it
             // This avoids redundant style computations when multiple widgets need updates
             let context = crate::layout::LayoutContext::unbounded().with_style_version(self.style_version);

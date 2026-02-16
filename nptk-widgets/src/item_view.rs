@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::{Instant, Duration};
 use nptk_core::widget::{Widget, WidgetLayoutExt};
-use nptk_core::layout::{LayoutNode, StyleNode, LayoutStyle};
+use nptk_core::layout::{LayoutNode, StyleNode, LayoutStyle, AvailableSpace, Size, Dimension};
 use nptk_core::model::{ItemModel, ItemRole, ModelData, Orientation, SortOrder};
 use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
@@ -17,7 +17,7 @@ use nptk_core::signal::state::StateSignal;
 use nptk_core::theme::{Palette, ColorRole};
 use nptk_core::window::{MouseButton, ElementState};
 
-const GRID_ITEM_SIZE: f64 = 100.0;
+
 
 /// Data for rendering an icon (Image or Vector Scene)
 #[derive(Clone)]
@@ -50,6 +50,9 @@ pub struct ItemView {
     was_left_down: bool,
     on_context_menu: Option<Box<dyn Fn(usize, Vector2<f64>, AppContext) -> Update + Send + Sync>>,
     icon_size: MaybeSignal<f32>,
+    last_row_count: usize,
+    hovered_row: Option<usize>,
+    measured_size: Option<Size<f32>>,
 }
 
 impl ItemView {
@@ -69,6 +72,9 @@ impl ItemView {
             was_left_down: false,
             on_context_menu: None,
             icon_size: MaybeSignal::value(16.0),
+            last_row_count: 0,
+            hovered_row: None,
+            measured_size: None,
         }
     }
 
@@ -115,23 +121,36 @@ impl ItemView {
         &self.selected_rows
     }
     
+    fn current_row_height(&self) -> f32 {
+        match *self.view_mode.get() {
+            ViewMode::List | ViewMode::Table | ViewMode::Compact => {
+                let icon_size = *self.icon_size.get() as f32;
+                // Increase padding to 16.0 for more breathing room
+                // And ensure a minimum comfortable height (e.g. 36.0)
+                self.item_height.max(icon_size + 16.0).max(36.0)
+            }
+            _ => self.item_height
+        }
+    }
+
     fn render_list(&mut self, graphics: &mut dyn Graphics, layout_node: &LayoutNode, info: &mut AppInfo, context: &AppContext) {
          let rows = self.model.row_count();
-         // Basic rendering logic (can be optimized)
-         // Assuming layout_node.layout provides correct size
-         
          let start_y = layout_node.layout.location.y;
          let mut y = start_y;
+         
+         let row_height = self.current_row_height();
          
          let palette = context.palette();
          
          for i in 0..rows {
             let is_selected = self.selected_rows.get().contains(&i);
+            
+            // Culling
             if y > start_y + layout_node.layout.size.height {
                 break;
             }
-            if y + self.item_height < start_y {
-                y += self.item_height;
+            if y + row_height < start_y {
+                y += row_height;
                 continue;
             }
             
@@ -139,7 +158,7 @@ impl ItemView {
                 layout_node.layout.location.x as f64,
                 y as f64,
                 (layout_node.layout.location.x + layout_node.layout.size.width) as f64,
-                (y + self.item_height) as f64,
+                (y + row_height) as f64,
             );
             
              // Fetch data
@@ -163,9 +182,9 @@ impl ItemView {
                  if !matches!(data, ModelData::None) {
                      let icon_rect = Rect::new(
                          row_rect.x0 + 5.0,
-                         row_rect.y0 + (self.item_height as f64 - icon_size) / 2.0,
+                         row_rect.y0 + (row_height as f64 - icon_size) / 2.0,
                          row_rect.x0 + 5.0 + icon_size,
-                         row_rect.y0 + (self.item_height as f64 + icon_size) / 2.0
+                         row_rect.y0 + (row_height as f64 + icon_size) / 2.0
                      );
                      self.draw_icon(graphics, &data, icon_rect, &palette);
                      text_offset += icon_size + 5.0;
@@ -190,7 +209,7 @@ impl ItemView {
                 );
             }
             
-            y += self.item_height;
+            y += row_height;
          }
     }
 
@@ -200,11 +219,28 @@ impl ItemView {
          let start_y = layout_node.layout.location.y;
          let width = layout_node.layout.size.width;
          
-         let item_width = GRID_ITEM_SIZE as f32;
-         let item_height = GRID_ITEM_SIZE as f32;
+         // Use configured icon size
+         let icon_size = *self.icon_size.get() as f32;
          
-         let cols = (width / item_width).floor() as usize;
+         // Calculate item dimensions based on icon size + padding + text space
+         // Standard padding around the item
+         let padding = 8.0;
+         // Space for text (approximate 2 lines)
+         let text_height = 36.0; 
+         
+         let item_width = icon_size + (padding * 4.0);
+         // Enforce a minimum width for usability
+         let item_width = item_width.max(80.0);
+         
+         let item_height = padding + icon_size + padding + text_height + padding;
+         
+         // Calculate columns
+         let available_width = width.max(1.0);
+         let cols = (available_width / item_width).floor() as usize;
          let cols = cols.max(1);
+         
+         // Recalculate actual item width to fill space evenly
+         let actual_item_width = available_width / cols as f32;
          
          let palette = context.palette();
          
@@ -214,7 +250,8 @@ impl ItemView {
              let row = i / cols;
              let col = i % cols;
              
-             let x = start_x + (col as f32 * item_width);
+             // Use actual_item_width for X position to fill row
+             let x = start_x + (col as f32 * actual_item_width);
              let y = start_y + (row as f32 * item_height);
              
              // Culling
@@ -228,38 +265,90 @@ impl ItemView {
              let item_rect = Rect::new(
                  x as f64,
                  y as f64,
-                 (x + item_width) as f64,
+                 (x + actual_item_width) as f64,
                  (y + item_height) as f64
              );
+
+             let is_hovered = self.hovered_row == Some(i);
+             let is_focused = self.last_selected_index == Some(i);
+
+             // Standard padding for content inside the hover/select rect
+             let selection_rect = item_rect.inset(2.0);
+             
+             let rounded = nptk_core::vg::kurbo::RoundedRect::new(
+                 selection_rect.x0, 
+                 selection_rect.y0, 
+                 selection_rect.x1, 
+                 selection_rect.y1, 
+                 8.0
+             );
+             
+             let rounded_path = Self::shape_to_path(&rounded);
+
+            // Hover background
+            if is_hovered && !is_selected {
+                let hover_color = palette.color(ColorRole::Selection).with_alpha(0.2);
+                graphics.fill(
+                     nptk_core::vg::peniko::Fill::NonZero,
+                     Affine::IDENTITY,
+                     &Brush::Solid(hover_color),
+                     None,
+                     &rounded_path
+                );
+            }
 
             // Selection background
             if is_selected {
                 let selection_color = palette.color(ColorRole::Selection);
-                let rounded = nptk_core::vg::kurbo::RoundedRect::new(item_rect.x0, item_rect.y0, item_rect.x1, item_rect.y1, 4.0);
                 graphics.fill(
                      nptk_core::vg::peniko::Fill::NonZero,
                      Affine::IDENTITY,
                      &Brush::Solid(selection_color),
                      None,
-                     &Self::shape_to_path(&rounded)
+                     &rounded_path
                 );
             }
+            
+            // Focus Ring
+            if is_focused {
+                 let focus_color = palette.color(ColorRole::Accent);
+                 graphics.stroke(
+                     &nptk_core::vg::kurbo::Stroke::new(1.5),
+                     Affine::IDENTITY,
+                     &Brush::Solid(focus_color),
+                     None,
+                     &rounded_path
+                 );
+            }
 
-             // Icon
+             // Icon - Centered horizontally
              let data = self.model.data(i, 0, ItemRole::Icon);
-             let icon_size = 48.0;
+             
+             // Center icon in the upper part
+             let icon_x = x as f64 + (actual_item_width as f64 - icon_size as f64) / 2.0;
+             let icon_y = y as f64 + padding as f64;
+             
              let icon_rect = Rect::new(
-                x as f64 + (item_width as f64 - icon_size) / 2.0,
-                y as f64 + 10.0,
-                x as f64 + (item_width as f64 + icon_size) / 2.0,
-                y as f64 + 10.0 + icon_size
+                icon_x,
+                icon_y,
+                icon_x + icon_size as f64,
+                icon_y + icon_size as f64
              );
              
              self.draw_icon(graphics, &data, icon_rect, &palette);
              
-             // Text
+             // Text - Centered below icon
              if let ModelData::String(text) = self.model.data(i, 0, ItemRole::Display) {
                  let text_brush = Brush::Solid(palette.color(ColorRole::WindowText));
+                 
+                 // Text rendering area
+                 let text_area_y = icon_y + icon_size as f64 + padding as f64;
+                 
+                 let text_x = x as f64 + padding as f64;
+                 let text_width = actual_item_width as f64 - (padding as f64 * 2.0);
+                 
+                 let transform = Affine::translate((text_x, text_area_y));
+                 
                  self.text_context.render_text(
                      &mut info.font_context,
                      graphics,
@@ -267,9 +356,9 @@ impl ItemView {
                      None,
                      12.0,
                      text_brush,
-                     Affine::translate((x as f64 + 5.0, y as f64 + 70.0)), // Text at bottom
-                     true,
-                     Some((item_width - 10.0) as f32)
+                     transform,
+                     true, // Wrapping enabled
+                     Some(text_width as f32)
                  );
              }
          }
@@ -389,13 +478,15 @@ impl ItemView {
              }
         }
          
+         let row_height = self.current_row_height();
+         
          for i in 0..rows {
             let is_selected = self.selected_rows.get().contains(&i);
             if y > start_y + layout_node.layout.size.height {
                 break;
             }
-            if y + self.item_height < start_y {
-                y += self.item_height;
+            if y + row_height < start_y {
+                y += row_height;
                 continue;
             }
             
@@ -403,7 +494,7 @@ impl ItemView {
                 layout_node.layout.location.x as f64,
                 y as f64,
                 (layout_node.layout.location.x + layout_node.layout.size.width) as f64,
-                (y + self.item_height) as f64,
+                (y + row_height) as f64,
             );
             
             if is_selected {
@@ -424,7 +515,7 @@ impl ItemView {
                     x,
                     y as f64,
                     x + col_width,
-                    (y + self.item_height) as f64
+                    (y + row_height) as f64
                  );
                  
                   // Fetch data
@@ -436,9 +527,9 @@ impl ItemView {
                 if !matches!(data, ModelData::None) {
                      let icon_rect = Rect::new(
                          x + 5.0,
-                         y as f64 + (self.item_height as f64 - icon_size) / 2.0,
+                         y as f64 + (row_height as f64 - icon_size) / 2.0,
                          x + 5.0 + icon_size,
-                         y as f64 + (self.item_height as f64 + icon_size) / 2.0
+                         y as f64 + (row_height as f64 + icon_size) / 2.0
                      );
                      self.draw_icon(graphics, &data, icon_rect, &palette);
                      text_offset += icon_size + 5.0;
@@ -463,7 +554,7 @@ impl ItemView {
                 }
             }
             
-            y += self.item_height;
+            y += row_height;
          }
     }
 
@@ -579,17 +670,235 @@ impl ItemView {
     }
 
     fn render_compact(&mut self, graphics: &mut dyn Graphics, layout_node: &LayoutNode, info: &mut AppInfo, context: &AppContext) {
-         // Re-use list rendering for now
-         self.render_list(graphics, layout_node, info, context);
+         let rows = self.model.row_count();
+         let start_x = layout_node.layout.location.x;
+         let start_y = layout_node.layout.location.y;
+         let width = layout_node.layout.size.width;
+         
+         // Use dynamic height
+         let item_height = self.current_row_height();
+         
+         // Min width per column
+         let min_item_width = 200.0;
+         
+         // Calculate columns
+         let available_width = width.max(1.0);
+         let cols = (available_width / min_item_width).floor() as usize;
+         let cols = cols.max(1);
+         
+         // Recalculate actual item width to fill space evenly
+         let actual_item_width = available_width / cols as f32;
+         
+         let palette = context.palette();
+         
+         for i in 0..rows {
+             let is_selected = self.selected_rows.get().contains(&i);
+             
+             let row = i / cols;
+             let col = i % cols;
+             
+             let x = start_x + (col as f32 * actual_item_width);
+             let y = start_y + (row as f32 * item_height);
+             
+             // Culling
+             if y > start_y + layout_node.layout.size.height {
+                 break;
+             }
+             if y + item_height < start_y {
+                 continue;
+             }
+             
+             let item_rect = Rect::new(
+                 x as f64,
+                 y as f64,
+                 (x + actual_item_width) as f64,
+                 (y + item_height) as f64
+             );
+             
+             let is_hovered = self.hovered_row == Some(i);
+             let is_focused = self.last_selected_index == Some(i);
+
+             // Selection/Hover background
+             if is_selected || is_hovered {
+                 let color = if is_selected {
+                     palette.color(ColorRole::Selection)
+                 } else {
+                     palette.color(ColorRole::Selection).with_alpha(0.2)
+                 };
+                 
+                 let rounded = nptk_core::vg::kurbo::RoundedRect::new(
+                     item_rect.x0, 
+                     item_rect.y0, 
+                     item_rect.x1, 
+                     item_rect.y1, 
+                     4.0
+                 );
+                 graphics.fill(
+                      nptk_core::vg::peniko::Fill::NonZero,
+                      Affine::IDENTITY,
+                      &Brush::Solid(color),
+                      None,
+                      &Self::shape_to_path(&rounded)
+                 );
+             }
+             
+             // Focus Ring
+             if is_focused {
+                 let focus_color = palette.color(ColorRole::Accent);
+                 let rounded = nptk_core::vg::kurbo::RoundedRect::new(
+                     item_rect.x0, 
+                     item_rect.y0, 
+                     item_rect.x1, 
+                     item_rect.y1, 
+                     4.0
+                 );
+                 graphics.stroke(
+                     &nptk_core::vg::kurbo::Stroke::new(1.0),
+                     Affine::IDENTITY,
+                     &Brush::Solid(focus_color),
+                     None,
+                     &Self::shape_to_path(&rounded)
+                 );
+             }
+             
+             // Icon (Small 16px)
+             let data = self.model.data(i, 0, ItemRole::Icon);
+             let icon_size = 16.0;
+             let icon_rect = Rect::new(
+                 item_rect.x0 + 4.0,
+                 item_rect.y0 + (item_height as f64 - icon_size) / 2.0,
+                 item_rect.x0 + 4.0 + icon_size,
+                 item_rect.y0 + (item_height as f64 + icon_size) / 2.0
+             );
+             self.draw_icon(graphics, &data, icon_rect, &palette);
+             
+             // Text
+             if let ModelData::String(text) = self.model.data(i, 0, ItemRole::Display) {
+                 let text_brush = Brush::Solid(palette.color(ColorRole::WindowText));
+                 let transform = Affine::translate((item_rect.x0 + 24.0, item_rect.y0 + 16.0));
+                 
+                 self.text_context.render_text(
+                     &mut info.font_context,
+                     graphics,
+                     &text,
+                     None,
+                     12.0,
+                     text_brush,
+                     transform,
+                     false, // No wrapping
+                     Some((actual_item_width as f64 - 28.0) as f32) // Truncate
+                 );
+             }
+         }
     }
 }
 
 #[async_trait(?Send)]
 impl Widget for ItemView {
-    fn layout_style(&self, _context: &nptk_core::layout::LayoutContext) -> StyleNode {
-         StyleNode {
-            style: self.layout_style.get().clone(),
-            children: vec![], // Leaf for now (virtual scrolling usually manages children manually or renders directly)
+    fn measure(&self, constraints: Size<AvailableSpace>) -> Option<Size<f32>> {
+        let rows = self.model.row_count();
+        if rows == 0 {
+             return Some(Size { width: 0.0, height: 0.0 });
+        }
+        
+        // Resolve width
+        let width = match constraints.width {
+            AvailableSpace::Definite(w) => w,
+            AvailableSpace::MinContent => {
+                 // log::info!("ItemView::measure: Width MinContent, defaulting to 100.0");
+                 100.0
+            }, 
+            AvailableSpace::MaxContent => {
+                 // log::info!("ItemView::measure: Width MaxContent, defaulting to 1000.0");
+                 1000.0
+            }, 
+        };
+        
+        let view_mode = *self.view_mode.get();
+        let row_height = self.current_row_height();
+        let height = match view_mode {
+            ViewMode::List => rows as f32 * row_height,
+            ViewMode::Table => 30.0f32 + (rows as f32 * row_height),
+            ViewMode::Icon => {
+                let icon_size = *self.icon_size.get() as f32;
+                let padding = 8.0;
+                let text_height = 36.0; 
+                let item_width = (icon_size + (padding * 4.0)).max(80.0);
+                let item_height = padding + icon_size + padding + text_height + padding;
+                
+                let cols = (width / item_width).floor().max(1.0) as usize;
+                let rows_calc = (rows + cols - 1) / cols;
+                rows_calc as f32 * item_height
+            },
+            ViewMode::Compact => {
+                 let item_height = self.current_row_height();
+                 let min_item_width = 200.0;
+                 let cols = (width / min_item_width).floor().max(1.0) as usize;
+                 let rows_calc = (rows + cols - 1) / cols;
+                 rows_calc as f32 * item_height
+            }
+        };
+        
+        Some(Size { width, height })
+    }
+
+    fn layout_style(&self, context: &nptk_core::layout::LayoutContext) -> StyleNode {
+        let mut style = self.layout_style.get().clone();
+
+        let rows = self.model.row_count();
+        let view_mode = *self.view_mode.get();
+        let row_height = self.current_row_height();
+
+        let height = if rows == 0 {
+            0.0
+        } else {
+            match view_mode {
+                ViewMode::List => rows as f32 * row_height,
+                ViewMode::Table => 30.0f32 + (rows as f32 * row_height),
+                ViewMode::Icon => {
+                    let width = context.viewport_bounds
+                        .map(|v| v.width)
+                        .filter(|&w| w > 0.0)
+                        .unwrap_or_else(|| {
+                            if context.constraints.max_width.is_finite() {
+                                context.constraints.max_width
+                            } else {
+                                400.0
+                            }
+                        });
+                    let icon_size = *self.icon_size.get() as f32;
+                    let padding = 8.0;
+                    let text_height = 36.0;
+                    let item_width = (icon_size + (padding * 4.0)).max(80.0);
+                    let item_height = padding + icon_size + padding + text_height + padding;
+                    let cols = (width / item_width).floor().max(1.0) as usize;
+                    let rows_calc = (rows + cols - 1).max(1) / cols;
+                    rows_calc as f32 * item_height
+                },
+                ViewMode::Compact => {
+                    let width = context.viewport_bounds
+                        .map(|v| v.width)
+                        .filter(|&w| w > 0.0)
+                        .unwrap_or_else(|| {
+                            if context.constraints.max_width.is_finite() {
+                                context.constraints.max_width
+                            } else {
+                                400.0
+                            }
+                        });
+                    let min_item_width = 200.0;
+                    let cols = (width / min_item_width).floor().max(1.0) as usize;
+                    let rows_calc = (rows + cols - 1).max(1) / cols;
+                    rows_calc as f32 * row_height
+                },
+            }
+        };
+
+        style.size.y = Dimension::length(height);
+
+        StyleNode {
+            style,
+            children: vec![],
             measure_func: None,
         }
     }
@@ -597,13 +906,42 @@ impl Widget for ItemView {
     async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
         
+        let row_count = self.model.row_count();
+        if row_count != self.last_row_count {
+            self.last_row_count = row_count;
+            // Force layout to ensure we get a chance to measure with new row count
+             update.insert(Update::LAYOUT | Update::DRAW);
+        }
+
+        // Measure content size based on current layout width
+        let width = layout.layout.size.width;
+        let constraints = Size {
+            width: AvailableSpace::Definite(width),
+            height: AvailableSpace::MaxContent,
+        };
+        
+        if let Some(new_size) = self.measure(constraints) {
+             if self.measured_size.map(|s| s.height != new_size.height).unwrap_or(true) {
+                 self.measured_size = Some(new_size);
+                 update.insert(Update::LAYOUT);
+             }
+        }
+
         let mode = *self.view_mode.get();
         
-        let columns = if mode == ViewMode::Icon {
-            let width = layout.layout.size.width as f64;
-            (width / GRID_ITEM_SIZE).floor().max(1.0) as usize
-        } else {
-            1
+        let width = layout.layout.size.width as f64;
+        let columns = match mode {
+            ViewMode::Icon => {
+                 let icon_size = *self.icon_size.get() as f64;
+                 let padding = 8.0;
+                 let item_width = (icon_size + (padding * 4.0)).max(80.0);
+                 (width / item_width).floor().max(1.0) as usize
+            },
+            ViewMode::Compact => {
+                 let min_item_width = 200.0;
+                 (width / min_item_width).floor().max(1.0) as usize
+            },
+            _ => 1
         };
 
         
@@ -786,67 +1124,87 @@ impl Widget for ItemView {
             }
         }
         
-        // Handle Mouse Events for Selection
+        // Handle Mouse Events
         if let Some(pos) = info.cursor_pos {
             let rect = layout.layout;
             if pos.x >= rect.location.x as f64 && pos.x <= (rect.location.x + rect.size.width) as f64 &&
                pos.y >= rect.location.y as f64 && pos.y <= (rect.location.y + rect.size.height) as f64 {
-                // Check for clicks
-                let left_click_current = info.buttons.iter().any(|(_, btn, state)| *btn == MouseButton::Left && *state == ElementState::Pressed);
                 
-                // Only trigger if pressed NOW and NOT pressed BEFORE (Edge detection)
-                let left_click = left_click_current && !self.was_left_down;
+                // Calculate Hovered Index
+                let mode = *self.view_mode.get();
+                let local_x = pos.x - rect.location.x as f64;
+                let local_y = pos.y - rect.location.y as f64;
+                let width = rect.size.width as f64;
                 
-                // Update state for next frame
-                self.was_left_down = left_click_current;
-
-                // Handle Right Click (Context Menu)
-                let is_right_clicked = info.buttons.iter().any(|(_, btn, state)| *btn == MouseButton::Right && *state == ElementState::Pressed);
-                
-                if is_right_clicked {
-                     // Find item under cursor
-                     let mode = *self.view_mode.get();
-                     let row_height = self.item_height as f64;
-                     let header_height = if mode == ViewMode::Table { 30.0 } else { 0.0 };
-                     
-                     let local_y = pos.y - layout.layout.location.y as f64;
-                     let local_x = pos.x - layout.layout.location.x as f64;
-                     
-                     // Reuse logic to find item index
-                     let clicked_index = if mode == ViewMode::Icon {
-                            let item_width = GRID_ITEM_SIZE;
-                            let item_height = GRID_ITEM_SIZE;
-                            let width = layout.layout.size.width as f64;
-                            let cols = (width / item_width).floor().max(1.0) as usize;
-                            
-                            let col = (local_x / item_width).floor() as usize;
-                            let row = (local_y / item_height).floor() as usize;
-                            
-                            if col < cols {
-                                let idx = row * cols + col;
-                                 if idx < self.model.row_count() {
-                                     Some(idx)
-                                 } else {
-                                     None
-                                 }
-                            } else {
-                                None
-                            }
-                     } else {
-                         if local_y >= header_height {
-                             let index = ((local_y - header_height) / row_height).floor() as usize;
-                             if index < self.model.row_count() {
-                                 Some(index)
-                             } else {
-                                 None
-                             }
+                let hovered_index = match mode {
+                    ViewMode::Icon => {
+                         let icon_size = *self.icon_size.get() as f64;
+                         let padding = 8.0;
+                         let text_height = 36.0; 
+                         let item_width = (icon_size + (padding * 4.0)).max(80.0);
+                         let item_height = padding + icon_size + padding + text_height + padding;
+                         
+                         let cols = (width / item_width).floor().max(1.0) as usize;
+                         let actual_item_width = width / cols as f64;
+                         
+                         let col = (local_x / actual_item_width).floor() as usize;
+                         let row = (local_y / item_height).floor() as usize;
+                         
+                         if col < cols {
+                             let idx = row * cols + col;
+                             if idx < self.model.row_count() { Some(idx) } else { None }
                          } else {
                              None
                          }
-                     };
+                    },
+                    ViewMode::Compact => {
+                         let item_height = self.current_row_height() as f64;
+                         let min_item_width = 200.0;
+                         let cols = (width / min_item_width).floor().max(1.0) as usize;
+                         let actual_item_width = width / cols as f64;
+                         
+                         let col = (local_x / actual_item_width).floor() as usize;
+                         let row = (local_y / item_height).floor() as usize;
+                         
+                         if col < cols {
+                             let idx = row * cols + col;
+                             if idx < self.model.row_count() { Some(idx) } else { None }
+                         } else {
+                             None
+                         }
+                    },
+                    ViewMode::Table => {
+                        let header_height = 30.0;
+                        if local_y >= header_height {
+                            let idx = ((local_y - header_height) / self.current_row_height() as f64).floor() as usize;
+                            if idx < self.model.row_count() { Some(idx) } else { None }
+                        } else {
+                            None
+                        }
+                    },
+                    _ => {
+                         // List
+                        let idx = (local_y / self.current_row_height() as f64).floor() as usize;
+                        if idx < self.model.row_count() { Some(idx) } else { None }
+                    }
+                };
+                
+                // Update Hover State
+                if self.hovered_row != hovered_index {
+                    self.hovered_row = hovered_index;
+                    update.insert(Update::DRAW);
+                }
 
-                     if let Some(index) = clicked_index {
-                         // Select item if not already selected (right click usually selects)
+                // Check for clicks
+                let left_click_current = info.buttons.iter().any(|(_, btn, state)| *btn == MouseButton::Left && *state == ElementState::Pressed);
+                let left_click = left_click_current && !self.was_left_down;
+                self.was_left_down = left_click_current;
+
+                let is_right_clicked = info.buttons.iter().any(|(_, btn, state)| *btn == MouseButton::Right && *state == ElementState::Pressed);
+                
+                if is_right_clicked {
+                     if let Some(index) = hovered_index {
+                         // Select item if not already selected
                          let current_selection = (*self.selected_rows.get()).clone();
                          if !current_selection.contains(&index) {
                                 if let Some(signal) = self.selected_rows.as_signal() {
@@ -858,7 +1216,7 @@ impl Widget for ItemView {
                                 update.insert(Update::DRAW);
                          }
                          
-                         // Trigger context menu callback
+                         // Trigger context menu
                          if let Some(cb) = &self.on_context_menu {
                              update |= cb(index, info.cursor_pos.unwrap_or(Vector2::new(0.0, 0.0)), context.clone());
                          }
@@ -867,77 +1225,37 @@ impl Widget for ItemView {
 
                 if left_click {
                     // Check for header click in Table mode
-                    if *self.view_mode.get() == ViewMode::Table {
-                        let local_y = pos.y - (layout.layout.location.y as f64);
-                        if local_y < 30.0 {
-                            // Header click
-                            let cols = self.model.column_count();
-                            let col_width = (layout.layout.size.width / cols as f32) as f64;
-                            let local_x = pos.x - (layout.layout.location.x as f64);
-                            
-                            let clicked_col = (local_x / col_width).floor() as usize;
-                            if clicked_col < cols {
-                                // Toggle sort
-                                let new_order = if let Some((current_col, current_order)) = self.sorted_column.get().as_ref() {
-                                    if *current_col == clicked_col {
-                                        match current_order {
-                                            SortOrder::Ascending => SortOrder::Descending,
-                                            SortOrder::Descending => SortOrder::Ascending,
-                                        }
-                                    } else {
-                                        SortOrder::Ascending
+                    if *self.view_mode.get() == ViewMode::Table && local_y < 30.0 {
+                        // Header click logic
+                        let cols = self.model.column_count();
+                        let col_width = width / cols as f64;
+                        let clicked_col = (local_x / col_width).floor() as usize;
+                        
+                        if clicked_col < cols {
+                            let new_order = if let Some((current_col, current_order)) = self.sorted_column.get().as_ref() {
+                                if *current_col == clicked_col {
+                                    match current_order {
+                                        SortOrder::Ascending => SortOrder::Descending,
+                                        SortOrder::Descending => SortOrder::Ascending,
                                     }
                                 } else {
                                     SortOrder::Ascending
-                                };
-                                
-                                // Update model (generic model needs to support sorting)
-                                self.model.sort(clicked_col, new_order);
-                                
-                                // Update state
-                                if let Some(signal) = self.sorted_column.as_signal() {
-                                    signal.set(Some((clicked_col, new_order)));
                                 }
-                                
-                                update.insert(Update::DRAW);
-                                return update;
+                            } else {
+                                SortOrder::Ascending
+                            };
+                            
+                            self.model.sort(clicked_col, new_order);
+                            if let Some(signal) = self.sorted_column.as_signal() {
+                                signal.set(Some((clicked_col, new_order)));
                             }
+                            update.insert(Update::DRAW);
+                            return update;
                         }
                     }
 
-                    // Calculate clicked row
-                     let item_y = if *self.view_mode.get() == ViewMode::Table {
-                        pos.y - (layout.layout.location.y as f64) - 30.0 // Minus header
-                    } else {
-                        pos.y - (layout.layout.location.y as f64)
-                    };
-                    
-                    let row_index = if *self.view_mode.get() == ViewMode::Icon {
-                         let item_width = 100.0;
-                         let item_height = 100.0;
-                         let width = layout.layout.size.width as f64;
-                         let cols = (width / item_width).floor() as usize;
-                         let cols = cols.max(1);
-                         
-                         let local_x = pos.x - (layout.layout.location.x as f64);
-                         let local_y = pos.y - (layout.layout.location.y as f64);
-                         
-                         if local_x >= 0.0 && local_y >= 0.0 {
-                             let row = (local_y / item_height).floor() as usize;
-                             let col = (local_x / item_width).floor() as usize;
-                             if col < cols {
-                                 Some(row * cols + col)
-                             } else {
-                                 None
-                             }
-                         } else {
-                             None
-                         }
-                    } else if item_y >= 0.0 {
-                        Some((item_y / self.item_height as f64).floor() as usize)
-                    } else {
-                        None
-                    };
+                     // Use pre-calculated hovered index
+                     let row_index = hovered_index;
                      
                      if let Some(row_index) = row_index {
                          if row_index < self.model.row_count() {
