@@ -1327,7 +1327,7 @@ impl Widget for ScrollContainer {
     }
 
     async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
-        println!("ScrollContainer::update called");
+        // println!("ScrollContainer::update called");
         let mut update = Update::empty();
 
         // Update child and content size

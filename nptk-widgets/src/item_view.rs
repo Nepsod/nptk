@@ -925,6 +925,7 @@ impl Widget for ItemView {
                  self.measured_size = Some(new_size);
                  update.insert(Update::LAYOUT);
              }
+        } else {
         }
 
         let mode = *self.view_mode.get();
@@ -1363,8 +1364,7 @@ impl Widget for ItemView {
 
         // Render based on mode
         let mode = *self.view_mode.get();
-        // eprintln!("ItemView::render: mode={:?}", mode);
-        
+         // println!("ItemView::measure: rows={}, width={:?}, calculated_height={}", rows, constraints.width, height);
         match mode {
             ViewMode::List => self.render_list(graphics, layout, info, &context),
             ViewMode::Icon => self.render_icon(graphics, layout, info, &context),
