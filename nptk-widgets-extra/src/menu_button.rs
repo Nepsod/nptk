@@ -16,53 +16,11 @@ use nptk_widgets::button::Button;
 pub use crate::menu_popup::MenuPopup;
 use nptk_widgets::text::Text;
 
-/// Represents a menu item in a popup menu
-#[derive(Clone)]
-pub enum MenuItem {
-    /// A menu item with a label, optional keyboard shortcut, and optional action callback
-    Item(String, Option<String>, Option<Arc<dyn Fn() -> Update + Send + Sync>>),
-    /// A separator line between menu items
-    Separator,
-}
+use nptk_core::menu::unified::MenuItem as UnifiedMenuItem;
+use nptk_core::menu::commands::MenuCommand;
 
-impl MenuItem {
-    /// Create a new menu item
-    pub fn new(_id: impl ToString, label: impl ToString) -> Self {
-        Self::Item(label.to_string(), None, None)
-    }
-
-    /// Create a separator menu item
-    pub fn separator() -> Self {
-        Self::Separator
-    }
-
-    /// Set the keyboard shortcut for this item
-    pub fn with_shortcut(mut self, shortcut: impl ToString) -> Self {
-        if let Self::Item(_, ref mut s, _) = self {
-            *s = Some(shortcut.to_string());
-        }
-        self
-    }
-
-    /// Set whether this item is enabled
-    pub fn with_enabled(self, _enabled: bool) -> Self {
-        if let Self::Item(_, _, _) = self {
-            // No-op for now, as enabled state is not directly reflected in MenuItem
-        }
-        self
-    }
-
-    /// Set the callback for when this item is activated
-    pub fn with_on_activate<F>(mut self, callback: F) -> Self
-    where
-        F: Fn() -> Update + Send + Sync + 'static,
-    {
-        if let Self::Item(_, _, ref mut action) = self {
-            *action = Some(Arc::new(callback));
-        }
-        self
-    }
-}
+// Re-export UnifiedMenuItem as MenuItem for convenience, or just use UnifiedMenuItem
+pub type MenuItem = UnifiedMenuItem;
 
 /// A button that displays a popup menu when clicked
 ///
@@ -81,9 +39,11 @@ pub struct MenuButton {
     child: Box<dyn Widget>,
     is_menu_open: Arc<StateSignal<bool>>,
     menu_items: Vec<MenuItem>,
+    items_builder: Option<Arc<dyn Fn() -> Vec<MenuItem> + Send + Sync>>,
     on_item_selected: Option<Arc<dyn Fn(String) + Send + Sync>>,
     popup_data: Option<MenuPopup>,
     layout_style: MaybeSignal<LayoutStyle>,
+    tooltip: Option<String>,
 }
 
 impl std::fmt::Debug for MenuButton {
@@ -150,9 +110,11 @@ impl MenuButton {
             child: Box::new(button),
             is_menu_open: Arc::new(StateSignal::new(false)),
             menu_items: Vec::new(),
+            items_builder: None,
             on_item_selected: None,
             popup_data: None,
             layout_style: MaybeSignal::value(LayoutStyle::default()),
+            tooltip: None,
         }
     }
 
@@ -162,9 +124,11 @@ impl MenuButton {
             child: Box::new(child),
             is_menu_open: Arc::new(StateSignal::new(false)),
             menu_items: Vec::new(),
+            items_builder: None,
             on_item_selected: None,
             popup_data: None,
             layout_style: MaybeSignal::value(LayoutStyle::default()),
+            tooltip: None,
         }
     }
 
@@ -180,12 +144,27 @@ impl MenuButton {
         self
     }
 
+    /// Set a builder function to generate menu items dynamically when the menu is opened
+    pub fn with_items_builder<F>(mut self, builder: F) -> Self
+    where
+        F: Fn() -> Vec<MenuItem> + Send + Sync + 'static,
+    {
+        self.items_builder = Some(Arc::new(builder));
+        self
+    }
+
     /// Set the callback for when an item is selected from the popup menu
     pub fn with_on_item_selected<F>(mut self, callback: F) -> Self
     where
         F: Fn(String) + Send + Sync + 'static,
     {
         self.on_item_selected = Some(Arc::new(callback));
+        self
+    }
+
+    /// Set the tooltip text for the button
+    pub fn with_tooltip(mut self, text: impl Into<String>) -> Self {
+        self.tooltip = Some(text.into());
         self
     }
 
@@ -212,50 +191,61 @@ impl MenuButton {
 
     /// Create and show the menu popup
     fn show_menu_popup(&mut self, _layout: &LayoutNode, _info: &mut AppInfo) {
-        if !self.menu_items.is_empty() {
-            use nptk_core::menu::unified::{MenuTemplate, MenuItem as UnifiedMenuItem};
-            use nptk_core::menu::commands::MenuCommand;
-            
-            let unified_items: Vec<UnifiedMenuItem> = self
-                .menu_items
-                .iter()
-                .enumerate()
-                .filter_map(|(idx, item)| match item {
-                    MenuItem::Item(label, shortcut, action) => {
-                        let item_action = action.clone();
-                        let item_label = label.clone();
-                        let on_item_selected_clone = self.on_item_selected.clone();
-                        
-                        Some(UnifiedMenuItem::new(
-                            MenuCommand::Custom(idx as u32),
-                            label.clone(),
-                        )
-                        .with_shortcut(shortcut.clone().unwrap_or_default())
-                        .with_enabled(true)
-                        .with_action(move || {
-                            // Execute the item's own callback if provided
-                            if let Some(ref action_callback) = item_action {
-                                action_callback();
-                            }
-                            
-                            // Also call the MenuButton's on_item_selected callback if provided
-                            if let Some(ref on_item_selected) = on_item_selected_clone {
-                                on_item_selected(item_label.clone());
-                            }
-                            
-                            // Return FORCE to signal that an item was selected and menu should close
-                            Update::FORCE
-                        }))
-                    },
-                    MenuItem::Separator => Some(UnifiedMenuItem::separator()),
-                })
-                .collect();
+        let items = if let Some(ref builder) = self.items_builder {
+            builder()
+        } else {
+            self.menu_items.clone()
+        };
 
-            let template = MenuTemplate::from_items("menu_button", unified_items);
+        if !items.is_empty() {
+            use nptk_core::menu::unified::MenuTemplate;
+            
+            // We need to clone items to pass to the template
+            // And potentially wrap actions to handle on_item_selected
+            
+            let wrapped_items: Vec<UnifiedMenuItem> = items.iter().map(|item| {
+                let mut new_item = item.clone();
+                
+                // If on_item_selected is set, wrap the action
+                if let Some(ref on_selected) = self.on_item_selected {
+                    let on_selected = on_selected.clone();
+                    let original_action = item.action.clone();
+                    let label = item.label.clone();
+                    
+                    new_item = new_item.with_action(move || {
+                        if let Some(ref action) = original_action {
+                             let _ = action();
+                        }
+                        on_selected(label.clone());
+                        Update::FORCE
+                    });
+                } else {
+                    // Even without on_item_selected, we ensure the action returns FORCE to close menu
+                    // if it wasn't already wrapped (UnifiedMenuItem default action doesn't necessarily close menu?)
+                    // ContextMenuState handles closing if `FORCE` is returned? 
+                    // Wait, `UnifiedMenuItem` action returns `Update`.
+                    // `MenuPopup` logic (in `nptk-widgets-extra` or elsewhere) handles the `Update`.
+                    // In `MenuButton::update` line 389: `if popup_update.contains(Update::FORCE) { self.close_menu(); }`
+                    // So yes, the action MUST return `Update::FORCE` to close the menu.
+                    
+                    let original_action = item.action.clone();
+                    new_item = new_item.with_action(move || {
+                        if let Some(ref action) = original_action {
+                            let u = action();
+                            if u.contains(Update::FORCE) {
+                                return u;
+                            }
+                            return u | Update::FORCE;
+                        }
+                        Update::FORCE
+                    });
+                }
+                new_item
+            }).collect();
+
+            let template = MenuTemplate::from_items("menu_button", wrapped_items);
             let menu_popup = MenuPopup::new(template);
             
-            // Note: Menu closing is handled by the action callbacks returning Update::FORCE
-
             self.popup_data = Some(menu_popup);
         }
     }
@@ -334,6 +324,10 @@ impl Widget for MenuButton {
             children: vec![self.child.layout_style(context)],
             measure_func: None,
         }
+    }
+
+    fn tooltip(&self) -> Option<String> {
+        self.tooltip.clone()
     }
 
     async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
