@@ -11,6 +11,15 @@ use vello::kurbo::{Affine, BezPath};
 use vello::peniko::{Brush, Fill, Mix};
 use vello::Scene;
 
+/// Represents a batch of draw operations with the same state.
+struct DrawBatch {
+    fill_rule: Fill,
+    transform: Affine,
+    brush: Brush,
+    path: BezPath,
+    brush_transform: Option<Affine>,
+}
+
 /// Graphics wrapper that can batch draw operations before submitting to the underlying scene.
 /// 
 /// Currently, this acts as a pass-through but provides the infrastructure for future
@@ -18,8 +27,10 @@ use vello::Scene;
 pub struct BatchedGraphics<'a> {
     /// The underlying scene to write to
     scene: &'a mut Scene,
-    /// Whether batching is enabled (currently disabled by default until fully implemented)
+    /// Whether batching is enabled
     batching_enabled: bool,
+    /// The current batch of operations
+    current_batch: Option<DrawBatch>,
 }
 
 impl<'a> BatchedGraphics<'a> {
@@ -27,13 +38,34 @@ impl<'a> BatchedGraphics<'a> {
     pub fn new(scene: &'a mut Scene) -> Self {
         Self {
             scene,
-            batching_enabled: false, // Disabled by default until full implementation
+            batching_enabled: true, // Enabled by default for solid brush optimization
+            current_batch: None,
         }
     }
 
     /// Enable or disable batching (useful for debugging or future implementation).
     pub fn set_batching_enabled(&mut self, enabled: bool) {
+        if !enabled {
+            self.flush_batch();
+        }
         self.batching_enabled = enabled;
+    }
+
+    /// Flush the current batch to the scene.
+    pub fn flush_batch(&mut self) {
+        if let Some(batch) = self.current_batch.take() {
+            self.scene.fill(
+                batch.fill_rule,
+                batch.transform,
+                &batch.brush,
+                batch.brush_transform,
+                &batch.path,
+            );
+        }
+    }
+    /// Consumes the batched graphics and ensures the final batch is flushed.
+    pub fn finish(mut self) {
+        self.flush_batch();
     }
 }
 
@@ -46,13 +78,44 @@ impl<'a> Graphics for BatchedGraphics<'a> {
         brush_transform: Option<Affine>,
         shape: &BezPath,
     ) {
-        // For now, pass through directly to scene
-        // Future implementation would batch operations with similar state
         if self.batching_enabled {
-            // TODO: Implement batching logic here
-            // Group operations by: brush type, fill rule, blend mode
-            // Flush batches when state changes or at end of frame
+            if let Brush::Solid(_) = brush {
+                let can_batch = if let Some(batch) = &self.current_batch {
+                    // Check if state is identical to current batch
+                    batch.fill_rule == fill_rule
+                        && batch.transform == transform
+                        && batch.brush == *brush
+                        && batch.brush_transform == brush_transform
+                } else {
+                    false
+                };
+
+                if can_batch {
+                    // Append shape to current batch
+                    if let Some(batch) = &mut self.current_batch {
+                        batch.path.extend(shape.iter());
+                    }
+                    return;
+                } else {
+                    // Flush existing batch and start a new one
+                    self.flush_batch();
+                    self.current_batch = Some(DrawBatch {
+                        fill_rule,
+                        transform,
+                        brush: brush.clone(),
+                        brush_transform,
+                        path: shape.clone(),
+                    });
+                    return;
+                }
+            } else {
+                // Not a solid brush, flush and append directly
+                self.flush_batch();
+            }
+        } else {
+            self.flush_batch();
         }
+        
         self.scene.fill(fill_rule, transform, brush, brush_transform, shape);
     }
 
@@ -64,12 +127,12 @@ impl<'a> Graphics for BatchedGraphics<'a> {
         brush_transform: Option<Affine>,
         shape: &BezPath,
     ) {
-        // Pass through directly - stroke batching is more complex
+        self.flush_batch();
         self.scene.stroke(style, transform, brush, brush_transform, shape);
     }
 
     fn append(&mut self, other: &vello::Scene, transform: Option<Affine>) {
-        // TODO: If batching enabled, flush batches before appending
+        self.flush_batch();
         self.scene.append(other, transform);
     }
 
@@ -80,17 +143,17 @@ impl<'a> Graphics for BatchedGraphics<'a> {
         transform: Affine,
         shape: &BezPath,
     ) {
-        // TODO: If batching enabled, flush batches before pushing layer
+        self.flush_batch();
         self.scene.push_layer(mix, alpha, transform, shape);
     }
 
     fn pop_layer(&mut self) {
-        // TODO: If batching enabled, flush batches before popping layer
+        self.flush_batch();
         self.scene.pop_layer();
     }
 
     fn as_scene_mut(&mut self) -> Option<&mut vello::Scene> {
-        // TODO: If batching enabled, flush batches before giving access
+        self.flush_batch();
         Some(self.scene)
     }
 }

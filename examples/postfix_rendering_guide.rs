@@ -15,29 +15,26 @@
 //! cargo run --example postfix_rendering_guide
 //! ```
 
+use nptk::core::app::Application;
 use nptk::core::app::context::AppContext;
 use nptk::core::app::info::AppInfo;
 use nptk::core::app::update::Update;
-use nptk::core::app::Application;
-use nptk::core::config::MayConfig;
 use nptk::core::layout::{
     AlignItems, Dimension, FlexDirection, LayoutNode, LayoutStyle, LengthPercentage, StyleNode,
 };
-use nptk::core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Shape};
-use nptk::core::vg::peniko::{Brush, Color, Fill};
-use nptk::core::vg::Scene;
-use nptk::core::widget::{BoxedWidget, Widget, WidgetChildExt, WidgetLayoutExt};
-use nptk::core::window::{ElementState, MouseButton};
-use nptk::math::Vector2;
-use nptk::theme::theme::celeste::CelesteTheme;
+use vello::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Shape};
+use vello::peniko::{Brush, Color, Fill};
+use vello::Scene;
 use nptk::widgets::button::Button;
 use nptk::widgets::container::Container;
 use nptk::widgets::text::Text;
+use nptk::core::widget::{BoxedWidget, Widget, WidgetChildExt, WidgetLayoutExt};
+use nptk::core::window::{ElementState, MouseButton};
+use nptk::math::Vector2;
 use nptk_core::signal::MaybeSignal;
 use nptk_core::vgi::vello_vg::VelloGraphics;
 use nptk_core::vgi::Graphics;
-use nptk_theme::id::WidgetId;
-use nptk_theme::theme::Theme;
+use async_trait::async_trait;
 
 // ============================================================================
 // Example 1: Simple Tooltip Widget
@@ -78,11 +75,11 @@ impl WidgetLayoutExt for TooltipWidget {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for TooltipWidget {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         context: AppContext,
@@ -93,7 +90,6 @@ impl Widget for TooltipWidget {
             let mut child_graphics = VelloGraphics::new(&mut child_scene);
             self.child.render(
                 &mut child_graphics,
-                theme,
                 &layout.children[0],
                 info,
                 context,
@@ -112,7 +108,6 @@ impl Widget for TooltipWidget {
     fn render_postfix(
         &mut self,
         graphics: &mut dyn Graphics,
-        _theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         _context: AppContext,
@@ -162,12 +157,12 @@ impl Widget for TooltipWidget {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         // Update child first
         if !layout.children.is_empty() {
-            update |= self.child.update(&layout.children[0], context, info);
+            update |= self.child.update(&layout.children[0], context, info).await;
         }
 
         // Check if mouse is hovering over widget
@@ -195,15 +190,12 @@ impl Widget for TooltipWidget {
         update
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, _context: &nptk::core::layout::LayoutContext) -> StyleNode {
         StyleNode {
             style: self.layout_style.get().clone(),
-            children: vec![self.child.layout_style()],
+            children: vec![self.child.layout_style(_context)],
+            measure_func: None,
         }
-    }
-
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("example", "TooltipWidget")
     }
 }
 
@@ -241,11 +233,11 @@ impl WidgetLayoutExt for SimpleDropdown {
     }
 }
 
+#[async_trait(?Send)]
 impl Widget for SimpleDropdown {
     fn render(
         &mut self,
         graphics: &mut dyn Graphics,
-        _theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         _context: AppContext,
@@ -298,7 +290,6 @@ impl Widget for SimpleDropdown {
     fn render_postfix(
         &mut self,
         graphics: &mut dyn Graphics,
-        _theme: &mut dyn Theme,
         layout: &LayoutNode,
         info: &mut AppInfo,
         _context: AppContext,
@@ -370,7 +361,7 @@ impl Widget for SimpleDropdown {
         }
     }
 
-    fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
+    async fn update(&mut self, layout: &LayoutNode, _context: AppContext, info: &mut AppInfo) -> Update {
         let mut update = Update::empty();
 
         let cursor_pos = info.cursor_pos;
@@ -401,15 +392,12 @@ impl Widget for SimpleDropdown {
         update
     }
 
-    fn layout_style(&self) -> StyleNode {
+    fn layout_style(&self, _context: &nptk::core::layout::LayoutContext) -> StyleNode {
         StyleNode {
             style: self.layout_style.get().clone(),
             children: vec![],
+            measure_func: None,
         }
-    }
-
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("example", "SimpleDropdown")
     }
 }
 

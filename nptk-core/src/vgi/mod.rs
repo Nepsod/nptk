@@ -110,7 +110,7 @@ pub fn shape_to_path(shape: &impl Shape) -> BezPath {
 #[cfg(feature = "vello-hybrid")]
 pub fn graphics_from_scene(scene: &mut Scene) -> Option<Box<dyn Graphics + '_>> {
     match scene {
-        Scene::Vello(vello_scene) => Some(Box::new(vello_vg::VelloGraphics::new(vello_scene))),
+        Scene::Vello(vello_scene) => Some(Box::new(BatchedGraphics::new(vello_scene))),
         Scene::Hybrid(hybrid_scene) => Some(Box::new(hybrid_vg::HybridGraphics::new(hybrid_scene))),
     }
 }
@@ -121,7 +121,7 @@ pub fn graphics_from_scene(scene: &mut Scene) -> Option<Box<dyn Graphics + '_>> 
 #[cfg(not(feature = "vello-hybrid"))]
 pub fn graphics_from_scene(scene: &mut Scene) -> Option<Box<dyn Graphics + '_>> {
     match scene {
-        Scene::Vello(vello_scene) => Some(Box::new(vello_vg::VelloGraphics::new(vello_scene))),
+        Scene::Vello(vello_scene) => Some(Box::new(BatchedGraphics::new(vello_scene))),
     }
 }
 

@@ -93,7 +93,7 @@ pub struct MenuBar {
 #[cfg(feature = "global-menu")]
 use super::adapter::menu_template_to_snapshot;
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "global-menu"))]
 fn current_window_x11_id(info: &AppInfo) -> Option<u32> {
     info.window_x11_id()
 }
@@ -103,12 +103,9 @@ fn is_wayland_session() -> bool {
     platform::is_wayland_session()
 }
 
-#[cfg(not(feature = "global-menu"))]
-fn is_wayland_session() -> bool {
-    false
-}
 
-#[cfg(not(target_os = "linux"))]
+
+#[cfg(all(not(target_os = "linux"), feature = "global-menu"))]
 fn current_window_x11_id(_info: &AppInfo) -> Option<u32> {
     None
 }
@@ -228,7 +225,7 @@ impl MenuBar {
 
     #[cfg(not(feature = "global-menu"))]
     /// Placeholder for the without_global_menu method when global-menu feature is disabled.
-    pub fn without_global_menu(mut self) -> Self {
+    pub fn without_global_menu(self) -> Self {
         log::warn!("without_global_menu called when global-menu feature is disabled");
         self
     }
@@ -1003,10 +1000,7 @@ impl MenuBar {
         update
     }
 
-    #[cfg(not(feature = "global-menu"))]
-    fn process_global_menu(&mut self, _info: &AppInfo) -> Update {
-        Update::empty()
-    }
+
 
     #[cfg(feature = "global-menu")]
     fn ensure_global_menu_bridge(&mut self) -> Option<&Bridge> {

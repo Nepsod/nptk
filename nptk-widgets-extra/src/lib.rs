@@ -3,6 +3,8 @@
 //!
 //! Contains additional widgets that require LGPL-3.0 licensing.
 
+pub mod choice;
+
 /// Contains shared helper functions for input widgets.
 mod input_helpers;
 

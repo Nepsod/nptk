@@ -46,15 +46,17 @@ impl TextCacheStats {
     }
 }
 
+use std::sync::Mutex;
+
+struct TextRenderInternal {
+    layout_cx: LayoutContext,
+    layout_cache: LruCache<u64, Layout<[u8; 4]>>,
+    cache_stats: TextCacheStats,
+}
+
 /// Text rendering context that manages layout contexts
 pub struct TextRenderContext {
-    layout_cx: LayoutContext,
-    /// LRU cache for text layouts to prevent memory leaks
-    /// Key: u64 hash of (text, font_family, max_width, font_size, max_lines, center_align)
-    /// Using hash-based keys to avoid string allocations
-    layout_cache: LruCache<u64, Layout<[u8; 4]>>,
-    /// Cache statistics for performance tracking
-    cache_stats: TextCacheStats,
+    internal: Mutex<TextRenderInternal>,
     /// Text direction for RTL support (placeholder for future implementation)
     /// TODO: Integrate with system locale detection and Parley's RTL support
     _text_direction: Option<crate::layout::LayoutDirection>,
@@ -64,21 +66,23 @@ impl TextRenderContext {
     /// Create a new text rendering context
     pub fn new() -> Self {
         Self {
-            layout_cx: LayoutContext::new(),
-            layout_cache: LruCache::new(NonZeroUsize::new(LAYOUT_CACHE_CAPACITY).unwrap()),
-            cache_stats: TextCacheStats::default(),
+            internal: Mutex::new(TextRenderInternal {
+                layout_cx: LayoutContext::new(),
+                layout_cache: LruCache::new(NonZeroUsize::new(LAYOUT_CACHE_CAPACITY).unwrap()),
+                cache_stats: TextCacheStats::default(),
+            }),
             _text_direction: None, // TODO: Detect from system locale
         }
     }
 
     /// Get cache statistics
-    pub fn cache_stats(&self) -> &TextCacheStats {
-        &self.cache_stats
+    pub fn cache_stats(&self) -> TextCacheStats {
+        self.internal.lock().unwrap().cache_stats.clone()
     }
 
     /// Reset cache statistics
     pub fn reset_stats(&mut self) {
-        self.cache_stats.reset();
+        self.internal.lock().unwrap().cache_stats.reset();
     }
 
     /// Set text direction for RTL support (placeholder)
@@ -346,7 +350,7 @@ impl TextRenderContext {
     }
 
     fn fetch_layout(
-        &mut self,
+        &self,
         font_cx: &mut FontContext,
         text: &str,
         font_family: Option<String>,
@@ -368,21 +372,24 @@ impl TextRenderContext {
         center_align.hash(&mut hasher);
         let cache_key = hasher.finish();
 
-        // Track cache lookup
-        self.cache_stats.total_lookups += 1;
+        let mut internal = self.internal.lock().unwrap();
 
-        if let Some(cached) = self.layout_cache.get(&cache_key) {
+        // Track cache lookup
+        internal.cache_stats.total_lookups += 1;
+
+        let cached_layout = internal.layout_cache.get(&cache_key).cloned();
+        if let Some(layout) = cached_layout {
             // Cache hit
-            self.cache_stats.hits += 1;
-            return cached.clone();
+            internal.cache_stats.hits += 1;
+            return layout;
         }
 
         // Cache miss
-        self.cache_stats.misses += 1;
+        internal.cache_stats.misses += 1;
 
         let display_scale = 1.0;
         let mut parley_font_cx = font_cx.create_parley_font_context();
-        let mut builder = self
+        let mut builder = internal
             .layout_cx
             .ranged_builder(&mut parley_font_cx, text, display_scale, true);
 
@@ -408,7 +415,7 @@ impl TextRenderContext {
         };
         layout.align(max_width, align, Default::default());
 
-        self.layout_cache.put(cache_key, layout.clone());
+        internal.layout_cache.put(cache_key, layout.clone());
         layout
     }
 
@@ -424,26 +431,15 @@ impl TextRenderContext {
             return 0.0;
         }
 
-        // Create a text layout using Parley to get accurate measurements
-        let display_scale = 1.0;
-        let mut parley_font_cx = font_cx.create_parley_font_context();
-        let mut temp_layout_cx = LayoutContext::<[u8; 4]>::new();
-        let mut builder =
-            temp_layout_cx.ranged_builder(&mut parley_font_cx, text, display_scale, true);
-
-        // Set font size and font family if provided
-        builder.push_default(StyleProperty::FontSize(font_size));
-        if let Some(family) = font_family {
-            builder.push_default(StyleProperty::FontStack(parley::style::FontStack::Single(
-                parley::style::FontFamily::Named(std::borrow::Cow::Owned(family)),
-            )));
-        }
-
-        let mut layout = builder.build(text);
-
-        // Perform layout operations
-        layout.break_all_lines(None);
-        layout.align(None, Alignment::Start, Default::default());
+        let layout = self.fetch_layout(
+            font_cx,
+            text,
+            font_family,
+            font_size,
+            None,
+            None,
+            false,
+        );
 
         // Calculate total width by summing up glyph advances
         let mut total_width = 0.0;
@@ -476,30 +472,15 @@ impl TextRenderContext {
             return (0.0, 0);
         }
 
-        // Create a text layout using Parley to get accurate measurements
-        let display_scale = 1.0;
-        let mut parley_font_cx = font_cx.create_parley_font_context();
-        let mut temp_layout_cx = LayoutContext::<[u8; 4]>::new();
-        let mut builder =
-            temp_layout_cx.ranged_builder(&mut parley_font_cx, text, display_scale, true);
-
-        // Set font size and font family if provided
-        builder.push_default(StyleProperty::FontSize(font_size));
-        if let Some(family) = font_family {
-            builder.push_default(StyleProperty::FontStack(parley::style::FontStack::Single(
-                parley::style::FontFamily::Named(std::borrow::Cow::Owned(family)),
-            )));
-        }
-
-        let mut layout = builder.build(text);
-
-        // Perform layout operations with optional width constraint for wrapping
-        if let Some(width) = max_width {
-            layout.break_all_lines(Some(width));
-        } else {
-            layout.break_all_lines(None);
-        }
-        layout.align(None, Alignment::Start, Default::default());
+        let layout = self.fetch_layout(
+            font_cx,
+            text,
+            font_family,
+            font_size,
+            max_width,
+            None,
+            false,
+        );
 
         // Count lines and calculate max width
         let mut line_count = 0;
