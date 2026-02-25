@@ -8,6 +8,7 @@ use nptk_core::vg::kurbo::Affine;
 use nptk_core::vg::Scene;
 use async_trait::async_trait;
 use nptk_core::layout::{AvailableSpace, Size};
+use std::sync::RwLock;
 
 /// A widget that caches its rendering output into a vector scene fragment.
 ///
@@ -22,6 +23,8 @@ pub struct CachedWidget {
     cached_scene: Option<Scene>,
     is_dirty: bool,
     last_layout_size: Option<Size<f32>>,
+    cached_style: RwLock<Option<(u64, StyleNode)>>,
+    cached_measure: RwLock<Option<(u64, Size<f32>)>>,
 }
 
 impl CachedWidget {
@@ -32,6 +35,8 @@ impl CachedWidget {
             cached_scene: None,
             is_dirty: true,
             last_layout_size: None,
+            cached_style: RwLock::new(None),
+            cached_measure: RwLock::new(None),
         }
     }
 
@@ -96,11 +101,44 @@ impl Widget for CachedWidget {
     }
 
     fn layout_style(&self, context: &nptk_core::layout::LayoutContext) -> StyleNode {
-        self.child.layout_style(context)
+        let hash = context.dependency_hash();
+        
+        // Check if we have a valid cached style
+        if let Some((cached_hash, style_node)) = &*self.cached_style.read().unwrap() {
+            if *cached_hash == hash {
+                return style_node.clone();
+            }
+        }
+
+        // Cache miss: compute new style
+        let new_style = self.child.layout_style(context);
+        *self.cached_style.write().unwrap() = Some((hash, new_style.clone()));
+        
+        new_style
     }
 
     fn measure(&self, constraints: Size<AvailableSpace>) -> Option<Size<f32>> {
-        self.child.measure(constraints)
+        // Taffy calls `measure` potentially multiple times with different constraints.
+        // We'll hash the constraints to cache the measurement result.
+        use std::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
+        let mut hasher = DefaultHasher::new();
+        std::mem::discriminant(&constraints.width).hash(&mut hasher);
+        std::mem::discriminant(&constraints.height).hash(&mut hasher);
+        let hash = hasher.finish();
+
+        if let Some((cached_hash, size)) = &*self.cached_measure.read().unwrap() {
+            if *cached_hash == hash {
+                return Some(*size);
+            }
+        }
+
+        let result = self.child.measure(constraints);
+        if let Some(size) = result {
+            *self.cached_measure.write().unwrap() = Some((hash, size));
+        }
+        
+        result
     }
 
     async fn update(
@@ -114,6 +152,10 @@ impl Widget for CachedWidget {
         // Invalidate cache if drawing or layout changes were requested by the child subtree
         if update.contains(Update::DRAW) || update.contains(Update::LAYOUT) {
             self.is_dirty = true;
+        }
+        if update.contains(Update::LAYOUT) {
+            *self.cached_style.write().unwrap() = None;
+            *self.cached_measure.write().unwrap() = None;
         }
 
         let new_size = Size { 
@@ -145,5 +187,17 @@ impl Widget for CachedWidget {
 
     fn is_visible(&self) -> bool {
         self.child.is_visible()
+    }
+}
+
+/// An extension trait that allows easily wrapping any widget in a `CachedWidget`.
+pub trait WidgetCachedExt: Sized {
+    /// Wraps this widget in a `CachedWidget`, enabling rendering, layout, and measure caching.
+    fn cached(self) -> CachedWidget;
+}
+
+impl<W: Widget + Send + Sync + 'static> WidgetCachedExt for W {
+    fn cached(self) -> CachedWidget {
+        CachedWidget::new(self)
     }
 }

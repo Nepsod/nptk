@@ -29,6 +29,10 @@ where
                         log::error!("Failed to resize surface on scale change: {}", e);
                     }
                 }
+                
+                if let Some(renderer) = &mut self.renderer {
+                    renderer.update_render_target_size(physical.width, physical.height);
+                }
 
                 let logical_size = physical.to_logical::<f64>(scale_factor);
                 self.update_window_node_size(logical_size.width as u32, logical_size.height as u32);
@@ -120,6 +124,10 @@ where
             if let Err(e) = surface.resize(new_size.width, new_size.height) {
                 log::error!("Failed to resize surface: {}", e);
             }
+        }
+        
+        if let Some(renderer) = &mut self.renderer {
+            renderer.update_render_target_size(new_size.width, new_size.height);
         }
 
         // Throttle layout updates: only schedule layout recomputation if:

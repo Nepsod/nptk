@@ -833,6 +833,11 @@ where
                 self.last_window_size = pending_size;
                 self.last_resize_time = self.last_update;
                 self.pending_resize = None;
+                
+                if let Some(renderer) = &mut self.renderer {
+                    renderer.update_render_target_size(pending_size.0, pending_size.1);
+                }
+                
                 self.update.insert(Update::DRAW | Update::RESIZE);
             }
         }
@@ -864,6 +869,11 @@ where
                                     self.last_window_size = (size_after.0, size_after.1);
                                     self.last_resize_time = now;
                                     self.pending_resize = None;
+                                    
+                                    if let Some(renderer) = &mut self.renderer {
+                                        renderer.update_render_target_size(size_after.0, size_after.1);
+                                    }
+                                    
                                     self.update.insert(Update::DRAW | Update::RESIZE);
                                 } else {
                                     self.pending_resize = Some((size_after.0, size_after.1));
@@ -1333,6 +1343,7 @@ where
         self.global_layout_version = self.global_layout_version.wrapping_add(1);
         // Clear node versions since we're rebuilding everything
         self.node_layout_versions.clear();
+        self.measure_cache.clear();
 
         // Ensure window node size is up to date before rebuilding
         // This is important for resize events where the window size may have changed
@@ -1357,12 +1368,16 @@ where
         };
         let _ = (new_width, new_height); // Suppress unused warning
 
-        // Clear all children from the window node - this removes all existing nodes
-        // Also invalidate cached root child since tree is being rebuilt
+        // Clear all children from the window_node - historically this leaked Taffy allocations.
+        // Now we clear the entire arena and re-allocate window_node to free memory.
         self.cached_root_child = None;
-        self.taffy
-            .set_children(self.window_node, &[])
-            .expect("Failed to set children");
+        self.taffy.clear();
+        self.window_node = self.taffy
+            .new_leaf(Style::default())
+            .expect("Failed to create window node");
+        
+        // Restore window node size since we just wiped it
+        self.update_window_node_size(new_width, new_height);
 
         // Build the layout tree (Display::None widgets will be skipped)
         self.layout_widget(self.window_node, style)

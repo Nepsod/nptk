@@ -144,4 +144,45 @@ impl LayoutContext {
     pub fn for_layout() -> Self {
         Self::unbounded().with_phase(LayoutPhase::Layout)
     }
+
+    /// Compute a hash of all layout inputs that affect style and sizing.
+    /// This is used to memoize layout style and measurement calls for subtrees.
+    pub fn dependency_hash(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
+        
+        let mut hasher = DefaultHasher::new();
+        
+        // Hash constraints
+        self.constraints.max_width.to_bits().hash(&mut hasher);
+        self.constraints.max_height.to_bits().hash(&mut hasher);
+        self.constraints.min_width.to_bits().hash(&mut hasher);
+        self.constraints.min_height.to_bits().hash(&mut hasher);
+        
+        // Hash parent size if available
+        if let Some(parent_size) = self.parent_size {
+            parent_size.x.to_bits().hash(&mut hasher);
+            parent_size.y.to_bits().hash(&mut hasher);
+        }
+        
+        // Hash available space
+        std::mem::discriminant(&self.available_space.width).hash(&mut hasher);
+        std::mem::discriminant(&self.available_space.height).hash(&mut hasher);
+        
+        // Hash viewport bounds if available
+        if let Some(viewport) = self.viewport_bounds {
+            viewport.x.to_bits().hash(&mut hasher);
+            viewport.y.to_bits().hash(&mut hasher);
+            viewport.width.to_bits().hash(&mut hasher);
+            viewport.height.to_bits().hash(&mut hasher);
+        }
+        
+        // Hash scroll offset if available
+        if let Some(scroll) = self.scroll_offset {
+            scroll.x.to_bits().hash(&mut hasher);
+            scroll.y.to_bits().hash(&mut hasher);
+        }
+        
+        hasher.finish()
+    }
 }

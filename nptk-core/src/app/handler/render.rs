@@ -437,10 +437,8 @@ where
         if let crate::vgi::Surface::Winit(ref mut winit_surface) = surface {
             if winit_surface.config.is_none() {
                 log::debug!("Lazily configuring Winit surface on first render");
-                // Use cached size from self.info.size instead of querying window
-                // This avoids redundant system calls and is updated when size changes
-                let width = self.info.size.x as u32;
-                let height = self.info.size.y as u32;
+                // Use physical surface size instead of logical info.size to prevent stretching
+                let (width, height) = winit_surface.size();
                 if width == 0 || height == 0 {
                     log::warn!("Window size is 0x0 for Winit surface configuration");
                     return None;
@@ -481,12 +479,9 @@ where
             }
         }
 
-        // Use cached size instead of querying window/surface
-        // This avoids redundant system calls and is updated when size changes
-        let (width, height) = (
-            self.info.size.x as u32,
-            self.info.size.y as u32,
-        );
+        // Use physical surface size to ensure 1:1 pixel mapping with the swapchain.
+        // self.info.size is logical and causes stretching on Wayland/Winit when scaling > 1!
+        let (width, height) = surface.size();
 
         if width == 0 || height == 0 {
             log::warn!("Surface invalid ({}x{}). Skipping render.", width, height);
