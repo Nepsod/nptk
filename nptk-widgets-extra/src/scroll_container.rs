@@ -15,7 +15,7 @@ use nptk_core::signal::{state::StateSignal, MaybeSignal, Signal};
 use nptk_core::vg::kurbo::{
     Affine, BezPath, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke,
 };
-use nptk_core::vg::peniko::{Brush, Fill, Mix};
+use nptk_core::vg::peniko::{Brush, Fill};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton, MouseScrollDelta};
@@ -1068,16 +1068,25 @@ impl ScrollContainer {
                     as f64,
             );
 
-            #[allow(deprecated)]
-            graphics.push_clip_layer(Affine::IDENTITY, &content_rect.to_path(0.1));
-
             let mut scrolled_layout = base_layout.clone();
             scrolled_layout.layout.location.x -= self.scroll_offset.get().x;
             scrolled_layout.layout.location.y -= self.scroll_offset.get().y;
 
+            let needs_clip = self.scroll_offset.get().x > 0.0 || 
+                             self.scroll_offset.get().y > 0.0 || 
+                             base_layout.layout.size.width as f64 > content_rect.width() || 
+                             base_layout.layout.size.height as f64 > content_rect.height();
+
+            if needs_clip {
+                #[allow(deprecated)]
+                graphics.push_clip_layer(Affine::IDENTITY, &content_rect.to_path(0.1));
+            }
+
             child.render(graphics, &scrolled_layout, info, context);
 
-            graphics.pop_layer();
+            if needs_clip {
+                graphics.pop_layer();
+            }
         }
     }
 

@@ -5,6 +5,7 @@
 /// Alignment roles for text alignment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AlignmentRole {
+    /// Alignment of text inside the window title bar.
     TitleAlignment,
 }
 
@@ -15,8 +16,11 @@ crate::impl_role_string_conversion!(AlignmentRole, {
 /// Text alignment values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextAlignment {
+    /// Align left.
     Left,
+    /// Align center.
     Center,
+    /// Align right.
     Right,
 }
 

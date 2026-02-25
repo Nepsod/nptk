@@ -124,6 +124,19 @@ impl Widget for Container {
     ) {
         let layout_context = LayoutContext::unbounded();
         self.for_each_visible_child(layout_node, &layout_context, |child, child_layout, _idx| {
+            if let Some(dirty) = &info.dirty_region {
+                let rect = &child_layout.layout;
+                let child_x0 = rect.location.x as f64;
+                let child_y0 = rect.location.y as f64;
+                let child_x1 = child_x0 + rect.size.width as f64;
+                let child_y1 = child_y0 + rect.size.height as f64;
+                
+                // If child is completely outside the dirty region, skip rendering
+                if child_x1 < dirty[0] || child_x0 > dirty[2] || 
+                   child_y1 < dirty[1] || child_y0 > dirty[3] {
+                    return;
+                }
+            }
             child.render(graphics, child_layout, info, context.clone());
         });
     }
@@ -137,6 +150,19 @@ impl Widget for Container {
     ) {
         let layout_context = LayoutContext::unbounded();
         self.for_each_visible_child(layout_node, &layout_context, |child, child_layout, _idx| {
+            if let Some(dirty) = &info.dirty_region {
+                let rect = &child_layout.layout;
+                let child_x0 = rect.location.x as f64;
+                let child_y0 = rect.location.y as f64;
+                let child_x1 = child_x0 + rect.size.width as f64;
+                let child_y1 = child_y0 + rect.size.height as f64;
+                
+                // If child is completely outside the dirty region, skip postfix rendering
+                if child_x1 < dirty[0] || child_x0 > dirty[2] || 
+                   child_y1 < dirty[1] || child_y0 > dirty[3] {
+                    return;
+                }
+            }
             child.render_postfix(graphics, child_layout, info, context.clone());
         });
     }

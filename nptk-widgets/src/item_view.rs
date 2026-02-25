@@ -22,19 +22,26 @@ use nptk_core::window::{MouseButton, ElementState};
 /// Data for rendering an icon (Image or Vector Scene)
 #[derive(Clone)]
 pub enum IconData {
+    /// Represents an icon rendered via a Vello [ImageBrush], its width, and height.
     Image(nptk_core::vg::peniko::ImageBrush, u32, u32),
+    /// Represents an icon rendered via a vector [Scene], its width, and height.
     Scene(nptk_core::vg::Scene, f64, f64),
 }
 
 /// View mode for the ItemView
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewMode {
+    /// A classic vertical list of items.
     List,
+    /// A grid displaying item icons prominently.
     Icon,
+    /// A detailed table view with multiple columns.
     Table,
+    /// A dense, compact layout for item previews.
     Compact,
 }
 
+/// A flexible widget capable of displaying `ItemModel` data in multiple `ViewMode` formats natively.
 pub struct ItemView {
     model: Arc<dyn ItemModel>,
     view_mode: MaybeSignal<ViewMode>,
@@ -56,6 +63,7 @@ pub struct ItemView {
 }
 
 impl ItemView {
+    /// Initializes a new `ItemView` with the provided dataset `model`.
     pub fn new(model: Arc<dyn ItemModel>) -> Self {
         Self {
             model,
@@ -78,11 +86,13 @@ impl ItemView {
         }
     }
 
+    /// Overrides the size of rendering icons across views.
     pub fn with_icon_size(mut self, size: impl Into<MaybeSignal<f32>>) -> Self {
         self.icon_size = size.into();
         self
     }
 
+    /// Specifies the on-context-menu action callback.
     pub fn with_on_context_menu<F>(mut self, callback: F) -> Self 
     where F: Fn(usize, Vector2<f64>, AppContext) -> Update + Send + Sync + 'static 
     {
@@ -90,21 +100,25 @@ impl ItemView {
         self
     }
 
+    /// Sets the action handler triggered on activating an item (e.g., clicking on it).
     pub fn with_on_activate(mut self, callback: impl Fn(usize) -> Update + Send + Sync + 'static) -> Self {
         self.on_activate = Some(Box::new(callback));
         self
     }
 
+    /// Binds the sorted column information.
     pub fn with_sorted_column(mut self, signal: impl Into<MaybeSignal<Option<(usize, SortOrder)>>>) -> Self {
         self.sorted_column = signal.into();
         self
     }
     
+    /// Configures the active row selection based on the given signal indices.
     pub fn with_selected_rows(mut self, signal: impl Into<MaybeSignal<Vec<usize>>>) -> Self {
         self.selected_rows = signal.into();
         self
     }
     
+    /// Subscribes a callback to triggers whenever item selection changes.
     pub fn with_on_selection_change<F>(mut self, callback: F) -> Self 
     where F: Fn(Vec<usize>) -> Update + Send + Sync + 'static 
     {
@@ -112,11 +126,13 @@ impl ItemView {
         self
     }
 
+    /// Determines the style of layout elements rendered by this view.
     pub fn with_view_mode(mut self, mode: impl Into<MaybeSignal<ViewMode>>) -> Self {
         self.view_mode = mode.into();
         self
     }
     
+    /// Exposes a read-only signal ref mirroring currently tracked valid row selections safely.
     pub fn selected_rows_signal(&self) -> &MaybeSignal<Vec<usize>> {
         &self.selected_rows
     }
@@ -160,6 +176,14 @@ impl ItemView {
                 (layout_node.layout.location.x + layout_node.layout.size.width) as f64,
                 (y + row_height) as f64,
             );
+            
+            if let Some(dirty) = &info.dirty_region {
+                if row_rect.x1 < dirty[0] || row_rect.x0 > dirty[2] || 
+                   row_rect.y1 < dirty[1] || row_rect.y0 > dirty[3] {
+                    y += row_height;
+                    continue;
+                }
+            }
             
              // Fetch data
             if is_selected {
@@ -268,6 +292,13 @@ impl ItemView {
                  (x + actual_item_width) as f64,
                  (y + item_height) as f64
              );
+
+             if let Some(dirty) = &info.dirty_region {
+                 if item_rect.x1 < dirty[0] || item_rect.x0 > dirty[2] || 
+                    item_rect.y1 < dirty[1] || item_rect.y0 > dirty[3] {
+                     continue;
+                 }
+             }
 
              let is_hovered = self.hovered_row == Some(i);
              let is_focused = self.last_selected_index == Some(i);
@@ -497,6 +528,14 @@ impl ItemView {
                 (y + row_height) as f64,
             );
             
+            if let Some(dirty) = &info.dirty_region {
+                if row_rect.x1 < dirty[0] || row_rect.x0 > dirty[2] || 
+                   row_rect.y1 < dirty[1] || row_rect.y0 > dirty[3] {
+                    y += row_height;
+                    continue;
+                }
+            }
+            
             if is_selected {
                 let selection_color = palette.color(ColorRole::Selection);
                 graphics.fill(
@@ -714,6 +753,13 @@ impl ItemView {
                  (x + actual_item_width) as f64,
                  (y + item_height) as f64
              );
+             
+             if let Some(dirty) = &info.dirty_region {
+                 if item_rect.x1 < dirty[0] || item_rect.x0 > dirty[2] || 
+                    item_rect.y1 < dirty[1] || item_rect.y0 > dirty[3] {
+                     continue;
+                 }
+             }
              
              let is_hovered = self.hovered_row == Some(i);
              let is_focused = self.last_selected_index == Some(i);

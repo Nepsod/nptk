@@ -5,11 +5,17 @@
 /// Metric roles for integer theme properties.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MetricRole {
+    /// Thickness of window and widget borders.
     BorderThickness,
+    /// Border radius for rounded corners.
     BorderRadius,
+    /// Height of the window title bar.
     TitleHeight,
+    /// Width of window title bar buttons.
     TitleButtonWidth,
+    /// Height of window title bar buttons.
     TitleButtonHeight,
+    /// Opacity level of title buttons when window is inactive.
     TitleButtonInactiveAlpha,
 }
 

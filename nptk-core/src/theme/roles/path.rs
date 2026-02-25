@@ -5,6 +5,7 @@
 /// Path roles for file path theme properties.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PathRole {
+    /// Path to a directory containing icon assets for title buttons.
     TitleButtonIcons,
     // Shadow paths are TODO for future kurbo-based implementation
     // ActiveWindowShadow,

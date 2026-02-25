@@ -1,10 +1,11 @@
-use nalgebra::Vector2;
+use nalgebra::{Vector2, Vector4};
 use winit::event::{DeviceId, ElementState, Ime, KeyEvent, MouseButton, MouseScrollDelta};
 use winit::keyboard::{Key, ModifiersState, PhysicalKey};
+use crate::app::diagnostics::Diagnostics;
 
 /// Maximum number of button events to store per frame
 const MAX_BUTTON_EVENTS_PER_FRAME: usize = 16;
-use crate::app::diagnostics::Diagnostics;
+
 use crate::app::focus::SharedFocusManager;
 use crate::app::font_ctx::FontContext;
 
@@ -73,6 +74,9 @@ pub struct AppInfo {
     /// Platform-specific window identity metadata.
     #[cfg(target_os = "linux")]
     pub window_identity: Option<WindowIdentity>,
+    /// The bounding box of the regions that changed. 
+    /// (x0, y0, x1, y1). If None, assume everything is dirty.
+    pub dirty_region: Option<Vector4<f64>>,
 }
 
 impl AppInfo {
@@ -143,6 +147,7 @@ impl Default for AppInfo {
             focus_manager: Arc::new(Mutex::new(FocusManager::new())),
             #[cfg(target_os = "linux")]
             window_identity: None,
+            dirty_region: None,
         }
     }
 }

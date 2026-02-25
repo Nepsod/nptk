@@ -20,18 +20,26 @@ pub enum ItemRole {
 /// Sort order for sorting operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortOrder {
+    /// Ascending sort order (smallest to largest).
     Ascending,
+    /// Descending sort order (largest to smallest).
     Descending,
 }
 
 /// Generic data variant for model data
 #[derive(Debug, Clone)]
 pub enum ModelData {
+    /// String data.
     String(String),
+    /// Boolean data.
     Bool(bool),
+    /// Integer data.
     Int(i64),
+    /// Float-point data.
     Float(f64),
+    /// Custom data boxed in an Arc.
     Custom(Arc<dyn Any + Send + Sync>),
+    /// Empty or unspecified data.
     None,
 }
 
@@ -82,7 +90,10 @@ pub trait ItemModel: Send + Sync {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Orientation (layout direction).
 pub enum Orientation {
+    /// Horizontal (left-to-right or right-to-left).
     Horizontal,
+    /// Vertical (top-to-bottom or bottom-to-top).
     Vertical,
 }

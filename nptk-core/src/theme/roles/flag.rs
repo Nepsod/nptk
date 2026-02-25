@@ -5,7 +5,9 @@
 /// Flag roles for boolean theme properties.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FlagRole {
+    /// Render bold text with a brighter color variant automatically.
     BoldTextAsBright,
+    /// Only show icons on title buttons (hide text labels).
     TitleButtonsIconOnly,
 }
 

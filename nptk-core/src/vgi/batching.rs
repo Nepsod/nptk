@@ -136,6 +136,52 @@ impl<'a> Graphics for BatchedGraphics<'a> {
         self.scene.append(other, transform);
     }
 
+    fn fill_rect(
+        &mut self,
+        transform: Affine,
+        brush: &Brush,
+        brush_transform: Option<Affine>,
+        rect: vello::kurbo::Rect,
+    ) {
+        self.flush_batch();
+        self.scene.fill(vello::peniko::Fill::NonZero, transform, brush, brush_transform, &rect);
+    }
+
+    fn fill_rounded_rect(
+        &mut self,
+        transform: Affine,
+        brush: &Brush,
+        brush_transform: Option<Affine>,
+        rect: vello::kurbo::RoundedRect,
+    ) {
+        self.flush_batch();
+        self.scene.fill(vello::peniko::Fill::NonZero, transform, brush, brush_transform, &rect);
+    }
+
+    fn stroke_rect(
+        &mut self,
+        style: &vello::kurbo::Stroke,
+        transform: Affine,
+        brush: &Brush,
+        brush_transform: Option<Affine>,
+        rect: vello::kurbo::Rect,
+    ) {
+        self.flush_batch();
+        self.scene.stroke(style, transform, brush, brush_transform, &rect);
+    }
+
+    fn stroke_rounded_rect(
+        &mut self,
+        style: &vello::kurbo::Stroke,
+        transform: Affine,
+        brush: &Brush,
+        brush_transform: Option<Affine>,
+        rect: vello::kurbo::RoundedRect,
+    ) {
+        self.flush_batch();
+        self.scene.stroke(style, transform, brush, brush_transform, &rect);
+    }
+
     fn push_layer(
         &mut self,
         mix: vello::peniko::Mix,

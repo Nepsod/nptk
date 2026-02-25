@@ -70,6 +70,53 @@ pub trait Graphics {
         shape: &BezPath,
     );
 
+    /// Fill a rectangle natively without BezPath allocation overhead.
+    fn fill_rect(
+        &mut self,
+        transform: Affine,
+        brush: &Brush,
+        brush_transform: Option<Affine>,
+        rect: vello::kurbo::Rect,
+    ) {
+        self.fill(vello::peniko::Fill::NonZero, transform, brush, brush_transform, &rect.to_path(0.1));
+    }
+
+    /// Fill a rounded rectangle natively without BezPath allocation overhead.
+    fn fill_rounded_rect(
+        &mut self,
+        transform: Affine,
+        brush: &Brush,
+        brush_transform: Option<Affine>,
+        rect: vello::kurbo::RoundedRect,
+    ) {
+        self.fill(vello::peniko::Fill::NonZero, transform, brush, brush_transform, &rect.to_path(0.1));
+    }
+
+    /// Stroke a rectangle natively without BezPath allocation overhead.
+    fn stroke_rect(
+        &mut self,
+        style: &Stroke,
+        transform: Affine,
+        brush: &Brush,
+        brush_transform: Option<Affine>,
+        rect: vello::kurbo::Rect,
+    ) {
+        self.stroke(style, transform, brush, brush_transform, &rect.to_path(0.1));
+    }
+
+    /// Stroke a rounded rectangle natively without BezPath allocation overhead.
+    fn stroke_rounded_rect(
+        &mut self,
+        style: &Stroke,
+        transform: Affine,
+        brush: &Brush,
+        brush_transform: Option<Affine>,
+        rect: vello::kurbo::RoundedRect,
+    ) {
+        self.stroke(style, transform, brush, brush_transform, &rect.to_path(0.1));
+    }
+
+
     /// Append another graphics scene to this one.
     ///
     /// Note: This method takes a Scene reference directly, since append

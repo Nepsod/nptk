@@ -19,6 +19,7 @@ pub use usvg::TextRendering;
 mod constants;
 mod loader;
 mod renderer;
+/// Contains SVG parsing and scaling helpers for Icon rendering.
 pub mod svg;
 
 /// Contains the [SvgIcon] struct for representing a rendered SVG Icon.

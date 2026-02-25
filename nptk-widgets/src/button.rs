@@ -8,7 +8,7 @@ use nptk_core::layout::{LayoutContext, LayoutNode, LayoutStyle, LengthPercentage
 use nptk_core::signal::MaybeSignal;
 use nptk_core::theme::ColorRole;
 use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
-use nptk_core::vg::peniko::{Brush, Fill, Mix};
+use nptk_core::vg::peniko::Brush;
 use nptk_core::vgi::{vello_vg::VelloGraphics, Graphics};
 use nptk_core::widget::{BoxedWidget, Widget, WidgetChildExt, WidgetLayoutExt};
 use nptk_core::window::{ElementState, KeyCode, MouseButton, PhysicalKey};
@@ -357,12 +357,11 @@ impl Widget for Button {
         };
 
         // Fill button background
-        graphics.fill(
-            Fill::NonZero,
+        graphics.fill_rounded_rect(
             Affine::IDENTITY,
             &Brush::Solid(button_color),
             None,
-            &rounded_rect.to_path(0.1),
+            rounded_rect,
         );
 
         // Draw 3D effect shadows/highlights
@@ -370,23 +369,23 @@ impl Widget for Button {
             // Draw shadow for pressed state
             let shadow_color = palette.color(ColorRole::ThreedShadow1);
             let shadow_stroke = Stroke::new(1.0);
-            graphics.stroke(
+            graphics.stroke_rounded_rect(
                 &shadow_stroke,
                 Affine::IDENTITY,
                 &Brush::Solid(shadow_color),
                 None,
-                &rounded_rect.to_path(0.1),
+                rounded_rect,
             );
         } else if !self.disabled {
             // Draw highlight for normal state
             let highlight_color = palette.color(ColorRole::ThreedHighlight);
             let highlight_stroke = Stroke::new(1.0);
-            graphics.stroke(
+            graphics.stroke_rounded_rect(
                 &highlight_stroke,
                 Affine::IDENTITY,
                 &Brush::Solid(highlight_color),
                 None,
-                &rounded_rect.to_path(0.1),
+                rounded_rect,
             );
         }
 
@@ -394,12 +393,12 @@ impl Widget for Button {
         if is_focused {
             let focus_color = palette.color(ColorRole::FocusOutline);
             let focus_stroke = Stroke::new(3.0);
-            graphics.stroke(
+            graphics.stroke_rounded_rect(
                 &focus_stroke,
                 Affine::IDENTITY,
                 &Brush::Solid(focus_color),
                 None,
-                &rounded_rect.to_path(0.1),
+                rounded_rect,
             );
         }
 

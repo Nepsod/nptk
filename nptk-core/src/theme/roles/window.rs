@@ -5,9 +5,13 @@
 /// Window theme provider types (for future window manager integration).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowThemeProvider {
+    /// Classic, un-themed standard mode.
     Classic,
+    /// Retro Windows 98 inspired theme.
     Redmond98,
+    /// Light, silvery aesthetic.
     Silver,
+    /// Modern, vibrant aesthetic theme.
     Sweet,
 }
 

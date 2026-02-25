@@ -115,8 +115,50 @@ impl<'a> Graphics for VelloGraphics<'a> {
             .stroke(style, transform, brush, brush_transform, shape);
     }
 
-    fn append(&mut self, other: &vello::Scene, transform: Option<Affine>) {
+    fn append(&mut self, other: &vello::Scene, transform: Option<vello::kurbo::Affine>) {
         self.scene.append(other, transform);
+    }
+
+    fn fill_rect(
+        &mut self,
+        transform: vello::kurbo::Affine,
+        brush: &vello::peniko::Brush,
+        brush_transform: Option<vello::kurbo::Affine>,
+        rect: vello::kurbo::Rect,
+    ) {
+        self.scene.fill(vello::peniko::Fill::NonZero, transform, brush, brush_transform, &rect);
+    }
+
+    fn fill_rounded_rect(
+        &mut self,
+        transform: vello::kurbo::Affine,
+        brush: &vello::peniko::Brush,
+        brush_transform: Option<vello::kurbo::Affine>,
+        rect: vello::kurbo::RoundedRect,
+    ) {
+        self.scene.fill(vello::peniko::Fill::NonZero, transform, brush, brush_transform, &rect);
+    }
+
+    fn stroke_rect(
+        &mut self,
+        style: &vello::kurbo::Stroke,
+        transform: vello::kurbo::Affine,
+        brush: &vello::peniko::Brush,
+        brush_transform: Option<vello::kurbo::Affine>,
+        rect: vello::kurbo::Rect,
+    ) {
+        self.scene.stroke(style, transform, brush, brush_transform, &rect);
+    }
+
+    fn stroke_rounded_rect(
+        &mut self,
+        style: &vello::kurbo::Stroke,
+        transform: vello::kurbo::Affine,
+        brush: &vello::peniko::Brush,
+        brush_transform: Option<vello::kurbo::Affine>,
+        rect: vello::kurbo::RoundedRect,
+    ) {
+        self.scene.stroke(style, transform, brush, brush_transform, &rect);
     }
 
     fn push_layer(

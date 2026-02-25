@@ -10,7 +10,7 @@ use nptk_core::text_render::TextRenderContext;
 use nptk_core::vg::kurbo::{
     Affine, Point, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke, Vec2,
 };
-use nptk_core::vg::peniko::{Brush, Color, Fill, Gradient, Mix};
+use nptk_core::vg::peniko::{Brush, Color, Fill, Gradient};
 use nptk_core::vgi::Graphics;
 use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
@@ -1333,11 +1333,21 @@ impl Widget for TabsContainer {
                 &content_bounds.to_path(0.1),
             );
 
+            let needs_clip = if !layout.children.is_empty() {
+                let child_layout = &layout.children[0];
+                child_layout.layout.size.width as f64 > content_bounds.width() ||
+                child_layout.layout.size.height as f64 > content_bounds.height()
+            } else {
+                true // Fallback layout could overlap
+            };
+
             // Apply clipping to content area to prevent content from leaking outside bounds
-            graphics.push_clip_layer(
-                Affine::IDENTITY,
-                &content_bounds.to_path(0.1),
-            );
+            if needs_clip {
+                graphics.push_clip_layer(
+                    Affine::IDENTITY,
+                    &content_bounds.to_path(0.1),
+                );
+            }
 
             // Render content directly in the content area using child layout if available
             if !layout.children.is_empty() {
@@ -1353,7 +1363,9 @@ impl Widget for TabsContainer {
             }
 
             // Pop the clipping layer
-            graphics.pop_layer();
+            if needs_clip {
+                graphics.pop_layer();
+            }
         }
     }
 
@@ -1366,17 +1378,11 @@ impl Widget for TabsContainer {
     ) {
         // Propagate render_postfix to active tab content (for overlays, popups, etc.)
         let active_tab_index = self.active_tab();
-        let content_bounds = self.get_content_bounds(layout);
 
         if let Some(active_tab) = self.tabs.get_mut(active_tab_index) {
-            // Apply same clipping as in render() to ensure overlays are properly clipped
+            // Do not apply clipping during postfix rendering. Overlays like Tooltips
+            // and Dropdowns must be allowed to render outside the tab content bounds!
             if !layout.children.is_empty() {
-                // Apply clipping to content area
-                graphics.push_clip_layer(
-                    Affine::IDENTITY,
-                    &content_bounds.to_path(0.1),
-                );
-
                 // Propagate render_postfix to content
                 active_tab.content.render_postfix(
                     graphics,
@@ -1384,11 +1390,8 @@ impl Widget for TabsContainer {
                     info,
                     context,
                 );
-
-                // Pop the clipping layer
-                graphics.pop_layer();
             } else {
-                // Fallback: render with original layout (content might overlap tabs)
+                // Fallback: render with original layout
                 active_tab.content.render_postfix(graphics, layout, info, context);
             }
         }

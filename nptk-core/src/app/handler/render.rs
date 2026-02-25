@@ -80,6 +80,27 @@ where
             // They will be cleared after rendering is complete
         }
         let scene_reset_time = render_start.elapsed();
+        
+        // Calculate the bounding box of dirty regions
+        if should_full_reset {
+            self.info.dirty_region = None;
+        } else {
+            let mut min_x = f64::MAX;
+            let mut min_y = f64::MAX;
+            let mut max_x = f64::MIN;
+            let mut max_y = f64::MIN;
+            for r in self.dirty_region_tracker.get_dirty_regions() {
+                if r.x0 < min_x { min_x = r.x0; }
+                if r.y0 < min_y { min_y = r.y0; }
+                if r.x1 > max_x { max_x = r.x1; }
+                if r.y1 > max_y { max_y = r.y1; }
+            }
+            if min_x <= max_x && min_y <= max_y {
+                self.info.dirty_region = Some(nalgebra::Vector4::new(min_x, min_y, max_x, max_y));
+            } else {
+                self.info.dirty_region = None;
+            }
+        }
 
         // Use a single cursor state variable to avoid repeated masking/unmasking
         let effective_cursor_pos = if cursor_over_menu {
