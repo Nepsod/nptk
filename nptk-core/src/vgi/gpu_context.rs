@@ -173,7 +173,7 @@ impl GpuContext {
             required_features: wgpu::Features::default(),
             required_limits: wgpu::Limits::default(),
             memory_hints: Default::default(),
-            trace: wgpu::Trace::default(),
+            ..Default::default()
         }).await
         .map_err(|e| format!("Failed to create device: {:?}", e))?;
 

@@ -78,7 +78,15 @@ impl<'a> VelloGraphics<'a> {
         transform: Affine,
         shape: &impl Shape,
     ) {
-        self.scene.push_layer(mix, alpha, transform, shape);
+        self.scene.push_layer(vello::peniko::Fill::NonZero, mix, alpha, transform, shape);
+    }
+
+    pub fn push_clip_layer_shape(
+        &mut self,
+        transform: Affine,
+        shape: &impl Shape,
+    ) {
+        self.scene.push_clip_layer(vello::peniko::Fill::NonZero, transform, shape);
     }
 }
 
@@ -118,7 +126,15 @@ impl<'a> Graphics for VelloGraphics<'a> {
         transform: Affine,
         shape: &BezPath,
     ) {
-        self.scene.push_layer(mix, alpha, transform, shape);
+        self.scene.push_layer(vello::peniko::Fill::NonZero, mix, alpha, transform, shape);
+    }
+
+    fn push_clip_layer(
+        &mut self,
+        transform: Affine,
+        shape: &BezPath,
+    ) {
+        self.scene.push_clip_layer(vello::peniko::Fill::NonZero, transform, shape);
     }
 
     fn pop_layer(&mut self) {

@@ -748,7 +748,7 @@ where
                     if let Err(e) = wayland_surface.configure_surface(
                         &device_handle.device,
                         wayland_surface.format(),
-                        self.config.render.present_mode.into(),
+                        self.config.render.present_mode,
                     ) {
                         log::error!(
                             "Failed to reconfigure Wayland popup surface (id={}): {}",

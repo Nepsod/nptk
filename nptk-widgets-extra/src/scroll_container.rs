@@ -1069,7 +1069,7 @@ impl ScrollContainer {
             );
 
             #[allow(deprecated)]
-            graphics.push_layer(Mix::Clip, 1.0, Affine::IDENTITY, &content_rect.to_path(0.1));
+            graphics.push_clip_layer(Affine::IDENTITY, &content_rect.to_path(0.1));
 
             let mut scrolled_layout = base_layout.clone();
             scrolled_layout.layout.location.x -= self.scroll_offset.get().x;

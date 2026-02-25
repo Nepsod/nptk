@@ -12,7 +12,7 @@ homepage.workspace = true
 
 [dependencies]
 winit = { version = "0.30.9", default-features = false, features = ["x11", "rwh_06"] }
-wgpu-types = "26.0.0"
+wgpu-types = "27.0.0"
 vello = { workspace = true }
 vello_hybrid = { version = "0.0.4", optional = true }
 vello_common = "0.0.4"

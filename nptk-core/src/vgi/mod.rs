@@ -77,11 +77,18 @@ pub trait Graphics {
     /// with existing widget code.
     fn append(&mut self, other: &vello::Scene, transform: Option<Affine>);
 
-    /// Push a new layer with the given blend mode and transform.
+    /// Push a layer with blending.
     fn push_layer(
         &mut self,
         mix: vello::peniko::Mix,
         alpha: f32,
+        transform: Affine,
+        shape: &BezPath,
+    );
+
+    /// Push a clipping layer.
+    fn push_clip_layer(
+        &mut self,
         transform: Affine,
         shape: &BezPath,
     );

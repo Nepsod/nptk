@@ -3,7 +3,7 @@ use nptk::core::app::update::UpdateManager;
 use nptk::core::config::MayConfig;
 use nptk::core::layout::{NodeId, TaffyTree};
 use nptk::core::plugin::{Plugin, PluginManager};
-use nptk::core::vg::{Renderer, Scene};
+
 use nptk::core::vgi::Surface;
 use nptk::core::window::{ActiveEventLoop, Window, WindowEvent};
 use std::sync::Arc;

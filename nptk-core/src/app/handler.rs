@@ -1800,7 +1800,7 @@ where
                         &device_handle.adapter,
                         req.size.0,
                         req.size.1,
-                        self.config.render.present_mode.into(),
+                        self.config.render.present_mode,
                     ) {
                         log::error!("Failed to configure popup Winit surface: {}", e);
                         continue;
@@ -1811,7 +1811,7 @@ where
                     if let Err(e) = wayland_surface.configure_surface(
                         &device_handle.device,
                         TextureFormat::Bgra8Unorm,
-                        self.config.render.present_mode.into(),
+                        self.config.render.present_mode,
                     ) {
                         log::error!("Failed to configure popup Wayland surface: {}", e);
                         continue;

@@ -348,11 +348,7 @@ fn main() {
     println!();
     println!("Starting application...");
 
-    // Demonstrate theme configuration
-    let config = ThemeConfig::from_env_or_default();
-    println!("Theme configuration loaded:");
-    println!("  Default theme: {:?}", config.default_theme);
-    println!("  Fallback theme: {:?}", config.fallback_theme);
+
 
     println!();
     println!("Running GUI application...");

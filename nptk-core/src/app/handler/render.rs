@@ -425,14 +425,7 @@ where
                     return None;
                 }
                 
-                let present_mode = match self.config.render.present_mode {
-                    wgpu_types::PresentMode::AutoVsync => vello::wgpu::PresentMode::AutoVsync,
-                    wgpu_types::PresentMode::AutoNoVsync => vello::wgpu::PresentMode::AutoNoVsync,
-                    wgpu_types::PresentMode::Immediate => vello::wgpu::PresentMode::Immediate,
-                    wgpu_types::PresentMode::Fifo => vello::wgpu::PresentMode::Fifo,
-                    wgpu_types::PresentMode::FifoRelaxed => vello::wgpu::PresentMode::Fifo,
-                    wgpu_types::PresentMode::Mailbox => vello::wgpu::PresentMode::Mailbox,
-                };
+                let present_mode = self.config.render.present_mode;
                 
                 if let Err(e) = winit_surface.configure(
                     &device_handle.device,
@@ -458,14 +451,7 @@ where
             
             // If Wayland requires reconfigure (size mismatch with wgpu), do it now but DON'T skip the frame.
             if wayland_surface.requires_reconfigure() {
-                let present_mode = match self.config.render.present_mode {
-                    wgpu_types::PresentMode::AutoVsync => vello::wgpu::PresentMode::AutoVsync,
-                    wgpu_types::PresentMode::AutoNoVsync => vello::wgpu::PresentMode::AutoNoVsync,
-                    wgpu_types::PresentMode::Immediate => vello::wgpu::PresentMode::Immediate,
-                    wgpu_types::PresentMode::Fifo => vello::wgpu::PresentMode::Fifo,
-                    wgpu_types::PresentMode::FifoRelaxed => vello::wgpu::PresentMode::Fifo,
-                    wgpu_types::PresentMode::Mailbox => vello::wgpu::PresentMode::Mailbox,
-                };
+                let present_mode = self.config.render.present_mode;
                 let _ = wayland_surface.configure_surface(
                     &device_handle.device,
                     wayland_surface.format(),

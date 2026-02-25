@@ -116,10 +116,6 @@ impl<'a> HybridGraphics<'a> {
             vello::peniko::Mix::Saturation => VelloCommonMix::Saturation,
             vello::peniko::Mix::Color => VelloCommonMix::Color,
             vello::peniko::Mix::Luminosity => VelloCommonMix::Luminosity,
-            // Note: Mix::Clip is deprecated in vello_common, but we still need to handle it
-            // for compatibility with vello::peniko::Mix::Clip
-            #[allow(deprecated)]
-            vello::peniko::Mix::Clip => VelloCommonMix::Clip,
         }
     }
 
@@ -306,9 +302,30 @@ impl<'a> Graphics for HybridGraphics<'a> {
         );
 
         // Push layer with clip path (convert BezPath)
-        let converted_path = self.convert_bezpath(shape);
         self.scene
             .push_layer(Some(&converted_path), Some(blend_mode), Some(alpha), None);
+    }
+
+    fn push_clip_layer(
+        &mut self,
+        transform: Affine,
+        shape: &BezPath,
+    ) {
+        // Push transform onto stack
+        let new_transform = self.current_transform() * transform;
+        self.transform_stack.push(new_transform);
+
+        // Convert Mix to BlendMode
+        let blend_mode = BlendMode::new(
+            #[allow(deprecated)]
+            VelloCommonMix::Clip,
+            Compose::SrcOver,
+        );
+
+        // Push layer with clip path (convert BezPath)
+        let converted_path = self.convert_bezpath(shape);
+        self.scene
+            .push_layer(Some(&converted_path), Some(blend_mode), Some(1.0), None);
     }
 
     fn pop_layer(&mut self) {

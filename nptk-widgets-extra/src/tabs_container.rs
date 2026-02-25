@@ -1334,11 +1334,7 @@ impl Widget for TabsContainer {
             );
 
             // Apply clipping to content area to prevent content from leaking outside bounds
-            // Note: Mix::Clip is deprecated, but push_clip_layer doesn't exist in Graphics trait yet
-            #[allow(deprecated)]
-            graphics.push_layer(
-                Mix::Clip,
-                1.0,
+            graphics.push_clip_layer(
                 Affine::IDENTITY,
                 &content_bounds.to_path(0.1),
             );
@@ -1376,11 +1372,7 @@ impl Widget for TabsContainer {
             // Apply same clipping as in render() to ensure overlays are properly clipped
             if !layout.children.is_empty() {
                 // Apply clipping to content area
-                // Note: Mix::Clip is deprecated, but push_clip_layer doesn't exist in Graphics trait yet
-                #[allow(deprecated)]
-                graphics.push_layer(
-                    Mix::Clip,
-                    1.0,
+                graphics.push_clip_layer(
                     Affine::IDENTITY,
                     &content_bounds.to_path(0.1),
                 );

@@ -6,7 +6,7 @@ use nptk::core::reference::Ref;
 use nptk::core::signal::state::StateSignal;
 use nptk::core::signal::{MaybeSignal, Signal};
 use nptk::core::widget::{Widget, WidgetLayoutExt};
-use nptk::theme::id::WidgetId;
+
 use nptk::widgets::button::Button;
 use nptk::widgets::container::Container;
 use nptk::widgets::text::Text;
@@ -60,10 +60,6 @@ impl Component for Counter {
             )),
         ])
         .with_layout_style(self.layout.get().clone())
-    }
-
-    fn widget_id(&self) -> WidgetId {
-        WidgetId::new("my-example", "Counter")
     }
 }
 

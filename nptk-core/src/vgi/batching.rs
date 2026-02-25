@@ -138,13 +138,22 @@ impl<'a> Graphics for BatchedGraphics<'a> {
 
     fn push_layer(
         &mut self,
-        mix: Mix,
+        mix: vello::peniko::Mix,
         alpha: f32,
         transform: Affine,
         shape: &BezPath,
     ) {
         self.flush_batch();
-        self.scene.push_layer(mix, alpha, transform, shape);
+        self.scene.push_layer(vello::peniko::Fill::NonZero, mix, alpha, transform, shape);
+    }
+
+    fn push_clip_layer(
+        &mut self,
+        transform: Affine,
+        shape: &BezPath,
+    ) {
+        self.flush_batch();
+        self.scene.push_clip_layer(vello::peniko::Fill::NonZero, transform, shape);
     }
 
     fn pop_layer(&mut self) {

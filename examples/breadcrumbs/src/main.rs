@@ -59,7 +59,7 @@ impl Application for BreadcrumbsApp {
                     .with_neighbors_provider(|item| {
                         // Dynamically fetch siblings based on the item's ID/path
                         // For example, query filesystem for sibling directories
-                        if let Some(path) = &item.id {
+                        if let Some(_path) = &item.id {
                             // Query filesystem or data source here
                             // Return sibling directories/files at this level
                             Some(vec![
@@ -70,7 +70,7 @@ impl Application for BreadcrumbsApp {
                             None
                         }
                     })
-                    .with_on_neighbor_select(|original_item, selected_neighbor| {
+                    .with_on_neighbor_select(|_original_item, selected_neighbor| {
                         // Handle neighbor selection (e.g., navigate to new directory)
                         println!("Switching to: {}", selected_neighbor.label);
                         Update::empty()

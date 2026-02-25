@@ -2,7 +2,7 @@ use crate::vgi::DeviceHandle;
 use nalgebra::{Point2, Vector2};
 use std::num::NonZeroUsize;
 pub use vello::AaConfig;
-pub use wgpu_types::PresentMode;
+pub use vello::wgpu::PresentMode;
 pub use winit::window::{
     BadIcon, Cursor, CursorIcon, CustomCursor, Icon as WindowIcon, WindowButtons, WindowLevel,
 };

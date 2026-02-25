@@ -1,4 +1,5 @@
 use nptk::prelude::*;
+use nptk::core::menu::commands::MenuCommand;
 
 struct MenuButtonApp;
 
@@ -7,26 +8,26 @@ impl Application for MenuButtonApp {
 
     fn build(_context: AppContext, _config: Self::State) -> impl Widget {
         let menu_items = vec![
-            MenuItem::new("new", "New File")
+            MenuItem::new(MenuCommand::FileNew, "New File")
                 .with_shortcut("Ctrl+N")
-                .with_on_activate(|| {
+                .with_action(|| {
                     println!("New File clicked!");
                     Update::empty()
                 }),
-            MenuItem::new("open", "Open File")
+            MenuItem::new(MenuCommand::FileOpen, "Open File")
                 .with_shortcut("Ctrl+O")
-                .with_on_activate(|| {
+                .with_action(|| {
                     println!("Open File clicked!");
                     Update::empty()
                 }),
-            MenuItem::new("save", "Save")
+            MenuItem::new(MenuCommand::FileSave, "Save")
                 .with_shortcut("Ctrl+S")
-                .with_on_activate(|| {
+                .with_action(|| {
                     println!("Save clicked!");
                     Update::empty()
                 }),
             MenuItem::separator(),
-            MenuItem::new("exit", "Exit").with_on_activate(|| {
+            MenuItem::new(MenuCommand::FileExit, "Exit").with_action(|| {
                 println!("Exit clicked!");
                 Update::empty()
             }),
@@ -85,11 +86,7 @@ fn main() {
     println!();
     println!("Starting application...");
 
-    // Demonstrate theme configuration
-    let config = ThemeConfig::from_env_or_default();
-    println!("Theme configuration loaded:");
-    println!("  Default theme: {:?}", config.default_theme);
-    println!("  Fallback theme: {:?}", config.fallback_theme);
+
 
     println!();
     println!("Running GUI application...");

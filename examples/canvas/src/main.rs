@@ -1,7 +1,6 @@
 use nptk::color::color::palette;
-use nptk::color::kurbo::{Affine, Circle, Point, Stroke};
+use nptk::core::vg::kurbo::{Affine, Circle, Point, Shape, Stroke};
 use nptk::color::Brush;
-use nptk::color::kurbo::Shape;
 use nptk::prelude::*;
 use nptk::widgets::canvas::Canvas;
 
@@ -11,7 +10,7 @@ impl Application for MyApp {
     type State = ();
 
     fn build(_: AppContext, _: Self::State) -> impl Widget {
-        Canvas::new(|graphics, _theme, _layout, _info, _context| {
+        Canvas::new(|graphics, _theme, _layout, _info| {
             graphics.stroke(
                 &Stroke::new(10.0),
                 Affine::default(),

@@ -13,7 +13,7 @@ keywords = ["ui", "gui", "interface", "graphics", "user-interface"]
 
 [workspace.dependencies]
 async-trait = "0.1"
-vello = "0.6.0"
+vello = "0.7.0"
 nalgebra = { version = "0.34", default-features = false, features = ["std"] }
 indexmap = "2.12.0"
 log = "0.4.29"
