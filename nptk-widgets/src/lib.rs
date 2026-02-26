@@ -43,5 +43,4 @@ pub mod theme_rendering;
 /// Contains the [item_view::ItemView] widget mapping data to various view modes natively.
 pub mod item_view;
 
-/// Contains the [cached::CachedWidget] widget wrapper.
-pub mod cached;
+

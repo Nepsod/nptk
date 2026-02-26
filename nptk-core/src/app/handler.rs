@@ -120,8 +120,6 @@ where
     cached_root_child: Option<NodeId>,
     /// Cached widget structure hash to detect structure changes without recomputing style
     cached_widget_structure_hash: Option<u64>,
-    /// Flag indicating that Taffy layout was recomputed but layout collection is deferred
-    layout_collection_deferred: bool,
     /// Cached StyleNode tree to avoid redundant tree walks
     cached_style_node: Option<StyleNode>,
     /// Cache for absolute layout bounds of all nodes
@@ -257,7 +255,6 @@ where
             pending_resize: None,
             cached_root_child: None,
             cached_widget_structure_hash: None,
-            layout_collection_deferred: false,
             cached_style_node: None,
             absolute_bounds_cache: std::collections::HashMap::new(),
             style_cache: None,
@@ -856,32 +853,29 @@ where
                             }
                             let size_after = surface.size();
                             if size_before != size_after {
-                                // Throttle Wayland resize events too
-                                let now = Instant::now();
-                                let time_since_last_resize = now.duration_since(self.last_resize_time).as_millis() as u64;
-                                let size_changed_significantly = size_after != self.last_window_size &&
-                                    ((size_after.0 as i32 - self.last_window_size.0 as i32).abs() > 1 ||
-                                     (size_after.1 as i32 - self.last_window_size.1 as i32).abs() > 1);
-
-                                if size_changed_significantly || time_since_last_resize >= RESIZE_THROTTLE_MS {
-                                    self.update_window_node_size(size_after.0, size_after.1);
-                                    self.info.size = nalgebra::Vector2::new(size_after.0 as f64, size_after.1 as f64);
-                                    self.last_window_size = (size_after.0, size_after.1);
-                                    self.last_resize_time = now;
-                                    self.pending_resize = None;
-                                    
-                                    if let Some(renderer) = &mut self.renderer {
-                                        renderer.update_render_target_size(size_after.0, size_after.1);
-                                    }
-                                    
-                                    self.update.insert(Update::DRAW | Update::RESIZE);
-                                } else {
-                                    self.pending_resize = Some((size_after.0, size_after.1));
-                                    self.update.insert(Update::DRAW);
+                                // TEMPORARY: Disabled throttling to fix Wayland resize lag
+                                // Always update size immediately
+                                self.update_window_node_size(size_after.0, size_after.1);
+                                self.info.size = nalgebra::Vector2::new(size_after.0 as f64, size_after.1 as f64);
+                                self.last_window_size = (size_after.0, size_after.1);
+                                self.last_resize_time = Instant::now();
+                                self.pending_resize = None;
+                                
+                                if let Some(renderer) = &mut self.renderer {
+                                    renderer.update_render_target_size(size_after.0, size_after.1);
+                                }
+                                
+                                self.update.insert(Update::DRAW | Update::RESIZE);
+                                // Ensure Winit loop wakes up to process the new frame
+                                if let Some(window) = &self.window {
+                                    window.request_redraw();
                                 }
                             } else if needs_redraw {
                                 log::trace!("Wayland events triggered redraw");
                                 self.update.insert(Update::DRAW);
+                                if let Some(window) = &self.window {
+                                    window.request_redraw();
+                                }
                             }
                         },
                         Err(err) => {
@@ -1000,30 +994,10 @@ where
                 update_flags.intersects(Update::DRAW)
             );
             
-            // Ensure layout is up-to-date and collected if it was deferred
-            let final_layout_node = if self.layout_collection_deferred {
-                // We need to re-run layout collection to get the fresh positions
-                let style = if let Some(sn) = &self.cached_style_node {
-                    sn.clone()
-                } else {
-                    let context = LayoutContext::unbounded().with_style_version(self.style_version);
-                    let (style, _) = self.get_or_compute_style(&context);
-                    style
-                };
-                
-                if let Some(root_child) = self.cached_root_child {
-                    if let Ok(fresh_layout) = self.collect_layout(root_child, &style) {
-                        self.layout_collection_deferred = false;
-                        fresh_layout
-                    } else {
-                        layout_node.clone()
-                    }
-                } else {
-                    layout_node.clone()
-                }
-            } else {
-                layout_node.clone()
-            };
+        // `layout_collection_deferred` strategy has been removed because `update_widget` MUST 
+        // have up-to-date layout coordinates to accurately invalidate caches (e.g. CachedWidget bounds tracking)
+        // and hit boxes during resizing. 
+        let final_layout_node = layout_node.clone();
             
             // Always use the latest layout_node
             // Pass cursor masking info so render can handle menu cursor restoration
@@ -1143,8 +1117,7 @@ where
     }
 
     /// Update layout if needed, returning the updated layout node.
-    /// Optimized to avoid full rebuilds when only window size changes.
-    fn update_layout_if_needed(&mut self, layout_node: LayoutNode) -> LayoutNode {
+    fn update_layout_if_needed(&mut self, mut layout_node: LayoutNode) -> LayoutNode {
         let update_flags = self.update.get();
         if !update_flags.intersects(Update::LAYOUT | Update::FORCE | Update::RESIZE) {
             return layout_node;
@@ -1228,7 +1201,6 @@ where
             self.last_window_size = (current_width, current_height);
             
             // Fast path: only size changed, structure presumed intact - just recompute Taffy layout
-            // DEFER layout collection until render time to avoid expensive operations during resize
             if self.taffy.child_count(self.window_node) > 0 {
                 // Only recompute Taffy layout without rebuilding tree or collecting layout
                 if let Err(e) = self.compute_layout() {
@@ -1236,9 +1208,21 @@ where
                     // Fall through to full rebuild
                 } else {
                     // Successfully recomputed Taffy layout
-                    // DEFER layout collection - we'll collect it just before rendering
-                    // This avoids expensive layout_style() and collect_layout() calls during resize
-                    self.layout_collection_deferred = true;
+                    // Since Taffy computed fresh bounds, we must immediately collect the layout 
+                    // so `update_widget` receives the fresh coordinates.
+                    // IMPORTANT: The window size changed, so we MUST mark the entire scene for a full redraw
+                    // so that dirty region culling doesn't skip rendering the widgets in their new positions.
+                    self.dirty_region_tracker.mark_full_reset_needed();
+
+                    if let Some(root_child) = self.cached_root_child {
+                        if let Some(style) = self.cached_style_node.clone() {
+                            if let Ok(fresh_layout) = self.collect_layout(root_child, &style) {
+                                let layout_hash = self.compute_layout_hash();
+                                self.layout_cache = Some((layout_hash, fresh_layout.clone()));
+                                layout_node = fresh_layout;
+                            }
+                        }
+                    }
                     
                     // Clear the RESIZE/LAYOUT flags since we've recomputed Taffy layout
                     self.update.remove(Update::RESIZE | Update::LAYOUT);
@@ -1249,8 +1233,6 @@ where
                         .record_layout_time(layout_time.as_secs_f64() * 1000.0);
                     self.invalidation_tracker.metrics_mut().record_recomputation();
                     
-                    // Return old layout_node - widget updates can use it temporarily
-                    // Fresh layout will be collected just before rendering
                     return layout_node;
                 }
             }
@@ -1260,7 +1242,6 @@ where
         // Clear layout cache and root child cache when structure changes
         self.layout_cache = None;
         self.cached_root_child = None;
-        self.layout_collection_deferred = false; // Clear deferred flag on rebuild
         // Mark full scene reset needed when layout structure changes
         self.dirty_region_tracker.mark_full_reset_needed();
         // Invalidate widget structure hash cache if structure changed
@@ -1318,8 +1299,6 @@ where
             })
         }.expect("Failed to collect layout-");
         
-        // Clear deferred flag since we just collected
-        self.layout_collection_deferred = false;
         
         // Record performance metrics
         let layout_time = start_time.elapsed();
@@ -2022,9 +2001,24 @@ where
     fn pump_events(&mut self, event_loop: &ActiveEventLoop) {
         if let Some(surface) = &mut self.surface {
             if surface.needs_event_dispatch() {
+                let size_before = surface.size();
                 match surface.dispatch_events() {
                     Ok(needs_redraw) => {
-                        if needs_redraw {
+                        let size_after = surface.size();
+                        if size_before != size_after {
+                            self.update_window_node_size(size_after.0, size_after.1);
+                            self.info.size = nalgebra::Vector2::new(size_after.0 as f64, size_after.1 as f64);
+                            self.last_window_size = (size_after.0, size_after.1);
+                            self.last_resize_time = Instant::now();
+                            self.pending_resize = None;
+                            if let Some(renderer) = &mut self.renderer {
+                                renderer.update_render_target_size(size_after.0, size_after.1);
+                            }
+                            self.update.insert(Update::DRAW | Update::RESIZE);
+                            if let Some(window) = &self.window {
+                                window.request_redraw();
+                            }
+                        } else if needs_redraw {
                             self.update.insert(Update::DRAW);
                         }
                     },

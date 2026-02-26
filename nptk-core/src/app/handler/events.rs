@@ -143,22 +143,15 @@ where
         let size_changed_significantly = new_logical_size != self.last_window_size &&
             (width_delta >= MIN_RESIZE_DELTA || height_delta >= MIN_RESIZE_DELTA);
 
-        if size_changed_significantly || time_since_last_resize >= RESIZE_THROTTLE_MS {
-            // Update immediately and schedule layout recomputation
-            self.update_window_node_size(new_logical_size.0, new_logical_size.1);
-            self.info.size = Vector2::new(logical_size.width, logical_size.height);
-            self.last_window_size = new_logical_size;
-            self.last_resize_time = now;
-            self.pending_resize = None;
-            self.request_redraw();
-            self.update.insert(Update::DRAW | Update::RESIZE);
-        } else {
-            // Store pending resize for later processing
-            self.pending_resize = Some(new_logical_size);
-            // Still request redraw for visual feedback
-            self.request_redraw();
-            self.update.insert(Update::DRAW);
-        }
+        // TEMPORARY: Disable throttle to test if it's causing the Wayland resize lag
+        // Update immediately and schedule layout recomputation
+        self.update_window_node_size(new_logical_size.0, new_logical_size.1);
+        self.info.size = Vector2::new(logical_size.width, logical_size.height);
+        self.last_window_size = new_logical_size;
+        self.last_resize_time = now;
+        self.pending_resize = None;
+        self.request_redraw();
+        self.update.insert(Update::DRAW | Update::RESIZE);
     }
 
     /// Handle window close request.

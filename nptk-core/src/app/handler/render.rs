@@ -23,8 +23,11 @@ where
         log::trace!("Draw update detected!");
         let render_start = Instant::now();
 
-        // Check for resize BEFORE rendering - if resize detected, skip this frame
-        // Layout will be recomputed in next update() call
+        // If the Wayland surface dispatched a resize event, update our size bookkeeping
+        // and continue rendering in this same frame with the fresh layout_node already
+        // computed by update_layout_if_needed earlier in the update cycle.
+        // NOTE: We do NOT return early here — the layout passed in is already correct
+        // because update_layout_if_needed ran before render_frame was invoked.
         if let Some(ref mut surface) = self.surface {
             if surface.needs_event_dispatch() {
                 let size_before = surface.size();
@@ -34,17 +37,13 @@ where
                         self.update_window_node_size(size_after.0, size_after.1);
                         self.info.size = nalgebra::Vector2::new(size_after.0 as f64, size_after.1 as f64);
                         self.last_window_size = (size_after.0, size_after.1);
-                        
-                        // Immediately recompute Taffy layout instead of skipping frame
-                        if let Err(e) = self.compute_layout() {
-                            log::warn!("Immediate layout recompute failed in render_frame: {}", e);
-                        } else {
-                            // Successfully recomputed Taffy layout, mark collection as deferred
-                            // because we'll need to re-collect before rendering below
-                            self.layout_collection_deferred = true;
+                        // The current layout_node was built before this resize; schedule a
+                        // follow-up frame to pick up the corrected dimensions.
+                        self.layout_cache = None;
+                        self.update.insert(Update::DRAW | Update::RESIZE);
+                        if let Some(window) = &self.window {
+                            window.request_redraw();
                         }
-                        
-                        self.update.insert(Update::DRAW | Update::LAYOUT);
                     }
                 }
             }
