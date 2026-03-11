@@ -16,8 +16,9 @@ use nptk_core::widget::{Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, Ime, KeyCode, PhysicalKey};
 use nptk_core::theme::ColorRole;
 use std::ops::Deref;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use async_trait::async_trait;
+use tokio::sync::mpsc;
 
 use crate::input_helpers;
 
@@ -35,10 +36,15 @@ pub struct TextInput {
     layout_style: MaybeSignal<LayoutStyle>,
     text: MaybeSignal<String>,
     text_signal: Option<StateSignal<String>>,
+    /// When set with text_signal, typed text is sent here instead of writing to the signal (avoids reentrant signal write in update).
+    deferred_signal_tx: Option<mpsc::UnboundedSender<String>>,
     buffer: TextBuffer,
     previous_text: String,
     placeholder: MaybeSignal<String>,
     on_change: MaybeSignal<Update>,
+    on_submit: MaybeSignal<Update>,
+    on_escape: MaybeSignal<Update>,
+    on_focus_lost: MaybeSignal<Update>,
     focus_id: FocusId,
     focus_state: FocusState,
     focus_via_keyboard: bool,
@@ -68,10 +74,14 @@ impl TextInput {
             .into(),
             text: MaybeSignal::value(String::new()),
             text_signal: None,
+            deferred_signal_tx: None,
             buffer: TextBuffer::new(),
             previous_text: String::new(),
             placeholder: MaybeSignal::value("".to_string()),
             on_change: MaybeSignal::value(Update::empty()),
+            on_submit: MaybeSignal::value(Update::empty()),
+            on_escape: MaybeSignal::value(Update::empty()),
+            on_focus_lost: MaybeSignal::value(Update::empty()),
             focus_id: FocusId::new(),
             focus_state: FocusState::None,
             focus_via_keyboard: false,
@@ -108,9 +118,34 @@ impl TextInput {
         self
     }
 
+    /// When used with [with_text_signal], send typed text to this channel instead of writing to the signal.
+    /// The receiver should apply the value to the signal (e.g. in its update). Avoids reentrant signal writes that can freeze the app.
+    pub fn with_deferred_signal_sender(mut self, tx: mpsc::UnboundedSender<String>) -> Self {
+        self.deferred_signal_tx = Some(tx);
+        self
+    }
+
     /// Set the change callback.
     pub fn with_on_change(mut self, on_change: impl Into<MaybeSignal<Update>>) -> Self {
         self.on_change = on_change.into();
+        self
+    }
+
+    /// Set the callback for when the user presses Enter.
+    pub fn with_on_submit(mut self, on_submit: impl Into<MaybeSignal<Update>>) -> Self {
+        self.on_submit = on_submit.into();
+        self
+    }
+
+    /// Set the callback for when the user presses Escape.
+    pub fn with_on_escape(mut self, on_escape: impl Into<MaybeSignal<Update>>) -> Self {
+        self.on_escape = on_escape.into();
+        self
+    }
+
+    /// Set the callback for when the input loses focus.
+    pub fn with_on_focus_lost(mut self, on_focus_lost: impl Into<MaybeSignal<Update>>) -> Self {
+        self.on_focus_lost = on_focus_lost.into();
         self
     }
 
@@ -149,11 +184,16 @@ impl TextInput {
         }
     }
 
-    /// Sync signal from buffer (when user types)
+    /// Sync signal from buffer (when user types).
+    /// When [deferred_signal_tx] is set, sends to the channel instead of writing to the signal to avoid reentrant updates.
     fn sync_signal_from_buffer(&mut self) {
         let buffer_text = self.buffer.text().to_string();
+        if let (Some(_signal), Some(ref tx)) = (self.text_signal.as_ref(), self.deferred_signal_tx.as_ref()) {
+            let _ = tx.send(buffer_text);
+            return;
+        }
         if let Some(ref signal) = self.text_signal {
-            signal.set(buffer_text);
+            signal.set_value(buffer_text);
         }
     }
 
@@ -287,15 +327,10 @@ impl Widget for TextInput {
 
         let is_focused = matches!(self.focus_state, FocusState::Focused | FocusState::Gained);
 
-        // Update cursor blink in render method for immediate visual feedback
+        // Keep cursor visible while focused. Periodic redraw from render can create a heavy draw loop
+        // for complex views (e.g. file lists with icons/thumbnails), so avoid scheduling redraws here.
         if is_focused {
-            let now = Instant::now();
-            if now.duration_since(self.cursor_blink_timer) > Duration::from_millis(500) {
-                self.cursor_visible = !self.cursor_visible;
-                self.cursor_blink_timer = now;
-                // Request another redraw for the next blink cycle
-                context.update().insert(Update::DRAW);
-            }
+            self.cursor_visible = true;
         }
 
         // Get colors from palette
@@ -461,21 +496,25 @@ impl Widget for TextInput {
             update |= Update::DRAW;
         }
 
-        // Register with focus manager
+        // Register with focus manager. When layout has zero size (e.g. Display::None), do not
+        // accept click focus so the widget under the cursor (e.g. a sibling) can receive the click.
+        let w = layout.layout.size.width;
+        let h = layout.layout.size.height;
+        let click_focusable = w > 0.0 && h > 0.0;
         if let Ok(mut manager) = info.focus_manager.lock() {
             let focusable_widget = FocusableWidget {
                 id: self.focus_id,
                 properties: FocusProperties {
                     tab_focusable: true,
-                    click_focusable: true,
+                    click_focusable,
                     tab_index: 0,
                     accepts_keyboard: true,
                 },
                 bounds: FocusBounds {
                     x: layout.layout.location.x,
                     y: layout.layout.location.y,
-                    width: layout.layout.size.width,
-                    height: layout.layout.size.height,
+                    width: w,
+                    height: h,
                 },
             };
             manager.register_widget(focusable_widget);
@@ -489,6 +528,11 @@ impl Widget for TextInput {
                 self.focus_via_keyboard = manager.was_last_focus_via_keyboard();
             } else if matches!(new_focus_state, FocusState::Lost | FocusState::None) {
                 self.focus_via_keyboard = false;
+                
+                // Trigger focus lost event if transitioning from focused state
+                if matches!(old_focus_state, FocusState::Focused | FocusState::Gained) {
+                    update |= *self.on_focus_lost.get();
+                }
             }
 
             self.focus_state = new_focus_state;
@@ -574,6 +618,12 @@ impl Widget for TextInput {
                                 self.cursor_blink_timer = Instant::now();
                                 self.cursor_visible = true;
                             },
+                            PhysicalKey::Code(KeyCode::Enter) | PhysicalKey::Code(KeyCode::NumpadEnter) => {
+                                update |= *self.on_submit.get();
+                            },
+                            PhysicalKey::Code(KeyCode::Escape) => {
+                                update |= *self.on_escape.get();
+                            },
                             PhysicalKey::Code(KeyCode::ArrowLeft) => {
                                 self.buffer.move_left(info.modifiers.shift_key());
                                 // Reset cursor blink and force redraw
@@ -638,8 +688,7 @@ impl Widget for TextInput {
             if text_changed {
                 // Sync signal from buffer (when user types)
                 self.sync_signal_from_buffer();
-                // Update previous_text to track signal text (which now matches buffer after sync)
-                self.previous_text = (*self.text.get()).clone();
+                self.previous_text = self.buffer.text().to_string();
                 update |= *self.on_change.get();
                 update |= Update::DRAW;
             }

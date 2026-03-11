@@ -141,7 +141,7 @@ impl FileSystemModel {
 
     /// Refresh a directory (reload from filesystem).
     pub fn refresh(&self, path: &Path) -> Result<(), FileSystemError> {
-        println!("FileSystemModel: Refreshing path {:?}", path);
+        log::debug!("FileSystemModel: refreshing path {:?}", path);
         self.task_tx
             .send(FileSystemTask::LoadDirectory(path.to_path_buf()))
             .map_err(|_| {
@@ -392,10 +392,14 @@ impl FileSystemModel {
                             // Process the task
                             match task {
                                 FileSystemTask::LoadDirectory(path) => {
-                                    println!("FileSystemModel: Worker loading directory {:?}", path);
+                                    log::debug!("FileSystemModel: worker loading directory {:?}", path);
                                     match Self::load_directory(&path).await {
                                         Ok(entries) => {
-                                            println!("FileSystemModel: Worker loaded {} entries for {:?}", entries.len(), path);
+                                            log::debug!(
+                                                "FileSystemModel: worker loaded {} entries for {:?}",
+                                                entries.len(),
+                                                path
+                                            );
                                             // Update cache
                                             cache.insert_children(&path, entries.clone());
 
@@ -406,13 +410,17 @@ impl FileSystemModel {
                                             });
                                         }
                                         Err(e) => {
-                                            println!("FileSystemModel: Worker failed to load directory {:?}: {:?}", path, e);
+                                            log::warn!(
+                                                "FileSystemModel: worker failed to load directory {:?}: {:?}",
+                                                path,
+                                                e
+                                            );
                                             // Error occurred, but we don't emit an error event (just log it)
                                         }
                                     }
                                 }
                                 FileSystemTask::RefreshDirectory(path) => {
-                                    println!("FileSystemModel: Worker refreshing directory {:?}", path);
+                                    log::debug!("FileSystemModel: worker refreshing directory {:?}", path);
                                     match Self::load_directory(&path).await {
                                         Ok(entries) => {
                                             cache.insert_children(&path, entries.clone());
@@ -422,7 +430,11 @@ impl FileSystemModel {
                                             });
                                         }
                                         Err(e) => {
-                                            println!("FileSystemModel: Worker failed to refresh directory {:?}: {:?}", path, e);
+                                            log::warn!(
+                                                "FileSystemModel: worker failed to refresh directory {:?}: {:?}",
+                                                path,
+                                                e
+                                            );
                                             // Error occurred, but we don't emit an error event (just log it)
                                         }
                                     }

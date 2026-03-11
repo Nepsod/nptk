@@ -42,7 +42,11 @@ impl<T: Send + Sync + 'static> Signal<T> for StateSignal<T> {
     }
 
     fn notify(&self) {
-        for listener in self.listeners.read().unwrap().iter() {
+        let listeners = {
+            let guard = self.listeners.read().unwrap();
+            guard.iter().cloned().collect::<Vec<_>>()
+        };
+        for listener in listeners {
             listener(self.get());
         }
     }

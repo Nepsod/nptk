@@ -94,6 +94,8 @@ pub struct FocusManager {
     previous_focused: Option<FocusId>,
     /// Registry of all focusable widgets.
     widgets: HashMap<FocusId, FocusableWidget>,
+    /// Order in which widgets were registered this frame (last = topmost for hit-test).
+    registration_order: Vec<FocusId>,
     /// Ordered list of widgets for tab navigation.
     tab_order: Vec<FocusId>,
     /// Whether tab order needs to be recalculated.
@@ -113,6 +115,7 @@ impl FocusManager {
             focused_widget: None,
             previous_focused: None,
             widgets: HashMap::new(),
+            registration_order: Vec::new(),
             tab_order: Vec::new(),
             tab_order_dirty: false,
             last_focus_via_keyboard: false,
@@ -121,15 +124,18 @@ impl FocusManager {
         }
     }
 
-    /// Register a focusable widget.
+    /// Register a focusable widget. Registration order is used for click hit-test (last registered = topmost).
     pub fn register_widget(&mut self, widget: FocusableWidget) {
-        self.widgets.insert(widget.id, widget);
+        let id = widget.id;
+        self.widgets.insert(id, widget);
+        self.registration_order.push(id);
         self.tab_order_dirty = true;
     }
 
     /// Unregister a focusable widget.
     pub fn unregister_widget(&mut self, id: FocusId) {
         self.widgets.remove(&id);
+        self.registration_order.retain(|&i| i != id);
         if self.focused_widget == Some(id) {
             self.focused_widget = None;
         }
@@ -264,11 +270,16 @@ impl FocusManager {
     }
 
     /// Find the widget at the given position that can receive click focus.
+    /// Uses registration order (last registered = topmost) so overlapping widgets get correct hit-test.
     fn find_widget_at_position(&self, x: f64, y: f64) -> Option<FocusId> {
-        self.widgets
-            .values()
-            .find(|widget| widget.properties.click_focusable && widget.bounds.contains(x, y))
-            .map(|widget| widget.id)
+        for id in self.registration_order.iter().rev() {
+            if let Some(widget) = self.widgets.get(id) {
+                if widget.properties.click_focusable && widget.bounds.contains(x, y) {
+                    return Some(*id);
+                }
+            }
+        }
+        None
     }
 
     /// Update the tab order based on current widgets.
@@ -296,11 +307,11 @@ impl FocusManager {
         self.set_focus(None);
     }
 
-    /// Prepare for next frame (update previous focus state).
+    /// Prepare for next frame (update previous focus state and clear registration order).
     pub fn next_frame(&mut self) {
-        // This is called at the beginning of each frame to update focus transitions
         self.previous_focused = self.focused_widget;
         self.focus_cache_valid = true;
+        self.registration_order.clear();
     }
 }
 

@@ -964,6 +964,10 @@ where
         let mut layout_node = self.ensure_layout_initialized();
         layout_node = self.update_layout_if_needed(layout_node);
 
+        // Commit focus state for the new frame and clear registration order so click hit-test
+        // uses this frame's widget order (last registered = topmost).
+        let _ = self.info.batch_focus_operations(|manager| manager.next_frame());
+
         // Check if cursor is over menu for masking during render (but not during update/events)
         let original_cursor_pos = self.info.cursor_pos;
         let cursor_over_menu = self.is_cursor_over_menu();
