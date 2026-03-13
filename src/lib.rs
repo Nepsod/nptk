@@ -77,7 +77,7 @@ pub mod prelude {
     #[cfg(feature = "lgpl-widgets")]
     pub use crate::widgets::text_input::TextInput;
     #[cfg(feature = "lgpl-widgets")]
-    pub use crate::widgets::toggle::Toggle;
+    pub use crate::widgets::toggle::{Toggle, ToggleButton};
     #[cfg(feature = "lgpl-widgets")]
     pub use crate::widgets::toolbar::{Toolbar, ToolbarButton, ToolbarSeparator, ToolbarSpacer};
     #[cfg(feature = "lgpl-widgets")]

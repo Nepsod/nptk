@@ -75,7 +75,7 @@ pub mod text_input;
 /// Contains theme rendering bridge functionality.
 mod theme_rendering;
 
-/// Contains the [toggle::Toggle] widget.
+/// Contains the [toggle::Toggle] and [toggle::ToggleButton] widgets.
 pub mod toggle;
 
 /// Contains the [toolbar::Toolbar] widget.

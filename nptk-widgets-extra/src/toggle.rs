@@ -4,14 +4,20 @@ use nptk_core::app::context::AppContext;
 use nptk_core::app::info::AppInfo;
 use nptk_core::app::update::Update;
 use nptk_core::layout;
-use nptk_core::layout::{Dimension, LayoutContext, LayoutNode, LayoutStyle, LengthPercentageAuto, StyleNode};
+use nptk_core::layout::{
+    AlignItems, Dimension, FlexDirection, LayoutContext, LayoutNode, LayoutStyle,
+    LengthPercentage, LengthPercentageAuto, StyleNode,
+};
 use nptk_core::signal::MaybeSignal;
-use nptk_core::vg::kurbo::{Affine, Rect, Shape, Stroke};
+use nptk_core::vg::kurbo::{Affine, Rect, RoundedRect, RoundedRectRadii, Shape, Stroke};
 use nptk_core::vg::peniko::{Brush, Fill};
 use nptk_core::vgi::Graphics;
-use nptk_core::widget::{Widget, WidgetLayoutExt};
+use nptk_core::widget::{BoxedWidget, Widget, WidgetLayoutExt};
 use nptk_core::window::{ElementState, MouseButton};
 use nptk_core::theme::ColorRole;
+use nptk_widgets::container::Container;
+use nptk_widgets::icon::Icon;
+use nptk_widgets::text::Text;
 use async_trait::async_trait;
 
 /// A toggle/switch button widget with Win8 Metro style.
@@ -246,5 +252,182 @@ impl Widget for Toggle {
 impl Default for Toggle {
     fn default() -> Self {
         Self::new(false)
+    }
+}
+
+/// A reusable button-like visual toggle widget with optional icon and text label.
+///
+/// Unlike [`Toggle`], this widget does not manage click handling or mutate its active state.
+/// It is meant to be paired with another event source (for example a `GestureDetector`) while
+/// providing button-like visuals that stay "pressed" as long as `active` is true.
+pub struct ToggleButton {
+    active: MaybeSignal<bool>,
+    label: MaybeSignal<String>,
+    icon_name: Option<String>,
+    icon_size: u32,
+    font_size: f32,
+    content: Container,
+    layout_style: MaybeSignal<LayoutStyle>,
+    hovered: bool,
+}
+
+impl ToggleButton {
+    /// Create a new visual toggle button.
+    pub fn new(
+        label: impl Into<MaybeSignal<String>>,
+        active: impl Into<MaybeSignal<bool>>,
+    ) -> Self {
+        let label = label.into();
+        let mut toggle_button = Self {
+            active: active.into(),
+            label,
+            icon_name: None,
+            icon_size: 14,
+            font_size: 13.0,
+            content: Container::new(vec![]),
+            layout_style: LayoutStyle {
+                padding: layout::Rect {
+                    left: LengthPercentage::length(8.0),
+                    right: LengthPercentage::length(8.0),
+                    top: LengthPercentage::length(4.0),
+                    bottom: LengthPercentage::length(4.0),
+                },
+                ..Default::default()
+            }
+            .into(),
+            hovered: false,
+        };
+        toggle_button.rebuild_content();
+        toggle_button
+    }
+
+    /// Add an icon before the label.
+    pub fn with_icon(mut self, icon_name: impl Into<String>, icon_size: u32) -> Self {
+        self.icon_name = Some(icon_name.into());
+        self.icon_size = icon_size;
+        self.rebuild_content();
+        self
+    }
+
+    /// Set the font size used by the label.
+    pub fn with_font_size(mut self, font_size: f32) -> Self {
+        self.font_size = font_size;
+        self.rebuild_content();
+        self
+    }
+
+    fn rebuild_content(&mut self) {
+        let mut children: Vec<BoxedWidget> = Vec::new();
+        if let Some(icon_name) = &self.icon_name {
+            children.push(Box::new(Icon::new(icon_name.clone(), self.icon_size, None)));
+        }
+        children.push(Box::new(Text::new(self.label.clone()).with_font_size(self.font_size)));
+        self.content = Container::new(children).with_layout_style(LayoutStyle {
+            flex_direction: FlexDirection::Row,
+            align_items: Some(AlignItems::Center),
+            gap: Vector2::new(LengthPercentage::length(4.0), LengthPercentage::length(0.0)),
+            ..Default::default()
+        });
+    }
+}
+
+impl WidgetLayoutExt for ToggleButton {
+    fn with_layout_style(mut self, style: impl Into<MaybeSignal<LayoutStyle>>) -> Self {
+        self.layout_style = style.into();
+        self
+    }
+
+    fn set_layout_style(&mut self, style: impl Into<MaybeSignal<LayoutStyle>>) {
+        self.layout_style = style.into();
+    }
+}
+
+#[async_trait(?Send)]
+impl Widget for ToggleButton {
+    fn render(
+        &mut self,
+        graphics: &mut dyn Graphics,
+        layout_node: &LayoutNode,
+        info: &mut AppInfo,
+        context: AppContext,
+    ) {
+        let palette = context.palette();
+        let button_bounds = RoundedRect::from_rect(
+            Rect::new(
+                layout_node.layout.location.x as f64,
+                layout_node.layout.location.y as f64,
+                (layout_node.layout.location.x + layout_node.layout.size.width) as f64,
+                (layout_node.layout.location.y + layout_node.layout.size.height) as f64,
+            ),
+            RoundedRectRadii::from_single_radius(8.0),
+        );
+
+        let button_color = if self.hovered {
+            palette.color(ColorRole::HoverHighlight)
+        } else {
+            palette.color(ColorRole::Button)
+        };
+
+        graphics.fill_rounded_rect(
+            Affine::IDENTITY,
+            &Brush::Solid(button_color),
+            None,
+            button_bounds,
+        );
+
+        let border_color = if *self.active.get() {
+            palette.color(ColorRole::ThreedShadow1)
+        } else {
+            palette.color(ColorRole::ThreedHighlight)
+        };
+        graphics.stroke_rounded_rect(
+            &Stroke::new(1.0),
+            Affine::IDENTITY,
+            &Brush::Solid(border_color),
+            None,
+            button_bounds,
+        );
+
+        if let Some(child_layout) = layout_node.children.first() {
+            self.content.render(graphics, child_layout, info, context);
+        }
+    }
+
+    fn layout_style(&self, context: &LayoutContext) -> StyleNode {
+        StyleNode {
+            style: self.layout_style.get().clone(),
+            children: vec![self.content.layout_style(context)],
+            measure_func: None,
+        }
+    }
+
+    async fn update(
+        &mut self,
+        layout: &LayoutNode,
+        context: AppContext,
+        info: &mut AppInfo,
+    ) -> Update {
+        let cursor_hit = info
+            .cursor_pos
+            .map(|cursor| {
+                cursor.x as f32 >= layout.layout.location.x
+                    && cursor.x as f32 <= layout.layout.location.x + layout.layout.size.width
+                    && cursor.y as f32 >= layout.layout.location.y
+                    && cursor.y as f32 <= layout.layout.location.y + layout.layout.size.height
+            })
+            .unwrap_or(false);
+
+        let mut update = Update::empty();
+        if self.hovered != cursor_hit {
+            self.hovered = cursor_hit;
+            update |= Update::DRAW;
+        }
+
+        if let Some(child_layout) = layout.children.first() {
+            update |= self.content.update(child_layout, context, info).await;
+            update
+        } else {
+            update
+        }
     }
 }
