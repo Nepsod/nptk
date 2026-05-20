@@ -15,7 +15,7 @@ use calloop::{
 use calloop_wayland_source::WaylandSource;
 use collections::HashMap;
 use filedescriptor::Pipe;
-use http_client::Url;
+use url::Url;
 use smallvec::SmallVec;
 use util::ResultExt as _;
 use wayland_backend::client::ObjectId;
@@ -567,7 +567,7 @@ impl WaylandClient {
 
         let event_loop = EventLoop::<WaylandClientStatePtr>::try_new().unwrap();
 
-        let (common, main_receiver) = LinuxCommon::new(event_loop.get_signal());
+        let (common, main_receiver, bridge_receiver) = LinuxCommon::new(event_loop.get_signal());
 
         let handle = event_loop.handle();
         handle
@@ -591,6 +591,30 @@ impl WaylandClient {
                             timing.end = Some(end);
                             profiler::add_task_timing(timing);
                         });
+                    }
+                }
+            })
+            .unwrap();
+
+        handle
+            .insert_source(bridge_receiver, {
+                move |event, _, client: &mut WaylandClientStatePtr| {
+                    if let calloop::channel::Event::Msg(bridge_event) = event {
+                        if let Some(state_rc) = client.0.upgrade() {
+                            let mut state = state_rc.borrow_mut();
+                            if let crate::linux::dbus_menu::BridgeEvent::Activated(id) = bridge_event {
+                                if let Some(action) = state.common.menu_actions.get(&id) {
+                                    let action = action.boxed_clone();
+                                    if let Some(mut cb) = state.common.callbacks.app_menu_action.take() {
+                                        drop(state);
+                                        cb(action.as_ref());
+                                        if let Some(state_rc) = client.0.upgrade() {
+                                            state_rc.borrow_mut().common.callbacks.app_menu_action = Some(cb);
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             })

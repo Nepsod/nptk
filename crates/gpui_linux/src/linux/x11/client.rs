@@ -7,7 +7,7 @@ use calloop::{
 use collections::HashMap;
 use core::str;
 use gpui::{Capslock, TaskTiming, profiler};
-use http_client::Url;
+use url::Url;
 use log::Level;
 use smallvec::SmallVec;
 use std::{
@@ -309,7 +309,7 @@ impl X11Client {
     pub(crate) fn new() -> anyhow::Result<Self> {
         let event_loop = EventLoop::try_new()?;
 
-        let (common, main_receiver) = LinuxCommon::new(event_loop.get_signal());
+        let (common, main_receiver, bridge_receiver) = LinuxCommon::new(event_loop.get_signal());
 
         let handle = event_loop.handle();
 
@@ -343,6 +343,26 @@ impl X11Client {
             .map_err(|err| {
                 anyhow!("Failed to initialize event loop handling of foreground tasks: {err:?}")
             })?;
+
+        handle
+            .insert_source(bridge_receiver, {
+                move |event, _, client: &mut X11Client| {
+                    if let calloop::channel::Event::Msg(bridge_event) = event {
+                        let mut state = client.0.borrow_mut();
+                        if let crate::linux::dbus_menu::BridgeEvent::Activated(id) = bridge_event {
+                            if let Some(action) = state.common.menu_actions.get(&id) {
+                                let action = action.boxed_clone();
+                                if let Some(mut cb) = state.common.callbacks.app_menu_action.take() {
+                                    drop(state);
+                                    cb(action.as_ref());
+                                    client.0.borrow_mut().common.callbacks.app_menu_action = Some(cb);
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+            .unwrap();
 
         let (xcb_connection, x_root_index) = XCBConnection::connect(None)?;
         xcb_connection.prefetch_extension_information(xkb::X11_EXTENSION_NAME)?;

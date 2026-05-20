@@ -58,7 +58,7 @@ image.workspace = true
 futures.workspace = true
 gpui.workspace = true
 gpui_wgpu = { workspace = true, optional = true, features = ["font-kit"] }
-http_client.workspace = true
+
 itertools.workspace = true
 libc.workspace = true
 log.workspace = true
@@ -72,6 +72,8 @@ strum.workspace = true
 url.workspace = true
 util.workspace = true
 uuid.workspace = true
+serde.workspace = true
+zbus = { version = "4.4.0", default-features = false, features = ["async-io", "blocking"] }
 
 # Always used
 oo7 = { version = "0.6", default-features = false, features = [

@@ -123,11 +123,14 @@ pub(crate) struct LinuxCommon {
     pub(crate) callbacks: PlatformHandlers,
     pub(crate) signal: LoopSignal,
     pub(crate) menus: Vec<OwnedMenu>,
+    pub(crate) menu_actions: std::collections::HashMap<i32, Box<dyn Action>>,
+    pub(crate) global_menu: Option<crate::linux::dbus_menu::Bridge>,
 }
 
 impl LinuxCommon {
-    pub fn new(signal: LoopSignal) -> (Self, PriorityQueueCalloopReceiver<RunnableVariant>) {
+    pub fn new(signal: LoopSignal) -> (Self, PriorityQueueCalloopReceiver<RunnableVariant>, calloop::channel::Channel<crate::linux::dbus_menu::BridgeEvent>) {
         let (main_sender, main_receiver) = PriorityQueueCalloopReceiver::new();
+        let (bridge_sender, bridge_receiver) = calloop::channel::channel();
 
         #[cfg(any(feature = "wayland", feature = "x11"))]
         let text_system = Arc::new(crate::linux::CosmicTextSystem::new("IBM Plex Sans"));
@@ -140,7 +143,7 @@ impl LinuxCommon {
 
         let background_executor = BackgroundExecutor::new(dispatcher.clone());
 
-        let common = LinuxCommon {
+        let mut common = LinuxCommon {
             background_executor,
             foreground_executor: ForegroundExecutor::new(dispatcher),
             text_system,
@@ -150,9 +153,16 @@ impl LinuxCommon {
             callbacks,
             signal,
             menus: Vec::new(),
+            menu_actions: std::collections::HashMap::new(),
+            global_menu: None,
         };
 
-        (common, main_receiver)
+        let on_event = std::sync::Arc::new(move |event| {
+            let _ = bridge_sender.send(event);
+        });
+        common.global_menu = crate::linux::dbus_menu::Bridge::start(on_event);
+
+        (common, main_receiver, bridge_receiver)
     }
 }
 
@@ -510,9 +520,84 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
         Ok(app_path)
     }
 
-    fn set_menus(&self, menus: Vec<Menu>, _keymap: &Keymap) {
+    fn set_menus(&self, menus: Vec<Menu>, keymap: &Keymap) {
         self.inner.with_common(|common| {
-            common.menus = menus.into_iter().map(|menu| menu.owned()).collect();
+            common.menu_actions.clear();
+
+            if let Some(bridge) = &common.global_menu {
+                use crate::linux::dbus_menu::{MenuSnapshot, RemoteMenuNode};
+                let mut next_id = 1;
+                let mut root_children = Vec::new();
+
+                fn convert_menu(
+                    menu: &Menu,
+                    next_id: &mut i32,
+                    keymap: &Keymap,
+                    actions: &mut std::collections::HashMap<i32, Box<dyn Action>>,
+                ) -> RemoteMenuNode {
+                    let id = *next_id;
+                    *next_id += 1;
+                    
+                    let mut children = Vec::new();
+                    for item in &menu.items {
+                        match item {
+                            MenuItem::Separator => {
+                                children.push(RemoteMenuNode {
+                                    id: *next_id,
+                                    label: String::new(),
+                                    enabled: true,
+                                    is_separator: true,
+                                    shortcut: None,
+                                    children: Vec::new(),
+                                });
+                                *next_id += 1;
+                            }
+                            MenuItem::Action { name, action, .. } => {
+                                let shortcut = keymap.bindings_for_action(action.as_ref())
+                                    .next()
+                                    .map(|b| {
+                                        let mut parts = Vec::new();
+                                        for k in b.keystrokes() {
+                                            parts.push(k.to_string());
+                                        }
+                                        parts.join("+")
+                                    });
+                                
+                                actions.insert(*next_id, action.boxed_clone());
+                                children.push(RemoteMenuNode {
+                                    id: *next_id,
+                                    label: name.to_string(),
+                                    enabled: true,
+                                    is_separator: false,
+                                    shortcut,
+                                    children: Vec::new(),
+                                });
+                                *next_id += 1;
+                            }
+                            MenuItem::Submenu(submenu) => {
+                                children.push(convert_menu(submenu, next_id, keymap, actions));
+                            }
+                            MenuItem::SystemMenu(_) => {}
+                        }
+                    }
+                    RemoteMenuNode {
+                        id,
+                        label: menu.name.to_string(),
+                        enabled: true,
+                        is_separator: false,
+                        shortcut: None,
+                        children,
+                    }
+                }
+
+                for menu in &menus {
+                    root_children.push(convert_menu(menu, &mut next_id, keymap, &mut common.menu_actions));
+                }
+                
+                bridge.update_menu(MenuSnapshot { entries: root_children });
+            }
+
+            common.menus = menus.into_iter().map(|m| m.owned()).collect();
         })
     }
 

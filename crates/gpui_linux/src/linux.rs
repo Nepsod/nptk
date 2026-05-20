@@ -1,3 +1,4 @@
+mod dbus_menu;
 mod dispatcher;
 mod headless;
 mod keyboard;
