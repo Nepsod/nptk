@@ -144,24 +144,25 @@ impl FileIconService {
         if path.is_dir() {
             return self.resolve_theme_icon("folder", size).await;
         }
-        let cached = self.resolve_icon(path, size, false).await?;
+        let cached = self.resolve_icon(path, size, false, false).await?;
         presentation_from_cached(&cached)
     }
 
-    /// Async resolution with thumbnail support for file managers.
+    /// Async resolution with optional thumbnail support for file managers.
     pub async fn resolve_icon(
         &self,
         path: &Path,
         size: u32,
         is_directory: bool,
+        use_thumbnails: bool,
     ) -> Option<CachedIcon> {
         if is_directory {
             let registry = self.inner.read().expect("file icon service lock").registry.clone();
-            return registry.get_icon("folder", size);
+            return registry.get_icon_async("folder", size).await;
         }
 
         let file = LocalFile::new(path.to_path_buf());
-        self.resolve_file_icon(&file, size, true).await
+        self.resolve_file_icon(&file, size, use_thumbnails).await
     }
 
     async fn resolve_file_icon(
