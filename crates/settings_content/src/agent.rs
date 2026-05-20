@@ -395,7 +395,7 @@ pub struct LanguageModelSelection {
     #[serde(default)]
     pub enable_thinking: bool,
     pub effort: Option<String>,
-    pub speed: Option<language_model_core::Speed>,
+    pub speed: Option<crate::language_model_stubs::Speed>,
 }
 
 #[with_fallible_options]

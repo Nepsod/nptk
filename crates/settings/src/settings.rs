@@ -1,11 +1,15 @@
 mod base_keymap_setting;
 mod content_into_gpui;
-mod editable_setting_control;
-mod editorconfig_store;
-mod keymap_file;
+#[cfg(feature = "editor")]
 mod settings_file;
 mod settings_store;
-mod vscode_import;
+
+#[cfg(feature = "editor")]
+mod editable_setting_control;
+#[cfg(feature = "editor")]
+mod editorconfig_store;
+#[cfg(feature = "editor")]
+mod keymap_file;
 
 pub use settings_macros::RegisterSetting;
 
@@ -33,24 +37,29 @@ use util::asset_str;
 pub use ::settings_content::*;
 pub use base_keymap_setting::*;
 pub use content_into_gpui::IntoGpui;
+#[cfg(feature = "editor")]
 pub use editable_setting_control::*;
+#[cfg(feature = "editor")]
 pub use editorconfig_store::{
     Editorconfig, EditorconfigEvent, EditorconfigProperties, EditorconfigStore,
 };
+#[cfg(feature = "editor")]
 pub use keymap_file::{
     KeyBindingValidator, KeyBindingValidatorRegistration, KeybindSource, KeybindUpdateOperation,
     KeybindUpdateTarget, KeymapFile, KeymapFileLoadResult,
 };
+#[cfg(feature = "editor")]
 pub use settings_file::*;
 pub use settings_json::*;
+
+pub const EMPTY_THEME_NAME: &str = "empty-theme";
 pub use settings_store::{
     DefaultSemanticTokenRules, InvalidSettingsError, LSP_SETTINGS_SCHEMA_URL_PREFIX,
     LocalSettingsKind, LocalSettingsPath, MigrationStatus, Settings, SettingsFile,
     SettingsJsonSchemaParams, SettingsKey, SettingsLocation, SettingsParseResult, SettingsStore,
 };
 
-pub use vscode_import::{VsCodeSettings, VsCodeSettingsSource};
-
+#[cfg(feature = "editor")]
 pub use keymap_file::ActionSequence;
 
 #[derive(Clone, Debug, PartialEq)]

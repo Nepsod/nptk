@@ -5,6 +5,7 @@ mod extension;
 mod fallible_options;
 mod language;
 mod language_model;
+mod language_model_stubs;
 pub mod merge_from;
 mod project;
 mod serde_helper;

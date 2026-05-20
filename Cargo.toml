@@ -11,7 +11,41 @@ members = [
     "crates/gpui_wgpu",
     "crates/util",
     "crates/util_macros",
-    "crates/http_client"
+    "crates/http_client",
+    "crates/icons",
+    "crates/menu",
+    "crates/migrator",
+    "crates/paths",
+    "crates/release_channel",
+    "crates/settings",
+    "crates/settings_content",
+    "crates/settings_json",
+    "crates/settings_macros",
+    "crates/syntax_theme",
+    "crates/theme",
+    "crates/theme_settings",
+    "crates/ui",
+    "crates/ui_macros",
+    "crates/fs",
+    "crates/text",
+    "crates/proto",
+    "crates/rope",
+    "crates/git",
+    "crates/askpass",
+    "crates/telemetry",
+    "crates/telemetry_events",
+    "crates/net",
+    "crates/clock",
+    "crates/collections",
+    "crates/component",
+    "crates/refineable",
+    "crates/sum_tree",
+    "crates/scheduler",
+    "crates/zlog",
+    "crates/ztracing",
+    "crates/ztracing_macro",
+    "crates/http_client_tls",
+    "tooling/perf",
 ]
 
 [workspace.package]
@@ -31,19 +65,43 @@ gpui_util = { path = "crates/gpui_util" }
 gpui_wgpu = { path = "crates/gpui_wgpu" }
 util = { path = "crates/util" }
 util_macros = { path = "crates/util_macros" }
+icons = { path = "crates/icons" }
+menu = { path = "crates/menu" }
+migrator = { path = "crates/migrator" }
+paths = { path = "crates/paths" }
+release_channel = { path = "crates/release_channel" }
+settings = { path = "crates/settings", default-features = false }
+settings_content = { path = "crates/settings_content" }
+settings_json = { path = "crates/settings_json" }
+settings_macros = { path = "crates/settings_macros" }
+syntax_theme = { path = "crates/syntax_theme" }
+theme = { path = "crates/theme" }
+theme_settings = { path = "crates/theme_settings" }
+ui = { path = "crates/ui" }
+ui_macros = { path = "crates/ui_macros" }
+fs = { path = "crates/fs" }
+text = { path = "crates/text" }
+proto = { path = "crates/proto" }
+rope = { path = "crates/rope" }
+git = { path = "crates/git" }
+askpass = { path = "crates/askpass" }
+telemetry = { path = "crates/telemetry" }
+telemetry_events = { path = "crates/telemetry_events" }
+net = { path = "crates/net" }
+clock = { path = "crates/clock" }
 
-    collections = { path = "/kesz/tmp/zed/crates/collections", version = "0.1.0" }
-    component = { path = "/kesz/tmp/zed/crates/component" }
-    refineable = { path = "/kesz/tmp/zed/crates/refineable" }
-    derive_refineable = { path = "/kesz/tmp/zed/crates/refineable/derive_refineable" }
-    scheduler = { path = "/kesz/tmp/zed/crates/scheduler" }
-    sum_tree = { path = "/kesz/tmp/zed/crates/sum_tree" }
+collections = { path = "crates/collections", version = "0.1.0" }
+component = { path = "crates/component" }
+refineable = { path = "crates/refineable" }
+derive_refineable = { path = "crates/refineable/derive_refineable" }
+scheduler = { path = "crates/scheduler" }
+sum_tree = { path = "crates/sum_tree" }
     http_client = { path = "crates/http_client" }
-    http_client_tls = { path = "/kesz/tmp/zed/crates/http_client_tls" }
-    zlog = { path = "/kesz/tmp/zed/crates/zlog" }
-    ztracing = { path = "/kesz/tmp/zed/crates/ztracing" }
-    ztracing_macro = { path = "/kesz/tmp/zed/crates/ztracing_macro" }
-    perf = { path = "/kesz/tmp/zed/tooling/perf" }
+http_client_tls = { path = "crates/http_client_tls" }
+zlog = { path = "crates/zlog" }
+ztracing = { path = "crates/ztracing" }
+ztracing_macro = { path = "crates/ztracing_macro" }
+perf = { path = "tooling/perf" }
 
 # External crates
 aho-corasick = "1.1"
@@ -376,17 +434,24 @@ webrtc-sys = { git = "https://github.com/zed-industries/livekit-rust-sdks", rev 
 # Definition of the root nptk wrapper crate itself
 [package]
 name = "nptk"
-version = "0.6.0"
+version = "0.1.0"
 description = "Nepsod Unified Platform Toolkit re-exporting GPUI and Zed components."
 edition.workspace = true
 authors = ["Dominik Adrian Grzywak <starterx4@gmail.com>"]
 license = "GPL-3.0"
 
 [dependencies]
-gpui = { workspace = true }
-# ui = { workspace = true }
-# theme = { workspace = true }
-# settings = { workspace = true }
+anyhow.workspace = true
+fs = { workspace = true }
+gpui = { workspace = true, features = ["wayland", "x11"] }
+gpui_platform = { workspace = true, features = ["font-kit", "wayland", "x11"] }
+gpui_tokio = { workspace = true }
+log.workspace = true
+paths = { workspace = true }
+settings = { workspace = true, features = ["editor"] }
+theme = { workspace = true }
+theme_settings = { workspace = true }
+ui = { workspace = true }
 
 [lib]
 name = "nptk"

@@ -281,7 +281,7 @@ pub struct OpenAiAvailableModel {
     pub capabilities: OpenAiModelCapabilities,
 }
 
-pub use language_model_core::ReasoningEffort as OpenAiReasoningEffort;
+pub use crate::language_model_stubs::ReasoningEffort as OpenAiReasoningEffort;
 
 impl MergeFrom for OpenAiReasoningEffort {
     fn merge_from(&mut self, other: &Self) {

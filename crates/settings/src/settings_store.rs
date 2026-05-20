@@ -1,5 +1,6 @@
 use anyhow::{Context as _, Result};
 use collections::{BTreeMap, HashMap, btree_map, hash_map};
+#[cfg(feature = "editor")]
 use fs::Fs;
 use futures::{
     FutureExt, StreamExt,
@@ -29,12 +30,13 @@ use util::{
     schemars::{AllowTrailingCommas, DefaultDenyUnknownFields, replace_subschema},
 };
 
+#[cfg(feature = "editor")]
 use crate::editorconfig_store::EditorconfigStore;
 
 use crate::{
     ActiveSettingsProfileName, FontFamilyName, IconThemeName, LanguageSettingsContent,
     LanguageToSettingsMap, LspSettings, LspSettingsMap, SemanticTokenRules, ThemeName,
-    UserSettingsContentExt, VsCodeSettings, WorktreeId,
+    UserSettingsContentExt, WorktreeId,
     settings_content::{
         ExtensionsSettingsContent, ProfileBase, ProjectSettingsContent, RootUserSettings,
         SettingsContent, UserSettingsContent, merge_from::MergeFrom,
@@ -43,7 +45,7 @@ use crate::{
 
 use settings_json::{infer_json_indent_size, update_value_in_json_text};
 
-pub const LSP_SETTINGS_SCHEMA_URL_PREFIX: &str = "zed://schemas/settings/lsp/";
+pub const LSP_SETTINGS_SCHEMA_URL_PREFIX: &str = "nptk://schemas/settings/lsp/";
 
 pub trait SettingsKey: 'static + Send + Sync {
     /// The name of a key within the JSON file from which this setting should
@@ -158,8 +160,10 @@ pub struct SettingsStore {
     last_user_settings_content: Option<String>,
     last_global_settings_content: Option<String>,
     local_settings: BTreeMap<(WorktreeId, Arc<RelPath>), SettingsContent>,
+    #[cfg(feature = "editor")]
     pub editorconfig_store: Entity<EditorconfigStore>,
 
+    #[cfg(feature = "editor")]
     _settings_files_watcher: Option<Task<()>>,
     _setting_file_updates: Task<()>,
     setting_file_updates_tx:
@@ -311,7 +315,9 @@ impl SettingsStore {
             last_user_settings_content: None,
             last_global_settings_content: None,
             local_settings: BTreeMap::default(),
+            #[cfg(feature = "editor")]
             editorconfig_store: cx.new(|_| EditorconfigStore::default()),
+            #[cfg(feature = "editor")]
             _settings_files_watcher: None,
             setting_file_updates_tx,
             _setting_file_updates: cx.spawn(async move |cx| {
@@ -342,6 +348,7 @@ impl SettingsStore {
         cx.update_global(f)
     }
 
+    #[cfg(feature = "editor")]
     pub fn watch_settings_files(
         &mut self,
         fs: Arc<dyn Fs>,
@@ -530,6 +537,7 @@ impl SettingsStore {
         trail(self, content, cx);
     }
 
+    #[cfg(feature = "editor")]
     pub async fn load_settings(fs: &Arc<dyn Fs>) -> Result<String> {
         match fs.load(paths::settings_file()).await {
             result @ Ok(_) => result,
@@ -544,6 +552,7 @@ impl SettingsStore {
         }
     }
 
+    #[cfg(feature = "editor")]
     fn update_settings_file_inner(
         &self,
         fs: Arc<dyn Fs>,
@@ -601,6 +610,7 @@ impl SettingsStore {
         return rx;
     }
 
+    #[cfg(feature = "editor")]
     pub fn update_settings_file(
         &self,
         fs: Arc<dyn Fs>,
@@ -609,6 +619,7 @@ impl SettingsStore {
         _ = self.update_settings_file_with_completion(fs, update);
     }
 
+    #[cfg(feature = "editor")]
     pub fn update_settings_file_with_completion(
         &self,
         fs: Arc<dyn Fs>,
@@ -617,18 +628,6 @@ impl SettingsStore {
         self.update_settings_file_inner(fs, move |old_text: String, cx: AsyncApp| {
             cx.read_global(|store: &SettingsStore, cx| {
                 store.new_text_for_update(old_text, |content| update(content, cx))
-            })
-        })
-    }
-
-    pub fn import_vscode_settings(
-        &self,
-        fs: Arc<dyn Fs>,
-        vscode_settings: VsCodeSettings,
-    ) -> oneshot::Receiver<Result<()>> {
-        self.update_settings_file_inner(fs, move |old_text: String, cx: AsyncApp| {
-            cx.read_global(|store: &SettingsStore, _cx| {
-                store.get_vscode_edits(old_text, &vscode_settings)
             })
         })
     }
@@ -827,12 +826,6 @@ impl SettingsStore {
             new_text.replace_range(range, &replacement);
         }
         Ok(new_text)
-    }
-
-    pub fn get_vscode_edits(&self, old_text: String, vscode: &VsCodeSettings) -> Result<String> {
-        self.new_text_for_update(old_text, |content| {
-            content.merge_from(&vscode.settings_content())
-        })
     }
 
     /// Updates the value of a setting in a JSON file, returning a list
@@ -1098,17 +1091,27 @@ impl SettingsStore {
                     }
                 }
             }
+            #[cfg(feature = "editor")]
             (directory_path, LocalSettingsKind::Editorconfig, editorconfig_contents) => {
                 self.editorconfig_store.update(cx, |store, _| {
                     store.set_configs(root_id, directory_path, editorconfig_contents)
                 })?;
             }
+            #[cfg(feature = "editor")]
             (LocalSettingsPath::OutsideWorktree(path), kind, _) => {
                 log::error!(
                     "OutsideWorktree path {:?} with kind {:?} is only supported by editorconfig",
                     path,
                     kind
                 );
+                return Ok(());
+            }
+            #[cfg(not(feature = "editor"))]
+            (LocalSettingsPath::OutsideWorktree(_path), _kind, _content) => {
+                return Ok(());
+            }
+            #[cfg(not(feature = "editor"))]
+            (LocalSettingsPath::InWorktree(_directory_path), LocalSettingsKind::Editorconfig, _content) => {
                 return Ok(());
             }
         }
@@ -1141,6 +1144,7 @@ impl SettingsStore {
         self.local_settings
             .retain(|(worktree_id, _), _| worktree_id != &root_id);
 
+        #[cfg(feature = "editor")]
         self.editorconfig_store
             .update(cx, |store, _cx| store.remove_for_worktree(root_id));
 
@@ -1625,7 +1629,7 @@ impl<T: Settings> AnySettingValue for SettingValue<T> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "editor"))]
 mod tests {
     use std::{cell::RefCell, num::NonZeroU32};
 

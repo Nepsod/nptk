@@ -13,13 +13,15 @@ path = "src/settings.rs"
 doctest = false
 
 [features]
-test-support = ["gpui/test-support", "fs/test-support"]
+default = []
+editor = ["dep:fs"]
+test-support = ["gpui/test-support", "fs/test-support", "editor"]
 
 [dependencies]
 anyhow.workspace = true
 collections.workspace = true
 ec4rs.workspace = true
-fs.workspace = true
+fs = { path = "../fs", optional = true }
 futures.workspace = true
 gpui.workspace = true
 inventory.workspace = true
