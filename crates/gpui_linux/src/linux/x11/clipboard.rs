@@ -78,7 +78,7 @@ x11rb::atom_manager! {
         TEXT_MIME_UNKNOWN: b"text/plain",
 
         // HTML: b"text/html",
-        // URI_LIST: b"text/uri-list",
+        URI_LIST: b"text/uri-list",
 
         PNG__MIME: ImageFormat::mime_type(ImageFormat::Png ).as_bytes(),
         JPEG_MIME: ImageFormat::mime_type(ImageFormat::Jpeg).as_bytes(),
@@ -990,6 +990,46 @@ impl Clipboard {
         self.inner.write(data, selection, wait)
     }
 
+    pub(crate) fn set_formats(
+        &self,
+        data: Vec<ClipboardData>,
+        selection: ClipboardKind,
+        wait: WaitConfig,
+    ) -> Result<()> {
+        self.inner.write(data, selection, wait)
+    }
+
+    pub(crate) fn set_file_paths(
+        &self,
+        item: &ClipboardItem,
+        selection: ClipboardKind,
+        wait: WaitConfig,
+    ) -> Result<()> {
+        let Some(uri_list) = crate::linux::file_clipboard::uri_list_bytes(item) else {
+            return self.set_text(
+                Cow::Owned(item.text().unwrap_or_default()),
+                selection,
+                wait,
+            );
+        };
+        let gnome_payload = crate::linux::file_clipboard::gnome_copied_files_bytes(item)
+            .unwrap_or_default();
+        self.set_formats(
+            vec![
+                ClipboardData {
+                    bytes: uri_list,
+                    format: self.inner.atoms.URI_LIST,
+                },
+                ClipboardData {
+                    bytes: gnome_payload,
+                    format: self.inner.atoms.UTF8_STRING,
+                },
+            ],
+            selection,
+            wait,
+        )
+    }
+
     fn image_format_atom(&self, format: ImageFormat) -> Atom {
         match format {
             ImageFormat::Png => self.inner.atoms.PNG__MIME,
@@ -1035,8 +1075,9 @@ impl Clipboard {
 
         // image formats first, as they are more specific, and read will return the first
         // format that the contents can be converted to
-        let mut format_atoms = Vec::with_capacity(image_entries.len() + text_format_atoms.len());
+        let mut format_atoms = Vec::with_capacity(image_entries.len() + text_format_atoms.len() + 1);
         format_atoms.extend(image_entries.iter().map(|(atom, _)| *atom));
+        format_atoms.push(self.inner.atoms.URI_LIST);
         format_atoms.extend_from_slice(text_format_atoms);
 
         let result = self.inner.read(&format_atoms, selection)?;
@@ -1065,6 +1106,9 @@ impl Clipboard {
         } else {
             String::from_utf8(result.bytes).map_err(|_| Error::ConversionFailure)?
         };
+        if let Some((paths, is_cut)) = ClipboardItem::new_string(text.clone()).file_paths() {
+            return Ok(ClipboardItem::new_file_paths(paths, is_cut));
+        }
         Ok(ClipboardItem::new_string(text))
     }
 

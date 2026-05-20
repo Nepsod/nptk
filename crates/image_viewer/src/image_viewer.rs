@@ -5,7 +5,7 @@ use std::path::Path;
 
 use anyhow::Context as _;
 use editor::{EditorSettings, items::entry_git_aware_label_color};
-use file_icons::FileIcons;
+use file_icons::{FileIconPresentation, FileIcons, DEFAULT_ICON_SIZE};
 use gpui::{
     AnyElement, App, Bounds, Context, DispatchPhase, Element, ElementId, Entity, EventEmitter,
     FocusHandle, Focusable, Font, GlobalElementId, InspectorElementId, InteractiveElement,
@@ -513,9 +513,12 @@ impl Item for ImageView {
         let path = self.image_item.read(cx).abs_path(cx)?;
         ItemSettings::get_global(cx)
             .file_icons
-            .then(|| FileIcons::get_icon(&path, cx))
-            .flatten()
-            .map(Icon::from_path)
+            .then(|| FileIcons::presentation_for_path(&path, DEFAULT_ICON_SIZE, cx))
+            .and_then(|presentation| match presentation {
+                FileIconPresentation::RasterPath(icon_path) => Some(Icon::from_path(icon_path)),
+                FileIconPresentation::SvgPath(path) => Some(Icon::from_external_svg(path)),
+                FileIconPresentation::RenderImage(_) => None,
+            })
     }
 
     fn breadcrumb_location(&self, cx: &App) -> ToolbarItemLocation {

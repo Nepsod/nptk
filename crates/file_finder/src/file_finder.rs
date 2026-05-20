@@ -1,3 +1,23 @@
+fn icon_element_from_presentation(
+    presentation: FileIconPresentation,
+    color: Color,
+    cx: &App,
+) -> AnyElement {
+    match presentation {
+        FileIconPresentation::RasterPath(path) => Icon::from_path(path).color(color).into_any_element(),
+        FileIconPresentation::SvgPath(path) => svg()
+            .external_path(path)
+            .size(IconSize::default().rems())
+            .flex_none()
+            .text_color(color.color(cx))
+            .into_any_element(),
+        FileIconPresentation::RenderImage(image) => img(image)
+            .size(IconSize::default().rems())
+            .color(color)
+            .into_any_element(),
+    }
+}
+
 #[cfg(test)]
 mod file_finder_tests;
 
@@ -8,7 +28,7 @@ use channel::ChannelStore;
 use client::ChannelId;
 use collections::HashMap;
 use editor::Editor;
-use file_icons::FileIcons;
+use file_icons::{FileIconPresentation, FileIcons, DEFAULT_ICON_SIZE};
 use fuzzy::{StringMatch, StringMatchCandidate};
 use fuzzy_nucleo::{PathMatch, PathMatchCandidate};
 use gpui::{
@@ -1800,16 +1820,16 @@ impl PickerDelegate for FileFinderDelegate {
                     return None;
                 }
                 let abs_path = path_match.abs_path(&self.project, cx)?;
-                let file_name = abs_path.file_name()?;
-                let icon = FileIcons::get_icon(file_name.as_ref(), cx)?;
-                Some(Icon::from_path(icon).color(Color::Muted))
+                let presentation =
+                    FileIcons::presentation_for_path(abs_path.as_ref(), DEFAULT_ICON_SIZE, cx)?;
+                Some(icon_element_from_presentation(presentation, Color::Muted, cx))
             }),
         };
 
         Some(
             ListItem::new(ix)
                 .spacing(ListItemSpacing::Sparse)
-                .start_slot::<Icon>(file_icon)
+                .start_slot::<AnyElement>(file_icon)
                 .end_slot::<AnyElement>(end_icon)
                 .inset(true)
                 .toggle_state(selected)

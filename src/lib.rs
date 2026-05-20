@@ -2,6 +2,7 @@ mod config;
 
 pub use gpui;
 pub use gpui_platform;
+pub use gpui_rsx::rsx;
 pub use gpui_tokio;
 pub use settings;
 pub use theme;

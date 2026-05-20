@@ -160,7 +160,8 @@ pub struct ThemeSettingsContent {
     pub markdown_preview_theme: Option<ThemeSelection>,
     /// The name of the Zed theme to use.
     pub theme: Option<ThemeSelection>,
-    /// The name of the icon theme to use.
+    /// Freedesktop XDG icon theme for file icons (e.g. `"Adwaita"`, `"Papirus"`).
+    /// Independent of the UI color [`theme`](Self::theme).
     pub icon_theme: Option<IconThemeSelection>,
 
     /// UNSTABLE: Expect many elements to be broken.

@@ -1880,6 +1880,30 @@ impl ClipboardItem {
         }
     }
 
+    /// Clipboard payload for file copy/cut compatible with `text/uri-list` and GNOME file managers.
+    pub fn new_file_paths(paths: Vec<PathBuf>, is_cut: bool) -> Self {
+        let uri_list = paths
+            .iter()
+            .map(|path| file_path_to_uri(path))
+            .collect::<Vec<_>>()
+            .join("\r\n");
+        let mut gnome_lines = vec![if is_cut { "cut" } else { "copy" }.to_string()];
+        gnome_lines.extend(paths.iter().map(|path| file_path_to_uri(path)));
+        let gnome_payload = gnome_lines.join("\n");
+        let metadata = if is_cut { "cut" } else { "copy" }.to_string();
+
+        Self {
+            entries: vec![
+                ClipboardEntry::ExternalPaths(crate::ExternalPaths(paths.into())),
+                ClipboardEntry::String(ClipboardString {
+                    text: uri_list,
+                    metadata: Some(metadata),
+                }),
+                ClipboardEntry::String(ClipboardString::new(gnome_payload)),
+            ],
+        }
+    }
+
     /// Concatenates together all the ClipboardString entries in the item.
     /// Returns None if there were no ClipboardString entries.
     pub fn text(&self) -> Option<String> {
@@ -1929,6 +1953,72 @@ impl ClipboardItem {
     pub fn into_entries(self) -> impl Iterator<Item = ClipboardEntry> {
         self.entries.into_iter()
     }
+
+    /// Parse file paths from a clipboard item produced by file managers or [`Self::new_file_paths`].
+    pub fn file_paths(&self) -> Option<(Vec<PathBuf>, bool)> {
+        for entry in &self.entries {
+            if let ClipboardEntry::String(clipboard_string) = entry {
+                let text = clipboard_string.text.trim();
+                if text.starts_with("copy\n") || text.starts_with("cut\n") {
+                    let is_cut = text.starts_with("cut\n");
+                    let paths = text
+                        .lines()
+                        .skip(1)
+                        .filter_map(parse_clipboard_uri_line)
+                        .collect::<Vec<_>>();
+                    if !paths.is_empty() {
+                        return Some((paths, is_cut));
+                    }
+                }
+                if text.contains("file://") {
+                    let paths = text
+                        .lines()
+                        .filter_map(parse_clipboard_uri_line)
+                        .collect::<Vec<_>>();
+                    if !paths.is_empty() {
+                        let is_cut = clipboard_string
+                            .metadata
+                            .as_deref()
+                            .is_some_and(|metadata| metadata == "cut");
+                        return Some((paths, is_cut));
+                    }
+                }
+            }
+            if let ClipboardEntry::ExternalPaths(paths) = entry {
+                if !paths.0.is_empty() {
+                    let is_cut = self.entries.iter().any(|entry| {
+                        matches!(
+                            entry,
+                            ClipboardEntry::String(clipboard_string)
+                                if clipboard_string.metadata.as_deref() == Some("cut")
+                        )
+                    });
+                    return Some((paths.0.to_vec(), is_cut));
+                }
+            }
+        }
+        None
+    }
+}
+
+fn file_path_to_uri(path: &Path) -> String {
+    let absolute = path
+        .canonicalize()
+        .unwrap_or_else(|_| path.to_path_buf());
+    url::Url::from_file_path(&absolute)
+        .map(|url| url.to_string())
+        .unwrap_or_else(|_| format!("file://{}", absolute.display()))
+}
+
+fn parse_clipboard_uri_line(line: &str) -> Option<PathBuf> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return None;
+    }
+    if let Ok(url) = url::Url::parse(trimmed) {
+        return url.to_file_path().ok();
+    }
+    Some(PathBuf::from(trimmed))
 }
 
 impl From<ClipboardString> for ClipboardEntry {

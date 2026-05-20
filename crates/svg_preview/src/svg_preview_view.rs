@@ -1,7 +1,7 @@
 use std::mem;
 use std::sync::Arc;
 
-use file_icons::FileIcons;
+use file_icons::{FileIconPresentation, FileIcons, DEFAULT_ICON_SIZE};
 use gpui::{
     App, Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, ParentElement, Render,
     RenderImage, Styled, Subscription, Task, WeakEntity, Window, div, img,
@@ -320,8 +320,18 @@ impl Item for SvgPreviewView {
         self.buffer
             .as_ref()
             .and_then(|buffer| buffer.read(cx).file())
-            .and_then(|file| FileIcons::get_icon(file.path().as_std_path(), cx))
-            .map(Icon::from_path)
+            .and_then(|file| {
+                FileIcons::presentation_for_path(
+                    file.path().as_std_path(),
+                    DEFAULT_ICON_SIZE,
+                    cx,
+                )
+            })
+            .and_then(|presentation| match presentation {
+                FileIconPresentation::RasterPath(icon_path) => Some(Icon::from_path(icon_path)),
+                FileIconPresentation::SvgPath(path) => Some(Icon::from_external_svg(path)),
+                FileIconPresentation::RenderImage(_) => None,
+            })
             .or_else(|| Some(Icon::new(IconName::Image)))
     }
 

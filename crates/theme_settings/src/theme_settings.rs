@@ -15,10 +15,10 @@ use anyhow::{Context as _, Result};
 use gpui::{App, Font, HighlightStyle, Pixels, Refineable, px};
 use gpui_util::ResultExt;
 use theme::{
-    AccentColors, Appearance, AppearanceContent, DEFAULT_DARK_THEME, DEFAULT_ICON_THEME_NAME,
-    GlobalTheme, LoadThemes, PlayerColor, PlayerColors, StatusColors, SyntaxTheme,
-    SystemAppearance, SystemColors, Theme, ThemeColors, ThemeFamily, ThemeRegistry,
-    ThemeSettingsProvider, ThemeStyles, default_color_scales, try_parse_color,
+    AccentColors, Appearance, AppearanceContent, DEFAULT_DARK_THEME, GlobalTheme, LoadThemes,
+    PlayerColor, PlayerColors, StatusColors, SyntaxTheme, SystemAppearance, SystemColors, Theme,
+    ThemeColors, ThemeFamily, ThemeRegistry, ThemeSettingsProvider, ThemeStyles,
+    default_color_scales, try_parse_color,
 };
 
 pub use crate::schema::{
@@ -77,9 +77,8 @@ pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
     }
 
     let theme = configured_theme(cx);
-    let icon_theme = configured_icon_theme(cx);
     GlobalTheme::update_theme(cx, theme);
-    GlobalTheme::update_icon_theme(cx, icon_theme);
+    file_icons::init_global(cx, configured_xdg_icon_theme_name(cx));
 
     let settings = ThemeSettings::get_global(cx);
 
@@ -163,22 +162,14 @@ fn configured_theme(cx: &mut App) -> Arc<Theme> {
     theme_settings.apply_theme_overrides(theme)
 }
 
-fn configured_icon_theme(cx: &mut App) -> Arc<theme::IconTheme> {
-    let themes = ThemeRegistry::default_global(cx);
+fn configured_xdg_icon_theme_name(cx: &App) -> String {
     let theme_settings = ThemeSettings::get_global(cx);
     let system_appearance = SystemAppearance::global(cx);
-
-    let icon_theme_name = theme_settings.icon_theme.name(*system_appearance);
-
-    match themes.get_icon_theme(&icon_theme_name.0) {
-        Ok(theme) => theme,
-        Err(err) => {
-            if themes.extensions_loaded() {
-                log::error!("{err}");
-            }
-            themes.get_icon_theme(DEFAULT_ICON_THEME_NAME).unwrap()
-        }
-    }
+    theme_settings
+        .icon_theme
+        .name(*system_appearance)
+        .0
+        .to_string()
 }
 
 /// Reloads the current theme from settings.
@@ -188,10 +179,9 @@ pub fn reload_theme(cx: &mut App) {
     cx.refresh_windows();
 }
 
-/// Reloads the current icon theme from settings.
+/// Reloads the current XDG file icon theme from settings.
 pub fn reload_icon_theme(cx: &mut App) {
-    let icon_theme = configured_icon_theme(cx);
-    GlobalTheme::update_icon_theme(cx, icon_theme);
+    file_icons::init_global(cx, configured_xdg_icon_theme_name(cx));
     cx.refresh_windows();
 }
 

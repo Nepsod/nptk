@@ -10,13 +10,15 @@ use strum::IntoEnumIterator;
 use wayland_client::{Connection, protocol::wl_data_offer::WlDataOffer};
 use wayland_protocols::wp::primary_selection::zv1::client::zwp_primary_selection_offer_v1::ZwpPrimarySelectionOfferV1;
 
-use crate::linux::{WaylandClientStatePtr, platform::read_fd};
+use crate::linux::{WaylandClientStatePtr, file_clipboard, platform::read_fd};
 use gpui::{ClipboardEntry, ClipboardItem, Image, ImageFormat, hash};
 
 /// Text mime types that we'll offer to other programs.
 pub(crate) const TEXT_MIME_TYPES: [&str; 3] =
     ["text/plain;charset=utf-8", "UTF8_STRING", "text/plain"];
-pub(crate) const FILE_LIST_MIME_TYPE: &str = "text/uri-list";
+pub(crate) const FILE_LIST_MIME_TYPE: &str = file_clipboard::FILE_LIST_MIME_TYPE;
+pub(crate) const GNOME_COPIED_FILES_MIME_TYPE: &str =
+    file_clipboard::GNOME_COPIED_FILES_MIME_TYPE;
 
 /// Text mime types that we'll accept from other programs.
 pub(crate) const ALLOWED_TEXT_MIME_TYPES: [&str; 2] = ["text/plain;charset=utf-8", "UTF8_STRING"];
@@ -117,6 +119,22 @@ impl<T: ReceiveData> DataOffer<T> {
         Some(ClipboardItem::new_string(result))
     }
 
+    fn read_file_list(&self, connection: &Connection) -> Option<ClipboardItem> {
+        if !self.has_mime_type(GNOME_COPIED_FILES_MIME_TYPE)
+            && !self.has_mime_type(FILE_LIST_MIME_TYPE)
+        {
+            return None;
+        }
+
+        let bytes = self
+            .read_bytes(connection, GNOME_COPIED_FILES_MIME_TYPE)
+            .or_else(|| self.read_bytes(connection, FILE_LIST_MIME_TYPE))?;
+        let text = String::from_utf8(bytes).ok()?;
+        ClipboardItem::new_string(text)
+            .file_paths()
+            .map(|(paths, is_cut)| ClipboardItem::new_file_paths(paths, is_cut))
+    }
+
     fn read_image(&self, connection: &Connection) -> Option<ClipboardItem> {
         for format in ImageFormat::iter() {
             let mime_type = format.mime_type();
@@ -177,18 +195,44 @@ impl Clipboard {
         self.self_mime.clone()
     }
 
-    pub fn send(&self, _mime_type: String, fd: OwnedFd) {
-        if let Some(text) = self.contents.as_ref().and_then(|contents| contents.text()) {
+    pub fn send(&self, mime_type: String, fd: OwnedFd) {
+        let Some(contents) = self.contents.as_ref() else {
+            return;
+        };
+        if mime_type == FILE_LIST_MIME_TYPE {
+            if let Some(bytes) = file_clipboard::uri_list_bytes(contents) {
+                self.send_internal(fd, bytes);
+                return;
+            }
+        }
+        if mime_type == GNOME_COPIED_FILES_MIME_TYPE {
+            if let Some(bytes) = file_clipboard::gnome_copied_files_bytes(contents) {
+                self.send_internal(fd, bytes);
+                return;
+            }
+        }
+        if let Some(text) = contents.text() {
             self.send_internal(fd, text.as_bytes().to_owned());
         }
     }
 
-    pub fn send_primary(&self, _mime_type: String, fd: OwnedFd) {
-        if let Some(text) = self
-            .primary_contents
-            .as_ref()
-            .and_then(|contents| contents.text())
-        {
+    pub fn send_primary(&self, mime_type: String, fd: OwnedFd) {
+        let Some(contents) = self.primary_contents.as_ref() else {
+            return;
+        };
+        if mime_type == FILE_LIST_MIME_TYPE {
+            if let Some(bytes) = file_clipboard::uri_list_bytes(contents) {
+                self.send_internal(fd, bytes);
+                return;
+            }
+        }
+        if mime_type == GNOME_COPIED_FILES_MIME_TYPE {
+            if let Some(bytes) = file_clipboard::gnome_copied_files_bytes(contents) {
+                self.send_internal(fd, bytes);
+                return;
+            }
+        }
+        if let Some(text) = contents.text() {
             self.send_internal(fd, text.as_bytes().to_owned());
         }
     }
@@ -204,7 +248,8 @@ impl Clipboard {
         }
 
         let item = offer
-            .read_text(&self.connection)
+            .read_file_list(&self.connection)
+            .or_else(|| offer.read_text(&self.connection))
             .or_else(|| offer.read_image(&self.connection))?;
 
         self.cached_read = Some(item.clone());
@@ -222,7 +267,8 @@ impl Clipboard {
         }
 
         let item = offer
-            .read_text(&self.connection)
+            .read_file_list(&self.connection)
+            .or_else(|| offer.read_text(&self.connection))
             .or_else(|| offer.read_image(&self.connection))?;
 
         self.cached_primary_read = Some(item.clone());

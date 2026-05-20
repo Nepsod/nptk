@@ -13,10 +13,19 @@ use open_path_prompt::file_finder_settings::FileFinderSettings;
 use picker::{Picker, PickerDelegate};
 use project::Project;
 use settings::Settings;
+use file_icons::{FileIconPresentation, FileIcons, DEFAULT_ICON_SIZE};
 use std::{ops::Not as _, path::Path, sync::Arc};
 use ui::{HighlightedLabel, ListItem, ListItemSpacing, prelude::*};
 use util::ResultExt;
 use workspace::{ModalView, Workspace};
+
+fn icon_from_presentation(presentation: FileIconPresentation, color: Color) -> Option<Icon> {
+    match presentation {
+        FileIconPresentation::RasterPath(path) => Some(Icon::from_path(path).color(color)),
+        FileIconPresentation::SvgPath(path) => Some(Icon::from_external_svg(path).color(color)),
+        FileIconPresentation::RenderImage(_) => None,
+    }
+}
 
 actions!(
     language_selector,
@@ -186,12 +195,14 @@ impl LanguageSelectorDelegate {
     }
 
     fn language_icon(&self, matcher: &LanguageMatcher, cx: &App) -> Option<Icon> {
-        matcher
-            .path_suffixes
-            .iter()
-            .find_map(|extension| file_icons::FileIcons::get_icon(Path::new(extension), cx))
-            .map(Icon::from_path)
-            .map(|icon| icon.color(Color::Muted))
+        matcher.path_suffixes.iter().find_map(|extension| {
+            let presentation = FileIcons::presentation_for_file_name(
+                Path::new(extension),
+                DEFAULT_ICON_SIZE,
+                cx,
+            )?;
+            icon_from_presentation(presentation, Color::Muted)
+        })
     }
 }
 

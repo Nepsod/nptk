@@ -19,6 +19,7 @@ doctest = false
 [dependencies]
 anyhow.workspace = true
 collections.workspace = true
+file_icons = { path = "../file_icons" }
 gpui.workspace = true
 gpui_util.workspace = true
 log.workspace = true

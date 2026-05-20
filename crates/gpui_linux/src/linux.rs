@@ -1,5 +1,7 @@
 mod dbus_menu;
 mod dispatcher;
+#[cfg(any(feature = "wayland", feature = "x11"))]
+mod file_clipboard;
 mod headless;
 mod keyboard;
 mod platform;
