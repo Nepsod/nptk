@@ -7,6 +7,8 @@ pub use gpui_tokio;
 pub use settings;
 pub use theme;
 pub use theme_settings;
+pub use file_icons;
+pub use std;
 pub use ui;
 
 use gpui::App;

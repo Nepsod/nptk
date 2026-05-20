@@ -24,6 +24,7 @@ members = [
     "crates/syntax_theme",
     "crates/theme",
     "crates/theme_settings",
+    "crates/file_icons",
     "crates/ui",
     "crates/ui_macros",
     "crates/fs",
@@ -77,6 +78,7 @@ settings_macros = { path = "crates/settings_macros" }
 syntax_theme = { path = "crates/syntax_theme" }
 theme = { path = "crates/theme" }
 theme_settings = { path = "crates/theme_settings" }
+file_icons = { path = "crates/file_icons" }
 ui = { path = "crates/ui" }
 ui_macros = { path = "crates/ui_macros" }
 fs = { path = "crates/fs" }
@@ -453,6 +455,7 @@ paths = { workspace = true }
 settings = { workspace = true, features = ["editor"] }
 theme = { workspace = true }
 theme_settings = { workspace = true }
+file_icons = { workspace = true }
 ui = { workspace = true }
 
 [lib]
