@@ -113,6 +113,41 @@ impl FileIconService {
         self.presentation_for_path(&path, size)
     }
 
+    /// Resolve a freedesktop theme icon by name (e.g. `edit-copy`, `folder`).
+    pub fn presentation_for_icon_name(
+        &self,
+        icon_name: &str,
+        size: u32,
+    ) -> Option<FileIconPresentation> {
+        let cached = self
+            .inner
+            .read()
+            .expect("file icon service lock")
+            .registry
+            .get_icon(icon_name, size)?;
+        presentation_from_cached(&cached)
+    }
+
+    /// Resolve a freedesktop theme icon on the async runtime (safe from GPUI `Tokio::spawn`).
+    pub async fn resolve_theme_icon(
+        &self,
+        icon_name: &str,
+        size: u32,
+    ) -> Option<FileIconPresentation> {
+        let registry = self.inner.read().expect("file icon service lock").registry.clone();
+        let cached = registry.get_icon_async(icon_name, size).await?;
+        presentation_from_cached(&cached)
+    }
+
+    /// Resolve a path icon on the async runtime (safe from GPUI `Tokio::spawn`).
+    pub async fn resolve_path_icon(&self, path: &Path, size: u32) -> Option<FileIconPresentation> {
+        if path.is_dir() {
+            return self.resolve_theme_icon("folder", size).await;
+        }
+        let cached = self.resolve_icon(path, size, false).await?;
+        presentation_from_cached(&cached)
+    }
+
     /// Async resolution with thumbnail support for file managers.
     pub async fn resolve_icon(
         &self,
