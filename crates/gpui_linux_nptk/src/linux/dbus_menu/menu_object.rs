@@ -22,7 +22,7 @@ pub struct MenuObject {
 impl MenuObject {
     #[zbus(name = "AboutToShow")]
     async fn about_to_show(&self, _id: i32) -> bool {
-        log::info!("DBusMenu.AboutToShow id={}", _id);
+        log::debug!("DBusMenu.AboutToShow id={}", _id);
         // Return true if this node has (or may have) children to show
         let has_children = if _id == 0 {
             !self.state.lock().unwrap().entries.is_empty()
@@ -43,7 +43,7 @@ impl MenuObject {
 
     #[zbus(name = "Event")]
     async fn event(&self, id: i32, event_id: &str, _data: OwnedValue, _timestamp: u32) {
-        log::info!("DBusMenu.Event id={} event_id={}", id, event_id);
+        log::debug!("DBusMenu.Event id={} event_id={}", id, event_id);
         if event_id == "clicked" {
             (self.on_event)(super::BridgeEvent::Activated(id));
         } else if event_id == "opened" {
@@ -69,7 +69,7 @@ impl MenuObject {
         let st = self.state.lock().unwrap();
         let props_debug = properties.clone();
         let layout = st.layout_with(parent_id, depth, properties);
-        log::info!(
+        log::debug!(
             "DBusMenu.GetLayout parent_id={} depth={} props={:?} revision={} entries_count={} submenus_count={}",
             parent_id,
             depth,
@@ -87,7 +87,7 @@ impl MenuObject {
         ids: Vec<i32>,
         properties: Vec<String>,
     ) -> (u32, Vec<(i32, HashMap<String, OwnedValue>)>) {
-        log::info!(
+        log::debug!(
             "DBusMenu.GetGroupProperties ids={:?} props={:?}",
             ids,
             properties
@@ -128,7 +128,7 @@ impl MenuObject {
 
     #[zbus(name = "GetProperty")]
     async fn get_property(&self, _id: i32, _name: &str) -> OwnedValue {
-        log::info!("DBusMenu.GetProperty id={} name={}", _id, _name);
+        log::debug!("DBusMenu.GetProperty id={} name={}", _id, _name);
         // Root node is a pure container - only children-display property exists
         if _id == 0 {
             return match _name {
