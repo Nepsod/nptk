@@ -356,6 +356,7 @@ impl WaylandWindowState {
             if let Some(title) = options.titlebar.and_then(|titlebar| titlebar.title) {
                 xdg_state.toplevel.set_title(title.to_string());
             }
+            xdg_state.toplevel.set_app_id("com.nptk.app".to_string());
             // Set max window size based on the GPU's maximum texture dimension.
             // This prevents the window from being resized larger than what the GPU can render.
             let max_texture_size = renderer.max_texture_size() as i32;
@@ -370,7 +371,7 @@ impl WaylandWindowState {
             parent,
             children: FxHashSet::default(),
             surface,
-            app_id: None,
+            app_id: Some("com.nptk.app".to_string()),
             blur: None,
             viewport,
             globals,
@@ -575,6 +576,17 @@ impl WaylandWindowStatePtr {
     pub fn add_child(&self, child: ObjectId) {
         let mut state = self.state.borrow_mut();
         state.children.insert(child);
+    }
+
+    pub(crate) fn ensure_app_id(&self, app_id: &str) {
+        let mut state = self.state.borrow_mut();
+        if state.app_id.is_some() {
+            return;
+        }
+        if let Some(toplevel) = state.surface_state.toplevel() {
+            toplevel.set_app_id(app_id.to_owned());
+        }
+        state.app_id = Some(app_id.to_owned());
     }
 
     pub fn is_blocked(&self) -> bool {

@@ -6,6 +6,7 @@
 //! `com.canonical.AppMenu.Registrar` service.
 
 mod bridge;
+pub(crate) mod common;
 mod menu_object;
 mod registrar;
 mod types;

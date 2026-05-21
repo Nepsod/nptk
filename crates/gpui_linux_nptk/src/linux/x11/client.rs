@@ -348,17 +348,7 @@ impl X11Client {
             .insert_source(bridge_receiver, {
                 move |event, _, client: &mut X11Client| {
                     if let calloop::channel::Event::Msg(bridge_event) = event {
-                        let mut state = client.0.borrow_mut();
-                        if let crate::linux::dbus_menu::BridgeEvent::Activated(id) = bridge_event {
-                            if let Some(action) = state.common.menu_actions.get(&id) {
-                                let action = action.boxed_clone();
-                                if let Some(mut cb) = state.common.callbacks.app_menu_action.take() {
-                                    drop(state);
-                                    cb(action.as_ref());
-                                    client.0.borrow_mut().common.callbacks.app_menu_action = Some(cb);
-                                }
-                            }
-                        }
+                        crate::linux::dispatch_global_menu_bridge_event(client, bridge_event);
                     }
                 }
             })
@@ -981,6 +971,9 @@ impl X11Client {
                 window.set_active(true);
                 let mut state = self.0.borrow_mut();
                 state.keyboard_focused_window = Some(event.event);
+                state.common.register_global_menu_for_window_id(
+                    state.keyboard_focused_window.map(|window_id| window_id as u64),
+                );
                 if let Some(handler) = state.xim_handler.as_mut() {
                     handler.window = event.event;
                 }
@@ -994,6 +987,13 @@ impl X11Client {
                 // Set last scroll values to `None` so that a large delta isn't created if scrolling is done outside the window (the valuator is global)
                 reset_all_pointer_device_scroll_positions(&mut state.pointer_device_states);
                 state.keyboard_focused_window = None;
+                let active_window_id = state
+                    .keyboard_focused_window
+                    .or(state.mouse_focused_window)
+                    .map(|window_id| window_id as u64);
+                state
+                    .common
+                    .register_global_menu_for_window_id(active_window_id);
                 if let Some(compose_state) = state.compose_state.as_mut() {
                     compose_state.reset();
                 }
@@ -1315,6 +1315,13 @@ impl X11Client {
                 window.set_hovered(true);
                 let mut state = self.0.borrow_mut();
                 state.mouse_focused_window = Some(event.event);
+                let active_window_id = state
+                    .keyboard_focused_window
+                    .or(state.mouse_focused_window)
+                    .map(|window_id| window_id as u64);
+                state
+                    .common
+                    .register_global_menu_for_window_id(active_window_id);
                 state.restore_cursor_after_hide();
             }
             Event::XinputLeave(event) if event.mode == xinput::NotifyMode::NORMAL => {
@@ -1323,6 +1330,13 @@ impl X11Client {
                 // Set last scroll values to `None` so that a large delta isn't created if scrolling is done outside the window (the valuator is global)
                 reset_all_pointer_device_scroll_positions(&mut state.pointer_device_states);
                 state.mouse_focused_window = None;
+                let active_window_id = state
+                    .keyboard_focused_window
+                    .or(state.mouse_focused_window)
+                    .map(|window_id| window_id as u64);
+                state
+                    .common
+                    .register_global_menu_for_window_id(active_window_id);
                 let pressed_button = pressed_button_from_mask(event.buttons[0]);
                 let position = point(
                     px(event.event_x as f32 / u16::MAX as f32 / state.scale_factor),
@@ -1888,6 +1902,14 @@ impl LinuxClient for X11Client {
             .map(|window| window.window.x_window as u64)
             .map(|x_window| std::future::ready(Some(WindowIdentifier::from_xid(x_window))))
             .unwrap_or(std::future::ready(None))
+    }
+
+    fn global_menu_window_id(&self) -> Option<u64> {
+        let state = self.0.borrow();
+        state
+            .keyboard_focused_window
+            .or(state.mouse_focused_window)
+            .map(|window_id| window_id as u64)
     }
 }
 

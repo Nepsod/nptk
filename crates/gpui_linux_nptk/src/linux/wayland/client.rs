@@ -67,6 +67,7 @@ use wayland_protocols::{
     wp::fractional_scale::v1::client::{wp_fractional_scale_manager_v1, wp_fractional_scale_v1},
     xdg::dialog::v1::client::xdg_dialog_v1::XdgDialogV1,
 };
+use wayland_protocols_plasma::appmenu::client::{org_kde_kwin_appmenu, org_kde_kwin_appmenu_manager};
 use wayland_protocols_plasma::blur::client::{org_kde_kwin_blur, org_kde_kwin_blur_manager};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 use xkbcommon::xkb::ffi::XKB_KEYMAP_FORMAT_TEXT_V1;
@@ -129,6 +130,7 @@ pub struct Globals {
         Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
     pub decoration_manager: Option<zxdg_decoration_manager_v1::ZxdgDecorationManagerV1>,
     pub layer_shell: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
+    pub appmenu_manager: Option<org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager>,
     pub blur_manager: Option<org_kde_kwin_blur_manager::OrgKdeKwinBlurManager>,
     pub text_input_manager: Option<zwp_text_input_manager_v3::ZwpTextInputManagerV3>,
     pub gesture_manager: Option<zwp_pointer_gestures_v1::ZwpPointerGesturesV1>,
@@ -171,6 +173,7 @@ impl Globals {
             fractional_scale_manager: globals.bind(&qh, 1..=1, ()).ok(),
             decoration_manager: globals.bind(&qh, 1..=1, ()).ok(),
             layer_shell: globals.bind(&qh, 1..=5, ()).ok(),
+            appmenu_manager: globals.bind(&qh, 1..=2, ()).ok(),
             blur_manager: globals.bind(&qh, 1..=1, ()).ok(),
             text_input_manager: globals.bind(&qh, 1..=1, ()).ok(),
             gesture_manager: globals.bind(&qh, 1..=3, ()).ok(),
@@ -216,6 +219,7 @@ pub struct Output {
 }
 
 pub(crate) struct WaylandClientState {
+    connection: Connection,
     serial_tracker: SerialTracker,
     globals: Globals,
     pub gpu_context: GpuContext,
@@ -264,6 +268,8 @@ pub(crate) struct WaylandClientState {
     data_offers: Vec<DataOffer<WlDataOffer>>,
     primary_data_offer: Option<DataOffer<ZwpPrimarySelectionOfferV1>>,
     cursor: Cursor,
+    appmenu_objects: HashMap<u32, org_kde_kwin_appmenu::OrgKdeKwinAppmenu>,
+    appmenu_binding_by_surface: HashMap<u32, (String, String)>,
     pending_activation: Option<PendingActivation>,
     event_loop: Option<EventLoop<'static, WaylandClientStatePtr>>,
     pub common: LinuxCommon,
@@ -404,6 +410,9 @@ impl WaylandClientStatePtr {
         let client = self.get_client();
         let mut state = client.borrow_mut();
         let closed_window = state.windows.remove(surface_id).unwrap();
+        let closed_surface_id = closed_window.surface().id().protocol_id();
+        state.appmenu_objects.remove(&closed_surface_id);
+        state.appmenu_binding_by_surface.remove(&closed_surface_id);
         if let Some(window) = state.mouse_focused_window.take()
             && !window.ptr_eq(&closed_window)
         {
@@ -473,6 +482,104 @@ impl WaylandClientState {
             cursor_style_to_icon_names(style),
             scale,
         );
+    }
+
+    fn flush_after_appmenu_set_address(&self, surface_id: u32) {
+        if let Err(error) = self.connection.flush() {
+            log::warn!(
+                "Failed to flush Wayland connection after appmenu set_address for surface_id={}: {}",
+                surface_id,
+                error
+            );
+        }
+    }
+
+    fn set_appmenu_for_surface_with_info(
+        &mut self,
+        window: &WaylandWindowStatePtr,
+        service_name: &str,
+        object_path: &str,
+    ) -> Result<(), String> {
+        let Some(appmenu_manager) = self.globals.appmenu_manager.as_ref() else {
+            return Err("org.kde.kwin.appmenu_manager is unavailable".to_string());
+        };
+
+        let surface = window.surface();
+        let surface_id = surface.id().protocol_id();
+
+        window.ensure_app_id("com.nptk.app");
+
+        if let Some((existing_service, existing_path)) =
+            self.appmenu_binding_by_surface.get(&surface_id)
+        {
+            if existing_service == service_name && existing_path == object_path {
+                return Ok(());
+            }
+        }
+
+        if let Some(appmenu) = self.appmenu_objects.get(&surface_id) {
+            log::info!(
+                "Wayland appmenu set_address (existing) surface_id={} service={} path={}",
+                surface_id,
+                service_name,
+                object_path
+            );
+            appmenu.set_address(service_name.to_string(), object_path.to_string());
+            self.appmenu_binding_by_surface.insert(
+                surface_id,
+                (service_name.to_string(), object_path.to_string()),
+            );
+            surface.commit();
+            self.flush_after_appmenu_set_address(surface_id);
+            return Ok(());
+        }
+
+        let appmenu = appmenu_manager.create(&surface, &self.globals.qh, ());
+        log::info!(
+            "Wayland appmenu set_address (new) surface_id={} service={} path={}",
+            surface_id,
+            service_name,
+            object_path
+        );
+        appmenu.set_address(service_name.to_string(), object_path.to_string());
+        self.appmenu_objects.insert(surface_id, appmenu);
+        self.appmenu_binding_by_surface.insert(
+            surface_id,
+            (service_name.to_string(), object_path.to_string()),
+        );
+        surface.commit();
+        self.flush_after_appmenu_set_address(surface_id);
+        Ok(())
+    }
+
+    fn sync_global_menu_surface_binding_for_all_windows(&mut self) {
+        let Some((service_name, object_path)) =
+            crate::linux::dbus_menu::common::MenuInfoStorage::get()
+        else {
+            return;
+        };
+
+        let windows: Vec<WaylandWindowStatePtr> = self.windows.values().cloned().collect();
+        for window in windows {
+            if let Err(error) =
+                self.set_appmenu_for_surface_with_info(&window, &service_name, &object_path)
+            {
+                log::debug!("Failed to bind Wayland appmenu surface: {error}");
+            }
+        }
+    }
+
+    fn current_global_menu_window_id(&self) -> Option<u64> {
+        self.keyboard_focused_window
+            .as_ref()
+            .or(self.mouse_focused_window.as_ref())
+            .or_else(|| self.windows.values().next())
+            .map(|window| window.surface().id().protocol_id() as u64)
+    }
+
+    fn refresh_global_menu_window_registration(&mut self) {
+        self.common
+            .register_global_menu_for_window_id(self.current_global_menu_window_id());
     }
 }
 
@@ -604,19 +711,11 @@ impl WaylandClient {
                 move |event, _, client: &mut WaylandClientStatePtr| {
                     if let calloop::channel::Event::Msg(bridge_event) = event {
                         if let Some(state_rc) = client.0.upgrade() {
-                            let mut state = state_rc.borrow_mut();
-                            if let crate::linux::dbus_menu::BridgeEvent::Activated(id) = bridge_event {
-                                if let Some(action) = state.common.menu_actions.get(&id) {
-                                    let action = action.boxed_clone();
-                                    if let Some(mut cb) = state.common.callbacks.app_menu_action.take() {
-                                        drop(state);
-                                        cb(action.as_ref());
-                                        if let Some(state_rc) = client.0.upgrade() {
-                                            state_rc.borrow_mut().common.callbacks.app_menu_action = Some(cb);
-                                        }
-                                    }
-                                }
-                            }
+                            let wayland_client = WaylandClient(state_rc);
+                            crate::linux::dispatch_global_menu_bridge_event(
+                                &wayland_client,
+                                bridge_event,
+                            );
                         }
                     }
                 }
@@ -690,6 +789,7 @@ impl WaylandClient {
             .unwrap();
 
         let state = Rc::new(RefCell::new(WaylandClientState {
+            connection: conn.clone(),
             serial_tracker: SerialTracker::new(),
             globals,
             gpu_context,
@@ -757,6 +857,8 @@ impl WaylandClient {
             data_offers: Vec::new(),
             primary_data_offer: None,
             cursor,
+            appmenu_objects: HashMap::default(),
+            appmenu_binding_by_surface: HashMap::default(),
             pending_activation: None,
             event_loop: Some(event_loop),
         }));
@@ -859,6 +961,9 @@ impl LinuxClient for WaylandClient {
             target_output,
         )?;
         state.windows.insert(surface_id, window.0.clone());
+        if crate::linux::dbus_menu::common::MenuInfoStorage::get().is_some() {
+            state.sync_global_menu_surface_binding_for_all_windows();
+        }
 
         Ok(Box::new(window))
     }
@@ -1059,6 +1164,31 @@ impl LinuxClient for WaylandClient {
         let active_window = client_state.keyboard_focused_window.as_ref();
         inner(active_window.map(|aw| aw.surface()))
     }
+
+    fn global_menu_window_id(&self) -> Option<u64> {
+        let state = self.0.borrow();
+        state
+            .keyboard_focused_window
+            .as_ref()
+            .or(state.mouse_focused_window.as_ref())
+            .or_else(|| state.windows.values().next())
+            .map(|window| window.surface().id().protocol_id() as u64)
+    }
+
+    fn sync_global_menu_surface_binding(&self) {
+        let mut state = self.0.borrow_mut();
+        state.sync_global_menu_surface_binding_for_all_windows();
+    }
+
+    fn register_global_menu_window(&self) {
+        let mut state = self.0.borrow_mut();
+        let window_id = state
+            .current_global_menu_window_id()
+            .or_else(crate::linux::wayland_global_menu_fallback_id);
+        if state.common.register_global_menu_for_window_id(window_id) {
+            state.sync_global_menu_surface_binding_for_all_windows();
+        }
+    }
 }
 
 struct DmabufProbeState {
@@ -1195,8 +1325,10 @@ delegate_noop!(WaylandClientStatePtr: ignore wl_region::WlRegion);
 delegate_noop!(WaylandClientStatePtr: ignore wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1);
 delegate_noop!(WaylandClientStatePtr: ignore zxdg_decoration_manager_v1::ZxdgDecorationManagerV1);
 delegate_noop!(WaylandClientStatePtr: ignore zwlr_layer_shell_v1::ZwlrLayerShellV1);
+delegate_noop!(WaylandClientStatePtr: ignore org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager);
 delegate_noop!(WaylandClientStatePtr: ignore org_kde_kwin_blur_manager::OrgKdeKwinBlurManager);
 delegate_noop!(WaylandClientStatePtr: ignore zwp_text_input_manager_v3::ZwpTextInputManagerV3);
+delegate_noop!(WaylandClientStatePtr: ignore org_kde_kwin_appmenu::OrgKdeKwinAppmenu);
 delegate_noop!(WaylandClientStatePtr: ignore org_kde_kwin_blur::OrgKdeKwinBlur);
 delegate_noop!(WaylandClientStatePtr: ignore wp_viewporter::WpViewporter);
 delegate_noop!(WaylandClientStatePtr: ignore wp_viewport::WpViewport);
@@ -1526,6 +1658,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandClientStatePtr {
             }
             wl_keyboard::Event::Enter { surface, .. } => {
                 state.keyboard_focused_window = get_window(&mut state, &surface.id());
+                state.refresh_global_menu_window_registration();
                 state.enter_token = Some(());
 
                 if let Some(window) = state.keyboard_focused_window.clone() {

@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     env,
     path::{Path, PathBuf},
     rc::Rc,
@@ -108,8 +109,11 @@ pub(crate) trait LinuxClient {
 
     fn register_global_menu_window(&self) {
         let window_id = self.global_menu_window_id().or_else(wayland_global_menu_fallback_id);
-        self.with_common(|common| common.register_global_menu_for_window_id(window_id));
-        self.sync_global_menu_surface_binding();
+        let registration_changed =
+            self.with_common(|common| common.register_global_menu_for_window_id(window_id));
+        if registration_changed {
+            self.sync_global_menu_surface_binding();
+        }
     }
 
     /// Bind the KDE Wayland appmenu protocol on existing surfaces (legacy menubar behavior).
@@ -138,7 +142,6 @@ pub(crate) struct PlatformHandlers {
     pub(crate) app_menu_action: Option<Box<dyn FnMut(&dyn Action)>>,
     pub(crate) will_open_app_menu: Option<Box<dyn FnMut()>>,
     pub(crate) validate_app_menu_command: Option<Box<dyn FnMut(&dyn Action) -> bool>>,
-    pub(crate) global_menu_importer_detected: Option<Box<dyn FnMut()>>,
     pub(crate) keyboard_layout_change: Option<Box<dyn FnMut()>>,
 }
 
@@ -153,6 +156,8 @@ pub(crate) struct LinuxCommon {
     pub(crate) signal: LoopSignal,
     pub(crate) menus: Vec<OwnedMenu>,
     pub(crate) menu_actions: std::collections::HashMap<i32, Box<dyn Action>>,
+    pending_menu_activations: VecDeque<i32>,
+    processing_menu_activation: bool,
     pub(crate) global_menu: Option<crate::linux::dbus_menu::Bridge>,
     last_registered_global_menu_window: std::sync::Mutex<Option<Option<u64>>>,
 }
@@ -184,6 +189,8 @@ impl LinuxCommon {
             signal,
             menus: Vec::new(),
             menu_actions: std::collections::HashMap::new(),
+            pending_menu_activations: VecDeque::new(),
+            processing_menu_activation: false,
             global_menu: None,
             last_registered_global_menu_window: std::sync::Mutex::new(None),
         };
@@ -196,24 +203,25 @@ impl LinuxCommon {
         (common, main_receiver, bridge_receiver)
     }
 
-    pub(crate) fn register_global_menu_for_window_id(&self, window_id: Option<u64>) {
+    pub(crate) fn register_global_menu_for_window_id(&self, window_id: Option<u64>) -> bool {
         if self.menus.is_empty() {
-            return;
+            return false;
         }
         let Some(bridge) = &self.global_menu else {
-            return;
+            return false;
         };
         let mut last_registered = self
             .last_registered_global_menu_window
             .lock()
             .expect("global menu window id lock");
         if *last_registered == Some(window_id) {
-            return;
+            return false;
         }
         *last_registered = Some(window_id);
         drop(last_registered);
         log::debug!("Registering global menu for window {window_id:?}");
         bridge.set_window_id(window_id);
+        true
     }
 
 }
@@ -224,28 +232,39 @@ pub(crate) fn dispatch_global_menu_bridge_event<P: LinuxClient>(
 ) {
     match event {
         crate::linux::dbus_menu::BridgeEvent::Activated(menu_item_id) => {
-            let dispatch = client.with_common(|common| {
-                let action = common.menu_actions.get(&menu_item_id)?.boxed_clone();
-                let callback = common.callbacks.app_menu_action.take()?;
-                Some((action, callback))
+            let should_process = client.with_common(|common| {
+                common.pending_menu_activations.push_back(menu_item_id);
+                if common.processing_menu_activation {
+                    return false;
+                }
+                common.processing_menu_activation = true;
+                true
             });
-            if let Some((action, mut callback)) = dispatch {
+
+            if !should_process {
+                return;
+            }
+
+            loop {
+                let dispatch = client.with_common(|common| {
+                    let menu_item_id = common.pending_menu_activations.pop_front()?;
+                    let action = common.menu_actions.get(&menu_item_id)?.boxed_clone();
+                    let callback = common.callbacks.app_menu_action.take()?;
+                    Some((action, callback))
+                });
+                let Some((action, mut callback)) = dispatch else {
+                    break;
+                };
+
                 callback(action.as_ref());
                 client.with_common(|common| {
                     common.callbacks.app_menu_action = Some(callback);
                 });
             }
-        }
-        crate::linux::dbus_menu::BridgeEvent::ImporterDetected => {
-            let callback = client.with_common(|common| {
-                common.callbacks.global_menu_importer_detected.take()
+
+            client.with_common(|common| {
+                common.processing_menu_activation = false;
             });
-            if let Some(mut callback) = callback {
-                callback();
-                client.with_common(|common| {
-                    common.callbacks.global_menu_importer_detected = Some(callback);
-                });
-            }
         }
     }
 }
@@ -605,6 +624,9 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
     }
 
     fn set_menus(&self, menus: Vec<Menu>, keymap: &Keymap) {
+        if !menus.is_empty() {
+            self.inner.sync_global_menu_surface_binding();
+        }
         self.inner.with_common(|common| {
             common.menu_actions.clear();
 

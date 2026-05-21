@@ -14,7 +14,6 @@ use super::types::{MenuState, SubMenuLayout};
 /// DBusMenu interface implementation.
 pub struct MenuObject {
     pub state: Arc<Mutex<MenuState>>,
-    pub on_event: Arc<dyn Fn(super::BridgeEvent) + Send + Sync>,
     pub cmd_tx: std::sync::mpsc::Sender<Command>,
 }
 
@@ -22,34 +21,50 @@ pub struct MenuObject {
 impl MenuObject {
     #[zbus(name = "AboutToShow")]
     async fn about_to_show(&self, _id: i32) -> bool {
-        log::debug!("DBusMenu.AboutToShow id={}", _id);
+        log::info!("DBusMenu.AboutToShow id={}", _id);
         // Return true if this node has (or may have) children to show
+        let state = self.state.lock().unwrap();
         let has_children = if _id == 0 {
-            !self.state.lock().unwrap().entries.is_empty()
+            !state.entries.is_empty()
         } else {
-            self.state
-                .lock()
-                .unwrap()
-                .entries
-                .iter()
-                .any(|n| n.id == _id && !n.children.is_empty())
+            find_node_by_id(&state.entries, _id)
+                .map(|node| !node.children.is_empty())
+                .unwrap_or(false)
         };
+        drop(state);
         if has_children {
             // Ask the bridge loop to emit LayoutUpdated for this parent
-            let _ = self.cmd_tx.send(Command::RequestLayout(_id));
+            if let Err(error) = self.cmd_tx.send(Command::RequestLayout(_id)) {
+                log::warn!(
+                    "failed to queue RequestLayout from AboutToShow for id={}: {}",
+                    _id,
+                    error
+                );
+            }
         }
         has_children
     }
 
     #[zbus(name = "Event")]
     async fn event(&self, id: i32, event_id: &str, _data: OwnedValue, _timestamp: u32) {
-        log::debug!("DBusMenu.Event id={} event_id={}", id, event_id);
+        log::info!("DBusMenu.Event id={} event_id={}", id, event_id);
         if event_id == "clicked" {
-            (self.on_event)(super::BridgeEvent::Activated(id));
-        } else if event_id == "opened" {
-            let _ = self.cmd_tx.send(Command::RequestLayout(id));
-        } else if event_id == "about-to-show" {
-            let _ = self.cmd_tx.send(Command::RequestLayout(id));
+            if let Err(error) = self.cmd_tx.send(Command::Activated(id)) {
+                log::warn!(
+                    "failed to queue Activated from Event 'clicked' for id={}: {}",
+                    id,
+                    error
+                );
+            }
+        } else if event_id == "opened" || event_id == "about-to-show" {
+            if let Err(error) = self.cmd_tx.send(Command::RequestLayout(id)) {
+                log::warn!(
+                    "failed to queue RequestLayout from Event '{}' for id={}: {}",
+                    event_id,
+                    id,
+                    error
+                );
+            }
         }
     }
 
@@ -60,16 +75,10 @@ impl MenuObject {
         depth: i32,
         properties: Vec<&str>,
     ) -> (u32, SubMenuLayout) {
-        // Detect importer activity: when parent_id == 0, an importer is querying the root menu
-        if parent_id == 0 {
-            // Emit ImporterDetected event to notify the bridge
-            (self.on_event)(super::BridgeEvent::ImporterDetected);
-        }
-
         let st = self.state.lock().unwrap();
         let props_debug = properties.clone();
         let layout = st.layout_with(parent_id, depth, properties);
-        log::debug!(
+        log::info!(
             "DBusMenu.GetLayout parent_id={} depth={} props={:?} revision={} entries_count={} submenus_count={}",
             parent_id,
             depth,
@@ -87,7 +96,7 @@ impl MenuObject {
         ids: Vec<i32>,
         properties: Vec<String>,
     ) -> (u32, Vec<(i32, HashMap<String, OwnedValue>)>) {
-        log::debug!(
+        log::info!(
             "DBusMenu.GetGroupProperties ids={:?} props={:?}",
             ids,
             properties
@@ -128,7 +137,7 @@ impl MenuObject {
 
     #[zbus(name = "GetProperty")]
     async fn get_property(&self, _id: i32, _name: &str) -> OwnedValue {
-        log::debug!("DBusMenu.GetProperty id={} name={}", _id, _name);
+        log::info!("DBusMenu.GetProperty id={} name={}", _id, _name);
         // Root node is a pure container - only children-display property exists
         if _id == 0 {
             return match _name {
