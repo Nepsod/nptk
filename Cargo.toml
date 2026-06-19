@@ -106,7 +106,9 @@ ztracing_macro = { path = "crates/ztracing_macro" }
 perf = { path = "tooling/perf" }
 
 # External crates
+accesskit = "0.24.0"
 aho-corasick = "1.1"
+alacritty_terminal = { git = "https://github.com/zed-industries/alacritty", rev = "4c129667ce56611becdc82de6e28218c80e2e88f" }
 any_vec = "0.14"
 anyhow = "1.0.86"
 ashpd = { version = "0.13", default-features = false, features = [
@@ -125,7 +127,6 @@ async-fs = "2.1"
 async-io = "2.6.0"
 async-lock = "3.4.2"
 async-pipe = { git = "https://github.com/zed-industries/async-pipe-rs", rev = "82d00a04211cf4e1236029aa03e6b6ce2a74c553" }
-
 async-recursion = "1.0.0"
 async-tar = "0.5.1"
 async-task = "4.7"
@@ -138,6 +139,9 @@ base64 = "0.22"
 bitflags = "2.6.0"
 brotli = "8.0.2"
 bytes = "1.0"
+cargo_metadata = "0.19"
+cargo_toml = "0.21"
+brush-parser = "0.3"
 cfg-if = "1.0.3"
 chardetng = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
@@ -147,14 +151,15 @@ clap = { version = "4.4", features = ["derive", "wrap_help"] }
 cocoa = "=0.26.0"
 cocoa-foundation = "=0.2.0"
 const_format = "0.2"
-convert_case = "0.8.0"
+convert_case = "0.11.0"
 core-foundation = "=0.10.0"
 core-foundation-sys = "0.8.6"
 core-video = { version = "0.5.2", features = ["metal"] }
 cpal = "0.17"
 crash-handler = "0.7"
 criterion = { version = "0.5", features = ["html_reports"] }
-ctor = "0.4.0"
+ctor = "1.0.6"
+dap-types = { git = "https://github.com/zed-industries/dap-types", rev = "1b461b310481d01e02b2603c16d7144b926339f8" }
 dashmap = "6.0"
 derive_more = { version = "2.1.1", features = [
     "add",
@@ -271,6 +276,7 @@ serde_json_lenient = { version = "0.2", features = [
     "preserve_order",
     "raw_value",
 ] }
+serde_yaml = "0.9.34"
 serde_path_to_error = "0.1.17"
 serde_urlencoded = "0.7"
 sha2 = "0.10"
@@ -344,6 +350,7 @@ unindent = "0.2.0"
 url = "2.2"
 urlencoding = "2.1.2"
 uuid = { version = "1.1.2", features = ["v4", "v5", "v7", "serde"] }
+vte = { version = "0.15.0", features = ["ansi"] }
 walkdir = "2.5"
 wasm-encoder = "0.221"
 wasmparser = "0.221"
@@ -361,6 +368,7 @@ wax = "0.7"
 which = "6.0.0"
 wasm-bindgen = "0.2.120"
 web-time = "1.1.0"
+webrtc-sys = "0.3.23"
 wgpu = { git = "https://github.com/zed-industries/wgpu.git", rev = "357a0c56e0070480ad9daea5d2eaa83150b79e88" }
 windows-core = "0.61"
 yaml-rust2 = "0.8"
@@ -425,6 +433,7 @@ windows = { version = "0.61", features = [
 ] }
 
 [patch.crates-io]
+async-process = { git = "https://github.com/zed-industries/async-process.git", rev = "0b6d6713570af61806e1e5cb40e0f757cb93fd9d" }
 async-task = { git = "https://github.com/smol-rs/async-task.git", rev = "b4486cd71e4e94fbda54ce6302444de14f4d190e" }
 notify = { git = "https://github.com/zed-industries/notify.git", rev = "ce58c24cad542c28e04ced02e20325a4ec28a31d" }
 notify-types = { git = "https://github.com/zed-industries/notify.git", rev = "ce58c24cad542c28e04ced02e20325a4ec28a31d" }
@@ -452,7 +461,7 @@ gpui_platform = { workspace = true, features = ["font-kit", "wayland", "x11"] }
 gpui_tokio = { workspace = true }
 log.workspace = true
 paths = { workspace = true }
-settings = { workspace = true, features = ["editor"] }
+settings = { workspace = true }
 theme = { workspace = true }
 theme_settings = { workspace = true }
 file_icons = { workspace = true }
@@ -468,19 +477,34 @@ incremental = true
 codegen-units = 16
 debug = "limited"
 
+# mirror configuration for crates compiled for the build platform
+# (without this cargo will compile ~400 crates twice)
 [profile.dev.build-override]
 codegen-units = 16
 split-debuginfo = "unpacked"
 debug = "limited"
 
+# "debug" is a reserved profile name.
+[profile.dbg]
+inherits = "dev"
+debug = "full"
+
+[profile.dbg.build-override]
+debug = "full"
+
 [profile.dev.package]
+# proc-macros start
 gpui_macros = { opt-level = 3 }
+derive_refineable = { opt-level = 3 }
+feature_flags_macros = { opt-level = 3 }
 settings_macros = { opt-level = 3 }
 ui_macros = { opt-level = 3 }
 util_macros = { opt-level = 3 }
 quote = { opt-level = 3 }
 syn = { opt-level = 3 }
 proc-macro2 = { opt-level = 3 }
+# proc-macros end
+
 tree-sitter = { opt-level = 3 }
 taffy = { opt-level = 3 }
 resvg = { opt-level = 3 }
@@ -489,7 +513,9 @@ cranelift-codegen = { opt-level = 3 }
 wasmtime-environ = { opt-level = 3 }
 wasmtime-internal-cranelift = { opt-level = 3 }
 minidumper = { opt-level = 3 }
-
+serde_json = { opt-level = 3 }
+# Build single-source-file crates with cg=1 as it helps make `cargo build` of a whole workspace a bit faster
+activity_indicator = { codegen-units = 1 }
 assets = { codegen-units = 1 }
 breadcrumbs = { codegen-units = 1 }
 collections = { codegen-units = 1 }
@@ -513,9 +539,21 @@ declare_interior_mutable_const = "deny"
 redundant_clone = "deny"
 disallowed_methods = "deny"
 style = { level = "allow", priority = -1 }
+
+# Individual rules that have violations in the codebase:
 type_complexity = "allow"
 let_underscore_future = "allow"
+
+# Motivation: We use `vec![a..b]` a lot when dealing with ranges in text, so
+# warning on this rule produces a lot of noise.
 single_range_in_vec_init = "allow"
+
+# in Rust it can be very tedious to reduce argument count without
+# running afoul of the borrow checker.
 too_many_arguments = "allow"
+
+# We often have large enum variants yet we rarely actually bother with splitting them up.
 large_enum_variant = "allow"
+
+# Boolean expressions can be hard to read, requiring only the minimal form gets in the way
 nonminimal_bool = "allow"

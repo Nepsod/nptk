@@ -14,7 +14,7 @@ mod theme;
 mod title_bar;
 mod workspace;
 
-pub use action::{ActionName, ActionWithArguments};
+pub use action::{ActionName, ActionWithArguments, CommandAliasTarget};
 pub use agent::*;
 pub use editor::*;
 pub use extension::*;
@@ -178,6 +178,9 @@ pub struct SettingsContent {
 
     /// The settings for the image viewer.
     pub image_viewer: Option<ImageViewerSettingsContent>,
+
+    /// The settings for the markdown preview.
+    pub markdown_preview: Option<MarkdownPreviewSettingsContent>,
 
     pub repl: Option<ReplSettingsContent>,
 
@@ -367,12 +370,6 @@ impl RootUserSettings for UserSettingsContent {
 settings_overrides! {
     #[with_fallible_options]
     #[derive(Debug, Default, PartialEq, Clone, Serialize, Deserialize, JsonSchema, MergeFrom)]
-    pub struct ReleaseChannelOverrides { dev, nightly, preview, stable }
-}
-
-settings_overrides! {
-    #[with_fallible_options]
-    #[derive(Debug, Default, PartialEq, Clone, Serialize, Deserialize, JsonSchema, MergeFrom)]
     pub struct PlatformOverrides { macos, linux, windows }
 }
 
@@ -410,9 +407,6 @@ pub struct SettingsProfile {
 pub struct UserSettingsContent {
     #[serde(flatten)]
     pub content: Box<SettingsContent>,
-
-    #[serde(flatten)]
-    pub release_channel_overrides: ReleaseChannelOverrides,
 
     #[serde(flatten)]
     pub platform_overrides: PlatformOverrides,
@@ -533,6 +527,11 @@ pub struct TelemetrySettingsContent {
     ///
     /// Default: true
     pub metrics: Option<bool>,
+    /// Allow sending requests to Anthropic models that cannot be offered with
+    /// Zero Data Retention.
+    ///
+    /// Default: false
+    pub anthropic_retention: Option<bool>,
 }
 
 impl Default for TelemetrySettingsContent {
@@ -540,6 +539,7 @@ impl Default for TelemetrySettingsContent {
         Self {
             diagnostics: Some(true),
             metrics: Some(true),
+            anthropic_retention: Some(false),
         }
     }
 }
@@ -1098,6 +1098,23 @@ pub enum LineIndicatorFormat {
     Short,
     #[default]
     Long,
+}
+
+/// The settings for the markdown preview.
+#[with_fallible_options]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, MergeFrom, Default, PartialEq)]
+pub struct MarkdownPreviewSettingsContent {
+    /// Whether to limit the width of the rendered markdown content. When
+    /// enabled, content is constrained to `max_width` and centered
+    /// horizontally within the preview pane, for optimal readability.
+    ///
+    /// Default: true
+    pub limit_content_width: Option<bool>,
+    /// The maximum width, in pixels, of the rendered markdown content when
+    /// `limit_content_width` is enabled.
+    ///
+    /// Default: 800
+    pub max_width: Option<f32>,
 }
 
 /// The settings for the image viewer.
