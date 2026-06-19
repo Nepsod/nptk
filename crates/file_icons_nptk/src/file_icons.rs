@@ -190,7 +190,7 @@ impl FileIconService {
                     .get_thumbnail_image(file, thumb_size, None)
                     .await
                 {
-                    return Some(cached_icon_from_thumbnail(thumbnail));
+                    return Some(cached_icon_from_thumbnail(thumbnail.as_ref()));
                 }
             }
         }
@@ -303,9 +303,9 @@ fn render_svg_bytes(bytes: &[u8]) -> Option<Arc<RenderImage>> {
     svg_renderer().render_single_frame(bytes, 1.0).ok()
 }
 
-fn cached_icon_from_thumbnail(thumbnail: ThumbnailImage) -> CachedIcon {
+fn cached_icon_from_thumbnail(thumbnail: &ThumbnailImage) -> CachedIcon {
     CachedIcon::Image {
-        data: Arc::new(thumbnail.data),
+        data: Arc::new(thumbnail.data.to_vec()),
         width: thumbnail.width,
         height: thumbnail.height,
     }
